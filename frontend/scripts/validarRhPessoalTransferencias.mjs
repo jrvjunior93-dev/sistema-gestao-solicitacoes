@@ -10,7 +10,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const fixture = `import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';
 import Tela from '/src/pages/RhDpTransferencias.jsx';
 createRoot(document.getElementById('root')).render(<MemoryRouter><main className="layout-main" style={{padding:16,minWidth:0}}><Tela/></main></MemoryRouter>);`;
-const mocks = `const obras=[{id:1,nome:'Obra de origem',codigo:'101'},{id:2,nome:'Obra de destino',codigo:'102'}];
+const mocks = `const obras=[{id:1,nome:'Obra de origem',codigo:'101',tipo_centro_custo:'OBRA'},{id:2,nome:'Obra de destino',codigo:'102',tipo_centro_custo:'OBRA'},{id:3,nome:'Centro Administrativo',codigo:'103',tipo_centro_custo:'CENTRO_CUSTO'}];
 const s={id:10,colaborador:{id:7,nome:'Ana Teste'},obra:obras[0],obra_id:1,obra_destino_id:2,obra_destino_nome:obras[1].nome,
 obra_aprovadora_id:1,situacao:'ABERTA',nao_lida:true,pode_decidir:true,pode_cancelar:false,atividade_em:'2026-09-18T15:00:00Z',historicos:[{id:1,descricao:'Transferência solicitada',usuario_id:22,createdAt:'2026-09-18T15:00:00Z'}]};
 const colaboradores=Array.from({length:51},(_,i)=>({id:i+7,nome:i===0?'Ana Teste':i===1?'Sem Local':i===50?'Zilda Teste':'Colaborador '+String(i).padStart(2,'0'),matricula:'M'+(i+7),cargo:'Pedreira',obra_id:i===1?null:1,obra:i===1?null:obras[0]}));
@@ -102,12 +102,14 @@ try {
     await outra.getByText('Ana Teste', { exact: true }).first().waitFor();
     if (perfil === 'comum') {
       await outra.getByRole('button', { name: 'Solicitar transferência', exact: true }).first().click();
-      await outra.getByLabel('Obra de destino', { exact: true }).selectOption('2');
+      await outra.getByLabel('Obra de destino', { exact: true }).selectOption('3');
+      assert.equal(await outra.getByRole('option', { name: /Centro Administrativo.*Centro de custo/ }).isDisabled(), false);
       await outra.getByLabel('Justificativa', { exact: true }).fill('Solicitado por usuario comum da obra');
       assert.equal(await outra.getByRole('button', { name: 'Confirmar transferência', exact: true }).count(), 0, 'Usuario comum nao transfere automaticamente');
       await outra.getByRole('button', { name: 'Enviar para aprovação', exact: true }).click();
       await outra.getByRole('dialog', { name: 'Solicitar transferência entre obras' }).waitFor({ state: 'hidden' });
       assert.equal(await outra.evaluate(() => window.envios.length), 1);
+      assert.equal(await outra.evaluate(() => window.envios[0].data.obra_destino_id), 3);
     }
     await outra.getByRole('tab', { name: /Transferências das minhas obras|Transferências entre obras/ }).click();
     await outra.getByRole('button', { name: 'Abrir', exact: true }).click();

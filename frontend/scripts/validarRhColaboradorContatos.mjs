@@ -13,7 +13,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const output = path.join(root, '../outputs/rh-contatos'); mkdirSync(output, { recursive: true });
 const nomes = [...readFileSync(path.join(root, 'src/services/rhDp.js'), 'utf8').matchAll(/export (?:async )?function (\w+)/g)].map(m => m[1]);
 const cadastro = { id: 91, nome: 'Contato QA', cpf: '52998224725', empresa_grupo_id: 1, obra_id: 7,
-  data_admissao: '2026-09-01', status: 'ATIVO', tipo_vinculo: 'CLT', telefone: '27999991234',
+  data_admissao: '2026-09-01', status: 'ATIVO', tipo_vinculo: 'CLT', salario_base: 1000, telefone: '27999991234',
   telefone_secundario: '27988884321', endereco: 'Rua A', numero: '10', municipio: 'Vitória', estado: 'ES',
   endereco_secundario: 'Rua B', numero_secundario: '20', municipio_secundario: 'Serra', estado_secundario: 'ES' };
 const overrides = {
@@ -32,7 +32,7 @@ import{ThemeContext,TEMA_PADRAO}from'/src/contexts/ThemeContext.jsx';
 import '/src/index.css';import '/src/styles/design-tokens.css';import '/src/styles/componentes-padrao.css';
 import '/src/styles/escala.css';import '/src/styles/responsive-system.css';
 window.cadastro=${JSON.stringify(cadastro)};window.salvos=[];window.admissoes=[];
-window.locais=[{id:7,nome:'Obra QA',codigo:'OB-7',tipo_centro_custo:'OBRA'}];
+window.locais=[{id:7,nome:'Obra QA',codigo:'OB-7',tipo_centro_custo:'OBRA'},{id:9,nome:'Centro QA',codigo:'CC-9',tipo_centro_custo:'CENTRO_CUSTO'}];
 const Page=new URLSearchParams(location.search).has('admissao')?Pessoal:Cadastro;
 function Host(){const[active,A]=useState(true);const memory=useMemo(()=>createWorkspaceMemory(),[]);window.qaTab=A;window.qaMemory=memory;
 return <WorkspacePageContext.Provider value={{key:'contatos-qa',memory,snapshot:new URLSearchParams(location.search).has('workspace'),active:true}}>
@@ -46,7 +46,7 @@ const server = await createServer({ root, configFile: false, logLevel: 'error', 
     resolveId(id) { if (id === '/fixture.jsx') return '\0qa-contatos.jsx'; },
     async load(id) { if (id === '\0qa-contatos.jsx') return transformWithEsbuild(entry, 'fixture.jsx', { loader: 'jsx', jsx: 'transform' }); },
     transform(code, id) {
-      if (id.endsWith('/src/contexts/AuthContext.jsx')) return `const q=new URLSearchParams(location.search);const readonly=q.has('readonly'),obra=q.has('obra');const user={id:2,perfil:obra||readonly||q.has('dp')?'USUARIO':'SUPERADMIN',area:obra?'OBRA':'DP',setor:{codigo:obra?'OBRA':'DP'},obras_ids:[7],areas_permissoes_configuradas:true,modulos_habilitados:['RH_DP'],areas_permissoes:readonly?['rh_dp.colaboradores.visualizar']:['rh_dp.colaboradores.visualizar','rh_dp.colaboradores.editar','rh_dp.solicitacoes.visualizar','rh_dp.solicitacoes.abrir','rh_dp.solicitacoes.ver_todas']};export const useAuth=()=>({user});`;
+      if (id.endsWith('/src/contexts/AuthContext.jsx')) return `const q=new URLSearchParams(location.search);const readonly=q.has('readonly'),obra=q.has('obra');const user={id:2,perfil:obra||readonly||q.has('dp')?'USUARIO':'SUPERADMIN',area:obra?'OBRA':'DP',setor:{codigo:obra?'OBRA':'DP'},obras_ids:[7],areas_permissoes_configuradas:true,modulos_habilitados:['RH_DP'],areas_permissoes:readonly?['rh_dp.colaboradores.visualizar']:['rh_dp.colaboradores.visualizar','rh_dp.colaboradores.editar','rh_dp.solicitacoes.visualizar','rh_dp.solicitacoes.abrir','rh_dp.solicitacoes.ver_todas',...(q.has('dp')&&!q.has('sem-salario')?['rh_dp.salario.aprovar']:[])]};export const useAuth=()=>({user});`;
       if (id.endsWith('/src/services/rhDp.js')) return nomes.map(n => `export const ${n}=${overrides[n] || 'async()=>[]'};`).join('\n');
       if (id.endsWith('/src/services/obras.js')) return 'export const getObras=async()=>window.locais;export const getMinhasObras=async()=>window.locais;';
       if (id.endsWith('/src/services/setores.js')) return 'export const getSetores=async()=>[];';
@@ -189,6 +189,36 @@ try {
   await page.getByRole('button', { name: 'Ver colaborador Contato QA', exact: true }).click();
   assert.equal(await modal.getByLabel('Segundo telefone', { exact: true }).isDisabled(), true);
   assert.equal(await segundo.getByLabel('Logradouro', { exact: true }).isDisabled(), true);
+  await page.goto(base + '?dp=1&sem-salario=1');
+  await page.getByRole('button', { name: 'Editar colaborador Contato QA', exact: true }).click();
+  assert.equal(await modal.getByLabel('Salário base', { exact: true }).isDisabled(), true);
+  assert.equal(await modal.getByRole('combobox', { name: 'Obra / centro de custo principal', exact: true }).isDisabled(), true);
+  for (const width of [1366, 390]) {
+    await page.setViewportSize({ width, height: 900 }); await page.goto(base + '?dp=1');
+    await page.getByRole('button', { name: 'Editar colaborador Contato QA', exact: true }).click();
+    assert.equal(await modal.getByLabel('Salário base', { exact: true }).isDisabled(), false);
+    assert.equal(await modal.getByRole('combobox', { name: 'Obra / centro de custo principal', exact: true }).isDisabled(), true);
+    await modal.getByLabel('Salário base', { exact: true }).fill('1881,00');
+    await modal.getByLabel('Vigência do salário', { exact: true }).fill('01/10/2026');
+    await modal.getByLabel('Motivo do ajuste salarial', { exact: true }).fill('Ajuste DP QA');
+    await page.screenshot({ path: path.join(output, `salario-dp-${width}.png`) });
+    await modal.getByRole('button', { name: 'Salvar alteracoes', exact: true }).click();
+    await page.waitForFunction(() => window.salvos.length === 1);
+    const salvo = await page.evaluate(() => window.salvos[0]);
+    assert.equal(salvo.salario_vigencia_inicio, '2026-10-01'); assert.equal(salvo.salario_motivo, 'Ajuste DP QA');
+    assert.equal(salvo.obra_id, 7); assert.equal(salvo.obra_vigencia_inicio, undefined);
+    await page.goto(base); await page.getByRole('button', { name: 'Editar colaborador Contato QA', exact: true }).click();
+    const obra = modal.getByRole('combobox', { name: 'Obra / centro de custo principal', exact: true });
+    await obra.fill('Centro QA'); await page.getByRole('button', { name: /Centro QA/ }).click();
+    await modal.getByLabel('Vigência da lotação', { exact: true }).fill('01/10/2026');
+    await modal.getByLabel('Motivo do ajuste da lotação', { exact: true }).fill('Lotação SUPERADMIN QA');
+    await page.screenshot({ path: path.join(output, `lotacao-superadmin-${width}.png`) });
+    await modal.getByRole('button', { name: 'Salvar alteracoes', exact: true }).click();
+    await page.waitForFunction(() => window.salvos.length === 1);
+    const lotacao = await page.evaluate(() => window.salvos[0]);
+    assert.equal(lotacao.obra_id, 9); assert.equal(lotacao.obra_vigencia_inicio, '2026-10-01');
+    assert.equal(lotacao.obra_motivo, 'Lotação SUPERADMIN QA');
+  }
   for (const width of [1366,390]) {
     await page.setViewportSize({width,height:900});await page.goto(base+'?workspace=1');
     await page.getByRole('button',{name:'Editar colaborador Contato QA',exact:true}).click();

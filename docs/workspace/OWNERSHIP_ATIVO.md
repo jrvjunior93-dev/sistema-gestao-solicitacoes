@@ -1,5 +1,20 @@
 # Ownership Ativo
 
+## Promocao cadastro DP salario lotacao e centros para main - 2026-10-14
+
+- Sessao codex-promocao-cadastro-dp-main-20261014, sem delegacao.
+- Usuario autorizou promocao de 1b9101df, confirmou dev aprovado e backup
+  recente no Drive cifrado conferido/timer ativo. Main base 218cc4dd.
+- Reserva documental: conflito de OWNERSHIP_ATIVO e handoff desta promocao.
+  Integrar por merge preservando ambos os historicos e hotfixes de producao.
+- Sem nova migration/dependencia/flag, .env, banco real, usuarios/configuracoes,
+  execucao EC2 ou reinicio pelo agente. Caixa nao commitada e outputs/ excluidos.
+- Publicacao por PR apos testes; comandos somente para backend-solicitacoes,
+  com branch/SHA/UUID/schema/ambiente/porta/processo conferidos pelo usuario.
+- Integracao/testes concluidos, ownership liberado. Conflito apenas documental,
+  ambos os historicos preservados; runtime identico ao homologado em dev.
+  Handoff: docs/handoffs/2026-10-14-promocao-cadastro-dp-main.md.
+
 ## Promocao saldo contratual e transferencia OBRA para main - 2026-10-14
 
 - Sessao codex-promocao-saldo-transferencia-main-20261014, sem delegacao.
@@ -124,6 +139,28 @@
 - Testes backend/visibilidade, UI desktop/mobile com APIs simuladas, build,
   sintaxe e documentacao aprovados. Handoff:
   docs/handoffs/2026-10-09-promocao-isolada-medicao-recarga-main.md.
+## Cadastro RH: salario DP, lotacao SUPERADMIN e centros em transferencias - 2026-10-14
+
+- Sessao codex-rhdp-cadastro-salario-lotacao-20261014, sem delegacao.
+- Usuario autorizou salario direto ao DP autorizado e lotacao direta exclusiva
+  do SUPERADMIN, ambos com vigencia/motivo/historico, sem recalcular titulos.
+  Transferencias tambem devem aceitar centros de custo, mantendo escopo/aprovacao.
+- Reserva: rhService.js, rhSalarioService.js, rhVinculoObraService.js se necessario,
+  rhTransferenciaService.js, rhValidators.js, RhDpColaboradores.jsx e
+  RhDpTransferencias.jsx; testes focados, README RH/DP e handoff dedicado.
+- Base refactor/frontend 9bc50308, worktree isolado reutilizado. Sem publicacao,
+  banco real, migration, .env, alteracao de usuarios ou EC2 autorizada nesta etapa.
+- Preservar alteracoes de caixa em outro worktree e outputs/ fora do commit.
+- Reserva ampliada: acessoProduto.js (helper nominal de salario), testes de
+  escopo RH/consulta salarial/transferencias, novo validarRhLotacaoCadastro.js,
+  fixture UI de contatos/cadastro reutilizada para os novos campos/ACL.
+- Implementacao/testes concluidos, ownership liberado. Backend/negativas/rollback,
+  UI desktop/mobile, legado, build/navegacao/docs aprovados. Handoff dedicado:
+  docs/handoffs/2026-10-14-cadastro-dp-salario-lotacao-centros.md.
+- Usuario autorizou commit/push desta tarefa na refactor/frontend e comandos dev.
+  Reserva documental de publicacao/conferencia/staging, liberada apos checks.
+  Sem main, execucao EC2, migration, banco real, usuarios/configuracoes ou outputs/.
+
 ## Saldo remanescente do contrato e transferencia OBRA - 2026-10-14
 
 - Sessao codex-contrato-saldo-transferencia-obra-20261014, sem delegacao.

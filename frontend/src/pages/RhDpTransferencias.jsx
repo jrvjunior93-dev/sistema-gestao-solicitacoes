@@ -51,7 +51,7 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
   };
   useWorkspaceWork(Boolean(formInputs || Object.values(comentarios).some(Boolean)), ocupado, 'transferencias:work');
   const obrasTransferiveis = config.obras.filter((obra) => (
-    String(obra?.tipo_centro_custo || 'OBRA').trim().toUpperCase() === 'OBRA'
+    ['OBRA', 'CENTRO_CUSTO'].includes(String(obra?.tipo_centro_custo || 'OBRA').trim().toUpperCase())
   ));
   const minhas = obrasTransferiveis.filter(o => config.obras_responsavel_ids.includes(Number(o.id)));
   const idsSolicitacao = config.obras_solicitacao_ids || config.obras_responsavel_ids;
@@ -295,14 +295,14 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
         <h2 className="app-bloco-titulo">Solicitar transferência entre obras</h2>
         {formConflito && <p role="alert" className="app-note">A obra atual do colaborador mudou. Cancele este preenchimento e confira a nova origem antes de transferir.</p>}
         <p><strong>{form.colaborador.nome}</strong> · Obra atual: {form.colaborador.obra?.nome || nomeObra(form.colaborador.obra_id)}</p>
-        <label className="form-field"><span className="form-label">Obra de destino</span>
+        <label className="form-field"><span className="form-label">Obra / centro de custo de destino</span>
           <select className="form-control" aria-label="Obra de destino" required value={form.obra_destino_id}
             onChange={e => setForm(f => ({ ...f, obra_destino_id: e.target.value }))}>
             <option value="">Selecione</option>
             {obrasTransferiveis.filter(o => Number(o.id) !== Number(form.colaborador.obra_id)).map(o => {
               const habilitada = fluxoForm?.solicitanteOrigem || idsSolicitacao.includes(Number(o.id));
               return <option key={o.id} value={o.id} disabled={!habilitada}>
-                {o.codigo} · {o.nome}{habilitada ? '' : ' · sem vínculo de solicitação'}
+                {o.codigo} · {o.nome}{o.tipo_centro_custo === 'CENTRO_CUSTO' ? ' · Centro de custo' : ''}{habilitada ? '' : ' · sem vínculo de solicitação'}
               </option>;
             })}
           </select>

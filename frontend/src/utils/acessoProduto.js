@@ -1248,6 +1248,15 @@ export function canManageRhDpColaboradores(user) {
   return canAccessRhDp(user) && hasRhDpCapability(user, 'rh_dp_colaboradores_edit');
 }
 
+export function canAdjustRhDpSalarioCadastro(user) {
+  if (isSuperadmin(user)) return canManageRhDpColaboradores(user);
+  if (!canManageRhDpColaboradores(user) || userHasSetorCapability(user, 'eh_setor_obra')
+      || !userBelongsToDpSetor(user)) return false;
+  // Nominal: nem legado nem bypass ADMINISTRADOR substituem estas concessoes.
+  const permissoes = new Set(user?.areas_permissoes || []);
+  return ['rh_dp.colaboradores.editar', 'rh_dp.salario.aprovar'].every(chave => permissoes.has(chave));
+}
+
 export function canAccessRhDpCadastroColaboradores(user) {
   if (userHasSetorCapability(user, 'eh_setor_obra') && !isBusinessAdmin(user)) return false;
   return canViewRhDpColaboradores(user);

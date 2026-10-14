@@ -35,7 +35,7 @@ const hoje = '2026-09-18';
 const usuarios = [{ id: 11 }, { id: 22 }, { id: 33 }, { id: 44 }];
 let requests = [], history = [], responsabilidades = [], colaborador, aberto, atualizacoes, ultimaConsulta;
 let proximoId = 1;
-const obras = [1, 2, 3].map(id => ({ id, nome: `Obra ${id}`, codigo: String(id), ativo: true,
+const obras = [1, 2, 3].map(id => ({ id, nome: `Obra ${id}`, codigo: String(id), ativo: true, tipo_centro_custo: 'OBRA',
   get() { return { id: this.id, nome: this.nome, codigo: this.codigo }; } }));
 function instancia(d) { return { ...d, async update(p) { Object.assign(this, p); return this; }, get() { return { ...this }; } }; }
 function reset() {
@@ -68,7 +68,8 @@ const db = {
     assert.equal(where[Op.or][1].vigencia_fim[Op.gte], hoje);
     return responsabilidades.filter(r => !where.user_id || r.user_id === where.user_id);
   } },
-  Obra: { findAll: async ({ where }) => obras.filter(o => !where.id || where.id.includes(o.id)), findByPk: async id => obras.find(o => o.id === Number(id)) }
+  Obra: { findAll: async ({ where }) => obras.filter(o => o.ativo && (!where.id || where.id.includes(o.id))
+    && (!where.tipo_centro_custo || where.tipo_centro_custo[Op.in].includes(o.tipo_centro_custo))), findByPk: async id => obras.find(o => o.id === Number(id)) }
 };
 const service = carregar('rhTransferenciaService.js', {
   sequelize: { Op }, '../models': db, '../middlewares/validation': { ValidationError },
@@ -79,7 +80,7 @@ const service = carregar('rhTransferenciaService.js', {
     userHasSetorCapability: async u => [44, 55, 67, 77].includes(u.id) },
   './notificacoes': { criarNotificacaoDireta: async () => {} },
   './rhSolicitacaoCodigoService': { garantirCodigoRhSolicitacao: async () => {} },
-  '../constants/centroCusto': { TIPO_CENTRO_CUSTO_OBRA: 'OBRA', isObraCentroCusto: () => true },
+  '../constants/centroCusto': require('../src/constants/centroCusto'),
   '../utils/codigoDoSetor': { codigoDoSetor: () => 'OBRA' },
   './rhPessoalDomain': { ...domain, hojeLocal: () => hoje },
   './rhVinculoObraService': { vinculoAberto: async () => aberto, registrarVinculo: async d => {
@@ -214,6 +215,18 @@ async function validarTransferencias() {
   assert.equal((await service.configuracao({ id: 44 })).obras_solicitacao_ids[0], 1);
   const cancelavel = await service.abrir({ id: 44 }, payload);
   await service.agir({ id: 44 }, cancelavel.id, 'cancelar'); assert.equal(colaborador.obra_id, 1);
+  reset();
+  const destino = obras.find(o => o.id === 2); destino.tipo_centro_custo = 'CENTRO_CUSTO';
+  assert.equal((await service.configuracao({ id: 44 })).obras.some(o => o.id === 2), true);
+  const aoCentro = await service.abrir({ id: 44 }, payload);
+  await assert.rejects(service.agir({ id: 44 }, aoCentro.id, 'aprovar'), /restrito|outro responsavel/);
+  await service.agir({ id: 66 }, aoCentro.id, 'aprovar'); assert.equal(colaborador.obra_id, 2);
+  reset(); colaborador.obra_id = 2; aberto.obra_id = 2;
+  const doCentro = await service.abrir({ id: 55 }, { ...payload, obra_destino_id: 1 });
+  await service.agir(usuarios[0], doCentro.id, 'aprovar'); assert.equal(colaborador.obra_id, 1);
+  reset(); destino.ativo = false;
+  await assert.rejects(service.abrir({ id: 44 }, payload), /ativos/);
+  destino.ativo = true; destino.tipo_centro_custo = 'OBRA';
 }
 
 async function validarAtividades() {
