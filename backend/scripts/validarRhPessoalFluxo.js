@@ -72,8 +72,11 @@ const db = {
 };
 const service = carregar('rhTransferenciaService.js', {
   sequelize: { Op }, '../models': db, '../middlewares/validation': { ValidationError },
-  './authorizationService': { getUserObraIds: async user => user.id === 33 ? [] : [1],
-    isSuperadmin: () => false, getRhDpObraScopeIds: async () => null, userHasAreaPermission: async () => false },
+  './authorizationService': { getUserObraIds: async user => [33, 66, 99].includes(user.id) ? [] : user.id === 55 ? [2] : [1],
+    isSuperadmin: u => u.id === 99, getRhDpObraScopeIds: async u => [44, 55, 67, 77].includes(u.id) ? [1] : null,
+    userHasAreaPermission: async (u, keys) => keys.includes('rh_dp.solicitacoes.abrir') && u.id !== 77 },
+  './setorCapabilityService': { userBelongsToDpSetor: async u => [66, 67].includes(u.id),
+    userHasSetorCapability: async u => [44, 55, 67, 77].includes(u.id) },
   './notificacoes': { criarNotificacaoDireta: async () => {} },
   './rhSolicitacaoCodigoService': { garantirCodigoRhSolicitacao: async () => {} },
   '../constants/centroCusto': { TIPO_CENTRO_CUSTO_OBRA: 'OBRA', isObraCentroCusto: () => true },
@@ -89,7 +92,7 @@ const service = carregar('rhTransferenciaService.js', {
 async function validarTransferencias() {
   reset();
   const payload = { colaborador_id: 7, obra_destino_id: 2, obra_solicitante_id: 1, justificativa: 'Enviar para outra obra', data_vigencia: '2000-01-01' };
-  await assert.rejects(service.abrir(usuarios[2], payload), /responsavel vigente/);
+  await assert.rejects(service.abrir(usuarios[2], payload), /vinculado/);
   const p = await service.abrir(usuarios[0], payload);
   assert.equal(colaborador.obra_id, 1, 'Abrir nao transfere');
   assert.equal(requests[0].dados_json.obra_aprovadora_id, 2);
@@ -155,7 +158,7 @@ async function validarTransferencias() {
   reset();
   colaborador.obra_id = null;
   aberto = null;
-  await assert.rejects(service.abrir(usuarios[0], payload), /responsavel vigente/);
+  await assert.rejects(service.abrir(usuarios[0], payload), /vinculado/);
   const inicial = await service.abrir(usuarios[1], payload);
   assert.equal(inicial.aprovacao_automatica, true);
   assert.equal(colaborador.obra_id, 2);
@@ -171,6 +174,46 @@ async function validarTransferencias() {
   aberto = null;
   colaborador.status = 'INATIVO';
   await assert.rejects(service.abrir(usuarios[1], payload), /ativo/);
+
+  reset();
+  const pedidoObra = await service.abrir({ id: 44 }, payload);
+  assert.equal(requests[0].dados_json.obra_solicitante_id, 1);
+  assert.equal(requests[0].dados_json.obra_aprovadora_id, 2);
+  assert.equal(pedidoObra.aprovacao_automatica, false);
+  assert.equal(colaborador.obra_id, 1, 'Usuario comum solicita, sem efetivar lotacao');
+  assert.equal((await service.detalhe({ id: 44 }, pedidoObra.id)).pode_decidir, false);
+  assert.equal((await service.detalhe({ id: 67 }, pedidoObra.id)).pode_decidir, false, 'Acumular DP nao amplia Obra operacional');
+  await assert.rejects(service.agir({ id: 67 }, pedidoObra.id, 'aprovar'), /restrito/);
+  await assert.rejects(service.agir({ id: 44 }, pedidoObra.id, 'aprovar'), /restrito/);
+  await assert.rejects(service.agir(usuarios[0], pedidoObra.id, 'aprovar'), /outro responsavel/);
+  await service.agir(usuarios[1], pedidoObra.id, 'aprovar');
+  assert.equal(colaborador.obra_id, 2);
+
+  reset();
+  const recebeUsuario = await service.abrir({ id: 55 }, payload);
+  assert.equal(requests[0].dados_json.obra_aprovadora_id, 1);
+  await service.agir(usuarios[0], recebeUsuario.id, 'aprovar');
+  assert.equal(colaborador.obra_id, 2);
+
+  for (const adminId of [66, 99]) {
+    reset();
+    const pedido = await service.abrir({ id: 44 }, payload);
+    assert.equal((await service.detalhe({ id: adminId }, pedido.id)).pode_decidir, true);
+    if (adminId === 66) await assert.rejects(service.agir({ id: adminId }, pedido.id, 'cancelar'), /restrito/);
+    await service.agir({ id: adminId }, pedido.id, 'aprovar');
+    assert.equal(colaborador.obra_id, 2, 'DP/SUPERADMIN aprova sem cadastro de responsavel');
+  }
+  reset(); colaborador.obra_id = null; aberto = null;
+  const semOrigem = await service.abrir({ id: 55 }, payload);
+  assert.equal(requests[0].dados_json.obra_aprovadora_id, 2);
+  assert.equal(colaborador.obra_id, null);
+  await service.agir(usuarios[1], semOrigem.id, 'aprovar'); assert.equal(colaborador.obra_id, 2);
+
+  reset();
+  await assert.rejects(service.abrir({ id: 77 }, payload), /permissao/);
+  assert.equal((await service.configuracao({ id: 44 })).obras_solicitacao_ids[0], 1);
+  const cancelavel = await service.abrir({ id: 44 }, payload);
+  await service.agir({ id: 44 }, cancelavel.id, 'cancelar'); assert.equal(colaborador.obra_id, 1);
 }
 
 async function validarAtividades() {

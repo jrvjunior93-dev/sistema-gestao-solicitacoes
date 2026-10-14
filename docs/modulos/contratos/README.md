@@ -42,6 +42,30 @@ fotografia nao se tornam retroativamente invalidos.
 
 ## Gestao operacional
 
+### Reprogramar saldo sem parcela
+
+Na Nova Solicitacao de Medicao, selecionar contrato ativo do fluxo novo com saldo
+nao comprometido e sem parcela que o represente habilita Reprogramar saldo.
+O usuario da Obra com acesso ao contrato e permissao de criar solicitacoes nao
+precisa de Editar contratos. SUPERADMIN e usuarios autorizados a editar contratos
+tambem podem executar a acao, respeitando modulo e escopo de obras.
+
+Informar quantidade, valores, vencimentos e justificativa. A soma precisa fechar
+exatamente o saldo disponivel, descontando parcelas livres ja existentes; respeita
+o limite atual de 24 parcelas do contrato. Cria apenas novas parcelas e titulos
+PREVISAO, vinculados a solicitacao do contrato e suas apropriacoes. Depois, selecionar
+a nova parcela para medir pelo fluxo normal, com aprovacao antes de liberar pagamento.
+
+Nao aumenta valor/aditivos nem altera medicoes, parcelas pagas, baixas ou a referencia
+prevista das parcelas anteriores. Contrato encerrado, legado ou sem categoria/solicitacao
+nao aceita a operacao. Lock/transacao, referencia de saldo e replay persistente no
+historico impedem duplicacao e gravacao parcial. Sem migration ou backfill.
+
+Endpoints GET/POST `/contratos/:id/saldo-reprogramacao`; validacoes locais:
+`node backend/scripts/validarContratoSaldoReprogramacao.js` e, no frontend,
+`node scripts/validarContratoSaldoReprogramacaoUI.mjs`. MySQL real sera homologado
+em dev; o agente nao executou operacoes de negocio em banco real.
+
 A listagem usa `Contratado`, `Saldo` e `Aditivos`. O status e calculado em consulta:
 
 - `ATIVO`: parcialmente medido ou ainda com saldo operacional;

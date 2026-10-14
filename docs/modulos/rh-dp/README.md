@@ -30,9 +30,19 @@ RH/DP e dono do cadastro funcional de colaboradores, documentos, vinculos, compe
 
 - Transferencias: a aba Todos Colaboradores lista todos os ativos, inclusive sem obra,
   com somente identificacao profissional. O local aberto nao filtra esse diretorio.
-- Sem obra atual, o responsavel vigente do destino pode confirmar a alocacao com
-  justificativa, vigencia na data da operacao e historico, sem inventar uma origem.
-  Entre obras, permanecem as regras de responsabilidade e aprovacao entre envolvidos.
+- Todos os usuarios vinculados a Obra, com rh_dp.solicitacoes.abrir, podem solicitar
+  transferencias no diretorio de ativos, sem cadastro de responsavel. Participam
+  pela origem quando vinculados a ela; caso contrario pedem para seu proprio destino.
+- Usuario comum nao efetiva a lotacao: aprova o responsavel/substituto vigente da
+  outra obra. Sem origem, aprova o responsavel do destino. DP/SUPERADMIN podem decidir
+  por bypass administrativo; isso nao libera cancelamento de terceiros para DP.
+- Autor nao aprova o proprio pedido. Aprovacao automatica anterior dos responsaveis
+  por ambas as obras (ou destino sem origem) permanece. Vigencia na aprovacao,
+  justificativa/historico, transacao/lock, duplicacao e datas da admissao preservados.
+- Diretorio continua somente profissional; lista/detalhe de transferencias para
+  usuarios comuns ficam nas obras vinculadas. Consulta global DP/SUPERADMIN nao
+  amplia escopo de usuario operacional OBRA que acumule DP. Nao habilita operacoes
+  salariais, documentos ou outras decisoes de RH.
 
 - colaborador deve estar vinculado a empresa e possuir identificadores consistentes;
 - lotacao em obra e periodo de vigencia precisam ser rastreaveis;
