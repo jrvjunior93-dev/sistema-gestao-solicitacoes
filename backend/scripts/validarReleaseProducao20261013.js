@@ -4,7 +4,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { conferirEstado, ALLOWED, SOURCE } = require('./releaseProducao20261013');
-const files = fs.readdirSync(path.resolve(__dirname, '../migrations')).filter(name => name.endsWith('.js'));
+// Este gate pertence ao release congelado de 13/10, nao ao inventario atual.
+// Manter a fixture historica e comprovar que expansoes futuras continuam negadas.
+const files = execFileSync('git', ['ls-tree', '-r', '--name-only', SOURCE, 'backend/migrations/'], {
+  cwd: path.resolve(__dirname, '../..'), encoding: 'utf8'
+}).trim().split('\n').filter(name => name.endsWith('.js')).map(name => path.basename(name));
+const filesAtuais = fs.readdirSync(path.resolve(__dirname, '../migrations')).filter(name => name.endsWith('.js'));
 const base = { mode: '--preflight', expectedSha: 'a'.repeat(40), sha: 'a'.repeat(40),
   cwd: '/home/ubuntu/sistema-gestao-solicitacoes-main/backend',
   script: '/home/ubuntu/sistema-gestao-solicitacoes-main/backend/server.js',
@@ -15,6 +20,9 @@ conferirEstado(base);
 conferirEstado({ ...base, pending: [], executedCount: 266 });
 conferirEstado({ ...base, pending: [ALLOWED[1]], executedCount: 265 });
 conferirEstado({ ...base, mode: '--aplicar', backupConfirmed: true, migrationAuthorized: true });
+if (filesAtuais.some(name => !files.includes(name))) {
+  assert.throws(() => conferirEstado({ ...base, files: filesAtuais }), /Estado de migrations divergente/);
+}
 for (const changed of [
   { mode: 'migrate' }, { expectedSha: 'main' }, { sha: 'b'.repeat(40) },
   { cwd: '/home/ubuntu/sistema-gestao-solicitacoes-dev/backend' },

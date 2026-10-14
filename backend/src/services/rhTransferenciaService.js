@@ -70,6 +70,11 @@ async function bypassDecisao(user) {
 
 async function obrasSolicitacao(user, transaction) {
   if (!await userHasAreaPermission(user, ['rh_dp.solicitacoes.abrir'])) return [];
+  if (await bypassDecisao(user)) {
+    const locais = await Obra.findAll({ where: { ativo: true, tipo_centro_custo: { [Op.in]: TIPOS_CENTRO_CUSTO } },
+      attributes: ['id'], transaction });
+    return locais.map(local => Number(local.id));
+  }
   const ids = await obrasResponsavel(user, transaction);
   if (await userHasSetorCapability(user, 'eh_setor_obra')) ids.push(...await getUserObraIds(user));
   return [...new Set(ids.map(Number))];
@@ -89,6 +94,7 @@ async function configuracao(user) {
     obras_responsavel_ids: ids.filter((id) => obrasDisponiveis.has(Number(id))),
     obras_solicitacao_ids: solicitantes.filter(id => obrasDisponiveis.has(Number(id))),
     bypass_decisao: await bypassDecisao(user),
+    transferencia_administrativa: await bypassDecisao(user) && solicitantes.length > 0,
     acesso_global: await podeLerGlobalmente(user)
   };
 }
@@ -118,7 +124,7 @@ function ladoAprovador(s) {
   return Number(d.obra_aprovadora_id || d.obra_destino_id);
 }
 
-function resolverFluxoTransferencia(origem, destino, idsResponsavel = [], idsSolicitacao = idsResponsavel) {
+function resolverFluxoTransferencia(origem, destino, idsResponsavel = [], idsSolicitacao = idsResponsavel, administrativa = false) {
   const responsavelOrigem = idsResponsavel.includes(Number(origem));
   const responsavelDestino = idsResponsavel.includes(Number(destino));
   const solicitanteOrigem = idsSolicitacao.includes(Number(origem));
@@ -127,9 +133,10 @@ function resolverFluxoTransferencia(origem, destino, idsResponsavel = [], idsSol
     throw new ValidationError('Somente usuario vinculado a obra atual ou de destino, com permissao de abrir solicitacao de pessoal, pode solicitar a transferencia.', 403);
   }
 
-  const aprovacaoAutomatica = responsavelDestino && (!origem || responsavelOrigem);
-  const obraSolicitanteId = responsavelOrigem ? Number(origem) : responsavelDestino ? Number(destino)
-    : solicitanteOrigem ? Number(origem) : Number(destino);
+  const aprovacaoAutomatica = administrativa || (responsavelDestino && (!origem || responsavelOrigem));
+  // Saida da obra vinculada: quem decide e o destino, mesmo se o solicitante
+  // tambem for responsavel no destino (sem responsabilidade nas duas obras).
+  const obraSolicitanteId = solicitanteOrigem ? Number(origem) : Number(destino);
   return {
     aprovacaoAutomatica,
     obraSolicitanteId,
@@ -207,6 +214,13 @@ function montarEscopoTransferencias(acessoGlobal, ids, grupo = '', localId = nul
 
 async function listar(user, filtros = {}) {
   const localId = localDoFiltro(filtros);
+  const origemId = localDoFiltro({ obra_id: filtros.origem_id });
+  const destinoId = localDoFiltro({ obra_id: filtros.destino_id });
+  const situacoes = String(filtros.situacoes || '').split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+  if (situacoes.some(s => ![...SITUACOES_PENDENTES, ...SITUACOES_RESOLVIDAS].includes(s))) {
+    throw new ValidationError('Situacao de transferencia invalida.');
+  }
+  const busca = String(filtros.busca || '').trim().slice(0, 100);
   const acessoGlobal = await podeLerGlobalmente(user);
   const ids = await obrasResponsavel(user);
   const leituraIds = [...new Set([...ids, ...await getUserObraIds(user)])];
@@ -222,9 +236,22 @@ async function listar(user, filtros = {}) {
   }
   // JSON parametrizado; DP/SUPERADMIN leem globalmente, OBRA mantem recorte.
   const where = montarEscopoTransferencias(acessoGlobal, leituraIds, grupo, localId);
+  // Filtros adicionais apenas restringem o escopo: aplicar antes de contar/paginar.
+  if (situacoes.length) where[Op.and].push({ situacao: { [Op.in]: [...new Set(situacoes)] } });
+  if (origemId) where[Op.and].push({ obra_id: origemId });
+  if (destinoId) where[Op.and].push(sequelize.where(
+    sequelize.cast(sequelize.json('dados_json.obra_destino_id'), 'UNSIGNED'), destinoId));
+  if (busca) {
+    const termo = `%${busca.replace(/[\\%_]/g, '\\$&')}%`;
+    where[Op.and].push({ [Op.or]: [
+      { '$colaborador.nome$': { [Op.like]: termo } },
+      { '$colaborador.matricula$': { [Op.like]: termo } }
+    ] });
+  }
   const { count, rows: solicitacoes } = await RhSolicitacao.findAndCountAll({
     where,
     include: includes,
+    subQuery: false, // Apenas belongsTo; busca por colaborador usa o mesmo JOIN da lista.
     distinct: true,
     order: [['updatedAt', 'DESC'], ['id', 'DESC']],
     limit: limite,
@@ -338,7 +365,8 @@ async function abrir(user, payload) {
     }
     const ids = await obrasResponsavel(user, transaction);
     const solicitantes = await obrasSolicitacao(user, transaction);
-    const fluxo = resolverFluxoTransferencia(origem, destino, ids, solicitantes);
+    const administrativa = await bypassDecisao(user);
+    const fluxo = resolverFluxoTransferencia(origem, destino, ids, solicitantes, administrativa);
     const obras = await Obra.findAll({
       where: {
         id: origem ? [origem, destino] : [destino],
@@ -361,7 +389,8 @@ async function abrir(user, payload) {
       colaborador_id: colaborador.id, obra_id: origem || null, situacao: 'ABERTA', criada_por: user.id,
       setor_origem: codigoDoSetor(user), justificativa: motivo,
       dados_json: { origem_sem_obra: !origem, obra_destino_id: destino, obra_solicitante_id: fluxo.obraSolicitanteId,
-        obra_aprovadora_id: fluxo.obraAprovadoraId, aprovacao_automatica: fluxo.aprovacaoAutomatica }
+        obra_aprovadora_id: fluxo.obraAprovadoraId, aprovacao_automatica: fluxo.aprovacaoAutomatica,
+        ...(administrativa ? { aprovacao_administrativa: true } : {}) }
     }, { transaction });
     await garantirCodigoRhSolicitacao(s, transaction);
     if (fluxo.aprovacaoAutomatica) {
@@ -371,7 +400,7 @@ async function abrir(user, payload) {
       await s.update({ situacao: 'APROVADA', dados_json: s.dados_json,
         decidida_por: user.id, decidida_em: new Date() }, { transaction });
       await historico(s, user, 'APROVACAO_AUTOMATICA',
-        `Transferencia ${origem ? `da obra ${origem}` : 'sem obra de origem'} para ${destino} efetivada em ${vigencia}; o solicitante responde ${origem ? 'pelas duas obras' : 'pelo destino'}.`, transaction);
+        `Transferencia ${origem ? `da obra ${origem}` : 'sem obra de origem'} para ${destino} efetivada em ${vigencia}; ${administrativa ? 'acao administrativa autorizada DP/SUPERADMIN' : `o solicitante responde ${origem ? 'pelas duas obras' : 'pelo destino'}`}.`, transaction);
       return { id: s.id, situacao: s.situacao, aprovacao_automatica: true, data_vigencia: vigencia };
     }
     await historico(s, user, 'ABERTURA',

@@ -1,4 +1,6 @@
 import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
+import TreinamentoRelatorioVideo from '../components/treinamento/TreinamentoRelatorioVideo';
+import { rastrearVideo } from '../utils/treinamentoVideoTracker';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   HiOutlineArchiveBox,
@@ -43,7 +45,8 @@ import {
 } from '../services/treinamento';
 import {
   canManageTreinamento,
-  canPublishTreinamento
+  canPublishTreinamento,
+  canViewTreinamentoRelatorios
 } from '../utils/acessoProduto';
 
 // =====================================================================
@@ -199,7 +202,11 @@ export default function Treinamento() {
   const { user } = useAuth();
   const podeGerenciar = canManageTreinamento(user);
   const podePublicar = canPublishTreinamento(user);
+  const podeVerRelatorio = canViewTreinamentoRelatorios(user);
+  const [mostrarRelatorio, setMostrarRelatorio] = useState(false);
   const fileInputRef = useRef(null);
+  const editorRef = useRef(null);
+  const operacaoRef = useRef(false);
 
   const [resumo, setResumo] = useState(null);
   const [conteudos, setConteudos] = useState([]);
@@ -341,14 +348,18 @@ export default function Treinamento() {
   }
 
   function novoConteudo(tipo = 'FAQ') {
+    if (operacaoRef.current || !podeGerenciar) return;
     setForm({ ...EMPTY_FORM, tipo });
     setPendingFile(null);
+    requestAnimationFrame(() => editorRef.current?.scrollIntoView({ block: 'start' }));
   }
 
   function editarConteudo(item) {
+    if (operacaoRef.current || !podeGerenciar) return;
     setForm(toForm(item));
     setPendingFile(null);
     marcarTreinamentoLeitura(item.id, false).catch(() => {});
+    requestAnimationFrame(() => editorRef.current?.scrollIntoView({ block: 'start' }));
   }
 
   async function enviarArquivo(conteudoId, file, tipo = form.tipo) {
@@ -358,9 +369,10 @@ export default function Treinamento() {
 
   async function salvarConteudo(event) {
     event.preventDefault();
-    // R26: o arquivo pendente é fixado antes dos awaits — o seletor segue
-    // clicável enquanto a gravação corre, e o `pendingFile` lido depois do
-    // await poderia ser outro (a mensagem final citava justamente ele).
+    if (operacaoRef.current || !podeGerenciar) return;
+    operacaoRef.current = true;
+    // Fixar arquivo e alvo antes dos awaits; trava/fieldset impedem outra
+    // operacao de trocar o formulario durante o envio.
     const arquivoPendente = pendingFile;
     setSaving(true);
     try {
@@ -368,6 +380,8 @@ export default function Treinamento() {
       const saved = form.id
         ? await updateTreinamentoConteudo(form.id, payload)
         : await createTreinamentoConteudo(payload);
+      // Se o upload falhar, a tentativa seguinte edita este ID, nao cria outro conteudo.
+      setForm(toForm(saved));
       let next = saved;
       if (arquivoPendente) {
         setUploading(true);
@@ -383,12 +397,15 @@ export default function Treinamento() {
       console.error(error);
       avisar.erro(error.message || 'Erro ao salvar conteudo.');
     } finally {
+      operacaoRef.current = false;
       setSaving(false);
       setUploading(false);
     }
   }
 
   async function publicarConteudo(id) {
+    if (operacaoRef.current || !podePublicar) return;
+    operacaoRef.current = true;
     const alvo = id;
     setSaving(true);
     try {
@@ -400,6 +417,7 @@ export default function Treinamento() {
       console.error(error);
       avisar.erro(error.message || 'Erro ao publicar conteudo.');
     } finally {
+      operacaoRef.current = false;
       setSaving(false);
     }
   }
@@ -409,26 +427,27 @@ export default function Treinamento() {
     // sistema não congela a tela — clicar noutra linha com ele aberto
     // faria a tela perguntar sobre um conteúdo e arquivar outro.
     const alvo = item;
-    if (!alvo?.id) return;
+    if (!alvo?.id || operacaoRef.current || !podeGerenciar) return;
+    operacaoRef.current = true;
+    setSaving(true);
     // R21: desestruturar { ok }; o retorno é objeto e objeto é sempre
     // truthy, então `const ok = ...` faria "Cancelar" arquivar.
-    const { ok } = await confirmar({
-      titulo: 'Arquivar conteudo',
-      mensagem: `Arquivar "${alvo.titulo || `#${alvo.id}`}"? Ele sai da Central de Treinamento para todos os usuarios.`,
-      rotuloConfirmar: 'Arquivar',
-      destrutiva: true
-    });
-    if (!ok) return;
-    setSaving(true);
     try {
+      const { ok } = await confirmar({
+        titulo: 'Excluir conteúdo',
+        mensagem: `Retirar "${alvo.titulo || `#${alvo.id}`}" da Central de Treinamento? O conteúdo será arquivado; leituras e arquivos serão preservados.`,
+        rotuloConfirmar: 'Excluir conteúdo', destrutiva: true
+      });
+      if (!ok) return;
       await deleteTreinamentoConteudo(alvo.id);
       setForm(EMPTY_FORM);
-      avisar.sucesso('Conteudo arquivado.');
+      avisar.sucesso('Conteúdo excluído da lista e arquivado. Histórico preservado.');
       await carregar();
     } catch (error) {
       console.error(error);
       avisar.erro(error.message || 'Erro ao arquivar conteudo.');
     } finally {
+      operacaoRef.current = false;
       setSaving(false);
     }
   }
@@ -436,27 +455,10 @@ export default function Treinamento() {
   async function uploadArquivo(event) {
     const file = event.target.files?.[0];
     event.target.value = '';
-    if (!file) return;
+    if (!file || operacaoRef.current || !podeGerenciar) return;
     setPendingFile(file);
-    // R26: o conteúdo de destino é fixado antes do await.
-    const conteudoId = form.id;
-    if (!conteudoId) {
-      avisar.informacao('Arquivo selecionado. Ao salvar o conteudo, ele sera enviado para o S3.');
-      return;
-    }
-    setUploading(true);
-    try {
-      const saved = await enviarArquivo(conteudoId, file);
-      setForm(toForm(saved));
-      setPendingFile(null);
-      avisar.sucesso('Arquivo enviado para o S3.');
-      await carregar();
-    } catch (error) {
-      console.error(error);
-      avisar.erro(error.message || 'Erro ao enviar arquivo.');
-    } finally {
-      setUploading(false);
-    }
+    avisar.informacao(form.id ? 'Arquivo selecionado. Salvar substituirá o arquivo atual deste conteúdo.'
+      : 'Arquivo selecionado. O envio acontece ao salvar o conteúdo.');
   }
 
   const uploadAccept = form.tipo === 'VIDEO'
@@ -466,14 +468,14 @@ export default function Treinamento() {
   async function abrirArquivo(item, tipoArquivo) {
     const alvo = item;
     try {
-      if (tipoArquivo === 'VIDEO') {
-        await marcarTreinamentoLeitura(alvo.id, false);
-        const data = await getTreinamentoArquivoUrl(alvo.id, tipoArquivo);
-        if (data?.url) window.open(data.url, '_blank', 'noopener,noreferrer');
-      } else await abrirPreview(async () => {
+      await abrirPreview(async () => {
         await marcarTreinamentoLeitura(alvo.id, false);
         return getTreinamentoArquivoUrl(alvo.id, tipoArquivo);
-      }, { nome: alvo.documento_nome_original || alvo.titulo, caminho: alvo.documento_s3_key || alvo.documento_url });
+      }, tipoArquivo === 'VIDEO'
+        ? { nome: alvo.titulo || 'Vídeo', caminho: alvo.video_s3_key || alvo.video_url,
+          rastrearVideo: video => rastrearVideo(video, alvo.id, mensagem => avisar.informacao(mensagem)),
+          descricao: 'Reprodução rastreada neste player para relatório de treinamento. Downloads/nova aba não são acompanhados. Concluir continua manual.' }
+        : { nome: alvo.documento_nome_original || alvo.titulo, caminho: alvo.documento_s3_key || alvo.documento_url });
     } catch (error) { avisar.erro(error.message || 'Arquivo nao encontrado.'); }
   }
 
@@ -587,6 +589,9 @@ export default function Treinamento() {
       ]
     }
     : {};
+  if (podeVerRelatorio) acoesCabecalho.secundarias = [...(acoesCabecalho.secundarias || []), {
+    rotulo: mostrarRelatorio ? 'Ocultar relatório' : 'Relatório de reprodução', onClick: () => setMostrarRelatorio(v => !v)
+  }];
 
   return (
     <Pagina>
@@ -610,6 +615,7 @@ export default function Treinamento() {
 
       {/* R16: UM dono para a faixa de avisos. */}
       <Avisos avisos={avisos} aoFechar={fechar} />
+      {podeVerRelatorio && mostrarRelatorio && <TreinamentoRelatorioVideo />}
 
       <BlocoConteudo titulo="Resumo da base" descricao="Recortes do acervo publicado e em preparo.">
         {/* Ladrilho de dado único é StatGrid/StatTile — eram cinco <div>
@@ -696,6 +702,14 @@ export default function Treinamento() {
                   <HiOutlineCheckCircle aria-hidden="true" />
                   Concluir
                 </button>
+                {podeGerenciar && <>
+                  <button type="button" className="btn btn-outline btn-sm" disabled={saving || uploading} onClick={() => editarConteudo(item)}>
+                    <HiOutlinePencilSquare aria-hidden="true" />Editar
+                  </button>
+                  <button type="button" className="btn btn-outline btn-perigo-suave btn-sm" disabled={saving || uploading} onClick={() => arquivarConteudo(item)}>
+                    <HiOutlineArchiveBox aria-hidden="true" />Excluir
+                  </button>
+                </>}
               </>
             );
           }}
@@ -717,7 +731,8 @@ export default function Treinamento() {
             </button>
           ) : null}
         >
-          <form onSubmit={salvarConteudo}>
+          <form ref={editorRef} onSubmit={salvarConteudo}>
+            <fieldset disabled={saving || uploading} className="min-w-0 border-0 p-0">
             <FormSecao legenda="Classificação" colunas={4}>
               <CampoForm label="Tipo" obrigatorio>
                 {/* R12: select de FORMULÁRIO (entrada de dado do registro).
@@ -787,13 +802,13 @@ export default function Treinamento() {
                 label={form.tipo === 'VIDEO' ? 'Arquivo de video' : 'Arquivo do material'}
                 linha
                 hint={form.tipo === 'VIDEO'
-                  ? 'Selecione um MP4 ou WebM. Se ainda nao salvou, o envio acontece apos salvar.'
+                  ? 'MP4 ou WebM. Ao salvar, o novo vídeo substitui o atual; selecionar o arquivo não altera o conteúdo.'
                   : 'Selecione PDF, planilha, apresentacao, imagem ou documento.'}
               >
                 <div className="app-actionbar">
                   <label className="btn btn-outline cursor-pointer">
                     <HiOutlineCloudArrowUp aria-hidden="true" />
-                    {uploading ? 'Enviando...' : 'Selecionar arquivo'}
+                    {uploading ? 'Enviando...' : form.id ? 'Trocar arquivo' : 'Selecionar arquivo'}
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -834,7 +849,7 @@ export default function Treinamento() {
                     disabled={saving}
                   >
                     <HiOutlineArchiveBox aria-hidden="true" />
-                    Arquivar
+                    Excluir
                   </button>
                 </div>
               )}
@@ -845,6 +860,7 @@ export default function Treinamento() {
                 Arquivos já salvos ficam privados no S3 e são abertos por URL assinada.
               </p>
             )}
+            </fieldset>
           </form>
         </BlocoConteudo>
       )}

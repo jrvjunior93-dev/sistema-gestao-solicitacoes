@@ -1,7 +1,9 @@
 const treinamentoService = require('../services/treinamentoService');
+const videoService = require('../services/treinamentoVideoService');
 const {
   canManageTreinamento,
-  canPublishTreinamento
+  canPublishTreinamento,
+  canViewTreinamentoRelatorios
 } = require('../services/authorizationService');
 
 function responderErro(res, error, fallback) {
@@ -15,6 +17,22 @@ async function userCanManage(req) {
 }
 
 module.exports = {
+  async relatorioVideo(req, res) {
+    try {
+      if (!(await canViewTreinamentoRelatorios(req.user))) return res.status(403).json({ error: 'Acesso negado aos relatorios de treinamento.' });
+      return res.json(await videoService.relatorio(req.query));
+    } catch (error) { return responderErro(res, error, 'Erro ao consultar rastreio'); }
+  },
+  async iniciarVideo(req, res) {
+    try {
+      return res.json(await videoService.iniciar(req.params.id, req.user, req.dev_user_switch?.actor_id, req.body, await userCanManage(req)));
+    } catch (error) { return responderErro(res, error, 'Erro ao iniciar rastreio'); }
+  },
+  async registrarVideo(req, res) {
+    try {
+      return res.json(await videoService.registrar(req.params.id, req.user, req.dev_user_switch?.actor_id, req.body, await userCanManage(req)));
+    } catch (error) { return responderErro(res, error, 'Erro ao registrar reproducao'); }
+  },
   async resumo(req, res) {
     try {
       const canManage = await userCanManage(req);

@@ -11,7 +11,8 @@ const moeda = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', c
 const arredondar = v => Math.round((v + Number.EPSILON) * 100) / 100;
 export function valoresDaLinha(l, concluido = false) {
   const diaria = l.forma_calculo_gerencial === 'DIARIA';
-  const percentual = diaria || Boolean(l.parcela_40) === Boolean(l.parcela_60) ? 100 : l.parcela_40 ? 40 : 60;
+  const percentual = diaria ? 100 : l.parcela_50 ? 50
+    : Boolean(l.parcela_40) === Boolean(l.parcela_60) ? 100 : l.parcela_40 ? 40 : 60;
   // Pagamentos ja gerados conservam o snapshot aprovado, mesmo apos uma mudanca de regra.
   if (concluido && l.bruto != null && l.liquido != null
     && Number.isFinite(Number(l.bruto)) && Number.isFinite(Number(l.liquido))) {
@@ -64,7 +65,9 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
   const falhaAutomatica = useRef(false);
   const salvamentoPromise = useRef(null);
   const respostaRef = useRef(null);
+  const chaveRascunho = useRef(crypto.randomUUID());
   const montado = useRef(true);
+  const chavePrevia = `previa:${localId}:${colaborador?.id || (colaboradorIds ? [...colaboradorIds].sort((a,b)=>a-b).join(',') : 'todos')}`;
   atual.current = form; sujoRef.current = sujo;
   const dp = Boolean(resposta?.pode_conferir);
   const concluido = resposta?.solicitacao?.situacao === 'APROVADA';
@@ -72,11 +75,11 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
     || (dp && ['ABERTA', 'APROVADA', 'ENVIO_PARCIAL', 'EM_REVISAO'].includes(resposta.solicitacao.situacao)));
   const estadoLinha = l => l.pagamento_estado || (concluido ? 'ENVIADO' : 'PENDENTE');
   const linhaEditavel = l => editavel && ['PENDENTE', 'EM_EDICAO'].includes(estadoLinha(l));
-  const editorSalvo = editores[resposta?.solicitacao?.id];
+  const editorSalvo = editores[resposta?.solicitacao?.id || chavePrevia];
   const editor = editorSalvo && resposta?.solicitacao?.dados_json?.linhas?.some(l =>
     Number(l.colaborador_id) === Number(editorSalvo.id) && linhaEditavel(l)) ? editorSalvo : null;
   function setEditor(update) {
-    const id = respostaRef.current?.solicitacao?.id;
+    const id = respostaRef.current?.solicitacao?.id || chavePrevia;
     if (!id) return;
     setEditores(values => {
       const next = typeof update === 'function' ? update(values[id] || null) : update;
@@ -86,9 +89,9 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
   }
   useWorkspaceWork(sujo || Boolean(editor), ocupado || salvando || carregando, 'pagamento:work');
   function guardar(formulario, revisao = respostaRef.current?.solicitacao?.dados_json?.revisao) {
-    const id = respostaRef.current?.solicitacao?.id;
+    const id = respostaRef.current?.solicitacao?.id || chavePrevia;
     if (!id) return;
-    setDrafts(values => ({ ...values, [id]: { revisao, inputs: pagamentoInputs(formulario) } }));
+    setDrafts(values => ({ ...values, [id]: { revisao, inputs: pagamentoInputs(formulario), chave_rascunho: chaveRascunho.current } }));
   }
   function limparDraft(id) {
     setDrafts(values => Object.fromEntries(Object.entries(values).filter(([key]) => String(key) !== String(id))));
@@ -97,12 +100,13 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
     respostaRef.current = result;
     setLocalId(result.solicitacao.obra_id || local?.id || '');
     const fresh = result.solicitacao.dados_json;
-    const saved = restaurar ? draftsRef.current[result.solicitacao.id] : null;
+    const saved = restaurar ? draftsRef.current[result.solicitacao.id || chavePrevia] : null;
+    if (saved?.chave_rascunho) chaveRascunho.current = saved.chave_rascunho;
     atual.current = restaurarPagamentoInputs(fresh, saved?.inputs, result.pode_conferir, result.solicitacao.situacao);
     const mudou = JSON.stringify(pagamentoInputs(atual.current)) !== JSON.stringify(pagamentoInputs(fresh));
     sujoRef.current = mudou; restauradoSemSalvar.current = mudou;
     setConflito(Boolean(saved && saved.revisao !== fresh.revisao));
-    if (!restaurar) { limparDraft(result.solicitacao.id); setEditor(null); }
+    if (!restaurar) { limparDraft(result.solicitacao.id || chavePrevia); setEditor(null); }
     setResposta(result); setForm(atual.current); setSujo(mudou);
   }
   useEffect(() => {
@@ -114,11 +118,12 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
     let ativo = true;
     setCarregando(true);
     iniciarPromise.current ||= solicitacaoId ? pagamentoRhSolicitacao(`/${solicitacaoId}`)
-      : pagamentoRhSolicitacao('', { method: 'POST', data: {
+      : pagamentoRhSolicitacao('/preparar', { method: 'POST', data: {
         obra_id: Number(localId), colaborador_id: colaborador?.id, colaborador_ids: colaboradorIds
       } });
     iniciarPromise.current.then(result => { if (ativo && recebidoInicial.current !== result) {
-      recebidoInicial.current = result; receber(result, true); onIniciada?.(result.solicitacao.id);
+      recebidoInicial.current = result; receber(result, true);
+      if (result.solicitacao.id) onIniciada?.(result.solicitacao.id);
     } })
       .catch(e => { if (ativo) { setResposta(null); setForm(null); avisar.erro(e.message); } iniciarPromise.current = null; })
       .finally(() => { if (ativo) setCarregando(false); });
@@ -133,25 +138,38 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
     setForm(atual.current); setSujo(true);
   }
   function linhaAlterar(id, patch, conferindo = false) {
+    if (patch.parcela_50 === true) patch = { ...patch, parcela_40: false, parcela_60: false };
+    else if ('parcela_40' in patch || 'parcela_60' in patch) patch = { ...patch, parcela_50: false };
     alterar({ linhas: atual.current.linhas.map(l => Number(l.colaborador_id) === Number(id) && linhaEditavel(l)
       ? { ...l, ...(!conferindo ? { [dp ? 'conferido_dp' : 'conferido_obra']: false } : {}), ...patch } : l) });
+    if (conferindo && Object.values(patch).some(v => v === true) && !respostaRef.current.solicitacao.id) {
+      operacao(() => salvar(true, true));
+    }
   }
-  async function salvar(completo = false) {
+  async function salvar(completo = false, permitirNovo = false) {
     if (conflito) throw new Error('O pagamento mudou. Confira os dados atuais antes de salvar ou enviar.');
     // Somente uma gravacao em voo; fechar/enviar aguardam e salvam tambem edicoes posteriores.
     if (salvamentoPromise.current) await salvamentoPromise.current;
     do {
-      if (!sujoRef.current || !montado.current) return respostaRef.current;
+      const novo = !respostaRef.current?.solicitacao.id;
+      if ((!sujoRef.current && !novo) || (novo && !permitirNovo) || !montado.current) return respostaRef.current;
       const snapshot = atual.current;
       const gravacao = (async () => {
         setSalvando(true);
         try {
-          const result = await pagamentoRhSolicitacao(`/${respostaRef.current.solicitacao.id}`, { method: 'PUT', data: {
+          const dados = {
             ...snapshot, linhas: snapshot.linhas.map(l => ({ ...l,
               acrescimos: Number(l.acrescimos || 0), descontos: Number(l.descontos || 0),
               conferir_alteracoes: Boolean(l.conferido_dp) }))
-          } });
+          };
+          const result = novo ? await pagamentoRhSolicitacao('/salvar', { method: 'POST', data: {
+            obra_id: Number(localId), colaborador_id: colaborador?.id, colaborador_ids: colaboradorIds,
+            chave_idempotencia: chaveRascunho.current, dados
+          } }) : await pagamentoRhSolicitacao(`/${respostaRef.current.solicitacao.id}`, { method: 'PUT', data: dados });
           if (!montado.current) return result;
+          const percentualNaoConfirmado = snapshot.linhas.some(l => l.parcela_50 && linhaEditavel(l)
+            && !result.solicitacao.dados_json.linhas.find(s => Number(s.colaborador_id) === Number(l.colaborador_id))?.parcela_50);
+          if (percentualNaoConfirmado) throw new Error('O servidor não confirmou o pagamento de 50%. Atualize o backend e reabra o pagamento antes de enviar.');
           // Deploy desencontrado: backend antigo ignora o valor e reembolsa o desconto inteiro.
           const divergente = snapshot.linhas.some(l => {
             if (!l.reembolso || l.reembolso.valor == null) return false;
@@ -161,8 +179,15 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
           if (divergente) throw new Error('O servidor não confirmou o valor do reembolso. Atualize o backend e reabra o pagamento.');
           const editadoDuranteGravacao = atual.current !== snapshot;
           respostaRef.current = result; setResposta(result);
+          if (novo) {
+            iniciarPromise.current = Promise.resolve(result); recebidoInicial.current = result;
+            limparDraft(chavePrevia);
+            onIniciada?.(result.solicitacao.id);
+          }
           // Nao substituir os inputs: mantem foco, texto em digitacao e novas edicoes.
-          atual.current = { ...atual.current, revisao: result.solicitacao.dados_json.revisao,
+          atual.current = { ...(novo ? restaurarPagamentoInputs(result.solicitacao.dados_json,
+            pagamentoInputs(atual.current), result.pode_conferir, result.solicitacao.situacao) : atual.current),
+            revisao: result.solicitacao.dados_json.revisao,
             salvo_por: result.solicitacao.dados_json.salvo_por, salvo_em: result.solicitacao.dados_json.salvo_em };
           sujoRef.current = editadoDuranteGravacao;
           if (editadoDuranteGravacao) guardar(atual.current, result.solicitacao.dados_json.revisao);
@@ -184,7 +209,7 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
     finally { trava.current = false; setOcupado(false); }
   }
   useEffect(() => {
-    if (!sujo || !resposta || !editavel || ocupado || salvando || editor || falhaAutomatica.current || restauradoSemSalvar.current) return undefined;
+    if (!sujo || !resposta?.solicitacao.id || !editavel || ocupado || salvando || editor || falhaAutomatica.current || restauradoSemSalvar.current) return undefined;
     const timer = setTimeout(() => salvar().catch(e => {
       if (montado.current) { falhaAutomatica.current = true; avisar.erro(e.message); }
     }), 900);
@@ -193,10 +218,12 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
   async function fechar() {
     if (trava.current || carregando) return;
     if (conflito) { onFechar(); return; }
+    if (!respostaRef.current?.solicitacao.id) { onFechar(); return; }
     await operacao(async () => { await salvar(true); onFechar(); });
   }
   async function enviar() {
     await operacao(async () => {
+      if (!respostaRef.current?.solicitacao.id) throw new Error('Salve o rascunho ou marque como Conferido antes de enviar.');
       const result = await salvar(true);
       const selecionados = result.solicitacao.dados_json.linhas.filter(l => l.selecionado && linhaEditavel(l));
       if (!selecionados.length) throw new Error('Selecione os colaboradores do pagamento.');
@@ -232,6 +259,22 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
       return { ...l, [campo]: valor,
         ...(!campo.startsWith('conferido') ? { [dp ? 'conferido_dp' : 'conferido_obra']: false } : {}) };
     }) });
+    if (campo.startsWith('conferido') && valor && selecionados.length && !respostaRef.current.solicitacao.id) {
+      operacao(() => salvar(true, true));
+    }
+  }
+  async function excluirRascunho() {
+    if (trava.current || !resposta?.pode_excluir_rascunho) return;
+    await operacao(async () => {
+      const { ok } = await confirmar({ titulo: 'Excluir rascunho de pagamento',
+        mensagem: 'Este rascunho será retirado das solicitações. O histórico será preservado. Nenhum pagamento enviado será alterado.',
+        rotuloConfirmar: 'Excluir rascunho', destrutiva: true });
+      if (!ok) return;
+      if (salvamentoPromise.current) await salvamentoPromise.current;
+      await pagamentoRhSolicitacao(`/${respostaRef.current.solicitacao.id}/rascunho`, { method: 'DELETE' });
+      limparDraft(respostaRef.current.solicitacao.id); limparDraft(chavePrevia); setEditor(null);
+      aoEnviar?.(); onFechar();
+    });
   }
   async function revisar(linha, acao) {
     await operacao(async () => {
@@ -264,7 +307,7 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
   }
   return <OverlayModal largura="1480px" rotulo="Solicitar pagamento" onFechar={editor ? () => setEditor(null) : fechar}>
     <div data-modal="cabecalho" className="rh-local-modal-cabecalho">
-      <div><h2 className="app-bloco-titulo">{dp ? 'Conferir pagamento' : 'Solicitar pagamento'}{resposta ? ` · ${resposta.solicitacao.codigo}` : ''}</h2>
+      <div><h2 className="app-bloco-titulo">{dp ? 'Conferir pagamento' : 'Solicitar pagamento'}{resposta?.solicitacao.codigo ? ` · ${resposta.solicitacao.codigo}` : ''}</h2>
         <p className="app-note">{local?.nome || locais.find(l => Number(l.id) === Number(localId))?.nome || 'Obra / Centro de custo'}{resposta?.solicitacao?.situacao === 'ENVIO_PARCIAL' ? ' · Envio parcial para pagamento' : resposta?.solicitacao?.situacao === 'EM_REVISAO' ? ' · Em edição pelo DP' : ''}</p></div>
       <button type="button" className="btn btn-outline btn-sm" disabled={ocupado || carregando} onClick={fechar}>Fechar</button>
     </div>
@@ -284,11 +327,11 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
           <label>Vencimento<input disabled={ocupado || !editavel} className="form-control" type="date" value={form.data_vencimento} onChange={e => alterar({ data_vencimento: e.target.value, linhas: linhas.map(l => ({ ...l, conferido_dp: false, conferido_obra: false })) })} /></label>
           <label>Aplicar aos selecionados<select disabled={ocupado || !editavel} aria-label="Aplicar aos selecionados" className="form-control" defaultValue="" onChange={e => {
             const valor = e.target.value;
-            if (valor === '100') alterar({ linhas: linhas.map(l => l.selecionado && linhaEditavel(l) ? { ...l, parcela_40: false, parcela_60: false, conferido_dp: false, conferido_obra: false } : l) });
+            if (valor === '100') alterar({ linhas: linhas.map(l => l.selecionado && linhaEditavel(l) ? { ...l, parcela_40: false, parcela_50: false, parcela_60: false, conferido_dp: false, conferido_obra: false } : l) });
             else if (valor === 'conferir') todos(dp ? 'conferido_dp' : 'conferido_obra', true);
-            else if (valor) alterar({ linhas: linhas.map(l => l.selecionado && linhaEditavel(l) && l.forma_calculo_gerencial !== 'DIARIA' ? { ...l, parcela_40: valor === '40', parcela_60: valor === '60', conferido_dp: false, conferido_obra: false } : l) });
+            else if (valor) alterar({ linhas: linhas.map(l => l.selecionado && linhaEditavel(l) && l.forma_calculo_gerencial !== 'DIARIA' ? { ...l, parcela_40: valor === '40', parcela_50: valor === '50', parcela_60: valor === '60', conferido_dp: false, conferido_obra: false } : l) });
             e.target.value = '';
-          }}><option value="">Selecione</option><option value="40">40%</option><option value="60">60%</option><option value="100">100%</option><option value="conferir">Conferido</option></select></label>
+          }}><option value="">Selecione</option><option value="40">40%</option><option value="50">50%</option><option value="60">60%</option><option value="100">100%</option><option value="conferir">Conferido</option></select></label>
           <label>Pesquisar<input className="form-control" type="search" value={busca} onChange={e => setBusca(e.target.value)} /></label>
         </div>
         {resposta.avisos?.length > 0 && <details className="rh-pagamento-aviso"><summary>Pagamentos anteriores nesta competência ({resposta.avisos.length})</summary>
@@ -296,7 +339,7 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
         <fieldset disabled={ocupado || Boolean(editor)} className="rh-pagamento-table-wrap">
           <table className="rh-pagamento-tabela"><thead><tr>
             <th><input aria-label="Selecionar todos" type="checkbox" disabled={!editaveis.length} checked={editaveis.length > 0 && selecionados.length === editaveis.length} onChange={e => todos('selecionado', e.target.checked)} /></th>
-            <th>Colaborador</th><th>Conferido</th><th>40%</th><th>60%</th><th>100%</th><th>Salário bruto</th><th>Acréscimos</th><th>Descontos</th><th>Líquido</th><th>Dias</th><th>Faltas</th><th>Dados para pagamento</th><th>Observações</th>
+            <th>Colaborador</th><th>Conferido</th><th>40%</th><th>50%</th><th>60%</th><th>100%</th><th>Salário bruto</th><th>Acréscimos</th><th>Descontos</th><th>Líquido</th><th>Dias</th><th>Faltas</th><th>Dados para pagamento</th><th>Observações</th>
           </tr></thead><tbody>{visiveis.map(l => {
             const bloqueada = !linhaEditavel(l);
             const estado = estadoLinha(l);
@@ -323,7 +366,7 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
                   {estado === 'ENVIADO' && <button type="button" className="btn btn-outline btn-sm" onClick={() => revisar(l, 'EDITAR')}>Editar e reenviar</button>}
                   <button type="button" className="btn btn-outline btn-sm" onClick={() => revisar(l, 'CANCELAR')}>Cancelar pagamento</button>
                 </div>}</td>
-              <td>{check(dp ? 'conferido_dp' : 'conferido_obra', 'Conferido', !l.selecionado)}</td><td>{check('parcela_40', '40%', diaria)}</td><td>{check('parcela_60', '60%', diaria)}</td>
+              <td>{check(dp ? 'conferido_dp' : 'conferido_obra', 'Conferido', !l.selecionado)}</td><td>{check('parcela_40', '40%', diaria)}</td><td>{check('parcela_50', '50%', diaria)}</td><td>{check('parcela_60', '60%', diaria)}</td>
               <td><input type="checkbox" aria-label={`100%: ${l.nome}`} disabled={diaria || bloqueada} checked={!diaria && calculo.percentual === 100} onChange={() => linhaAlterar(l.colaborador_id, { parcela_40: false, parcela_60: false })} /></td>
               <td>{moeda(calculo.bruto)}</td><td>{ajuste('acrescimos', 'Acréscimos')}</td><td>{ajuste('descontos', 'Descontos')}{Number(l.descontos) > 0 && <button disabled={bloqueada} type="button" className="rh-pagamento-link" onClick={() => setEditor({ id: l.colaborador_id, tipo: 'reembolso', dados: {
                 ...(l.reembolso || { modo_recebimento: 'PIX', responsavel_id: '', favorecido_nome: '', favorecido_documento: '' }),
@@ -339,8 +382,9 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
         {!concluido && reembolsos.length > 0 && <div className="rh-pagamento-reembolsos">{reembolsos.map(g => <details key={g.chave}><summary>Reembolso de vale · {g.nome} · {moeda(g.valor)} · {g.origens.length} colaborador(es)</summary><ul>{g.origens.map(o => <li key={o.colaborador_id}>{o.nome} · {moeda(o.valor)}</li>)}</ul></details>)}</div>}
         {form.titulos?.length > 0 && <details className="rh-pagamento-titulos" open={concluido}><summary>Títulos desta solicitação ({form.titulos.length})</summary><ul>{form.titulos.map(t => <li key={t.id}>{t.codigo} · {t.tipo === 'REEMBOLSO' ? 'Reembolso' : 'Salário'} · {moeda(t.valor)}{t.cancelado ? ' · Cancelado' : ''}{t.origens?.length > 0 && <details><summary>Ver colaboradores do reembolso</summary><ul>{t.origens.map(o => <li key={o.colaborador_id}>{o.nome} · {moeda(o.valor)}</li>)}</ul></details>}</li>)}</ul></details>}
         <div className="rh-pagamento-rodape"><span role="status">{salvando ? 'Salvando…' : ocupado ? 'Processando…' : sujo ? 'Alterações pendentes' : 'Salvo'} · {resumo.length} {resumoEnviado ? 'enviado(s)' : 'selecionado(s)'} · <strong>{moeda(resumo.reduce((s, l) => s + valoresDaLinha(l, estadoLinha(l) === 'ENVIADO').liquido, 0))}</strong></span>
-          {editavel && editaveis.length > 0 && <div><button type="button" className="btn btn-outline btn-sm" disabled={ocupado || !sujo} onClick={() => operacao(() => salvar(true))}>Salvar</button><button type="button" className="btn btn-primary btn-sm" disabled={ocupado || !selecionados.length || (dp && !resposta.pode_enviar_fila)} onClick={enviar}>{dp ? 'Enviar para a fila' : 'Solicitar pagamento'}</button></div>}
+          {editavel && editaveis.length > 0 && <div>{resposta.pode_excluir_rascunho && <button type="button" className="btn btn-outline btn-sm" disabled={ocupado} onClick={excluirRascunho}>Excluir rascunho</button>}<button type="button" className="btn btn-outline btn-sm" disabled={ocupado || (!sujo && Boolean(resposta.solicitacao.id))} onClick={() => operacao(() => salvar(true, true))}>Salvar</button><button type="button" className="btn btn-primary btn-sm" disabled={ocupado || !selecionados.length || (dp && !resposta.pode_enviar_fila)} onClick={enviar}>{dp ? 'Enviar para a fila' : 'Solicitar pagamento'}</button></div>}
         </div>
+        {!resposta.solicitacao.id && <p className="form-hint">Prévia sem rascunho salvo. Salvar ou marcar como Conferido cria o rascunho; fechar esta prévia não grava uma solicitação.</p>}
         {dp && editavel && !resposta.pode_enviar_fila && <p className="app-note">O envio exige as permissões de gerar títulos e preparar a fila de pagamentos.</p>}
       </>}
     </div>

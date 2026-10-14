@@ -71,10 +71,10 @@ function buildWhere(query = {}, canManage = false) {
   const busca = String(query.busca || '').trim();
 
   if (tipo && TIPOS.has(tipo)) where.tipo = tipo;
-  if (status && STATUS.has(status)) {
-    where.status = status;
-  } else if (!canManage) {
+  if (!canManage) {
     where.status = 'PUBLICADO';
+  } else if (status && STATUS.has(status)) {
+    where.status = status;
   } else if (query.incluir_arquivados !== 'true') {
     where.status = { [Op.ne]: 'ARQUIVADO' };
   }
@@ -280,6 +280,12 @@ async function uploadConteudoArquivo(id, file, tipoArquivo, userId) {
   }
 
   const tipo = normalizeUpper(tipoArquivo, item.tipo === 'VIDEO' ? 'VIDEO' : 'DOCUMENTO');
+  if (!['VIDEO', 'DOCUMENTO'].includes(tipo) || (tipo === 'VIDEO'
+    && !/\.(mp4|webm)$/i.test(String(file.originalname || '')))) {
+    const error = new Error('Selecione um MP4 ou WebM para o video, ou um tipo de arquivo valido.');
+    error.statusCode = 400;
+    throw error;
+  }
   const folder = tipo === 'VIDEO' ? 'treinamento/videos' : 'treinamento/documentos';
   const url = await uploadToS3(file, folder);
   const payload = {

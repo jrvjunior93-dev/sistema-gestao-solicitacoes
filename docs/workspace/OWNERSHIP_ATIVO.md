@@ -1,5 +1,26 @@
 # Ownership Ativo
 
+## Promocao main: RH/DP e Treinamento homologados - 2026-10-14
+
+- Usuario aprovou dev e autorizou promocao completa destes ajustes/main e
+  comandos EC2 producao, incluindo somente migration estrutural de rastreio.
+  Backup recente no Drive cifrado e timer ativo confirmados nesta janela.
+- Consulta real do operador: EC2 b3a602fe, UUID/banco producao conferidos;
+  unica pendente 202610140003_treinamento_video_rastreio.js. Sem seeds/backfills.
+- Integracao a partir de origin/main b3a602fe com refactor/frontend 8cb03a02;
+  snapshot/tag e bundle local verificado, fora da EC2. Reservar apenas eventuais
+  conflitos desta integracao, novo script/teste de deploy producao, documentacao
+  e handoff. Sem modificar runtime fora dos commits aprovados.
+- Sem banco, EC2, restart ou migration executados pelo agente. outputs/ e caixa
+  de outro worktree fora do release. Preservar hotfixes exclusivos de main.
+- Reserva adicional: validarReleaseProducao20261013.js somente fixture do teste
+  historico, usando inventario congelado e negativa para migrations novas;
+  helper operacional/allowlist antiga permanecem imutaveis.
+- Integracao e validacoes backend/ACL/UI/build/docs/sintaxe/Bash/diff concluidas;
+  somente conflito documental com ambos os lados preservados. Runtime igual ao
+  homologado, hotfixes main mantidos. Ownership liberado para publicacao/PR.
+  Handoff: docs/handoffs/2026-10-14-promocao-rhdp-treinamento-main.md.
+
 ## Promocao cadastro DP salario lotacao e centros para main - 2026-10-14
 
 - Sessao codex-promocao-cadastro-dp-main-20261014, sem delegacao.
@@ -139,6 +160,111 @@
 - Testes backend/visibilidade, UI desktop/mobile com APIs simuladas, build,
   sintaxe e documentacao aprovados. Handoff:
   docs/handoffs/2026-10-09-promocao-isolada-medicao-recarga-main.md.
+## Publicacao dev: pendencias RH/DP - 2026-10-14
+
+- Usuario autorizou commit/push de todas as pendencias RH/DP desta conversa:
+  pagamento50, DP automatico/saida para outro local, filtros de transferencias,
+  previa sem criar registro e exclusao de rascunhos proprios.
+- Reserva documental/staging/testes dos arquivos desses tres handoffs, sem
+  incluir outputs/ ou caixa de outro worktree. Base remota e4ab208f, treinamento
+  ja publicado e preservado. Sem main, banco real, EC2 ou migration nova.
+- Validar codigo funcional completo, conferir remoto e push normal sem force.
+- Backend/ACL/rollback/replay, previas/exclusao/50% em tres modos desktop/mobile,
+  transferencia/filtros, regressao pagamento/workspace, treinamento, build,
+  navegacao/docs e diff aprovados. Reserva liberada para publicacao autorizada.
+  Sem novas migrations; deploy nao executado. Depois do commit somente outputs/
+  devera permanecer fora do Git neste worktree.
+
+## Publicacao dev: Treinamento - 2026-10-14
+
+- Usuario autorizou commit/push dos ajustes de Treinamento na refactor/frontend
+  e comandos EC2 dev com migration estrutural. Reserva documental/staging desta
+  publicacao; nao incluir ajustes RH/DP pendentes nem outputs/.
+- Repetir testes na arvore exata do commit; conferir remoto antes do push normal.
+  Comandos do operador conferem banco staging e somente a migration nova.
+  Sem main, EC2, banco, reinicio ou migration executados pelo agente.
+- Arvore funcional 51b96744 validada isoladamente de RH/DP: backend/HTTP/ACL,
+  player/relatorio desktop/mobile, regressoes do visualizador, build/navegacao/docs.
+  Script ops/deploy/atualizar-dev-treinamento-20261014.sh preparado para operador,
+  com gate staging/PM2/migration unica e health. Reserva documental liberada.
+
+## Treinamento: rastreio e relatorio granular - 2026-10-14
+
+- Sessao atual sem delegacao. Usuario autorizou relatorio de reproducao,
+  mantendo Concluir manual e sem percentual minimo obrigatorio.
+- Reserva: novos dominio/service/models/migration/testes de rastreio; index.js
+  somente modelos/associacoes; TreinamentoController/routes somente endpoints;
+  authorizationService/acessoProduto somente helper de relatorios;
+  Treinamento.jsx, VisualizadorArquivoModal.jsx somente callback opcional de video;
+  services/treinamento.js, novo componente de relatorio/helper de player e testes;
+  README Treinamento e handoff. Preservar ajustes locais anteriores.
+- Permissao existente treinamento.relatorios.visualizar, sem conceder acessos.
+  Migration apenas preparada; sem banco real, EC2, commit/push ou deploy.
+- Implementacao e validacoes locais concluidas; ownership liberado. Backend/ACL,
+  player/relatorio desktop/mobile, regressoes, build/navegacao/docs aprovados.
+  Handoff: docs/handoffs/2026-10-14-treinamento-rastreio-relatorio.md.
+
+## Treinamento: edicao, exclusao e player interno - 2026-10-14
+
+- Sessao atual sem delegacao. Pedido: editar/excluir conteudo e trocar video;
+  verificar reproducao dentro do sistema em modal amplo.
+- Reserva: Treinamento.jsx, VisualizadorArquivoModal.jsx (suporte MP4/WebM),
+  treinamentoService.js se necessario, testes isolados, README Treinamento e handoff.
+- Manter permissoes e S3 privado, exclusao reversivel por arquivamento/leituras
+  preservadas; sem redesenho, banco real, bucket/.env, migrations, commit/push/EC2.
+- Reserva ampliada: services/treinamento.js (normalizar links /uploads legados
+  com origem da API, sem alterar links S3 assinados).
+- Preservar todas as alteracoes locais RH/DP ainda nao commitadas.
+- Concluido/ownership liberado apos backend, player real desktop/mobile,
+  regressao do visualizador, ACL, build/navegacao/docs. Handoff:
+  docs/handoffs/2026-10-14-treinamento-edicao-video.md. Sem publicacao/EC2.
+
+## Pagamento RH: previa e exclusao de rascunho - 2026-10-14
+
+- Sessao atual sem delegacao. Usuario pediu abrir sem criar rascunho; persistir
+  somente ao Salvar/Conferido e permitir exclusao de rascunhos.
+- Reserva: rhPagamentoSolicitacaoService.js/controller, routes.js somente rotas
+  dedicadas, RhDpPagamentoModal.jsx, RhDpPessoalSolicitacoes.jsx se necessario,
+  testes de pagamento/ACL/UI, README RH/DP e handoff. Preservar alteracoes pendentes.
+- Usuario confirmou: cada usuario exclui somente seus proprios rascunhos.
+  Sem banco real, migration, commit/push ou EC2. Proteger titulos enviados/historico,
+  salvamento inicial atomico, replay/duplo clique e workspace sem escrita automatica.
+- Reserva ampliada: rhSolicitacaoConsultaDomain.js e RhSolicitacaoController.js
+  para ocultar excluidos e negar detalhe/acoes genericas sem expor rascunho privado.
+- Implementacao/testes concluidos; ownership liberado. Handoff:
+  docs/handoffs/2026-10-14-previa-exclusao-rascunhos-pagamento.md. Sem publicacao/EC2.
+
+## Filtros de transferencias RH - 2026-10-14
+
+- Sessao atual, sem delegacao. Pedido: filtros nas transferencias, sobretudo situacao.
+- Reserva: RhDpTransferencias.jsx, rhTransferenciaService.js, testes focados
+  backend/frontend, README RH/DP e handoff. Preservar ajustes locais anteriores.
+- Consultas filtradas no servidor antes da paginacao, mantendo escopo local/ACL,
+  polling, acoes/historico e fluxo de notificacoes. Sem banco real, migration,
+  commit/push, EC2 ou mudanca de permissao.
+- Concluido/ownership liberado apos backend/ACL, UI desktop/mobile, build,
+  navegacao e docs. Handoff: docs/handoffs/2026-10-14-filtros-transferencias-rh.md.
+
+## Pagamento RH 50% e transferencia automatica DP - 2026-10-14
+
+- Sessao codex-rhdp-pagamento50-transferencia-dp-20261014, sem delegacao.
+- Usuario pediu opcao 50% no pagamento individual/coletivo (todos/selecionados)
+  e DP solicitar transferencia global com efetivacao automatica como SUPERADMIN.
+- Reserva: RhDpPagamentoModal.jsx, rhPagamentoWorkspaceDraft.js, dominio/service
+  de pagamento por solicitacao e testes; rhTransferenciaService.js,
+  RhDpTransferencias.jsx e testes de escopo/transferencia. README RH/DP e handoff.
+- Base refactor/frontend 1b9101df em worktree isolado reutilizado. Sem banco real,
+  migration, .env, usuarios/configuracoes, commit/push/main ou EC2 nesta etapa.
+- Preservar escopo OBRA, pagamentos anteriores/diaristas, autoria e historico,
+  lock/transacao/replay; caixa em outro worktree e outputs/ fora do release.
+- Reserva ampliada: rh-pagamento-solicitacao.css (indices da coluna de dias/faltas),
+  teste UI dedicado 50% e scripts de pagamento/transferencia com casos novos.
+- Usuario confirmou saida de colaborador da obra vinculada para qualquer local
+  ativo, sem vinculo com destino; responsavel do destino/DP/SUPERADMIN decide.
+  Preservar entrada de outra obra para a propria e bloquear terceiros->terceiros.
+- Implementacao/testes locais concluidos. Ownership liberado; handoff em
+  docs/handoffs/2026-10-14-pagamento50-transferencia-dp.md. Sem publicacao/EC2.
+
 ## Cadastro RH: salario DP, lotacao SUPERADMIN e centros em transferencias - 2026-10-14
 
 - Sessao codex-rhdp-cadastro-salario-lotacao-20261014, sem delegacao.

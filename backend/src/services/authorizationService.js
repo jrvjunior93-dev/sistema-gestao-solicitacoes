@@ -2903,6 +2903,14 @@ async function canPublishTreinamento(user) {
   return false;
 }
 
+async function canViewTreinamentoRelatorios(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, ['treinamento.relatorios.visualizar']);
+  }
+  return false;
+}
+
 async function canAccessSst(user) {
   if (isBusinessAdmin(user)) {
     return true;
@@ -3438,6 +3446,7 @@ module.exports = {
   getComprasVisibilityScope,
   canManageTreinamento,
   canPublishTreinamento,
+  canViewTreinamentoRelatorios,
   canRetryIntegracaoSienge,
   canSendPagamentosBanco,
   canSyncPagamentosBanco,

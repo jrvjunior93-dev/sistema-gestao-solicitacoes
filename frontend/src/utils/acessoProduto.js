@@ -1408,6 +1408,12 @@ export function canPublishTreinamento(user) {
   return false;
 }
 
+export function canViewTreinamentoRelatorios(user) {
+  if (!hasEnabledModule(user, 'TREINAMENTO')) return false;
+  if (isBusinessAdmin(user)) return true;
+  return hasConfiguredAreaPermissions(user) && hasPermissao(user, 'treinamento.relatorios.visualizar');
+}
+
 export function canAccessComunicacao(user) {
   if (!hasEnabledModule(user, 'COMUNICACAO_INTERNA')) return false;
   if (isBusinessAdmin(user)) return true;
