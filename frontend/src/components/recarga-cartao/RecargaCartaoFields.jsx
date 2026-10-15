@@ -247,7 +247,10 @@ export default function RecargaCartaoFields({ ativo, obraId, fixarCartao = false
       </div>
 
       <SaldoCartaoRecarga contexto={contexto} />
-      {contexto?.recarga_anterior_indisponivel && <div className="app-alert app-alert--warning" role="status">{contexto.motivo_bloqueio}</div>}
+      {contexto?.recarga_anterior_indisponivel && <div className="app-alert app-alert--warning" role="status">
+        {contexto.motivo_bloqueio}
+        {contexto.pode_regularizar_recarga && <a className="btn btn-outline btn-sm" href="/recargas-cartao/regularizacao">Abrir regularização de recargas</a>}
+      </div>}
       {contexto?.bloqueado && !contexto?.recarga_anterior_indisponivel ? (
         <div className="space-y-3 border-y border-amber-300 bg-amber-50/70 px-3 py-3 text-amber-950" role="status">
           <div className="flex flex-wrap items-start justify-between gap-3">

@@ -1,5 +1,17 @@
 # Handoff Global
 
+## Regularizacao de recarga excluida - 2026-10-15
+
+- Implementada localmente a area Solicitacoes > Regularizar recargas, GEO/
+  SUPERADMIN com escopo de obra. Encerra sem baixa ou recupera original paga
+  para prestacao, preservando financeiro/historico; mistos tratados em conjunto.
+- Auditoria/revisao/idempotencia/locks e guardas de fila/banco. Backend/UI/
+  regressoes/build/navegacao aprovados; layout sem novas falhas (legado pendente).
+- Sem nova migration, commit/push, EC2 ou banco real. Handoff detalhado:
+  docs/handoffs/2026-10-15-recarga-regularizacao-geo.md.
+- Usuario autorizou publicacao refactor/frontend; script DEV sem migrations
+  e teste isolado preparados. Reinicio exclusivo backend-dev8001 pelo operador.
+
 ## Contexto da recarga excluida - 2026-10-15
 
 - Concluido local: nao buscar detalhe de solicitacao excluida sem pendencia;

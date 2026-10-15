@@ -1,5 +1,11 @@
 # Sessoes Ativas
 
+- codex-recarga-regularizacao-geo-20261015: concluida localmente, ownership
+  liberado; testes isolados/backend/UI/build/navegacao aprovados. Publicacao
+  e homologacao real pendentes; sem nova migration/EC2/banco real.
+- Publicacao do ajuste de regularizacao agora autorizada na refactor/frontend;
+  script DEV sem migration preparado, sem operacao na EC2 pelo agente.
+
 - codex-recarga-contexto-excluida-20261015: concluido local, ownership liberado;
   busca/contexto/POST protegidos, primeira recarga sem erro falso, UI/regressoes/
   build aprovados. Sem migration/publicacao ou operacao em banco real.

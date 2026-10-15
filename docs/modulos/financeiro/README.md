@@ -1,5 +1,38 @@
 # Modulo FINANCEIRO
 
+## Regularizar recarga de solicitacao excluida - 2026-10-15
+
+- Menu Solicitacoes > Regularizar recargas, exclusivo de GEO/SUPERADMIN,
+  respeitando o escopo de obras. Nao concede gestao de cartoes ou acesso
+  financeiro geral. O aviso da Nova Solicitacao tem atalho somente para GEO.
+- GET /recargas-cartao/regularizacao lista solicitacoes excluidas com recarga;
+  filtro exato codigo e pagina de 30 solicitacoes por cursor antes_de.
+  GET /recargas-cartao/regularizacao/:id confere todos os cartoes e titulos.
+  Consultar/abrir a tela nao grava dados.
+- POST no mesmo caminho exige motivo, revisao atual e chave de idempotencia;
+  uma transacao, mutex por cartao em ordem crescente e locks da solicitacao,
+  recargas, titulos e prestacoes. Historico guarda autor, motivo, estado
+  anterior, resultado e chave. Falha de auditoria desfaz a operacao.
+- Sem pagamento: cancela titulo aberto/previsao e encerra o ciclo; preserva
+  exclusao da solicitacao, valor original, anexos e log de exclusao.
+- Com pagamento quitado: recupera a solicitacao original no GEO, com os mesmos
+  IDs e titulos. Retoma a prestacao, sem resetar rateios/decisoes ja existentes;
+  cria somente o formulario se estiver ausente. Nao valida gastos automaticamente.
+  Em solicitacao mista, encerra os cartoes nao pagos e recupera os pagos,
+  com o tratamento de todos exibido antes da confirmacao.
+- Nao altera baixas, pagamentos, titulos pagos, saldo informado nem ajuste do
+  cartao. Despesa continua vindo apenas dos gastos reais validados.
+- Fila/envio bancario/autorizacao ativa, negociacao/cobranca protegida,
+  prestacao em processamento ou inconsistencia financeira impedem a acao
+  e orientam conferencia pelo Financeiro. Nenhuma integracao externa e
+  cancelada por este endpoint. Titulo pago excluido nao e restaurado por ele.
+- Rotas operacionais e anexos de solicitacoes ainda excluidas permanecem
+  bloqueados; nao foi criado bypass global da exclusao. Prazo operacional da
+  obra continua sendo conferido, sem excecao nova para esta operacao.
+- Testes isolados: backend/scripts/validarRecargaRegularizacao.js e
+  frontend/scripts/validarRecargaRegularizacaoUI.mjs, mais regressoes de saldo,
+  multicartoes, medicao, exclusao/ACL e prazos. Sem nova migration.
+
 ## Consulta de cartao com solicitacao excluida - 2026-10-15
 
 - Ausencia de recarga e resposta normal: sem alerta vermelho e sem bloqueio

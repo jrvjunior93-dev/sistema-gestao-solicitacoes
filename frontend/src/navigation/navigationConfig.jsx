@@ -161,7 +161,8 @@ import {
   canViewComercialEmpreendimentos,
   hasEnabledModule,
   isBusinessAdmin,
-  isSuperadmin
+  isSuperadmin,
+  canRegularizarRecarga
 } from '../utils/acessoProduto';
 import {
   SST_NAV,
@@ -332,6 +333,7 @@ export const NAV_MODULES = [
       },
       { id: 'solicitacoes-relatorios', ordem: 40, label: 'Relatórios', desc: 'Relatórios operacionais de solicitações.', icon: HiOutlineChartBar, to: '/solicitacoes/relatorios', can: (user) => canViewSolicitacoesRelatorios(user) },
       { id: 'solicitacoes-arquivadas', ordem: 50, label: 'Arquivadas', desc: 'Solicitações que você arquivou.', icon: HiOutlineArchiveBox, to: '/solicitacoes-arquivadas', can: SEMPRE },
+      { id: 'recargas-regularizacao', ordem: 55, label: 'Regularizar recargas', desc: 'Trate recargas de solicitações excluídas, preservando pagamentos e histórico.', icon: HiOutlineCreditCard, to: '/recargas-cartao/regularizacao', can: canRegularizarRecarga },
       { id: 'prioridades-diretoria', ordem: 30, label: 'Prioridades Diretoria', desc: 'Lotes de prioridade definidos pela diretoria.', icon: HiOutlineStar, to: '/prioridades-diretoria', can: (user) => canAccessPrioridadesDiretoria(user) },
       { id: 'nova-solicitacao', fixavel: 'acao', ordem: 20, label: 'Nova Solicitação', desc: 'Abra uma nova solicitação para um setor.', icon: HiOutlinePlusCircle, to: '/nova-solicitacao', can: (user) => !['SETOR', 'FINANCEIRO'].includes(perfilDe(user)) }
     ],

@@ -12,6 +12,20 @@ export async function listarMeusCartoesRecarga(obraId) {
   return parse(res, 'Nao foi possivel carregar seus cartoes de recarga.');
 }
 
+export async function listarRecargasParaRegularizar(filtros = {}) {
+  const query = new URLSearchParams(Object.entries(filtros).filter(([, v]) => v !== '' && v != null));
+  return parse(await fetch(`${API_URL}/recargas-cartao/regularizacao?${query}`, { headers: authHeaders() }), 'Não foi possível consultar as recargas excluídas.');
+}
+
+export async function consultarRegularizacaoRecarga(id) {
+  return parse(await fetch(`${API_URL}/recargas-cartao/regularizacao/${id}`, { headers: authHeaders() }), 'Não foi possível conferir esta recarga.');
+}
+
+export async function regularizarRecargaExcluida(id, payload) {
+  return parse(await fetch(`${API_URL}/recargas-cartao/regularizacao/${id}`, { method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(payload) }), 'Não foi possível regularizar esta recarga.');
+}
+
 export async function obterContextoCartaoRecarga(cartaoId, obraId) {
   const res = await fetch(`${API_URL}/recargas-cartao/cartoes/${cartaoId}/contexto?obra_id=${encodeURIComponent(obraId)}`, { headers: authHeaders() });
   return parse(res, 'Nao foi possivel conferir a ultima recarga do cartao.');

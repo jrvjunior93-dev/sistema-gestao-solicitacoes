@@ -410,7 +410,7 @@ async function obterContextoCartao(cartaoId, user, obraId) {
   const recarga = await buscarUltimaRecarga(cartaoId);
   if (recarga && solicitacaoIndisponivel(recarga.solicitacao)) {
     return { ...serializarContexto(null), bloqueado: true, motivo_bloqueio: motivoBloqueio(recarga),
-      recarga_anterior_indisponivel: true, saldo_cartao: await saldoCartaoService.obterSaldo(cartaoId) };
+      recarga_anterior_indisponivel: true, pode_regularizar_recarga: isGerenciaProcessos(user), saldo_cartao: await saldoCartaoService.obterSaldo(cartaoId) };
   }
   if (recarga && !(await require('./authorizationService').hasObraAccess(user, recarga.solicitacao?.obra_id)) && !isGerenciaProcessos(user)) {
     return { bloqueado: Boolean(motivoBloqueio(recarga)), motivo_bloqueio: motivoBloqueio(recarga), ultima_recarga: null, obras_disponiveis: [], historico_restrito: true, saldo_cartao: await saldoCartaoService.obterSaldo(cartaoId) };

@@ -399,6 +399,7 @@ const uploadTreinamentoFile = require('./config/uploadTreinamentoFile');
 // Controllers
 const SolicitacaoController = require('./controllers/SolicitacaoController');
 const RecargaCartaoController = require('./controllers/RecargaCartaoController');
+const RecargaCartaoRegularizacaoController = require('./controllers/RecargaCartaoRegularizacaoController');
 const SolicitacaoRetornoController = require('./controllers/SolicitacaoRetornoController');
 const RelatorioSolicitacoesController = require('./controllers/RelatorioSolicitacoesController');
 const PrioridadeDiretoriaController = require('./controllers/PrioridadeDiretoriaController');
@@ -1766,6 +1767,10 @@ router.get('/solicitacoes/centros-custo/:id/obras-distribuicao', validateRequest
 router.get('/solicitacoes/centros-custo/:id/configuracao-distribuicao', validateRequest({ params: validateNumericIdParam('id', 'Centro de custo') }), SolicitacaoCentroCustoDistribuicaoController.configuracao);
 router.put('/solicitacoes/centros-custo/:id/configuracao-distribuicao', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Centro de custo') }), SolicitacaoCentroCustoDistribuicaoController.salvarConfiguracao);
 router.get('/recargas-cartao/meus-cartoes', RecargaCartaoController.meusCartoes);
+// Entrada administrativa estreita: nao remove a indisponibilidade das rotas operacionais.
+router.get('/recargas-cartao/regularizacao', RecargaCartaoRegularizacaoController.listar);
+router.get('/recargas-cartao/regularizacao/:id', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), RecargaCartaoRegularizacaoController.consultar);
+router.post('/recargas-cartao/regularizacao/:id', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), RecargaCartaoRegularizacaoController.regularizar);
 router.get('/adiantamentos/solicitacoes/:id', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), require('./controllers/AdiantamentoController').contexto);
 router.post('/adiantamentos/solicitacoes/:id/prestacao', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), require('./controllers/AdiantamentoController').enviar);
 router.post('/adiantamentos/solicitacoes/:id/prestacao/decisao', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), require('./controllers/AdiantamentoController').decidir);

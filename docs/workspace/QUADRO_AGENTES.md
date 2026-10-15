@@ -1,5 +1,14 @@
 # Quadro de Agentes
 
+## Regularizacao de recarga excluida - 2026-10-15
+
+- Agente unico, sem delegacao. Implementacao local e testes isolados concluidos.
+- GEO/SUPERADMIN regulariza sem pagamento ou recupera a original paga, com
+  escopo, auditoria e bloqueios financeiros. Sem novo bypass operacional.
+- Handoff especifico registrado; sem migration/commit/push/EC2/banco real.
+- Publicacao dev agora autorizada; delta e script seguro preparados para
+  commit/push refactor/frontend, com repeticao das validacoes locais.
+
 ## Contexto recarga excluida - 2026-10-15
 
 - codex-recarga-contexto-excluida-20261015: concluido local, agente unico.

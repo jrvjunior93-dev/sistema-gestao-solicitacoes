@@ -4015,3 +4015,20 @@ e ownership liberado para publicacao dev. outputs/ permanece fora do commit.
 - Sem alteracao de main, EC2, banco real, migrations ou flags pelo agente.
 - Script/teste de deploy preparados e validados; reserva encerrada e ownership
   liberado para publicacao do delta aprovado. outputs/ preservado fora do Git.
+
+## Regularizacao de recarga excluida - 2026-10-15
+
+- Concluida localmente pelo agente desta conversa, sem delegacao. Usuario autorizou
+  implementar regularizacao GEO/SUPERADMIN sem apagar pagamentos ou historico.
+- Reservados: novo recargaCartaoRegularizacaoService/controller/testes, routes.js,
+  pagina e servico frontend de regularizacao, acessoProduto, App/navigation,
+  RecargaCartaoFields, testes UI e documentacao/handoff correspondentes.
+- Catalogo gerado e manifestos QA tambem atualizados. Validacoes concluidas;
+  reserva encerrada e ownership liberado. Handoff de regularizacao registrado.
+- Sem commit/push, EC2, banco real ou aplicacao de migrations nesta etapa.
+- Publicacao agora autorizada pelo usuario: reserva documental e do delta de
+  regularizacao, novo script atualizar-dev-recarga-regularizacao-20261015.sh e
+  validarDeployRecargaRegularizacaoDev.js para commit/push refactor/frontend.
+  Sem main, EC2 ou escrita real no banco pelo agente; outputs/ fora do commit.
+- Validacoes locais repetidas e script DEV aprovado em teste isolado. Reserva
+  de publicacao encerrada e ownership liberado para o commit/push autorizado.
