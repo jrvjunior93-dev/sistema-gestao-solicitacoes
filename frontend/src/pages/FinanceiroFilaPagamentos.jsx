@@ -16,6 +16,7 @@ import useQueryRevision from '../navigation/useQueryRevision';
 import { camposFila, revisaoFila } from '../navigation/filaWorkspaceDraft';
 import {
   anexarComprovanteFilaPagamento,
+  anexarComprovanteFilaPagamentoLote,
   aprovarDivergenciasFilaPagamentos,
   getContasFilaPagamentos,
   getInstrumentosFilaPagamentos,
@@ -659,6 +660,7 @@ export default function FinanceiroFilaPagamentos() {
   const [erroBaixa, setErroBaixa] = useState(null);
   const [baixaMassa, setBaixaMassa] = useState(null);
   const [comprovantesOpen, setComprovantesOpen] = useWorkspaceState('fila:pdfOpen', false);
+  const [comprovanteLote, setComprovanteLote] = useState(null);
   const [filaAutorizada, setFilaAutorizada] = useState(false);
   const [solicitacaoArquivos, setSolicitacaoArquivos] = useState(null);
   const guardarRolagemArquivos = useRolagemModal(Boolean(solicitacaoArquivos));
@@ -698,7 +700,7 @@ export default function FinanceiroFilaPagamentos() {
       setAccounts(Array.isArray(accountResult) ? accountResult : accountResult?.data || []);
       setInstrumentos(instrumentResult);
       setSelected((current) => current.filter((id) => nextRows.some((row) => Number(row.id) === Number(id)
-        && !row.somente_consulta && ((row.status === 'PENDENTE' && !row.movimento_financeiro_id) || row.status === 'DIVERGENTE'))));
+        && !row.somente_consulta && ((row.status === 'PENDENTE' && !row.movimento_financeiro_id) || row.status === 'DIVERGENTE' || row.pendente_comprovante))));
       setDrafts((current) => {
         const next = { ...current };
         nextRows.forEach((row) => {
@@ -868,6 +870,25 @@ export default function FinanceiroFilaPagamentos() {
     } catch (error) {
       avisar.erro(error?.message || 'Não foi possível abrir o comprovante.');
     }
+  }
+
+  async function anexarMesmoComprovante() {
+    if (!canSettle || !filaAutorizada || !comprovanteLote?.arquivo) return;
+    await executarOperacao(async () => {
+      const { ids, arquivo } = comprovanteLote;
+      if (!ids.length || ids.length > 100) { avisar.erro('Selecione de 1 a 100 títulos por operação.'); return; }
+      const elegiveis = rows.filter(r => ids.includes(Number(r.id)) && !r.somente_consulta
+        && ((r.status === 'PENDENTE' && !r.movimento_financeiro_id) || r.pendente_comprovante));
+      if (elegiveis.length !== ids.length) { avisar.erro('A seleção mudou. Feche e confira os títulos atuais.'); return; }
+      setActionKey('comprovante-lote');
+      try {
+        const result = await anexarComprovanteFilaPagamentoLote(ids, arquivo);
+        avisar.sucesso(`${result.quantidade} título(s) com comprovante vinculado. Nenhuma baixa foi registrada.`);
+        setComprovanteLote(null); setSelected([]);
+        await load();
+      } catch (error) { avisar.erro(error.message || 'Não foi possível anexar o comprovante. Tente novamente com a mesma seleção.'); }
+      finally { setActionKey(''); }
+    });
   }
 
   function fecharErroRegistroBaixa() {
@@ -1057,14 +1078,19 @@ export default function FinanceiroFilaPagamentos() {
   const pendingRows = useMemo(() => rows.filter((row) => row.status === 'PENDENTE' && !row.somente_consulta
     && Number(row.id) > 0 && !Number(row.movimento_financeiro_id)), [rows]);
   const divergentRows = useMemo(() => rows.filter((row) => row.status === 'DIVERGENTE'), [rows]);
+  const receiptRows = useMemo(() => rows.filter(row => !row.somente_consulta && Number(row.id) > 0
+    && ((row.status === 'PENDENTE' && !row.movimento_financeiro_id) || row.pendente_comprovante)), [rows]);
   const selectableRows = status === 'DIVERGENTE' && canResolve
     ? divergentRows
-    : (['PENDENTE', 'TODOS'].includes(status) && canSettle ? pendingRows : []);
+    : (['PENDENTE', 'PENDENTE_COMPROVANTE', 'TODOS'].includes(status) && canSettle ? receiptRows : []);
   const selectedRows = useMemo(
     () => selectableRows.filter((row) => selected.includes(Number(row.id))),
     [selectableRows, selected]
   );
   const approvingDivergences = status === 'DIVERGENTE';
+  const selectedPayments = selectedRows.filter(row => pendingRows.some(r => Number(r.id) === Number(row.id)));
+  const selectedReceipts = selectedRows.filter(row => receiptRows.some(r => Number(r.id) === Number(row.id)));
+  const hasReceiptSelection = canSettle && ['PENDENTE', 'PENDENTE_COMPROVANTE', 'TODOS'].includes(status);
   const hasBulkAction = status === 'DIVERGENTE' ? canResolve : (['PENDENTE', 'TODOS'].includes(status) && canSettle);
   const showReasonColumn = ['DIVERGENTE', 'PENDENTE', 'NAO_PAGO', 'EM_EDICAO', 'TODOS', 'RESOLVIDO'].includes(status);
   const busy = Boolean(actionKey);
@@ -1092,13 +1118,19 @@ export default function FinanceiroFilaPagamentos() {
         acaoPrincipal={hasBulkAction ? {
           rotulo: busy
             ? 'Processando...'
-            : `${approvingDivergences ? 'Autorizar selecionados' : 'Baixa em massa'}${selectedRows.length ? ` (${selectedRows.length})` : ''}`,
+            : `${approvingDivergences ? 'Autorizar selecionados' : 'Baixa em massa'}${(approvingDivergences ? selectedRows : selectedPayments).length ? ` (${(approvingDivergences ? selectedRows : selectedPayments).length})` : ''}`,
           onClick: () => approvingDivergences ? approveDivergences(selectedRows) : setBaixaMassa({
-            ids: selectedRows.map(row => row.id), revisoes: selectedRows.map(revisaoFila) }),
-          desabilitada: loading || busy || selectedRows.length === 0,
+            ids: selectedPayments.map(row => row.id), revisoes: selectedPayments.map(revisaoFila) }),
+          desabilitada: loading || busy || (approvingDivergences ? selectedRows : selectedPayments).length === 0,
           icone: <HiOutlineCheckCircle aria-hidden="true" />
         } : undefined}
         secundarias={[
+          ...(hasReceiptSelection ? [{
+            rotulo: `Anexar mesmo comprovante${selectedReceipts.length ? ` (${selectedReceipts.length})` : ''}`,
+            onClick: () => setComprovanteLote({ ids: selectedReceipts.map(r => Number(r.id)), arquivo: null }),
+            desabilitada: loading || busy || !filaAutorizada || !selectedReceipts.length || selectedReceipts.length > 100,
+            icone: <HiOutlineDocumentArrowUp aria-hidden="true" />
+          }] : []),
           ...(canImportReceipts ? [{
             rotulo: 'Importar comprovantes',
             onClick: () => setComprovantesOpen(true),
@@ -1163,14 +1195,14 @@ export default function FinanceiroFilaPagamentos() {
           </div>
         )}
       >
-        {hasBulkAction && <div className="mb-2 flex flex-wrap items-center gap-3 text-sm">
+        {(hasBulkAction || hasReceiptSelection) && <div className="mb-2 flex flex-wrap items-center gap-3 text-sm">
           <label className="flex items-center gap-2">
             <input type="checkbox" aria-label="Selecionar todos os elegíveis desta lista"
               ref={(elemento) => { if (elemento) elemento.indeterminate = selectedRows.length > 0 && selectedRows.length < selectableRows.length; }}
               checked={selectableRows.length > 0 && selectedRows.length === selectableRows.length}
               disabled={loading || busy || !selectableRows.length}
               onChange={(event) => setSelected(event.target.checked ? selectableRows.map((row) => Number(row.id)) : [])} />
-            {approvingDivergences ? 'Todas as divergências desta lista' : 'Todos os pendentes desta lista'}
+            {approvingDivergences ? 'Todas as divergências desta lista' : 'Todos os elegíveis desta lista'}
           </label>
           <span className="text-[var(--c-muted)]" role="status">{selectedRows.length} selecionado(s) · {currency(selectedRows.reduce((total, row) => total + Number(drafts[row.id]?.valor_pago || 0), 0))}</span>
         </div>}
@@ -1489,6 +1521,27 @@ export default function FinanceiroFilaPagamentos() {
           await executarOperacao(() => performSettle(atuais, dados, patch.instrumentos_lote));
           return null;
         }} />}
+      {comprovanteLote && canSettle && filaAutorizada && <OverlayModal rotulo="Anexar mesmo comprovante" largura="660px" onFechar={busy ? undefined : () => setComprovanteLote(null)}>
+        <div className="p-4 space-y-4">
+          <h2 className="app-bloco-titulo">Anexar mesmo comprovante · {comprovanteLote.ids.length} título(s)</h2>
+          <p className="app-note">O PDF será anexado a todos os selecionados. Não altera valores, contas, datas ou pagamentos e não registra baixa. Um arquivo já vinculado ao mesmo título não será duplicado.</p>
+          <details><summary>Conferir títulos selecionados</summary><ul>{rows.filter(r => comprovanteLote.ids.includes(Number(r.id))).map(r => <li key={r.id}>{r.titulo?.codigo || r.id} · {r.titulo?.descricao}</li>)}</ul></details>
+          <label className="block text-sm">Comprovante PDF (até 12 MB)
+            <input aria-label="Comprovante compartilhado PDF" type="file" accept="application/pdf,.pdf" disabled={busy}
+              onChange={e => { const arquivo = e.target.files?.[0];
+                if (arquivo && (arquivo.size > 12 * 1024 * 1024 || !arquivo.name.toLowerCase().endsWith('.pdf'))) {
+                  avisar.erro('Selecione um PDF de até 12 MB.'); e.target.value = ''; setComprovanteLote(v => ({ ...v, arquivo: null })); return;
+                }
+                setComprovanteLote(v => ({ ...v, arquivo: arquivo || null }));
+              }} />
+          </label>
+          {busy && <p role="status">Anexando comprovante aos títulos…</p>}
+          <div className="flex flex-wrap justify-end gap-2">
+            <button className="btn btn-outline btn-sm" type="button" disabled={busy} onClick={() => setComprovanteLote(null)}>Voltar</button>
+            <button className="btn btn-primary btn-sm" type="button" disabled={busy || !comprovanteLote.arquivo} onClick={anexarMesmoComprovante}>Anexar aos {comprovanteLote.ids.length} selecionados</button>
+          </div>
+        </div>
+      </OverlayModal>}
       {comprovantesOpen && canImportReceipts && filaAutorizada ? (
         <ComprovantesPdfModal
           onFechar={() => setComprovantesOpen(false)}

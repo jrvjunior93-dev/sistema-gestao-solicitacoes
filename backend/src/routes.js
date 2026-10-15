@@ -2144,6 +2144,8 @@ router.get('/rh/pagamentos-solicitacao/:id', allowRhDpSolicitacaoVer, validateRe
 router.put('/rh/pagamentos-solicitacao/:id', allowRhDpPagamentoWrite, rhPagamentoSaveRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pagamento') }), RhPagamentoSolicitacaoController.salvar);
 router.post('/rh/pagamentos-solicitacao/:id/enviar', allowRhDpPagamentoWrite, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pagamento') }), RhPagamentoSolicitacaoController.enviar);
 router.post('/rh/pagamentos-solicitacao/:id/revisar', allowRhDpPagamentoWrite, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pagamento') }), RhPagamentoSolicitacaoController.revisar);
+router.post('/rh/pagamentos-solicitacao/:id/remover-colaborador', allowRhDpPagamentoWrite, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pagamento') }), RhPagamentoSolicitacaoController.removerColaborador);
+router.post('/rh/pagamentos-solicitacao/:id/cancelar', allowRhDpPagamentoWrite, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pagamento') }), RhPagamentoSolicitacaoController.cancelar);
 router.post('/rh/jornada/importar', allowRhDpSolicitacaoAbrir, uploadRateLimit, criticalRateLimit, uploadComprovantes.fields([{ name: 'planilha', maxCount: 1 }, { name: 'fichas', maxCount: 20 }]), RhJornadaController.importar);
 router.get('/rh/jornada/colaboradores', allowRhDpSolicitacaoVer, RhJornadaController.colaboradoresDaCompetencia);
 router.get('/rh/jornada/gerencial/colaboradores', allowRhDpSolicitacaoVer, RhJornadaController.colaboradoresDaCompetenciaGerencial);
@@ -2230,6 +2232,7 @@ router.get('/financeiro/fila-pagamentos/solicitacoes/:id/arquivos', allowFilaPag
 router.get('/financeiro/fila-pagamentos/:id/comprovante', validateRequest({ params: validateNumericIdParam('id', 'Item da fila') }), PagamentoManualFilaController.comprovante);
 router.get('/financeiro/fila-pagamentos/:id/comprovantes/:comprovanteId', PagamentoManualFilaController.comprovanteAdicional);
 router.post('/financeiro/fila-pagamentos/:id/comprovante', allowFilaPagamentosBaixa, uploadRateLimit, uploadComprovantesPagamento.single('file'), validateRequest({ params: validateNumericIdParam('id', 'Item da fila') }), PagamentoManualFilaController.anexarComprovante);
+router.post('/financeiro/fila-pagamentos/comprovantes/compartilhar', allowFilaPagamentosBaixa, uploadRateLimit, uploadComprovantesPagamento.single('file'), PagamentoManualFilaController.anexarComprovanteLote);
 router.post('/financeiro/fila-pagamentos/comprovantes/preview', allowFilaPagamentosImportarComprovantes, uploadRateLimit, uploadComprovantesPagamento.array('files', 10), PagamentoManualFilaController.previewComprovantes);
 router.post('/financeiro/fila-pagamentos/comprovantes/vincular', allowFilaPagamentosImportarComprovantes, criticalRateLimit, uploadComprovantesPagamento.array('files', 10), PagamentoManualFilaController.vincularComprovantes);
 router.post('/financeiro/fila-pagamentos', allowFilaPagamentosPrepare, criticalRateLimit, validateRequest({ body: validateManualPaymentQueueCreateBody }), PagamentoManualFilaController.create);

@@ -1,5 +1,15 @@
 # Quadro de Agentes
 
+## DP cancelamento/comprovantes - 2026-10-15
+
+- Agente unico, sem delegacao; implementacao e testes locais concluidos.
+- Remocao/cancelamento auditados, comprovante por destino/lote, codigo DP e
+  fechar consulta sem PUT. Permissoes e visibilidade preservadas.
+- Migration estrutural criada, nao aplicada. Sem commit/push/EC2/banco real.
+  Ownership liberado; handoff 2026-10-15-dp-cancelamento-comprovante-compartilhado.md.
+- Publicacao autorizada posteriormente: script DEV com migration unica e teste
+  isolado de guardas aprovados. Sem EC2/banco real/main pelo agente.
+
 ## Regularizacao GEO global e visibilidade - 2026-10-15
 
 - Agente unico, sem delegacao. Usuario autorizou excecao apenas na regularizacao.

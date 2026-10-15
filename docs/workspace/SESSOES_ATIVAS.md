@@ -1,5 +1,12 @@
 # Sessoes Ativas
 
+- codex-dp-cancelamento-comprovante-lote-20261015: concluida localmente, ownership
+  liberado. Testes transacionais/ACL/UI/build/navegacao aprovados; migration de
+  comprovante compartilhado criada, nao aplicada. Sem publicacao/EC2/banco real.
+  Handoff 2026-10-15-dp-cancelamento-comprovante-compartilhado.md.
+- Publicacao do delta acima autorizada na refactor/frontend; script/teste de
+  deploy DEV com migration unica concluidos. Sem executar EC2 ou banco real.
+
 - codex-recarga-geo-global-visibilidade-20261015: implementacao local concluida,
   ownership liberado; GEO global so na regularizacao, sem ampliar visibilidade
   de solicitacoes/anexos. Sem nova migration/commit/push/EC2/banco real.

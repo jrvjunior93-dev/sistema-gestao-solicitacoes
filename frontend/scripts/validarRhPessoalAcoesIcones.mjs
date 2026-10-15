@@ -167,6 +167,11 @@ try {
   }
   for (const width of [1366, 390]) {
     const page = await pagina('completo', width);
+    await page.getByText('RH-1', { exact: true }).waitFor();
+    if (width > 767) {
+      const headers = await page.locator('thead th').allTextContents();
+      assert(headers.findIndex(t => t.includes('Código')) < headers.findIndex(t => t.includes('Tipo')), 'Codigo precede tipo');
+    }
     for (const tema of ['claro', 'escuro']) {
       await page.evaluate(escuro => document.documentElement.classList.toggle('dark', escuro), tema === 'escuro');
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Sem overflow da pagina');

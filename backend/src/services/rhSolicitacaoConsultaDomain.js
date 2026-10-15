@@ -24,12 +24,14 @@ function normalizarConsulta(pedido) {
 }
 
 function colaboradoresDoPedido(pedido) {
-  const ids = pedido.colaborador_id ? [Number(pedido.colaborador_id)] : [];
+  const removidos = new Set(ehPagamento(pedido) ? (dadosDe(pedido).linhas || [])
+    .filter(l => l.removido_em).map(l => Number(l.colaborador_id)) : []);
+  const ids = pedido.colaborador_id && !removidos.has(Number(pedido.colaborador_id)) ? [Number(pedido.colaborador_id)] : [];
   // Pagamentos coletivos nao possuem FK individual. As linhas do snapshot
   // selecionadas sao o vinculo, sem consultar/regravar cadastro ou financeiro.
   if (ehPagamento(pedido)) {
-    ids.push(...(dadosDe(pedido).linhas || []).filter(l => l.selecionado !== false
-      || ['ENVIADO', 'EM_EDICAO', 'CANCELADO'].includes(l.pagamento_estado))
+    ids.push(...(dadosDe(pedido).linhas || []).filter(l => !l.removido_em && (l.selecionado !== false
+      || ['ENVIADO', 'EM_EDICAO', 'CANCELADO'].includes(l.pagamento_estado)))
       .map(l => Number(l.colaborador_id)));
   }
   return [...new Set(ids.filter(id => Number.isSafeInteger(id) && id > 0))];

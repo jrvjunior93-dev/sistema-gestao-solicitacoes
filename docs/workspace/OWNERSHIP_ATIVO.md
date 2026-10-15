@@ -1,5 +1,32 @@
 # Ownership Ativo
 
+## DP cancelamento e comprovante compartilhado - 2026-10-15
+
+- Reserva ativa deste agente, sem delegacao. Usuario confirmou remover linha
+  e cancelar pedido DP com motivo/auditoria, cancelando somente titulos sem baixa;
+  bloquear com pagamento, preservar visibilidade e permissoes existentes.
+- Reservados: rhPagamentoSolicitacaoService/Domain/RevisaoService/Controller,
+  RhDpPagamentoModal, rhDp services, routes.js, pagamentoManualFilaService,
+  pagamentoComprovantePdfService, PagamentoManualFilaController, modelo de
+  comprovante, migration de unicidade por fila/hash, FinanceiroFilaPagamentos,
+  servico frontend financeiro, testes dedicados e documentacao/handoff.
+- Sem banco real, execucao de migrations, reinicios, commit/push ou deploy.
+- Escopo adicional autorizado: coluna Codigo antes de Tipo na listagem DP e
+  correcao do fechamento de pagamento somente leitura. Reservados tambem
+  RhDpPessoalSolicitacoes, rhSolicitacaoConsultaDomain, package.json (testes),
+  testes UI da gestao/coluna/consulta, README RH/Financeiro e registros workspace.
+- Concluido localmente: backend transacional, UI desktop/mobile, negativos de
+  ACL/visibilidade, schema isolado, regressoes, build e navegacao aprovados.
+  Reserva encerrada e ownership liberado. Handoff especifico registrado;
+  migration somente criada, nao aplicada. Sem commit/push/EC2/banco real.
+- Publicacao agora autorizada: reserva temporaria do delta e documentacao para
+  commit/push refactor/frontend, novo script DEV e teste isolado do deploy.
+  Comandos incluem somente 202610150002_comprovante_compartilhado_fila.js;
+  agente nao executa na EC2/banco real e nao altera main.
+- Script e teste de deploy DEV concluidos, guardas/negativas aprovadas e
+  regressoes repetidas. Reserva de publicacao encerrada e ownership liberado;
+  somente delta desta tarefa, sem outputs/.
+
 ## Contexto da recarga excluida / primeira recarga - 2026-10-15
 
 - Sessao codex-recarga-contexto-excluida-20261015, agente unico, concluida local;

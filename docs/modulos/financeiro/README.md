@@ -1,5 +1,32 @@
 # Modulo FINANCEIRO
 
+## Comprovante compartilhado na fila - 2026-10-15
+
+- Mesmo PDF pode ser vinculado a titulos diferentes no upload individual,
+  importador e nova acao Anexar mesmo comprovante. Nunca duplica o mesmo par
+  fila/hash. Reutilizacao no importador exige escolha explicita do destino,
+  sem expor codigo ou dados de outro titulo onde o PDF tenha sido utilizado.
+- Lote seleciona de 1 a 100 itens PENDENTE sem baixa ou pendentes de comprovante.
+  POST /financeiro/fila-pagamentos/comprovantes/compartilhar usa a mesma permissao
+  de anexar individualmente (baixar), modulo Financeiro e limite seguro de upload;
+  arquivo PDF ate 12 MB. Nao cria permissao ou bypass de visibilidade novo.
+- Acao apenas anexa: nao baixa, nao altera conta/data/valor, nao envia ao banco
+  nem autoriza divergencia. Em Todos, Baixa em massa recebe apenas pendentes sem
+  pagamento; a selecao para comprovante nao pode repetir uma baixa ja registrada.
+- Valida todos antes de subir, revalida status/movimento sob locks da fila em
+  ordem e grava todos os vinculos/auditoria em uma transacao. Falha reverte o
+  lote. S3 usa chave por destino para preservar ACLs/anexos de cada solicitacao.
+  PDFs sobem antes da transacao; falha de infraestrutura pode deixar objetos
+  sem vinculo, como no upload existente, mas nunca vinculos parciais no banco.
+- Migration estrutural 202610150002_comprovante_compartilhado_fila.js cria
+  unicidade (fila_id, hash) e remove apenas unicidades globais do hash nas duas
+  tabelas, mantendo indices de busca. Idempotente, sem seeds/backfill ou ajuste
+  de registros; down nao apaga vinculos para voltar a unicidade global.
+  Deve ser aplicada no ambiente homologado antes de usar compartilhamento.
+- Testes isolados: validarFilaComprovantePendente.js (inclui lote/replay/rollback),
+  validarComprovanteCompartilhadoSchema.js, validarComprovantesPdfFila.js e
+  validarFilaInstrumentosUI.mjs (desktop/mobile, sem baixa automatica).
+
 ## Regularizar recarga de solicitacao excluida - 2026-10-15
 
 - Menu Solicitacoes > Regularizar recargas, exclusivo de GEO/SUPERADMIN,

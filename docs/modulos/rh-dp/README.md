@@ -1,5 +1,32 @@
 # Modulo RH/DP
 
+## Gestao da solicitacao de pagamento pelo DP - 2026-10-15
+
+- Modal oferece Remover da solicitacao por colaborador e Cancelar solicitacao
+  completa, sem PATCH livre de status. Exigem DP autorizado a editar apuracao,
+  mesmo escopo de obra e privacidade dos rascunhos. Com titulos gerados, exigem
+  tambem as permissoes existentes de gerar titulos e preparar a fila.
+- Motivo e revisao obrigatorios; transacao bloqueia solicitacao, titulos e fila.
+  Remocao conserva a linha no snapshot como CANCELADO/removido, fora da tabela
+  ativa e do vinculo de consulta do colaborador; nome/motivo ficam consultaveis.
+  PUT/rascunho local nao pode ressuscitar a linha removida.
+- Cancela salarios sem baixa e ajusta a parte individual do vale compartilhado,
+  preservando os demais. Cancelamento integral valida TODOS antes de alterar
+  qualquer um, cancela titulos/fila e marca CANCELADA. Nenhum pagamento ou anexo
+  e apagado. Ha auditoria financeira e historico RH na mesma transacao.
+- Baixa ativa/parcial, fila processada, bloqueios ou envio bancario impedem a
+  acao. Estorno integral ja concluido pode permitir cancelar o saldo reaberto;
+  movimentos e filas estornadas permanecem no historico. O fluxo nao estorna
+  automaticamente. Repeticao apos sucesso nao duplica cancelamento/historico.
+- Listagem mostra Codigo antes de Tipo no padrao (colunas personalizadas
+  continuam respeitadas). Contagem de pagamento nao inclui linhas removidas.
+- Consulta sem edicao (Obra ou pedido encerrado) nao fica suja por receber
+  cadastro atualizado; Fechar nao executa salvar nem pede permissao de edicao.
+  Autosave/fechar com edicoes legitimas continuam no fluxo editavel.
+- Testes: validarRhPagamentoEnvioParcial.js, validarRhPagamentoSolicitacao.js,
+  validarRhPagamentoSolicitacaoUI.mjs e validarRhPessoalAcoesIcones.mjs. Sem
+  migrations RH ou escrita em banco real na implementacao local.
+
 ## Limite operacional da conferencia de pagamento - 2026-10-15
 
 O autosave e as marcacoes Conferido usam limite dedicado de 300 salvamentos por

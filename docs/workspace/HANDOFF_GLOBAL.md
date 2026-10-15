@@ -1,5 +1,20 @@
 # Handoff Global
 
+## DP: cancelamento e comprovante compartilhado - 2026-10-15
+
+- Concluido local, sem publicacao. Remover colaborador/cancelar pagamento inteiro
+  com motivo, revisao, auditoria e bloqueio de baixa/banco; preserva permissoes.
+- Mesmo PDF em titulos distintos e lote sem baixa. Migration estrutural nova
+  202610150002_comprovante_compartilhado_fila.js, NAO aplicada pelo agente.
+- Codigo antes do Tipo no padrao DP; consulta atualizada nao tenta salvar ao
+  fechar em modo leitura. Testes backend/UI/build/navegacao aprovados.
+- Handoff: docs/handoffs/2026-10-15-dp-cancelamento-comprovante-compartilhado.md.
+  Ownership liberado; sem commit/push/EC2/banco real. outputs/ fora do Git.
+- Publicacao posterior autorizada pelo usuario na refactor/frontend. Script
+  DEV dp-comprovante-compartilhado-20261015 e teste isolado preparados; comandos
+  aplicam apenas a migration nova apos conferir identidade e reiniciam backend-dev.
+  Nenhuma operacao real na EC2/banco pelo agente; main preservada.
+
 ## Regularizacao GEO global sem ampliar visibilidade - 2026-10-15
 
 - Excecao global apenas na regularizacao de recargas excluidas; sem alterar

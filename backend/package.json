@@ -8,7 +8,7 @@
     "test:medicao-recarga-envio": "node scripts/validarMedicaoRecargaFluxoPagamento.js && node scripts/validarRecargasMultiplosCartoes.js && node scripts/validarObraGestaoApropriacoes.js && node scripts/validarAnaliseProprietario.js",
     "test:fila-juros-multa": "node scripts/validarFilaJurosMulta.js && node scripts/validarCartaoOpcionalSolicitacao.js && node scripts/validarFilaInstrumentos.js",
     "test:rhdp-pessoal-solicitacao": "node scripts/validarRhPessoalPorSolicitacao.js && node scripts/validarRhConferenciaGuiada.js",
-    "test:fila-comprovante-pendente": "node scripts/validarFilaComprovantePendente.js",
+    "test:fila-comprovante-pendente": "node scripts/validarFilaComprovantePendente.js && node scripts/validarComprovanteCompartilhadoSchema.js",
     "test:fila-instrumentos": "node scripts/validarAutorizacaoConsultaSql.js && node scripts/validarFilaInstrumentos.js && node scripts/validarCartaoOpcionalSolicitacao.js && node scripts/validarAnaliseProprietario.js",
     "test:autorizacao-consulta-sql": "node scripts/validarAutorizacaoConsultaSql.js",
     "test:compra-direta-credor": "node scripts/validarCredorCompraDireta.js",

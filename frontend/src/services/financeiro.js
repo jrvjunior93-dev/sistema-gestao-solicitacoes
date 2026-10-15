@@ -113,6 +113,16 @@ export async function getComprovanteFilaPagamento(filaId, comprovanteId = null) 
   return parseJson(response, 'Erro ao abrir comprovante de pagamento');
 }
 
+export async function anexarComprovanteFilaPagamentoLote(filaIds, arquivo) {
+  const form = new FormData();
+  form.append('fila_ids', JSON.stringify(filaIds));
+  form.append('file', arquivo);
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/comprovantes/compartilhar`, {
+    method: 'POST', headers: authHeaders(), body: form
+  });
+  return parseJson(response, 'Erro ao anexar comprovante aos títulos selecionados');
+}
+
 export async function getArquivosSolicitacaoFila(id) {
   const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/solicitacoes/${id}/arquivos`, {
     headers: authHeaders(),
