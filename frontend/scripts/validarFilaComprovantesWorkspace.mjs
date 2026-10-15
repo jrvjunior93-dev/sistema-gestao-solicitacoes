@@ -92,7 +92,8 @@ try{
     console.log('OK comprovantes '+width+'px: Files/IDs em memoria, leitura explicita atual, negativa, mutex, falha parcial sem replay.');
 
     await goto();await leave();await page.evaluate(()=>window.rows=[{id:1,status:'PENDENTE',juros:0,multa:0,titulo:{id:1,codigo:'TIT-CHEQUE-QA',status:'ABERTO',valor_saldo:100,forma_pagamento_id:4}}]);await back();
-    await page.getByRole('button',{name:'Dados do cheque próprio de TIT-CHEQUE-QA',exact:true}).click();
+    await page.getByLabel('Origem do cheque de TIT-CHEQUE-QA',{exact:true}).selectOption('PROPRIO');
+    // A escolha explicita da origem ja abre o editor no fluxo atual.
     const cheque=page.getByRole('dialog',{name:'Dados do cheque próprio de TIT-CHEQUE-QA',exact:true});
     const number=cheque.getByLabel('Numero do cheque *',{exact:true});await number.fill('123-ULTIMA-TECLA');
     await cheque.getByLabel('Emitente / titular *',{exact:true}).fill('Emitente digitado QA');

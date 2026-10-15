@@ -39,6 +39,7 @@ const models = new Proxy({
   Parceiro: { findByPk: async () => ({ id: 1, ativo: true, fornecedor: true, cliente: true }) },
   CategoriaFinanceira: { findByPk: async () => ({ id: 1, ativo: true, natureza: 'DESPESA', classificacao_dre: 'CUSTO', dre_grupo: 'CUSTOS' }) },
   Solicitacao: { findByPk: async () => solicitacao },
+  SolicitacaoCompra: { findOne: async () => null },
   Historico: { create: async (data) => { state.historico.push(data); return data; } },
   ChequeTerceiro: { findOne: async ({ where }) => state.cheques.find(row => row.id === where.id && row.status === where.status) },
   ChequeTerceiroMovimento: { create: async data => { state.chequeEventos.push(data); return data; } },
@@ -118,6 +119,15 @@ vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/paga
   module: saldoModule, require(id) { if (!(id in dependencies)) throw Error(`Dependencia nao isolada: ${id}`); return dependencies[id]; }
 });
 dependencies['./pagamentoFilaSaldoService'] = saldoModule.exports;
+const freteModule = { exports: {} };
+vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/compraDiretaFreteFinanceiroService.js'), 'utf8'), {
+  module: freteModule, require(id) {
+    if (id === 'node:crypto') return require(id);
+    if (!(id in dependencies)) throw Error(`Dependencia de frete nao isolada: ${id}`);
+    return dependencies[id];
+  }
+});
+dependencies['./compraDiretaFreteFinanceiroService'] = freteModule.exports;
 const isolated = { exports: {} };
 vm.runInNewContext(fs.readFileSync(file, 'utf8') + '\nmodule.exports.test = { validarFormaPagamentoFinanceira, resolverFormaPagamentoBaixa, resolverCartaoBaixa };', {
   module: isolated, console, Date, Intl,

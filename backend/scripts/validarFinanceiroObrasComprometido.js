@@ -4,15 +4,19 @@ const {
   MovimentoFinanceiro,
   ObraCustoHistorico,
   PedidoCompraFrete,
-  TituloFinanceiro
+  TituloFinanceiro,
+  TituloFinanceiroRateio,
+  sequelize
 } = require('../src/models');
-const { gerarRelatorioFinanceiroObras } = require('../src/services/relatorioFinanceiroService');
+const { gerarRelatorioFinanceiroObras, summarizeDreRows } = require('../src/services/relatorioFinanceiroService');
 
 const original = {
   movimentos: MovimentoFinanceiro.findAll,
   historicos: ObraCustoHistorico.findAll,
   fretes: PedidoCompraFrete.findAll,
-  titulos: TituloFinanceiro.findAll
+  titulos: TituloFinanceiro.findAll,
+  rateios: TituloFinanceiroRateio.findAll,
+  query: sequelize.query
 };
 
 const tituloParcial = {
@@ -43,6 +47,8 @@ function assertObraOuRateio(where) {
 }
 
 async function verificar() {
+  sequelize.query = async () => { throw new Error('Consulta real proibida neste teste isolado.'); };
+  TituloFinanceiroRateio.findAll = async () => [];
   MovimentoFinanceiro.findAll = async (options) => {
     assert.equal(options.where.status, 'ATIVO');
     assertObraOuRateio(options.include[0].where);
@@ -95,6 +101,26 @@ async function verificar() {
   assert.equal(apenasPlanilha.resumo.historicos, 1);
   assert.equal(apenasPlanilha.linhas.length, 1);
 
+  // Recarga sai do caixa integralmente, mas so os gastos validados vao ao custo.
+  // Rateio em outra obra deve chegar pelo destino, sem uma segunda linha na origem.
+  ObraCustoHistorico.findAll = async () => [];
+  TituloFinanceiroRateio.findAll = async options => {
+    assert.equal(options.where.obra_id, 3);
+    assert(options.include[1].where.origem_titulo[Op.in].includes('RECARGA_CARTAO'));
+    return [{ toJSON: () => ({ id: 80, obra_id: 3, valor_rateio: 700, obra: tituloParcial.obra,
+      tituloFinanceiro: { ...tituloParcial, id: 8, origem_titulo: 'RECARGA_CARTAO', obra_id: 99,
+        valor_original: 1000, valor_baixado: 1000, valor_saldo: 0, valor_despesa_prestacao: 700,
+        movimentos: [{ id: 88, status: 'ATIVO', valor: 1000, data_movimento: '2026-09-10' }] } }) }];
+  };
+  const gastos = await gerarRelatorioFinanceiroObras(req, { ...filtros, analise: 'REALIZADO' });
+  assert.equal(gastos.resumo.debito_total, 700);
+  assert.equal(gastos.linhas.length, 1);
+  assert.equal(gastos.linhas[0].obra_id, 3);
+  const categoriaFinanceira = { id: 1, nome: 'Material', dre_grupo: 'Custos das obras e servicos', considera_dre: true };
+  const dre = summarizeDreRows([{ ...tituloParcial, tipo: 'PAGAR', considera_dre: true, origem_titulo: 'RECARGA_CARTAO',
+    valor_original: 1000, valor_despesa_prestacao: 700, categoriaFinanceira }]);
+  assert.equal(dre.resumo.despesas, 700);
+
   console.log('Financeiro de Obras: comprometido = realizado + a realizar, sem duplicidade e com historico legado.');
 }
 
@@ -106,4 +132,6 @@ verificar().catch((error) => {
   ObraCustoHistorico.findAll = original.historicos;
   PedidoCompraFrete.findAll = original.fretes;
   TituloFinanceiro.findAll = original.titulos;
+  TituloFinanceiroRateio.findAll = original.rateios;
+  sequelize.query = original.query;
 });

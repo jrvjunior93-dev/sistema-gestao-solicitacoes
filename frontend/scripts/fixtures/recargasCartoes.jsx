@@ -24,6 +24,8 @@ function Fixture() {
     <RecargasCartoesFields ativo obraId={origem} value={linhas} totalSolicitado={total} onChange={alterar} onContextChange={setContexto} />
     <output data-testid="linhas">{JSON.stringify(linhas)}</output>
     <output data-testid="bloqueio">{String(contexto?.bloqueado)}</output>
+    <output data-testid="motivo-bloqueio">{contexto?.motivo_bloqueio || ''}</output>
+    <button type="button" className="btn btn-primary" disabled={!linhas.length || contexto?.bloqueado}>Criar Solicitação</button>
     <h2 className="text-lg font-semibold">Detalhes · prestações por cartão</h2>
     <RecargaCartaoDetalhe solicitacaoId={100} />
   </main>;

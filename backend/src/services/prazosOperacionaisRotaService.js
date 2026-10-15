@@ -32,6 +32,7 @@ async function obrasDaOperacao(req, models = db) {
   let match;
   if ((match = path.match(/^\/solicitacoes\/(\d+)(\/|$)/))) await buscar('Solicitacao', match[1]);
   else if ((match = path.match(/^\/recargas-cartao\/solicitacoes\/(\d+)(\/|$)/))) await buscar('Solicitacao', match[1]);
+  else if ((match = path.match(/^\/recargas-cartao\/regularizacao\/(\d+)(\/|$)/))) await buscar('Solicitacao', match[1]);
   else if ((match = path.match(/^\/compras\/solicitacoes\/(\d+)(\/|$)/))) await buscar('SolicitacaoCompra', match[1]);
   else if ((match = path.match(/^\/compras\/pedidos\/(\d+)(\/|$)/))) await buscar('PedidoCompra', match[1]);
   else if ((match = path.match(/^\/contratos\/(?:fluxo-novo\/)?aditivos\/(\d+)(\/|$)/))) await buscar('ContratoAditivo', match[1], true);

@@ -25,7 +25,7 @@ async function auditar(registros, s, req, transaction, acao, motivo) {
 
 // Mesmo ordenamento da baixa canonica: todos os titulos, depois todos os itens.
 // O lock do titulo serializa tambem baixa direta, conciliacao e pagamento bancario.
-async function travar(s, dados, colaboradoresIds, transaction) {
+async function travar(s, dados, colaboradoresIds, transaction, { permitirEstornoConcluido = false } = {}) {
   const ids = new Set(colaboradoresIds.map(Number));
   const refs = dados.titulos.filter(t => !t.cancelado && (t.tipo === 'SALARIO'
     ? ids.has(Number(t.colaborador_id)) : t.origens?.some(o => ids.has(Number(o.colaborador_id)))));
@@ -44,10 +44,14 @@ async function travar(s, dados, colaboradoresIds, transaction) {
   }
   const filas = await PagamentoManualFilaItem.findAll({ where: { titulo_financeiro_id: { [Op.in]: titulosIds } },
     transaction, lock: transaction.LOCK.UPDATE, order: [['id', 'ASC']] });
-  if (filas.some(f => f.movimento_financeiro_id || ['BAIXADO', 'RESOLVIDO'].includes(f.status))) {
+  const estornada = f => permitirEstornoConcluido && f.status === 'RESOLVIDO'
+    && Number.isSafeInteger(Number(f.instrumento_pagamento_json?.estorno?.reaberto_id))
+    && Number(f.instrumento_pagamento_json?.estorno?.reaberto_id) > 0;
+  if (filas.some(f => !estornada(f) && (f.movimento_financeiro_id || ['BAIXADO', 'RESOLVIDO'].includes(f.status)))) {
     throw new ValidationError('Pagamento processado: nao pode ser revisado ou cancelado pelo DP.', 409);
   }
-  if (await MovimentoFinanceiro.count({ where: { titulo_financeiro_id: { [Op.in]: titulosIds } }, transaction })) {
+  if (await MovimentoFinanceiro.count({ where: { titulo_financeiro_id: { [Op.in]: titulosIds },
+    ...(permitirEstornoConcluido ? { status: { [Op.ne]: 'ESTORNADO' } } : {}) }, transaction })) {
     throw new ValidationError('Ha baixa registrada, inclusive parcial/estornada. Revisao e cancelamento nao permitidos.', 409);
   }
   if (await PaymentIntent.count({ where: { titulo_financeiro_id: { [Op.in]: titulosIds },
@@ -56,7 +60,7 @@ async function travar(s, dados, colaboradoresIds, transaction) {
   }
   return refs.map(ref => {
     const titulo = titulos.find(t => Number(t.id) === Number(ref.id));
-    const ativas = filas.filter(f => Number(f.titulo_financeiro_id) === Number(ref.id) && f.status !== 'CANCELADO');
+    const ativas = filas.filter(f => Number(f.titulo_financeiro_id) === Number(ref.id) && f.status !== 'CANCELADO' && !estornada(f));
     return { ref, titulo, filas: ativas, anterior: snapshot(titulo, ativas), referenciaAnterior: JSON.parse(JSON.stringify(ref)) };
   });
 }

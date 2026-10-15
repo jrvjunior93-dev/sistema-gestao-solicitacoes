@@ -1,5 +1,6 @@
 const {
   anexarComprovanteFila,
+  anexarComprovanteFilaLote,
   aprovarDivergenciasFila,
   enfileirarTitulos,
   informarNaoPagamento,
@@ -24,6 +25,16 @@ function responderErro(res, error, fallback) {
 }
 
 module.exports = {
+  async anexarComprovanteLote(req, res) {
+    try {
+      let ids;
+      try { ids = typeof req.body?.fila_ids === 'string' ? JSON.parse(req.body.fila_ids) : req.body?.fila_ids; }
+      catch { return res.status(400).json({ message: 'Selecao de titulos invalida.' }); }
+      const result = await anexarComprovanteFilaLote(req, ids, req.file);
+      return res.json({ quantidade: result.quantidade, criados: result.criados, ja_vinculados: result.ja_vinculados,
+        itens: result.itens.map(i => ({ id: i.id, comprovante_nome: i.comprovante_nome })) });
+    } catch (error) { return responderErro(res, error, 'Erro ao anexar comprovante aos selecionados'); }
+  },
   async estornar(req, res) {
     try { return res.json(await estornarBaixaFila(req, req.params.id, req.body)); }
     catch (error) { return responderErro(res, error, 'Erro ao estornar baixa da fila'); }

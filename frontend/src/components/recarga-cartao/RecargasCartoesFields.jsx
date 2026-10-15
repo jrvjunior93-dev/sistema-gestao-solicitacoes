@@ -28,7 +28,7 @@ export default function RecargasCartoesFields({ ativo, obraId, value, totalSolic
     setContextos((atual) => ({ ...atual, [id]: contexto }));
   }, []);
   useEffect(() => {
-    const pendente = value.some((linha) => !contextos[linha.cartao_recarga_id]);
+    const pendente = value.some((linha) => !contextos[linha.cartao_recarga_id] || contextos[linha.cartao_recarga_id]?.carregando);
     const bloqueado = value.find((linha) => contextos[linha.cartao_recarga_id]?.bloqueado);
     const valoresInvalidos = value.some((linha) => !Number.isFinite(numero(linha.valor)) || numero(linha.valor) <= 0);
     onContextChange({ bloqueado: pendente || Boolean(bloqueado) || valoresInvalidos, motivo_bloqueio: pendente ? 'Aguarde a conferência dos cartões.' : bloqueado ? contextos[bloqueado.cartao_recarga_id]?.motivo_bloqueio : valoresInvalidos ? 'Informe um valor maior que zero para cada cartão.' : null });

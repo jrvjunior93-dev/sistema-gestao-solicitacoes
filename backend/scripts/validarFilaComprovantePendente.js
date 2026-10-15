@@ -12,7 +12,7 @@ const { validateManualPaymentQueueQuery } = require('../src/validators/paymentVa
 let rows = [], proofs = [], histories = [], attachments = [], uploads = 0, locks = 0,
   changeDuringUpload = false, allowSettlement = false, settlements = 0, historyFails = false;
 let transactionTail = Promise.resolve(), audits = [], actor = { id: 99, perfil: 'SUPERADMIN', ativo: true }, auditFails = false;
-let tamperAtStart = false;
+let tamperAtStart = false, canAttach = true;
 const req = { user: { id: 99 } };
 const record = data => ({ ...data, async update(changes) { Object.assign(this, changes); return this; },
   toJSON() { return { ...this }; } });
@@ -97,7 +97,7 @@ const deps = {
   } },
   '../utils/fileName': require('../src/utils/fileName'),
   './tituloBloqueioRetornoObraService': { assertTituloDisponivelParaBaixa: () => {} }, './analiseProprietarioService': {},
-  './pagamentoAutorizacaoFilaService': {}, './fileAccessService': {}, './authorizationService': {},
+  './pagamentoAutorizacaoFilaService': {}, './fileAccessService': {}, './authorizationService': { canBaixarFilaPagamentos: async () => canAttach },
   './solicitacaoFinanceiroStatusService': {}, '../config/env': { env: {} }, './paymentOwnerApprovalPolicy': {}
 };
 function load(name) {
@@ -177,7 +177,10 @@ async function main() {
   await assert.rejects(fila.anexarComprovanteFila(req, 1, { buffer: Buffer.from('not pdf') }), /PDF valido/);
   rows[0].somente_consulta = true; await assert.rejects(fila.anexarComprovanteFila(req, 1, file('invalid.pdf')), /nao permite/);
   reset(); rows.push(record({ id: 2, status: 'BAIXADO', movimento_financeiro_id: 11, comprovante_hash: hash(file('duplicate.pdf')) }));
-  await assert.rejects(fila.anexarComprovanteFila(req, 1, file('duplicate.pdf')), /outro titulo/);
+  await fila.anexarComprovanteFila(req, 1, file('duplicate.pdf'));
+  assert.equal(proofs.length, 1, 'Mesmo arquivo permitido em outro titulo');
+  await fila.anexarComprovanteFila(req, 1, file('duplicate.pdf'));
+  assert.equal(proofs.length, 1, 'Mesmo par fila/hash nao duplica');
   reset(); const before = financial(rows[0]), input = file('batch.pdf');
   const preview = await pdf.previewReceipts([input]);
   assert.equal(preview.titulos_pendentes[0].pagamento_registrado, true);
@@ -188,8 +191,51 @@ async function main() {
   assert.equal(financial(rows[0]), before); assert.equal(proofs.length, 1);
   assert.equal(histories.length, 1); assert.equal(attachments.length, 1);
   assert.equal(domain.pendenteComprovanteFila(rows[0]), false);
-  await assert.rejects(pdf.linkReceipts(req, [input], [{ fila_id: 1, arquivo_hash: hash(input) }]), /anteriormente/);
+  const uploadsAntesReplay = uploads;
+  await pdf.linkReceipts(req, [input], [{ fila_id: 1, arquivo_hash: hash(input) }]);
   assert.equal(proofs.length, 1);
+  assert.equal(uploads, uploadsAntesReplay, 'Replay do importador nao duplica upload');
+  const reutilizado = await pdf.previewReceipts([input]);
+  assert.equal(reutilizado.arquivos[0].duplicado, null);
+  assert.equal(reutilizado.arquivos[0].arquivo_reutilizado, true);
+  assert.equal(reutilizado.arquivos[0].fila_sugerida_id, null, 'Reutilizado exige escolha explicita, sem informar titulo externo');
+
+  const doisDestinos = () => {
+    reset('PENDENTE', null); rows[0].titulo.status = 'ABERTO'; rows[0].titulo.valor_saldo = 200;
+    const outra = JSON.parse(JSON.stringify(rows[0]));
+    Object.assign(outra, { id: 2, status: 'BAIXADO', movimento_financeiro_id: 12, titulo_financeiro_id: 101 });
+    Object.assign(outra.titulo, { id: 101, codigo: 'TIT-OUTRO', solicitacao_id: 201, status: 'QUITADO', valor_saldo: 0 });
+    rows.push(record(outra));
+  };
+  doisDestinos();
+  const financeiroAntes = rows.map(financial);
+  canAttach = false; await assert.rejects(fila.anexarComprovanteFilaLote(req, [1, 2], input), /Acesso negado/); canAttach = true;
+  for (const ids of [[], [1, 1], [-1], [true], [null], [1, 'x'], [1.1], [Number.MAX_SAFE_INTEGER + 1], Array.from({length:101}, (_,i)=>i+1)]) {
+    await assert.rejects(fila.anexarComprovanteFilaLote(req, ids, input), /valido/);
+  }
+  await assert.rejects(fila.anexarComprovanteFilaLote(req, [1, 999], input), /nao permite/);
+  assert.equal(uploads, 0, 'Lote invalido nao sobe nenhum PDF');
+  const batchReceipts = await fila.anexarComprovanteFilaLote(req, [2, 1], input);
+  assert.equal(batchReceipts.criados, 2); assert.equal(proofs.length, 2);
+  assert.notEqual(proofs[0].url, proofs[1].url, 'Chaves distintas preservam ACL de cada destino');
+  assert.deepEqual(rows.map(financial), financeiroAntes); assert.equal(settlements, 0);
+  assert.equal(histories.length, 1, 'Somente destino com baixa recebe historico operacional');
+  assert(audits.some(a => a.tipo_evento === 'MANUAL_PAYMENT_RECEIPT_SHARED'));
+  const uploaded = uploads, historicos = histories.length, auditados = audits.length;
+  await Promise.all([fila.anexarComprovanteFilaLote(req, [1, 2], input), fila.anexarComprovanteFilaLote(req, [2, 1], input)]);
+  assert.equal(uploads, uploaded); assert.equal(proofs.length, 2); assert.equal(histories.length, historicos); assert.equal(audits.length, auditados);
+  doisDestinos(); auditFails = true;
+  await assert.rejects(fila.anexarComprovanteFilaLote(req, [1, 2], input), /Auditoria/);
+  auditFails = false; assert.equal(proofs.length, 0); assert.equal(histories.length, 0); assert.equal(attachments.length, 0);
+  assert(rows.every(r => r.comprovante_hash === null), 'Falha no lote reverte todos os vinculos');
+  doisDestinos(); changeDuringUpload = true;
+  await assert.rejects(fila.anexarComprovanteFilaLote(req, [1, 2], input), /nao permite|mudou/);
+  changeDuringUpload = false; assert.equal(proofs.length, 0);
+  // Mesmo arquivo no importador tambem pode ser reutilizado em outro destino.
+  doisDestinos(); await pdf.linkReceipts(req, [input], [{fila_id:1,arquivo_hash:hash(input)}]);
+  await pdf.linkReceipts(req, [input], [{fila_id:2,arquivo_hash:hash(input)}]);
+  assert.equal(proofs.length, 2); assert.notEqual(proofs[0].url, proofs[1].url); assert.equal(settlements, 0);
+  console.log('Comprovante compartilhado: individual/importador/lote, dois destinos, sem baixa, ACL de arquivo por destino, replay/concorrencia, auditoria e rollback aprovados.');
   reset(); changeDuringUpload = true;
   await assert.rejects(pdf.linkReceipts(req, [input], [{ fila_id: 1, arquivo_hash: hash(input) }]), /mudou enquanto/);
   assert.equal(proofs.length, 0); assert.equal(rows[0].comprovante_hash, null);

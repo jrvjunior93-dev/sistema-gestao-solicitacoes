@@ -374,7 +374,7 @@ function filtroFinanceiroObras() {
   const where = module.exports({}, obraWhere, {}, 'REALIZADO');
   const recarga = { obra_id: 10, origem_titulo: 'RECARGA_CARTAO', status: 'QUITADO', possui_rateio: false, considera_dre: false };
   assert.equal(matches(recarga, where), false);
-  assert.equal(matches({ ...recarga, possui_rateio: true, considera_dre: true }, where), true);
+  assert.equal(matches({ ...recarga, possui_rateio: true, considera_dre: true }, where), false, 'Gasto validado entra pelo rateio de destino, sem duplicar na origem.');
   assert.equal(matches({ ...recarga, origem_titulo: null }, where), true, 'Titulos legados preservados.');
   assert.equal(matches({ ...recarga, obra_id: 99, origem_titulo: null }, where), false, 'Escopo de obra continua limitado.');
   const busca = module.exports({ q: 'QA' }, obraWhere, {}, 'REALIZADO');

@@ -42,6 +42,81 @@
   runtime conferidos sem diferenca contra suas bases corretas.
 - Sem banco, migration aplicada ou deploy; publicar somente Git autorizado.
 - Handoff: docs/handoffs/2026-10-08-promocao-operacional-main.md.
+## DP cancelamento/comprovantes - 2026-10-15
+
+- Agente unico, sem delegacao; implementacao e testes locais concluidos.
+- Remocao/cancelamento auditados, comprovante por destino/lote, codigo DP e
+  fechar consulta sem PUT. Permissoes e visibilidade preservadas.
+- Migration estrutural criada, nao aplicada. Sem commit/push/EC2/banco real.
+  Ownership liberado; handoff 2026-10-15-dp-cancelamento-comprovante-compartilhado.md.
+- Publicacao autorizada posteriormente: script DEV com migration unica e teste
+  isolado de guardas aprovados. Sem EC2/banco real/main pelo agente.
+
+## Regularizacao GEO global e visibilidade - 2026-10-15
+
+- Agente unico, sem delegacao. Usuario autorizou excecao apenas na regularizacao.
+- Setor/status e ACLs genericas preservados; auditoria isolada nao concede
+  leitura. Backend/UI/isolamento aprovados; sem migration/publicacao/banco real.
+- Handoff 2026-10-15-recarga-geo-global-visibilidade.md registrado.
+
+## Regularizacao de recarga excluida - 2026-10-15
+
+- Agente unico, sem delegacao. Implementacao local e testes isolados concluidos.
+- GEO/SUPERADMIN regulariza sem pagamento ou recupera a original paga, com
+  escopo, auditoria e bloqueios financeiros. Sem novo bypass operacional.
+- Handoff especifico registrado; sem migration/commit/push/EC2/banco real.
+- Publicacao dev agora autorizada; delta e script seguro preparados para
+  commit/push refactor/frontend, com repeticao das validacoes locais.
+
+## Contexto recarga excluida - 2026-10-15
+
+- codex-recarga-contexto-excluida-20261015: concluido local, agente unico.
+- Corrigida falsa ausencia de historico/404 da recarga excluida, com protecao
+  das obrigacoes financeiras e POST. Loading/erro/retry explicitos na UI.
+- Backend adaptado, UI desktop/mobile/regressoes e build aprovados. Sem nova
+  migration, banco real, commit/push/EC2. Handoff especifico registrado.
+
+## Publicacao DEV saldo cartoes / DP - 2026-10-15
+
+- Commit/push refactor/frontend e script EC2 dev com migration unica autorizados.
+- Agente unico: staging do delta, testes backend/UI/build e preflight de deploy
+  com adaptadores isolados. Sem EC2 pelo agente ou alteracao na main/producao.
+- Script protege processo/porta8001/banco/flags, bloqueia outras migrations e
+  preserva repeticao segura. Operador homologa apos publicacao.
+- Backend/UI/build/docs e deploy isolado aprovados; ownership liberado para
+  staging/commit/publicacao solicitados. Nenhum comando remoto executado.
+
+## Saldo cartoes e conferencia DP - 2026-10-15
+
+- codex-cartao-saldo-dp-20261015: concluido local, sem delegacao;
+  ownership liberado, sem commit/push/deploy.
+- Prestacao pelos gastos reais, sobra por cartao e ajuste auditado GEO;
+  salvamento RH isolado do limite de operacoes criticas por IP.
+- Sem banco real/publicacao/deploy. Ownership no documento correspondente.
+- Testes services/middleware/migration isolados, regressao RH/financeiro,
+  UI desktop/mobile, build e docs aprovados; handoff registrado.
+
+## Publicacao DEV frete financeiro - 2026-10-15
+
+- Validado para publicacao, sem delegacao: commit/push autorizados na refactor/frontend,
+  script DEV com preflight de identidade/schema/flags e testes isolados.
+- Publicar somente delta funcional/documental da tarefa; main e outputs/
+  preservados. EC2 sera atualizada pelo operador, sem migration.
+- Backend, preflight/health isolados, UI desktop/mobile e build aprovados.
+  Evidencias no handoff 2026-10-15-compra-direta-frete-financeiro.md.
+
+## Sincronizacao financeira do frete Compra Direta - 2026-10-15
+
+- Sessao codex-compra-direta-frete-financeiro-20261015: finalizado local,
+  ownership liberado, sem delegacao.
+- Plano: mapear geracao/fila/baixa; sincronizar somente frete na transacao da
+  compra; complemento para pago; terceiro separado; bloquear reducao paga e
+  titulos protegidos; testes de replay, concorrencia, rollback e negativas.
+- Sem commit/push/deploy, migration ou banco real autorizado nesta etapa.
+- Services/geracao reais com adaptadores isolados, replay/rollback/concorrencia,
+  ACL/negativas, UI desktop/mobile, regressao SSE/modal, build, docs e sintaxe/diff
+  aprovados. Handoff: 2026-10-15-compra-direta-frete-financeiro.md.
+
 ## Publicacao DEV Compra Direta/admissao - 2026-10-15
 
 - Commit/push refactor/frontend autorizado; staging exclusivo dos ajustes e do

@@ -1,6 +1,7 @@
 {
   "descricao": "Telas sob as regras mecânicas de layout (docs/REGRAS-LAYOUT.md). Cada leva adiciona as suas aqui; o validarLayout.mjs reprova o que sair do padrão.",
   "telas": [
+    "src/pages/RecargasRegularizacao.jsx",
     "src/modules/crm/pages/CrmAdminCanais.jsx",
     "src/modules/crm/pages/CrmAdminIntegracoes.jsx",
     "src/modules/crm/pages/CrmAdminNumeros.jsx",

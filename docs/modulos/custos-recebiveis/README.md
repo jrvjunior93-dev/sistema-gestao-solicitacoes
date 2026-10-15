@@ -1,5 +1,14 @@
 # Custos e Recebiveis
 
+## Recargas com sobra - 2026-10-15
+
+Realizado mensal de recarga considera exclusivamente rateios de gastos
+validados, proporcionalmente ao principal baixado, sem transformar sobra de
+cartao em custo. Sem rateio validado, a origem operacional nao gera despesa.
+Consumo de saldo anterior pode superar o valor da recarga corrente. Nenhum
+planejamento/fechamento historico e reescrito. Ver README Financeiro e testes
+isolados `validarAdiantamentoFinanceiro.js`/`validarRecargasMultiplosCartoes.js`.
+
 ## Objetivo
 
 Custos e Recebiveis e um modulo independente para planejamento mensal, acompanhamento

@@ -52,6 +52,8 @@ async function criacao() {
     baixarTituloCartaoNoAto: async () => null, Historico: { create: noop }, getSetorUsuario: () => 'GEO', formatCurrency: String,
     marcarSolicitacaoComTituloCadastrado: noop, carregarTituloPorId: async () => criados[0], registrarEventoSeguranca: noop,
     require: nome => {
+      if (nome === './compraDiretaFreteFinanceiroService') return { prepararGeracao: async () => null,
+        prepararPagamentos: (_contexto, pagamentos) => pagamentos, validarGeracao: noop };
       if (nome === './adiantamentoService') return { ehAdiantamento: async () => adianta };
       if (nome === './solicitacaoFavorecidosService') return { listarFavorecidos: async () => partes,
         validarFavorecidos: async (dados, opts) => require('../src/services/solicitacaoFavorecidosDomain').normalizarFavorecidos(dados, opts) };
@@ -151,7 +153,7 @@ async function relatorios() {
     const result = await service.gerarRelatorioFinanceiroObras(req, { ...filtro, analise });
     assert.equal(result.linhas.length, 1); assert.equal(result.linhas[0].obra_id, 2);
     assert.equal(queryRateios.where.obra_id[Op.in][0], 2, 'Filtro aplicado ao destino, sem liberar o centro de origem');
-    assert.equal(queryRateios.include[1].where.origem_titulo, 'ADIANTAMENTO');
+    assert.deepEqual(Array.from(queryRateios.include[1].where.origem_titulo[Op.in]), ['ADIANTAMENTO', 'RECARGA_CARTAO']);
     assert.equal(result.linhas[0].debito, 800);
   }
   queryRateios = null; await service.gerarRelatorioFinanceiroObras(req, { ...filtro, analise: 'A_REALIZAR' }); assert.equal(queryRateios, null);
@@ -181,6 +183,12 @@ async function relatorios() {
     './tituloRenegociacaoLeitura': { buscarTitulos: async () => [], buscarMovimentos: async () => [] } });
   assert.equal((await resultado.gerarResultadoObras({ obraIdsEscopo: [2] }))[0].pagar.executado, 800);
   assert.equal((await resultado.gerarResultadoObras({ obraIdsEscopo: [2], query: filtro }))[0].pagar.executado, 800);
+  titulo.origem_titulo = 'RECARGA_CARTAO';
+  titulo.possui_rateio = true;
+  assert.equal((await ctx.totalBaixasFinanceirasPorCompetencia(2, ['2026-10'], 'PAGAR', deps)).get('2026-10'), 800);
+  assert.equal((await resultado.gerarResultadoObras({ obraIdsEscopo: [2], query: filtro }))[0].pagar.executado, 800);
+  titulo.considera_dre = false;
+  assert.equal((await ctx.totalBaixasFinanceirasPorCompetencia(2, ['2026-10'], 'PAGAR', deps)).get('2026-10'), 0);
 }
 async function protecaoBaixa() {
   const source = read('src/services/tituloFinanceiroService.js');

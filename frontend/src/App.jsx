@@ -76,7 +76,8 @@ import {
   canViewFiscalLogs,
   hasEnabledModule,
   isBusinessAdmin,
-  isSuperadmin
+  isSuperadmin,
+  canRegularizarRecarga
 } from './utils/acessoProduto';
 import {
   SST_NAV,
@@ -101,6 +102,11 @@ const PainelGestorSaldosRegistro = lazy(() => import('./pages/PainelGestorSaldos
 const Solicitacoes = lazy(() => import('./pages/Solicitacoes'));
 const SolicitacaoDetalhe = lazy(() => import('./pages/SolicitacaoDetalhe'));
 const SolicitacoesArquivadas = lazy(() => import('./pages/SolicitacoesArquivadas'));
+const RecargasRegularizacao = lazy(() => import('./pages/RecargasRegularizacao'));
+function RecargasRegularizacaoRoute() {
+  const { user } = useAuth();
+  return canRegularizarRecarga(user) ? <RecargasRegularizacao /> : <Navigate to="/solicitacoes" replace />;
+}
 const SolicitacoesRelatorioOperacional = lazy(() => import('./pages/SolicitacoesRelatorioOperacional'));
 const SolicitacoesSlaSetor = lazy(() => import('./pages/SolicitacoesSlaSetor'));
 const PrazosOperacionaisConfig = lazy(() => import('./pages/PrazosOperacionaisConfig'));
@@ -957,6 +963,7 @@ export default function App() {
         <Route path="solicitacoes-sla-setor" element={<BusinessAdminRoute><SolicitacoesSlaSetor /></BusinessAdminRoute>} />
         <Route path="prazos-operacionais" element={<ConfiguracoesAreaRoute area="status_vinculos"><PrazosOperacionaisConfig /></ConfiguracoesAreaRoute>} />
         <Route path="solicitacoes-arquivadas" element={<SolicitacoesArquivadas />} />
+        <Route path="recargas-cartao/regularizacao" element={<RecargasRegularizacaoRoute />} />
         <Route path="solicitacoes/:id" element={<SolicitacaoDetalhe />} />
         <Route path="prioridades-diretoria" element={<PrioridadesDiretoriaRoute><PrioridadesDiretoria /></PrioridadesDiretoriaRoute>} />
         <Route path="comunicacao-interna" element={<ComunicacaoRoute><ComunicacaoInterna /></ComunicacaoRoute>} />

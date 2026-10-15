@@ -13,6 +13,12 @@ export function isSuperadmin(user) {
   return normalizeToken(user?.perfil) === 'SUPERADMIN';
 }
 
+// Mesmo limite de setor usado na prestacao de contas de recargas; sem acesso financeiro amplo.
+export function canRegularizarRecarga(user) {
+  const setores = [user?.area, user?.setor?.codigo, user?.setor?.nome].map(normalizeToken);
+  return isSuperadmin(user) || setores.some(s => s === 'GEO' || (s.includes('GERENCIA') && s.includes('PROCESS')));
+}
+
 export function isAdministrador(user) {
   return normalizeToken(user?.perfil) === 'ADMINISTRADOR';
 }

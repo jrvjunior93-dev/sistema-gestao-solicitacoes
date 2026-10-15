@@ -1,5 +1,146 @@
 # Modulo FINANCEIRO
 
+## Comprovante compartilhado na fila - 2026-10-15
+
+- Mesmo PDF pode ser vinculado a titulos diferentes no upload individual,
+  importador e nova acao Anexar mesmo comprovante. Nunca duplica o mesmo par
+  fila/hash. Reutilizacao no importador exige escolha explicita do destino,
+  sem expor codigo ou dados de outro titulo onde o PDF tenha sido utilizado.
+- Lote seleciona de 1 a 100 itens PENDENTE sem baixa ou pendentes de comprovante.
+  POST /financeiro/fila-pagamentos/comprovantes/compartilhar usa a mesma permissao
+  de anexar individualmente (baixar), modulo Financeiro e limite seguro de upload;
+  arquivo PDF ate 12 MB. Nao cria permissao ou bypass de visibilidade novo.
+- Acao apenas anexa: nao baixa, nao altera conta/data/valor, nao envia ao banco
+  nem autoriza divergencia. Em Todos, Baixa em massa recebe apenas pendentes sem
+  pagamento; a selecao para comprovante nao pode repetir uma baixa ja registrada.
+- Valida todos antes de subir, revalida status/movimento sob locks da fila em
+  ordem e grava todos os vinculos/auditoria em uma transacao. Falha reverte o
+  lote. S3 usa chave por destino para preservar ACLs/anexos de cada solicitacao.
+  PDFs sobem antes da transacao; falha de infraestrutura pode deixar objetos
+  sem vinculo, como no upload existente, mas nunca vinculos parciais no banco.
+- Migration estrutural 202610150002_comprovante_compartilhado_fila.js cria
+  unicidade (fila_id, hash) e remove apenas unicidades globais do hash nas duas
+  tabelas, mantendo indices de busca. Idempotente, sem seeds/backfill ou ajuste
+  de registros; down nao apaga vinculos para voltar a unicidade global.
+  Deve ser aplicada no ambiente homologado antes de usar compartilhamento.
+- Testes isolados: validarFilaComprovantePendente.js (inclui lote/replay/rollback),
+  validarComprovanteCompartilhadoSchema.js, validarComprovantesPdfFila.js e
+  validarFilaInstrumentosUI.mjs (desktop/mobile, sem baixa automatica).
+
+## Regularizar recarga de solicitacao excluida - 2026-10-15
+
+- Menu Solicitacoes > Regularizar recargas, exclusivo de GEO/SUPERADMIN,
+  com consulta/regularizacao global de recargas excluidas de todas as obras.
+  Esta excecao NAO altera vinculos de obra, permissoes ou regras de visibilidade
+  da lista/detalhe/anexos das solicitacoes. Nao concede acesso financeiro geral.
+- GET /recargas-cartao/regularizacao lista solicitacoes excluidas com recarga;
+  filtro exato codigo e pagina de 30 solicitacoes por cursor antes_de.
+  GET /recargas-cartao/regularizacao/:id confere todos os cartoes e titulos.
+  Consultar/abrir a tela nao grava dados.
+- POST no mesmo caminho exige motivo, revisao atual e chave de idempotencia;
+  uma transacao, mutex por cartao em ordem crescente e locks da solicitacao,
+  recargas, titulos e prestacoes. LogExclusao, entidade REGULARIZACAO_RECARGA,
+  guarda autor, motivo completo em payload_json, estado anterior, resultado
+  e chave. Nao cria Historico, atribuicao, mencao ou envio ao setor que possa
+  conceder visibilidade. Falha de auditoria desfaz a operacao; replay legado
+  ainda consulta o Historico antigo, sem reescrever ou remover esses registros.
+- Sem pagamento: cancela titulo aberto/previsao e encerra o ciclo; preserva
+  exclusao da solicitacao, valor original, anexos e log de exclusao.
+- Com pagamento quitado: recupera a solicitacao original preservando setor,
+  status, IDs e titulos. Retoma a prestacao, sem resetar rateios/decisoes existentes;
+  cria somente o formulario se estiver ausente. Nao valida gastos automaticamente.
+  Em solicitacao mista, encerra os cartoes nao pagos e recupera os pagos,
+  com o tratamento de todos exibido antes da confirmacao.
+- Prestacao/detalhe continuam com os usuarios ja autorizados pela regra normal.
+  A resposta do POST revalida assertPodeVisualizarSolicitacao, inclusive no
+  replay; link operacional so aparece se pode_abrir_solicitacao=true. Negativa
+  ou indisponibilidade da ACL omite o link e nao concede acesso por outro caminho.
+- Nao altera baixas, pagamentos, titulos pagos, saldo informado nem ajuste do
+  cartao. Despesa continua vindo apenas dos gastos reais validados.
+- Fila/envio bancario/autorizacao ativa, negociacao/cobranca protegida,
+  prestacao em processamento ou inconsistencia financeira impedem a acao
+  e orientam conferencia pelo Financeiro. Nenhuma integracao externa e
+  cancelada por este endpoint. Titulo pago excluido nao e restaurado por ele.
+- Rotas operacionais e anexos de solicitacoes ainda excluidas permanecem
+  bloqueados; nao foi criado bypass global da exclusao. Prazo operacional da
+  obra continua sendo conferido, sem excecao nova para esta operacao.
+- Testes isolados: backend/scripts/validarRecargaRegularizacao.js e
+  frontend/scripts/validarRecargaRegularizacaoUI.mjs, mais regressoes de saldo,
+  multicartoes, medicao, exclusao/ACL e prazos. Sem nova migration.
+
+## Consulta de cartao com solicitacao excluida - 2026-10-15
+
+- Ausencia de recarga e resposta normal: sem alerta vermelho e sem bloqueio
+  quando os demais campos/vinculos estiverem validos.
+- Busca da ultima recarga ignora referencias a solicitacoes excluidas/ausentes
+  somente se nao restar titulo aberto/previsao, pagamento sem prestacao validada
+  ou referencia financeira quebrada. Nao altera titulos nem pagamentos.
+- A mesma busca protege contexto e POST de criacao, com lock e desempate por
+  ID. Recarga excluida encerrada nao encobre uma anterior ainda ativa.
+- Exclusao com pendencia retorna contexto 200, bloqueado, sem dados da
+  solicitacao excluida e com orientacao de regularizacao pelo GEO. Nao tenta
+  abrir o detalhe excluido, que permanece protegido por 404/ACL.
+- UI distingue sem historico, consulta em andamento, falha real, historico
+  restrito e recarga anterior indisponivel. Falha nao libera criacao nem
+  aparece como ausencia de historico; retry preserva os valores digitados.
+- Testes isolados: validarRecargasMultiplosCartoes.js e
+  frontend/scripts/validarRecargaContextoExcluidoUI.mjs. Sem nova migration.
+
+## Saldo dos cartoes e prestacao pelos gastos reais - 2026-10-15
+
+- Saldo calculado por cartao = baixas efetivas nao estornadas + ajustes auditados
+  - despesas declaradas. Previsoes/pedidos ainda nao pagos nao creditam saldo.
+- A interface distingue saldo apos gastos validados, gastos enviados/rejeitados
+  ainda a conferir e saldo disponivel estimado. Nao consulta a operadora.
+- Prestacao aceita gasto inferior a recarga e uso de sobra anterior. Rateios
+  somam os gastos reais, nao o credito; motivo e documento obrigatorios para
+  declarar ausencia de gastos. Documento continua obrigatorio nos demais casos.
+- Envio reserva o gasto e libera a proxima solicitacao pela regra existente;
+  so a validacao GEO libera custo. Rejeicao nao disponibiliza o mesmo gasto de
+  novo; a correcao substitui exclusivamente a propria reserva.
+- Cartao bloqueado em transacao, revisao do saldo no formulario e CAS de status
+  protegem cliques/envios concorrentes. Excesso e saldo negativo sao bloqueados.
+- GEO/SUPERADMIN pode ajustar o saldo disponivel real pelo detalhe da recarga,
+  com motivo, extrato enviado pelo proprio usuario e chave idempotente. Ajuste
+  nao altera titulos, pagamentos nem despesas/prestacoes antigas; trilha registra
+  usuario, data, antes/depois e documento. Extrato utilizado nao pode ser removido.
+- Cartoes existentes usam calculo historico, sem seed/backfill. Historico
+  anteriormente inflado permanece preservado; GEO pode reconciliar o saldo,
+  mas corrigir despesas antigas exige procedimento distinto e autorizacao.
+- Apropriacao/Gestao de Obras, Resultado/Painel, Financeiro de Obras, DRE e
+  Custos e Recebiveis usam gasto efetivo por destino. Sobra nao e custo. Fluxo
+  de caixa/Contas a Pagar continuam mostrando a baixa integral da recarga.
+  Financeiro de Obras e relatorio de custo, nao extrato bancario.
+- Migration estrutural `202610150001_cartoes_recarga_saldo.js`: tres campos
+  nullable de snapshot na prestacao e tabela imutavel de ajustes, sem reescrita
+  de negocio. Aplicar com backup e preflight no ambiente autorizado antes do
+  backend novo. Rollback automatico bloqueado para preservar auditoria.
+
+Testes isolados: `validarRecargasMultiplosCartoes.js`,
+`validarSaldoCartaoSchemaLimiteDp.js`, `validarFinanceiroObrasComprometido.js`,
+`validarAdiantamentoFinanceiro.js`; UI `validarSaldoCartoesUI.mjs` e
+`validarRecargasMultiplasUI.mjs`. Banco real/migration nao executados nesta entrega.
+
+## Compra Direta: frete apos geracao do titulo - 2026-10-15
+
+Salvar frete na gestao da Compra Direta sincroniza a obrigacao financeira na
+mesma transacao: embutido ajusta somente o delta nos titulos abertos sem baixa;
+havendo pagamento, cria complemento e preserva originais. Terceiro gera titulo
+separado, com origem `COMPRA_DIRETA_FRETE`, sem duplicar na geracao inicial do
+fornecedor. Complemento embutido usa `COMPRA_DIRETA_COMPLEMENTO`.
+
+Nenhuma baixa, debito, envio a fila ou autorizacao e automatico. Titulos pagos
+nao sao reescritos. Reducoes pagas e titulos protegidos por cobranca/integracao/
+autorizacao exigem regularizacao no fluxo financeiro. Titulos novos devem ser
+conferidos e classificados; frete a terceiro automatico nasce sem categoria e
+fora da DRE ate classificacao pelo Financeiro. Se a solicitacao estava PAGA,
+um novo titulo pendente muda para PARCIALMENTE PAGO, sem trocar setor.
+
+A permissao `compras.compra_direta.gerenciar_frete` autoriza somente esse efeito
+restrito na propria compra/obra, nao a edicao financeira geral. Detalhes,
+locks, rateios e excecoes no [canonico de Compras](../compras/README.md) e no
+[handoff](../../handoffs/2026-10-15-compra-direta-frete-financeiro.md).
+
 ## Fila: carteira de terceiros sem conta na massa - 2026-10-13
 
 - Conta pagadora exigida somente para cheques proprios do conjunto. Terceiros

@@ -224,7 +224,7 @@ async function gerarResultadoObras({ query = {}, obraIdsEscopo = null } = {}) {
 
     if (filters.comPeriodo && valorOriginalTitulo > 0) {
       (titulo.movimentos || []).forEach((movimento) => {
-        const movimentoValor = Math.abs(Number(titulo.origem_titulo === 'ADIANTAMENTO' ? movimento.valor || 0 : movimento.valor_quitacao || movimento.valor || 0));
+        const movimentoValor = Math.abs(Number(['ADIANTAMENTO', 'RECARGA_CARTAO'].includes(titulo.origem_titulo) ? movimento.valor || 0 : movimento.valor_quitacao || movimento.valor || 0));
         const parcelaRateio = movimentoValor * (valorRateio / valorOriginalTitulo);
         addValue(movimentosAcumulados, obraId, tipo, parcelaRateio);
         if (movimento.data_movimento >= filters.dataInicial) {

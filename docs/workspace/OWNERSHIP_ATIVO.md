@@ -1,5 +1,17 @@
 # Ownership Ativo
 
+## Promocao das pendencias para main - 2026-10-15
+
+- Agente unico desta conversa, sem delegacao. Reserva temporaria: integracao
+  main8ecde6ff/refactor10c58364, quatro registros workspace com conflitos
+  documentais, handoff desta promocao, script exclusivo PROD e seu teste isolado.
+- Homologacao dev, backup/timer e inventario real das duas migrations confirmados
+  pelo usuario. Preservar todos os hotfixes de main; sem EC2/banco/reinicio pelo agente.
+- Handoff: docs/handoffs/2026-10-15-promocao-pendencias-main.md.
+- Integracao, testes backend/ACL/UI, build, navegacao/docs e script PROD
+  aprovados; reserva encerrada e ownership liberado para PR/merge autorizado.
+  Sem EC2, banco real, migrations ou reinicios executados pelo agente.
+
 ## Promocao main Compra Direta e admissao - 2026-10-15
 
 - Usuario homologou d72a9c93 em dev e autorizou promocao para main/comandos EC2
@@ -192,6 +204,113 @@
 - Testes backend/visibilidade, UI desktop/mobile com APIs simuladas, build,
   sintaxe e documentacao aprovados. Handoff:
   docs/handoffs/2026-10-09-promocao-isolada-medicao-recarga-main.md.
+## DP cancelamento e comprovante compartilhado - 2026-10-15
+
+- Reserva ativa deste agente, sem delegacao. Usuario confirmou remover linha
+  e cancelar pedido DP com motivo/auditoria, cancelando somente titulos sem baixa;
+  bloquear com pagamento, preservar visibilidade e permissoes existentes.
+- Reservados: rhPagamentoSolicitacaoService/Domain/RevisaoService/Controller,
+  RhDpPagamentoModal, rhDp services, routes.js, pagamentoManualFilaService,
+  pagamentoComprovantePdfService, PagamentoManualFilaController, modelo de
+  comprovante, migration de unicidade por fila/hash, FinanceiroFilaPagamentos,
+  servico frontend financeiro, testes dedicados e documentacao/handoff.
+- Sem banco real, execucao de migrations, reinicios, commit/push ou deploy.
+- Escopo adicional autorizado: coluna Codigo antes de Tipo na listagem DP e
+  correcao do fechamento de pagamento somente leitura. Reservados tambem
+  RhDpPessoalSolicitacoes, rhSolicitacaoConsultaDomain, package.json (testes),
+  testes UI da gestao/coluna/consulta, README RH/Financeiro e registros workspace.
+- Concluido localmente: backend transacional, UI desktop/mobile, negativos de
+  ACL/visibilidade, schema isolado, regressoes, build e navegacao aprovados.
+  Reserva encerrada e ownership liberado. Handoff especifico registrado;
+  migration somente criada, nao aplicada. Sem commit/push/EC2/banco real.
+- Publicacao agora autorizada: reserva temporaria do delta e documentacao para
+  commit/push refactor/frontend, novo script DEV e teste isolado do deploy.
+  Comandos incluem somente 202610150002_comprovante_compartilhado_fila.js;
+  agente nao executa na EC2/banco real e nao altera main.
+- Script e teste de deploy DEV concluidos, guardas/negativas aprovadas e
+  regressoes repetidas. Reserva de publicacao encerrada e ownership liberado;
+  somente delta desta tarefa, sem outputs/.
+
+## Contexto da recarga excluida / primeira recarga - 2026-10-15
+
+- Sessao codex-recarga-contexto-excluida-20261015, agente unico, concluida local;
+  ownership de edicao liberado. Alteracoes nao commitadas.
+- Reserva: recargaCartaoService, RecargaCartaoController se necessario;
+  RecargaCartaoFields/RecargasCartoesFields, testes isolados backend/UI deste
+  contexto, README Financeiro, handoff e registros workspace.
+- Separar ausencia de historico de falha de consulta; nao ocultar erro real nem
+  liberar nova recarga diante de pendencia financeira/prestacao de registro excluido.
+- Sem migration, escrita no banco real, commit/push/deploy/EC2 nesta etapa.
+- Backend/contexto/POST/ACL com modelos isolados, UI desktop/mobile, regressoes,
+  build e diff aprovados; handoff 2026-10-15-recarga-contexto-excluida.md.
+
+## Publicacao DEV saldo cartoes / conferencia DP - 2026-10-15
+
+- Usuario autorizou commit/push na refactor/frontend e comandos EC2 dev,
+  incluindo exclusivamente a migration estrutural 202610150001_cartoes_recarga_saldo.
+- Reserva do delta do handoff saldo-cartoes-conferencia-dp para revisao/staging,
+  novo script/teste de deploy dev e registros de publicacao. Agente unico.
+- Sem executar migration ou comandos EC2 pelo agente; producao/main intocadas.
+- Preservar outputs/, credenciais/.env, flags e outros checkouts. Aplicacao pelo
+  operador somente apos preflight de processo/porta/banco/schema e testes isolados.
+- Backend/regressoes, UI desktop/mobile, build, docs, Bash e negativas do
+  deploy aprovados. Reserva liberada para commit/publicacao autorizada.
+
+## Saldo de cartoes e conferencia DP - 2026-10-15
+
+- Sessao codex-cartao-saldo-dp-20261015, agente unico, concluida localmente;
+  ownership de edicao liberado, alteracoes ainda nao commitadas.
+- Reserva: recargaCartaoService, novo cartaoRecargaSaldoService/model/migration,
+  models/index, RecargaCartaoController, AnexoController, routes e middleware RH;
+  componentes/services recarga-cartao, consumidores de custo/apropriacao/DRE,
+  testes isolados, READMEs Financeiro/RH, handoff e registros workspace.
+- Saldo derivado das baixas e despesas existentes; ajuste GEO com motivo/extrato
+  autorizado. Sem reescrever prestacoes antigas. Manter protecao de duplicidade.
+- Sem banco real, migration aplicada, commit/push, deploy ou restart nesta etapa.
+- Preservar outputs/ e outros checkouts.
+- Reserva complementar de consumidor de custo: planejamentoService de
+  custosRecebiveis (totalBaixasFinanceirasPorCompetencia) e teste isolado
+  validarAdiantamentoFinanceiro, somente para reconhecer gasto real de recarga.
+- Services reais com adaptadores isolados, middleware/schema, regressao RH,
+  financeiro/custos/adiantamento/anexos, UI desktop/mobile, build, docs e diff
+  aprovados. Proximo passo depende de autorizacao de publicacao e homologacao
+  dev com nova migration; handoff 2026-10-15-saldo-cartoes-conferencia-dp.md.
+
+## Publicacao DEV frete financeiro - 2026-10-15
+
+- Usuario autorizou commit/push deste ajuste na refactor/frontend e comandos
+  EC2 dev. Reserva temporaria dos arquivos do handoff frete-financeiro para
+  revisao/staging, novo script/teste de deploy DEV e registros desta publicacao.
+- Reutilizar worktree atual, transportar somente o delta sobre origin/refactor;
+  nao incorporar commits exclusivos da main nem modificar outros checkouts.
+- Sem migration, flags alteradas, banco real, EC2/restart pelo agente; outputs/
+  fora dos commits. Script reinicia exclusivamente backend-dev na porta 8001.
+- Testes backend/ACL, preflight/health simulados, UI desktop/mobile e build
+  aprovados; ownership de edicao liberado para publicacao autorizada.
+
+## Compra Direta: sincronizacao financeira do frete - 2026-10-15
+
+- Sessao codex-compra-direta-frete-financeiro-20261015, finalizado local,
+  ownership de edicao liberado, sem delegacao.
+- Usuario autorizou atualizar titulo aberto sem baixa, complemento para pago e
+  titulo separado de terceiro sem duplicidade. Quantidade permanece sem sincronizacao.
+- Reserva exclusiva neste worktree: compraDiretaGestaoService.js, novo
+  compraDiretaFreteFinanceiroService.js, tituloFinanceiroService.js (geracao por
+  solicitacao), CompraDiretaFreteForm.jsx, FinanceiroCard.jsx, testes focados destes
+  fluxos, READMEs Compras/Financeiro, handoff desta tarefa e registros workspace.
+- Sem banco real, migration, commit, push, EC2, restart ou deploy nesta etapa.
+- Reserva complementar: financialValidators.js somente marcador de frete no
+  pagamento; validacao servidor obrigatoria de origem, valor, credor e forma.
+- Testes de regressao reservados: validarCartaoOpcionalSolicitacao.js e
+  validarAdiantamentoFinanceiro.js (fronteira do novo service), novo teste de
+  geracao atomica do frete e teste UI correspondente.
+- Preservar outputs/ e demais checkouts; titulo protegido exige regularizacao
+  financeira, sem fabricar aprovacao, baixa ou alterar historico de pagamento.
+- Services reais com models em memoria: cenarios de aberto/pago/parcial,
+  parcelas/rateios/fila, protecoes, corpo forjado, replay, concorrencia e rollback
+  aprovados. UI desktop/mobile, regressao de formulario, build, ACL, docs e
+  sintaxe/diff aprovados. Handoff 2026-10-15-compra-direta-frete-financeiro.md.
+
 ## Publicacao DEV Compra Direta e admissao - 2026-10-15
 
 - Usuario autorizou commit/push dos ajustes na refactor/frontend e comandos EC2
@@ -4255,3 +4374,47 @@ Main e producao nao serao alteradas; sem EC2, banco ou reinicio pelo agente.
 Integracao seletiva em e5dd4c9f e testes repetidos aprovados; apenas conflito
 documental resolvido preservando Ticket/estorno. Reserva documental encerrada
 e ownership liberado para publicacao dev. outputs/ permanece fora do commit.
+
+## Publicacao da correcao de contexto de recarga - 2026-10-15
+
+- Usuario autorizou commit/push na refactor/frontend e comandos DEV.
+- Reserva temporaria: delta de contexto de recarga ja implementado, script
+  atualizar-dev-recarga-contexto-20261015.sh, validarDeployRecargaContextoDev.js
+  e handoff/documentacao correspondente. Sem outros agentes ou delegacao.
+- Sem alteracao de main, EC2, banco real, migrations ou flags pelo agente.
+- Script/teste de deploy preparados e validados; reserva encerrada e ownership
+  liberado para publicacao do delta aprovado. outputs/ preservado fora do Git.
+
+## Regularizacao de recarga excluida - 2026-10-15
+
+- Concluida localmente pelo agente desta conversa, sem delegacao. Usuario autorizou
+  implementar regularizacao GEO/SUPERADMIN sem apagar pagamentos ou historico.
+- Reservados: novo recargaCartaoRegularizacaoService/controller/testes, routes.js,
+  pagina e servico frontend de regularizacao, acessoProduto, App/navigation,
+  RecargaCartaoFields, testes UI e documentacao/handoff correspondentes.
+- Catalogo gerado e manifestos QA tambem atualizados. Validacoes concluidas;
+  reserva encerrada e ownership liberado. Handoff de regularizacao registrado.
+- Sem commit/push, EC2, banco real ou aplicacao de migrations nesta etapa.
+- Publicacao agora autorizada pelo usuario: reserva documental e do delta de
+  regularizacao, novo script atualizar-dev-recarga-regularizacao-20261015.sh e
+  validarDeployRecargaRegularizacaoDev.js para commit/push refactor/frontend.
+  Sem main, EC2 ou escrita real no banco pelo agente; outputs/ fora do commit.
+- Validacoes locais repetidas e script DEV aprovado em teste isolado. Reserva
+  de publicacao encerrada e ownership liberado para o commit/push autorizado.
+
+## Regularizacao global GEO sem ampliar visibilidade - 2026-10-15
+
+- Trabalho concluido localmente pelo agente desta conversa, sem delegacao. Usuario autorizou
+  GEO regularizar recargas de todas as obras, sem ampliar acesso a solicitacoes.
+- Reservados: recargaCartaoRegularizacaoService/controller, testes backend da
+  regularizacao/isolamento, RecargasRegularizacao.jsx/teste UI e docs/handoff.
+- Preservar setor/status/ACL, anexos, financeiro e idempotencia. Avaliar auditoria
+  isolada para nao conceder leitura por historico de interacao. Sem mudanca das
+  regras genericas de visibilidade. Sem commit/push/EC2/banco real/migration.
+- Testes de regularizacao, ACL/anexos, UI, build, navegacao e documentacao
+  aprovados. Reserva encerrada e ownership liberado; handoff registrado em
+  docs/handoffs/2026-10-15-recarga-geo-global-visibilidade.md.
+- Publicacao autorizada pelo usuario: reserva documental e do delta acima para
+  commit/push em refactor/frontend. Sem main, EC2, banco real ou migrations.
+- Validacoes de publicacao repetidas com sucesso. Reserva encerrada e ownership
+  liberado para publicar somente este delta; outputs/ excluido do commit.

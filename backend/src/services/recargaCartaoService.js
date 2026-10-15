@@ -5,6 +5,7 @@ const {
   CartaoRecarga,
   CartaoRecargaPrestacao,
   CartaoRecargaPrestacaoRateio,
+  CartaoRecargaSaldoAjuste,
   CartaoRecargaUsuario,
   CartaoRecargaObra,
   CategoriaFinanceira,
@@ -24,6 +25,8 @@ const { criarNotificacao } = require('./notificacoes');
 const { publishSolicitacaoRealtimeEvent } = require('./solicitacaoRealtimeService');
 const { findSetorByCapability, resolveSetorPersistenciaValue } = require('./setorCapabilityService');
 const { apropriacaoPodeReceberLancamento } = require('./apropriacaoSelecaoService');
+const saldoCartaoService = require('./cartaoRecargaSaldoService');
+const { solicitacaoIndisponivel } = require('./solicitacaoDisponibilidade');
 
 const STATUS_CICLO = {
   PENDENTE: 'PENDENTE',
@@ -164,7 +167,7 @@ async function assertCartaoVinculado(cartaoId, userId, { transaction = null, loc
 
 const includeRecarga = [
   { model: CartaoRecarga, as: 'cartao', include: [{ model: Parceiro, as: 'parceiro', attributes: ['id', 'nome'] }] },
-  { model: Solicitacao, as: 'solicitacao', attributes: ['id', 'codigo', 'criado_por', 'data_vencimento', 'status_global', 'obra_id', 'area_responsavel'] },
+  { model: Solicitacao, as: 'solicitacao', attributes: ['id', 'codigo', 'criado_por', 'data_vencimento', 'status_global', 'obra_id', 'area_responsavel', 'cancelada'] },
   { model: TituloFinanceiro, as: 'titulo', attributes: ['id', 'codigo', 'status', 'valor_original', 'valor_baixado', 'valor_saldo', 'data_vencimento', 'considera_dre'] },
   {
     model: CartaoRecargaPrestacao,
@@ -183,25 +186,40 @@ const includeRecarga = [
 ];
 
 async function buscarUltimaRecarga(cartaoId, options = {}) {
-  return SolicitacaoRecargaCartao.findOne({
-    where: { cartao_recarga_id: Number(cartaoId) },
-    include: includeRecarga,
-    order: [['createdAt', 'DESC']],
-    transaction: options.transaction || null,
-    lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
-  });
+  const ignoradas = [];
+  for (;;) {
+    const recarga = await SolicitacaoRecargaCartao.findOne({
+      where: { cartao_recarga_id: Number(cartaoId), ...(ignoradas.length ? { id: { [Op.notIn]: ignoradas } } : {}) },
+      include: includeRecarga,
+      order: [['createdAt', 'DESC'], ['id', 'DESC']],
+      transaction: options.transaction || null,
+      lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+    });
+    // Excluida sem obrigacao pendente nao encobre a recarga ativa anterior.
+    // Leitura com lock e mantida na criacao para nao liberar dois pedidos.
+    if (!recarga || !solicitacaoIndisponivel(recarga.solicitacao) || motivoBloqueio(recarga)) return recarga;
+    ignoradas.push(recarga.id);
+  }
 }
 
 function motivoBloqueio(recarga) {
   if (!recarga) return null;
   const ciclo = normalizarToken(recarga.status_ciclo);
+  if (solicitacaoIndisponivel(recarga.solicitacao)) {
+    const status = normalizarToken(recarga.titulo?.status);
+    const pago = Math.max(Number(recarga.valor_efetivo || 0), Number(recarga.titulo?.valor_baixado || 0));
+    const prestacaoValidada = normalizarToken(recarga.prestacao?.status) === 'VALIDADA';
+    const pendente = ['PREVISAO', 'ABERTO', 'PARCIAL'].includes(status)
+      || (pago > 0 && !prestacaoValidada) || (!recarga.titulo && Boolean(recarga.titulo_financeiro_id));
+    return pendente ? 'Existe recarga vinculada a uma solicitacao excluida ou indisponivel com titulo ou prestacao pendente. Solicite ao GEO a regularizacao antes de criar outra recarga.' : null;
+  }
   if (ciclo === STATUS_CICLO.CANCELADA || ciclo === STATUS_CICLO.VALIDADA) return null;
   const tituloStatus = normalizarToken(recarga.titulo?.status);
   if (tituloStatus === 'PREVISAO') return 'A recarga anterior ainda esta em analise.';
   if (tituloStatus === 'ABERTO' || tituloStatus === 'PARCIAL') return 'A recarga anterior ainda possui pagamento pendente.';
   if (Number(recarga.valor_efetivo || recarga.titulo?.valor_baixado || 0) > 0) {
     const statusPrestacao = normalizarToken(recarga.prestacao?.status || 'PENDENTE');
-    // O envio com rateio fechado encerra a trava operacional do cartao. A validacao do GEO
+    // O envio dos gastos reais e da sobra encerra a trava operacional. A validacao do GEO
     // continua necessaria para liberar o custo nos relatorios, mas pode ocorrer em paralelo com
     // a analise da proxima solicitacao de recarga.
     if (statusPrestacao === 'ENVIADA') return null;
@@ -390,16 +408,37 @@ async function obterContextoCartao(cartaoId, user, obraId) {
   await assertOrigemAcessivel(obraId, user);
   await assertCartaoVinculado(cartaoId, user.id, { obraId });
   const recarga = await buscarUltimaRecarga(cartaoId);
+  if (recarga && solicitacaoIndisponivel(recarga.solicitacao)) {
+    return { ...serializarContexto(null), bloqueado: true, motivo_bloqueio: motivoBloqueio(recarga),
+      recarga_anterior_indisponivel: true, pode_regularizar_recarga: isGerenciaProcessos(user), saldo_cartao: await saldoCartaoService.obterSaldo(cartaoId) };
+  }
   if (recarga && !(await require('./authorizationService').hasObraAccess(user, recarga.solicitacao?.obra_id)) && !isGerenciaProcessos(user)) {
-    return { bloqueado: Boolean(motivoBloqueio(recarga)), motivo_bloqueio: motivoBloqueio(recarga), ultima_recarga: null, obras_disponiveis: [] };
+    return { bloqueado: Boolean(motivoBloqueio(recarga)), motivo_bloqueio: motivoBloqueio(recarga), ultima_recarga: null, obras_disponiveis: [], historico_restrito: true, saldo_cartao: await saldoCartaoService.obterSaldo(cartaoId) };
   }
   const obras = recarga ? await listarDestinosPrestacao(recarga) : [];
   const contexto = serializarContexto(recarga, { obras });
+  Object.assign(contexto, await contextoSaldo(cartaoId, recarga, isGerenciaProcessos(user)));
   if (recarga) {
     contexto.tipo_documento_prestacao = await tipoDocumentosPrestacao(recarga);
     contexto.documentos_prestacao = await listarDocumentosPrestacao(recarga.solicitacao_id, null, contexto.tipo_documento_prestacao);
   }
   return contexto;
+}
+
+async function contextoSaldo(cartaoId, recarga, geo = false) {
+  const saldo = await saldoCartaoService.obterSaldo(cartaoId);
+  const prestacao = recarga?.prestacao;
+  const saldoPrestacao = prestacao && ['PENDENTE', 'REJEITADA'].includes(prestacao.status)
+    ? await saldoCartaoService.obterSaldo(cartaoId, { excluirPrestacaoId: prestacao.id }) : saldo;
+  const ajustes = geo && recarga ? await CartaoRecargaSaldoAjuste.findAll({
+    where: { cartao_recarga_id: Number(cartaoId), solicitacao_id: Number(recarga.solicitacao_id) }, order: [['id', 'DESC']], limit: 20
+  }) : [];
+  const historico = [];
+  for (const ajuste of ajustes) {
+    const extrato = await Anexo.findOne({ where: { id: ajuste.anexo_id, solicitacao_id: Number(recarga.solicitacao_id), deleted_at: null } });
+    historico.push({ ...(ajuste.toJSON ? ajuste.toJSON() : ajuste), extrato_caminho: extrato?.caminho_arquivo, extrato_nome: extrato?.nome_original });
+  }
+  return { saldo_cartao: saldo, saldo_para_prestacao: saldoPrestacao, ...(geo ? { ajustes_saldo: historico } : {}) };
 }
 
 function normalizarRecargas(cartoes, cartaoId, valorTotal) {
@@ -772,7 +811,9 @@ async function obterContextoSolicitacao(solicitacaoId, user, { acessoSolicitacao
     podeValidar ? calcularMedia(recarga.cartao_recarga_id) : Promise.resolve(null),
     tipoDocumentosPrestacao(recarga).then((tipo) => listarDocumentosPrestacao(solicitacaoId, null, tipo))
   ]);
-  return { ...serializarContexto(recarga, { obras, media, podeValidar, documentosPrestacao }), tipo_documento_prestacao: await tipoDocumentosPrestacao(recarga) };
+  return { ...serializarContexto(recarga, { obras, media, podeValidar, documentosPrestacao }),
+    ...(podeOperarRecarga ? await contextoSaldo(recarga.cartao_recarga_id, recarga, podeValidar) : {}),
+    tipo_documento_prestacao: await tipoDocumentosPrestacao(recarga) };
 }
 
 function normalizarRateios(rateios = []) {
@@ -790,8 +831,18 @@ function normalizarRateios(rateios = []) {
 }
 
 async function salvarPrestacao(solicitacaoId, payload, user, externalTransaction = null) {
-  const rateios = normalizarRateios(payload.rateios);
+  const semGastos = payload.sem_gastos === true && Array.isArray(payload.rateios) && payload.rateios.length === 0;
+  if (semGastos && !String(payload.observacoes || '').trim()) throw erro(400, 'Informe o motivo da prestacao sem gastos.');
+  const rateios = semGastos ? [] : normalizarRateios(payload.rateios);
+  // Descobre o cartao antes da transacao: o mutex por cartao precede o lock da
+  // solicitacao e a primeira leitura do ledger, evitando gasto concorrente.
+  const filtroInicial = externalTransaction
+    ? { solicitacao_id: Number(solicitacaoId), ...(payload.recarga_id ? { id: Number(payload.recarga_id) } : {}) }
+    : await selecionarRecarga(solicitacaoId, payload.recarga_id);
+  const inicial = await SolicitacaoRecargaCartao.findOne({ where: filtroInicial, transaction: externalTransaction });
+  if (!inicial) throw erro(404, 'Recarga nao encontrada.');
   const executar = async (transaction) => {
+    await saldoCartaoService.bloquearCartao(inicial.cartao_recarga_id, transaction);
     const filtroRecarga = await selecionarRecarga(solicitacaoId, payload.recarga_id, transaction);
     const recarga = await SolicitacaoRecargaCartao.findOne({
       where: filtroRecarga,
@@ -821,7 +872,9 @@ async function salvarPrestacao(solicitacaoId, payload, user, externalTransaction
 
     const total = roundCurrency(rateios.reduce((acc, item) => acc + item.valor_rateio, 0));
     const base = roundCurrency(recarga.prestacao.valor_base);
-    if (total !== base) throw erro(400, `O rateio deve totalizar R$ ${base.toFixed(2)}.`);
+    const saldo = await saldoCartaoService.obterSaldo(recarga.cartao_recarga_id, { transaction, excluirPrestacaoId: recarga.prestacao.id });
+    if (total !== base && !payload.revisao_saldo) throw erro(409, 'Atualize a tela para conferir o saldo e enviar os gastos reais.');
+    saldoCartaoService.conferirDespesas(saldo, total, payload.revisao_saldo);
 
     const totalDocumentos = await Anexo.count({
       where: {
@@ -853,11 +906,14 @@ async function salvarPrestacao(solicitacaoId, payload, user, externalTransaction
     await CartaoRecargaPrestacaoRateio.bulkCreate(rateios.map((item) => ({
       prestacao_id: recarga.prestacao.id,
       ...item,
-      percentual: roundCurrency((item.valor_rateio / base) * 100),
+      percentual: total > 0 ? roundCurrency((item.valor_rateio / total) * 100) : 0,
       criado_por: user.id
     })), { transaction });
     await recarga.prestacao.update({
       status: 'ENVIADA',
+      valor_despesas: total,
+      saldo_disponivel_envio: saldo.saldo_disponivel,
+      saldo_remanescente: roundCurrency(saldo.saldo_disponivel - total),
       observacoes: String(payload.observacoes || '').trim() || null,
       motivo_rejeicao: null,
       enviado_por: user.id,
@@ -883,7 +939,7 @@ async function salvarPrestacao(solicitacaoId, payload, user, externalTransaction
       acao: 'PRESTACAO_RECARGA_ENVIADA',
       status_anterior: statusAnterior,
       status_novo: statusConjunto,
-      observacao: `Cartao #${recarga.cartao_recarga_id}: prestacao enviada com ${rateios.length} rateio(s), ${totalDocumentos} documento(s) e total R$ ${base.toFixed(2)}.`,
+      observacao: `Cartao #${recarga.cartao_recarga_id}: gastos R$ ${total.toFixed(2)}, saldo remanescente R$ ${roundCurrency(saldo.saldo_disponivel - total).toFixed(2)}; ${rateios.length} rateio(s), ${totalDocumentos} documento(s).`,
       metadata: JSON.stringify({ recarga_id: recarga.id, cartao_recarga_id: recarga.cartao_recarga_id })
     }, { transaction });
     if (normalizarToken(setorAnterior) !== normalizarToken(setorGeo)) {
@@ -1064,7 +1120,8 @@ async function decidirPrestacao(solicitacaoId, payload, user, externalTransactio
       setorDestino = await resolverSetorCriador(recarga.solicitacao, transaction);
     } else {
       const rateios = recarga.prestacao.rateios || [];
-      if (rateios.length === 0) throw erro(409, 'A prestacao nao possui rateios para validar.');
+      const despesas = roundCurrency(rateios.reduce((soma, item) => soma + Number(item.valor_rateio), 0));
+      if (!rateios.length && (Number(recarga.prestacao.valor_despesas) !== 0 || recarga.prestacao.valor_despesas == null)) throw erro(409, 'A prestacao nao possui rateios para validar.');
       const categoriaFinanceiraId = recarga.titulo.categoria_financeira_id
         || recarga.cartao?.categoria_financeira_id;
       const empresaId = recarga.titulo.empresa_id || recarga.cartao?.empresa_id;
@@ -1102,8 +1159,9 @@ async function decidirPrestacao(solicitacaoId, payload, user, externalTransactio
         apropriacao_id: null,
         empresa_id: empresa.id,
         categoria_financeira_id: categoria.id,
-        possui_rateio: true,
-        considera_dre: categoria.considera_dre !== false && Boolean(String(categoria.dre_grupo || '').trim()),
+        possui_rateio: despesas > 0,
+        valor_despesa_prestacao: despesas,
+        considera_dre: despesas > 0 && categoria.considera_dre !== false && Boolean(String(categoria.dre_grupo || '').trim()),
         atualizado_por: user.id
       }, { transaction });
       await recarga.prestacao.update({ status: 'VALIDADA', motivo_rejeicao: null, validado_por: user.id, validado_em: new Date() }, { transaction });
@@ -1178,6 +1236,45 @@ async function listarAdmin(user) {
     Obra.findAll({ where: { ativo: true }, attributes: ['id', 'codigo', 'nome', 'tipo_centro_custo'], order: [['nome', 'ASC']] })
   ]);
   return { cartoes, usuarios, empresas, categorias, obras };
+}
+
+async function ajustarSaldo(solicitacaoId, payload, user) {
+  if (!isGerenciaProcessos(user)) throw erro(403, 'Somente GEO ou SUPERADMIN pode ajustar saldo de cartao.');
+  const motivo = String(payload.motivo || '').trim();
+  const chave = String(payload.chave_idempotencia || '');
+  const informado = Number(payload.saldo_informado);
+  if (motivo.length < 5 || motivo.length > 2000 || !/^[a-zA-Z0-9-]{16,80}$/.test(chave)
+    || payload.saldo_informado === '' || payload.saldo_informado == null || !Number.isFinite(informado)
+    || informado < 0 || informado > 999999999999.99 || !Number.isInteger(Number(payload.anexo_id))) {
+    throw erro(400, 'Informe saldo valido, motivo, extrato e chave de idempotencia.');
+  }
+  const where = await selecionarRecarga(solicitacaoId, payload.recarga_id);
+  const recarga = await SolicitacaoRecargaCartao.findOne({ where });
+  if (!recarga) throw erro(404, 'Recarga nao encontrada.');
+  return sequelize.transaction(async transaction => {
+    await saldoCartaoService.bloquearCartao(recarga.cartao_recarga_id, transaction);
+    const repetido = await CartaoRecargaSaldoAjuste.findOne({ where: { chave_idempotencia: chave }, transaction });
+    if (repetido) {
+      if (Number(repetido.criado_por) !== Number(user.id) || Number(repetido.cartao_recarga_id) !== Number(recarga.cartao_recarga_id)
+        || Number(repetido.solicitacao_id) !== Number(solicitacaoId) || Number(repetido.saldo_informado) !== roundCurrency(informado)
+        || repetido.motivo !== motivo || Number(repetido.anexo_id) !== Number(payload.anexo_id)) throw erro(409, 'Chave ja utilizada por outro ajuste.');
+      return repetido;
+    }
+    const extrato = await Anexo.findOne({ where: { id: Number(payload.anexo_id), solicitacao_id: Number(solicitacaoId),
+      tipo: 'EXTRATO_SALDO_CARTAO', uploaded_by: Number(user.id), deleted_at: null }, transaction, lock: transaction.LOCK.UPDATE });
+    if (!extrato) throw erro(400, 'Anexe um extrato de saldo nesta solicitacao com o seu usuario.');
+    const saldo = await saldoCartaoService.obterSaldo(recarga.cartao_recarga_id, { transaction });
+    if (payload.revisao_saldo !== saldo.revisao) throw erro(409, 'O saldo mudou. Atualize e confira o extrato antes de ajustar.');
+    const ajuste = await CartaoRecargaSaldoAjuste.create({ cartao_recarga_id: recarga.cartao_recarga_id,
+      solicitacao_id: Number(solicitacaoId), chave_idempotencia: chave, saldo_anterior: saldo.saldo_disponivel,
+      saldo_informado: roundCurrency(informado), valor_ajuste: roundCurrency(informado - saldo.saldo_disponivel),
+      motivo, anexo_id: extrato.id, criado_por: user.id }, { transaction });
+    await Historico.create({ solicitacao_id: Number(solicitacaoId), usuario_responsavel_id: user.id,
+      setor: user.area || 'GEO', acao: 'SALDO_CARTAO_AJUSTADO', observacao: motivo,
+      metadata: JSON.stringify({ ajuste_id: ajuste.id, cartao_recarga_id: recarga.cartao_recarga_id,
+        saldo_anterior: saldo.saldo_disponivel, saldo_informado: roundCurrency(informado), extrato_id: extrato.id }) }, { transaction });
+    return ajuste;
+  });
 }
 
 function validarCartaoPayload(payload = {}) {
@@ -1284,6 +1381,7 @@ async function salvarCartao(cartaoId, payload, user, externalTransaction = null)
 }
 
 module.exports = {
+  ajustarSaldo,
   normalizarRecargas,
   STATUS_CICLO,
   calcularMedia,

@@ -393,29 +393,25 @@ function getQueueCandidates(receipt, rows) {
 async function buildPreview(parsed, queueRows, accounts) {
   const duplicateLegacy = await PagamentoManualFilaItem.findOne({
     where: { comprovante_hash: parsed.arquivo_hash },
-    include: [{ model: TituloFinanceiro, as: 'titulo', attributes: ['id', 'codigo'] }]
+    attributes: ['id']
   });
   const duplicateAdditional = duplicateLegacy ? null : await PagamentoManualFilaComprovante.findOne({
     where: { hash: parsed.arquivo_hash },
-    include: [{ model: PagamentoManualFilaItem, as: 'fila', include: [{
-      model: TituloFinanceiro, as: 'titulo', attributes: ['id', 'codigo']
-    }] }]
+    attributes: ['id']
   });
-  const duplicate = duplicateLegacy || duplicateAdditional?.fila;
-  const candidates = duplicate ? [] : getQueueCandidates(parsed.dados, queueRows);
+  const reutilizado = Boolean(duplicateLegacy || duplicateAdditional);
+  const candidates = getQueueCandidates(parsed.dados, queueRows);
   const top = candidates[0] || null;
   const next = candidates[1] || null;
-  const auto = Boolean(top && top.score >= AUTO_MATCH_SCORE && (!next || top.score - next.score >= AUTO_MATCH_MARGIN));
+  const auto = Boolean(!reutilizado && top && top.score >= AUTO_MATCH_SCORE && (!next || top.score - next.score >= AUTO_MATCH_MARGIN));
   return {
     ...parsed,
-    duplicado: duplicate ? {
-      fila_id: duplicate.id,
-      titulo_codigo: duplicate.titulo?.codigo || null
-    } : null,
-    conta_sugerida: duplicate ? null : await findAccount(parsed.dados, accounts),
+    duplicado: null,
+    arquivo_reutilizado: reutilizado,
+    conta_sugerida: reutilizado ? null : await findAccount(parsed.dados, accounts),
     candidatos: candidates,
     fila_sugerida_id: auto ? top.fila_id : null,
-    exige_revisao: !duplicate && !auto
+    exige_revisao: !auto
   };
 }
 
@@ -503,26 +499,21 @@ async function linkReceipts(req, files = [], rawMappings) {
     for (const row of queueRows) {
       if (!podeAnexarComprovanteFila(row)) throw createHttpError(409, `O titulo ${row.titulo?.codigo || row.id} nao permite vincular comprovantes.`);
     }
-    const duplicates = await PagamentoManualFilaItem.findAll({
-      where: { comprovante_hash: { [Op.in]: mappings.map((item) => item.arquivo_hash) } },
-      transaction,
-      lock: transaction.LOCK.UPDATE
-    });
-    if (duplicates.length) throw createHttpError(409, 'Um ou mais comprovantes ja foram vinculados anteriormente.');
-    const duplicateAdditional = await PagamentoManualFilaComprovante.findOne({
-      where: { hash: { [Op.in]: mappings.map((item) => item.arquivo_hash) } }, transaction
-    });
-    if (duplicateAdditional) throw createHttpError(409, 'Um ou mais comprovantes ja foram vinculados anteriormente.');
-    return mappings.map((mapping) => ({
-      id: mapping.fila_id,
-      titulo_codigo: queueRows.find((row) => row.id === mapping.fila_id)?.titulo?.codigo || null
-    }));
+    const result = [];
+    for (const mapping of mappings) {
+      const row = queueRows.find(row => Number(row.id) === mapping.fila_id);
+      const existente = row.comprovante_hash === mapping.arquivo_hash || await PagamentoManualFilaComprovante.findOne({
+        where: { fila_id: row.id, hash: mapping.arquivo_hash }, transaction });
+      result.push({ id: mapping.fila_id, titulo_codigo: row.titulo?.codigo || null, ja_vinculado: Boolean(existente) });
+    }
+    return result;
   });
 
   const uploads = new Map();
   for (const mapping of mappings) {
     const parsed = fileByHash.get(mapping.arquivo_hash);
-    const url = await uploadToS3(parsed.file, `financeiro/fila-pagamentos/${mapping.fila_id}/comprovantes`);
+    const repetido = validated.find(i => i.id === mapping.fila_id)?.ja_vinculado;
+    const url = repetido ? null : await uploadToS3(parsed.file, `financeiro/fila-pagamentos/${mapping.fila_id}/comprovantes`);
     uploads.set(mapping.arquivo_hash, { parsed, url });
   }
 
@@ -540,11 +531,13 @@ async function linkReceipts(req, files = [], rawMappings) {
         where: { comprovante_hash: parsed.arquivo_hash }, transaction
       });
       const additionalDuplicate = await PagamentoManualFilaComprovante.findOne({
-        where: { hash: parsed.arquivo_hash }, transaction
+        where: { fila_id: row.id, hash: parsed.arquivo_hash }, transaction
       });
-      if (legacyDuplicate || additionalDuplicate) {
-        throw createHttpError(409, 'Um ou mais comprovantes ja foram vinculados anteriormente.');
+      if (row.comprovante_hash === parsed.arquivo_hash || additionalDuplicate) {
+        await registrarComprovantesFilaNoHistorico(req, row, transaction);
+        continue; // Retry do mesmo par: nunca duplicar vinculo nem alterar a baixa.
       }
+      if (!url) throw createHttpError(409, 'O vinculo do comprovante mudou. Atualize a fila.');
       const vinculadoEm = new Date();
       await PagamentoManualFilaComprovante.create({
         fila_id: row.id,
@@ -572,7 +565,7 @@ async function linkReceipts(req, files = [], rawMappings) {
           comprovante_vinculado_em: vinculadoEm,
           // Somente um item ainda nao processado pode receber sugestoes do PDF.
           // Anexo tardio nunca reescreve os dados ja usados na baixa/divergencia.
-          ...(row.status === 'PENDENTE' && !row.movimento_financeiro_id ? {
+          ...(row.status === 'PENDENTE' && !row.movimento_financeiro_id && !legacyDuplicate ? {
             valor_informado: parsed.dados.valor || row.valor_informado,
             data_baixa: parsed.dados.data_pagamento || row.data_baixa,
             conta_bancaria_id: account?.id || row.conta_bancaria_id

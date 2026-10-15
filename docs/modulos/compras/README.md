@@ -15,7 +15,8 @@ forma ativa (exceto FOPAG); favorecido ativo e PIX quando aplicavel. Boleto novo
 deve vir do upload temporario do proprio operador; boleto existente nao excluido
 pode ser mantido. O anexo entra na mesma transacao, sem duplicacao por repeticao.
 Frete embutido integra o valor do fornecedor; terceiro integra apenas o total
-da solicitacao e permanece disponivel para geracao financeira separada.
+da solicitacao. A regra financeira abaixo substitui a preservacao integral de
+titulos apenas para a acao FRETE, conforme autorizacao posterior do proprietario.
 
 Permissoes novas, nominais, independentes da edicao de apropriacoes:
 
@@ -25,7 +26,9 @@ Permissoes novas, nominais, independentes da edicao de apropriacoes:
 Exigem tambem leitura/criacao para revisar a compra, modulo habilitado, escopo
 e interacao no setor atual da solicitacao. Bypass administrativo existente
 permanece. A permissao de frete libera somente seu catalogo de formas e upload
-temporario, sem conceder criacao de compras, gestao financeira ou de cadastros.
+temporario, sem conceder criacao de compras, acesso geral ao Financeiro ou a
+cadastros. A sincronizacao e uma consequencia restrita da gestao do frete,
+validada no servidor; nao aceita IDs/valores arbitrarios de titulos pelo corpo.
 
 PATCH `/compras/solicitacoes/:id/gestao-compra-direta` recebe acao, motivo e
 `revisao_gestao` da consulta. Locks na solicitacao, compra e itens serializam
@@ -33,14 +36,42 @@ escritas; revisao de conteudo impede salvar sobre outra edicao. Repeticao igual
 nao cria auditoria duplicada. Compra cancelada/nao direta e recusada. Falha em
 validacao ou auditoria reverte a transacao inteira.
 
-**Titulos, pagamentos e baixas existentes nunca sao recalculados, criados ou
-cancelados por esta edicao.** Eventual acerto financeiro segue o fluxo proprio.
+**Quantidade continua sem alterar titulos. Ao salvar FRETE:**
+
+- Embutido: aplica somente a diferenca do frete, sem aproveitar diferencas de
+  quantidade anteriores. Atualiza titulos do fornecedor em ABERTO/PREVISAO e sem
+  baixa, proporcionalmente quando ha varias parcelas, com centavos exatos.
+  Rateios financeiros e fila pendente sem baixa/conferencia acompanham o valor.
+- Havendo titulo do fornecedor pago/parcial ou movimento ativo: preserva os
+  originais e cria complemento apenas do acrescimo, com origem rastreavel e
+  rateios/dados de pagamento do fornecedor. Reducao exige acerto no Financeiro.
+- Terceiro: gera titulo PAGAR separado automaticamente, mesmo antes da geracao
+  do fornecedor. Se ja existe, atualiza somente o necessario; com pagamento,
+  acrescimo gera complemento separado e reducao/troca de favorecido e bloqueada.
+  Remocao de frete nao pago cancela seu titulo e eventual fila ainda pendente.
+- Sem titulo do fornecedor, embutido segue no valor da geracao inicial normal.
+  O formulario Financeiro omite frete terceiro ja gerado. Backend verifica a
+  divisao e a revisao sob locks; regenerar o fornecedor e recusado. Fretes da
+  geracao inicial recebem marcador de origem validado pelo servidor.
+- Nunca cria baixa, debita conta ou envia titulo automaticamente a fila ou a
+  autorizacao. Terceiro sem classificacao existente nasce sem categoria/DRE e
+  deve ser conferido/classificado pelo Financeiro antes do uso gerencial.
+- Negociacao, cartao/fatura, impostos/desconto, cobranca/cheque emitido, retorno
+  bloqueado, integracao externa ou autorizacao ativa exigem regularizacao pelo
+  Financeiro antes de reescrever um titulo. Vinculo legado ambiguo e bloqueado
+  para nao cobrar frete duas vezes. Credor/forma/empresa/favorecido sao validados.
+- Compra, anexo, titulos, rateios, fila e auditoria compartilham a transacao.
+  Repeticao identica nao duplica titulos. Revisao obsoleta/conflito de lock
+  exige reabrir e conferir; nao ha repeticao cega de criacao.
+
 Descricao/PDF historicos de criacao nao sao reescritos; novos valores ficam nos
 dados estruturados, no total e na auditoria. Sem migration ou alteracao de banco
 real nesta implementacao.
 
-Testes: backend `validarCompraDiretaGestao.js`, `validarCompraDiretaGeoAcesso.js`;
-frontend `validarCompraDiretaGestao.mjs`. [Handoff](../../handoffs/2026-10-15-compra-direta-admissao.md).
+Testes: backend `validarCompraDiretaGestao.js`, `validarCompraDiretaFreteFinanceiro.js`,
+`validarCompraDiretaGeoAcesso.js`; frontend `validarCompraDiretaGestao.mjs` e
+`validarTituloSolicitacaoAtualizacao.mjs --frete` (desktop/mobile).
+[Handoff financeiro](../../handoffs/2026-10-15-compra-direta-frete-financeiro.md).
 
 ## Remocao isolada de arquivo financeiro do pedido - 2026-10-13
 

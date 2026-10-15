@@ -113,6 +113,7 @@ class AnexoController {
         'PLANILHA_ORCAMENTARIA',
         'DOCUMENTO_OBRA',
         'PRESTACAO_RECARGA',
+        'EXTRATO_SALDO_CARTAO',
         'PRESTACAO_ADIANTAMENTO'
       ];
 
@@ -186,7 +187,13 @@ class AnexoController {
         && await userHasSetorCapability(usuario, 'eh_setor_obra')
       );
 
-      if (!uploadInicialAutorizado && !uploadRecuperacaoMedicaoObra) {
+      const extratoSaldoGeo = tipoNormalizado === 'EXTRATO_SALDO_CARTAO'
+        && require('../services/recargaCartaoService').isGerenciaProcessos(req.user);
+      if (tipoNormalizado === 'EXTRATO_SALDO_CARTAO' && !extratoSaldoGeo) return res.status(403).json({ error: 'Extrato de ajuste de saldo restrito ao GEO.' });
+      if (extratoSaldoGeo && !(await require('../models').SolicitacaoRecargaCartao.findOne({ where: { solicitacao_id: Number(solicitacao_id) } }))) {
+        return res.status(400).json({ error: 'Extrato de saldo exige uma solicitacao de recarga de cartao.' });
+      }
+      if (!uploadInicialAutorizado && !uploadRecuperacaoMedicaoObra && !extratoSaldoGeo) {
         try {
           await assertPodeInteragirSolicitacao(req, solicitacao);
         } catch (errorAcesso) {
@@ -438,6 +445,10 @@ class AnexoController {
             caminho_arquivo: caminho }, transaction, lock: transaction.LOCK.UPDATE });
         }
         if (await arquivoHistoricoRemovido(alvo, { transaction })) return { repetida: true };
+        if (anexo?.tipo === 'EXTRATO_SALDO_CARTAO') {
+          const ajuste = await require('../models').CartaoRecargaSaldoAjuste.findOne({ where: { anexo_id: anexo.id }, transaction });
+          if (ajuste) throw Object.assign(new Error('Extrato vinculado a ajuste de saldo nao pode ser removido.'), { statusCode: 409 });
+        }
         const removidoEm = new Date();
         if (anexo) await anexo.update({ deleted_at: removidoEm }, { transaction });
         await alvo.update({ metadata: JSON.stringify({ ...metadata, removido: true,

@@ -43,6 +43,13 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
         row.titulo.numero_documento=new URLSearchParams(location.search).has('documento')?'DOC-QA':null;
         row.titulo.formaPagamento=${JSON.stringify(forms[0])};
         if(new URLSearchParams(location.search).has('dados')) row.titulo.observacoes=window.__paymentText || ('PIX: 000201ABC/Pix@EXEMPLO.COM +'+'aB:0123456789/'.repeat(500));
+        if(new URLSearchParams(location.search).has('compartilhado')) {
+          const items=[{...row,comprovante_hash:null,comprovante_url:null,pendente_comprovante:false},
+            {...row,id:2,status:'BAIXADO',movimento_financeiro_id:22,pendente_comprovante:!window.__shared,
+              comprovante_hash:window.__shared?'compartilhado':null,comprovante_url:window.__shared?'qa2':null,
+              titulo:{...row.titulo,id:2,codigo:'TIT-OUTRO',status:'QUITADO',valor_saldo:0}}];
+          return {data:status==='PENDENTE_COMPROVANTE'?items.filter(r=>r.pendente_comprovante):status==='PENDENTE'?items.filter(r=>r.status==='PENDENTE'):items,resumo:{PENDENTE:1,PENDENTE_COMPROVANTE:window.__shared?0:1}};
+        }
         if(new URLSearchParams(location.search).has('massa')) {
           const items=Array.from({length:32},(_,i)=>({...row,id:i+1,juros:10,multa:3,
             status:i===30?'BAIXADO':i===31?'EM_EDICAO':'PENDENTE',
@@ -60,6 +67,7 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
       export const getInstrumentosFilaPagamentos=async()=>({formas:${JSON.stringify(forms)},cartoes:[{id:10,nome:'Crédito QA',tipo:'CREDITO',conta_bancaria_id:5},{id:11,nome:'Crédito outra conta',tipo:'CREDITO',conta_bancaria_id:6},{id:20,nome:'Débito QA',tipo:'DEBITO',conta_bancaria_id:5}],cheques:[{id:77,codigo:'CH-QA',numero_cheque:'007',titular_nome:'Cliente QA',valor:new URLSearchParams(location.search).has('parcelas')?100:200,empresa_id:1},{id:88,codigo:'CH-OUTRA',valor:200,empresa_id:2},{id:89,codigo:'CH-LOTE',valor:426,empresa_id:2,empresa:{id:2,nome:'Empresa carteira QA',ativo:true}},{id:90,codigo:'CH-LEGADO',valor:426,empresa_id:null}]});
       export const registrarBaixasFilaPagamentos=async(itens,key,instrumentos_lote)=>{window.__settles.push({itens,key,instrumentos_lote});if(window.__receiptScenario)window.__paid=true;return{baixados:1,divergentes:0,pendentes_comprovante:window.__receiptScenario?1:0}};
       export const anexarComprovanteFilaPagamento=async()=>{window.__uploads++;window.__receipt=true};
+      export const anexarComprovanteFilaPagamentoLote=async(ids,file)=>{window.__sharedCalls=(window.__sharedCalls||0)+1;await new Promise(r=>setTimeout(r,150));window.__shared={ids,name:file.name};return {quantidade:ids.length,criados:ids.length}};
       export const getArquivosSolicitacaoFila=async()=>new URLSearchParams(location.search).has('arquivos')
         ? ['boleto.PDF','foto.jpeg','planta.png','animacao.gif','foto.webp','arquivo.docx','arquivo.svg'].map((nome,i)=>({id:'qa-'+i,nome_original:nome,caminho_arquivo:'https://bucket.example.test/qa/'+nome,tipo:'BOLETO',createdAt:'2026-10-08T12:00:00Z'})) : [];
       export const estornarBaixaFilaPagamento=async(id,motivo,key)=>{window.__reverseCalls=(window.__reverseCalls||0)+1;window.__reversed={id,motivo,key};};
@@ -170,7 +178,7 @@ try {
   await page.getByRole('button', { name: /Pendentes de comprovante/ }).click();
   await page.getByText('Pagamento registrado · pendente de comprovante', { exact: true }).waitFor();
   assert.equal(new URL(page.url()).searchParams.get('status'), 'PENDENTE_COMPROVANTE');
-  assert.equal(await page.getByLabel('Selecionar TIT-QA', { exact: true }).isDisabled(), true);
+  assert.equal(await page.getByLabel('Selecionar TIT-QA', { exact: true }).isDisabled(), false, 'Pendente de comprovante permite selecao para anexo, nao para baixa');
   assert.equal(await conta.isDisabled(), true);
   assert.equal(await page.getByRole('button', { name: /Registrar baixa|Registrar selecionados/ }).count(), 0);
   await page.waitForFunction(() => !document.querySelector('button[aria-pressed="true"]')?.disabled);
@@ -599,6 +607,31 @@ try {
   await page.getByRole('button', { name: 'Devolver para fila', exact: true }).click();
   await page.waitForFunction(() => window.__returned);
   assert.deepEqual(await page.evaluate(() => window.__returned), { id: 1, action: 'REABRIR', motivo: '' });
+  for (const width of [1366, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('http://127.0.0.1:5308/qa-fila?compartilhado=1&status=TODOS');
+    await page.getByText('TIT-OUTRO', {exact:true}).waitFor();
+    await page.getByLabel('Selecionar todos os elegíveis desta lista', {exact:true}).check();
+    assert.equal(await page.getByRole('button',{name:'Baixa em massa (1)',exact:true}).count(),1,'Baixa nao inclui os ja pagos');
+    await page.getByRole('button',{name:'Anexar mesmo comprovante (2)',exact:true}).click();
+    const compartilhado = page.getByRole('dialog',{name:'Anexar mesmo comprovante',exact:true});
+    await compartilhado.getByLabel('Comprovante compartilhado PDF',{exact:true}).setInputFiles({name:'recibo-grupo.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-QA-grupo')});
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    await page.screenshot({path:path.join(root,`../outputs/comprovante-compartilhado-${width}.png`),fullPage:true});
+    await compartilhado.getByRole('button',{name:'Anexar aos 2 selecionados',exact:true}).evaluate(el=>{el.click();el.click()});
+    await compartilhado.waitFor({state:'detached'});
+    assert.equal(await page.evaluate(()=>window.__sharedCalls),1,'Duplo clique nao duplica lote');
+    assert.deepEqual(await page.evaluate(()=>window.__shared),{ids:[1,2],name:'recibo-grupo.pdf'});
+    assert.equal(await page.evaluate(()=>window.__settles.length),0,'Anexo nunca registra baixa');
+    await page.goto('http://127.0.0.1:5308/qa-fila?compartilhado=1&status=PENDENTE_COMPROVANTE');
+    await page.getByText('TIT-OUTRO',{exact:true}).waitFor();
+    await page.getByLabel('Selecionar todos os elegíveis desta lista',{exact:true}).check();
+    assert.equal(await page.getByRole('button',{name:/Baixa em massa/}).count(),0);
+    assert(await page.getByRole('button',{name:'Anexar mesmo comprovante (1)',exact:true}).isEnabled());
+    await page.goto('http://127.0.0.1:5308/qa-fila?compartilhado=1&readonly=1&status=PENDENTE_COMPROVANTE');
+    await page.getByText('TIT-OUTRO',{exact:true}).waitFor();
+    assert.equal(await page.getByRole('button',{name:/Anexar mesmo comprovante/}).count(),0,'Sem permissao de anexo individual nao recebe lote');
+  }
   assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
   console.log('OK: fila real desktop/mobile, cabecalho unico da massa conta/data/forma/instrumentos, quantidade/proprio/carteira, cancelamento/mutex, desconto, cheques, estorno, devolver nao pago, selecao/colunas e rolagem. APIs isoladas.');
 } finally { await browser?.close(); await server.close(); }
