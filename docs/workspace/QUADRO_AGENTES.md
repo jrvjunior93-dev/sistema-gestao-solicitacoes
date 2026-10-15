@@ -1,5 +1,13 @@
 # Quadro de Agentes
 
+## Contexto recarga excluida - 2026-10-15
+
+- codex-recarga-contexto-excluida-20261015: concluido local, agente unico.
+- Corrigida falsa ausencia de historico/404 da recarga excluida, com protecao
+  das obrigacoes financeiras e POST. Loading/erro/retry explicitos na UI.
+- Backend adaptado, UI desktop/mobile/regressoes e build aprovados. Sem nova
+  migration, banco real, commit/push/EC2. Handoff especifico registrado.
+
 ## Publicacao DEV saldo cartoes / DP - 2026-10-15
 
 - Commit/push refactor/frontend e script EC2 dev com migration unica autorizados.

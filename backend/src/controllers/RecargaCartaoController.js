@@ -48,7 +48,7 @@ module.exports = {
           await assertPodeVisualizarSolicitacao(req, solicitacaoAnterior.id);
         } catch (error) {
           if (Number(error.statusCode) !== 403) throw error;
-          return res.json({ bloqueado: contexto.bloqueado, motivo_bloqueio: contexto.motivo_bloqueio, ultima_recarga: null, obras_disponiveis: [], saldo_cartao: contexto.saldo_cartao });
+          return res.json({ bloqueado: contexto.bloqueado, motivo_bloqueio: contexto.motivo_bloqueio, ultima_recarga: null, obras_disponiveis: [], historico_restrito: true, saldo_cartao: contexto.saldo_cartao });
         }
         contexto.contexto_interacao = await montarContextoInteracao(req, solicitacaoAnterior);
       }

@@ -1,5 +1,9 @@
 # Sessoes Ativas
 
+- codex-recarga-contexto-excluida-20261015: concluido local, ownership liberado;
+  busca/contexto/POST protegidos, primeira recarga sem erro falso, UI/regressoes/
+  build aprovados. Sem migration/publicacao ou operacao em banco real.
+
 - codex-publicacao-saldo-cartoes-dev-20261015: commit/push refactor/frontend
   autorizado; script dev com migration estrutural unica e preflight isolado.
   Sem main/EC2 pelo agente, sem backfill/seeds/flags persistentes. Homologacao

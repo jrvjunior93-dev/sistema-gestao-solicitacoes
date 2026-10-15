@@ -1,5 +1,18 @@
 # Ownership Ativo
 
+## Contexto da recarga excluida / primeira recarga - 2026-10-15
+
+- Sessao codex-recarga-contexto-excluida-20261015, agente unico, concluida local;
+  ownership de edicao liberado. Alteracoes nao commitadas.
+- Reserva: recargaCartaoService, RecargaCartaoController se necessario;
+  RecargaCartaoFields/RecargasCartoesFields, testes isolados backend/UI deste
+  contexto, README Financeiro, handoff e registros workspace.
+- Separar ausencia de historico de falha de consulta; nao ocultar erro real nem
+  liberar nova recarga diante de pendencia financeira/prestacao de registro excluido.
+- Sem migration, escrita no banco real, commit/push/deploy/EC2 nesta etapa.
+- Backend/contexto/POST/ACL com modelos isolados, UI desktop/mobile, regressoes,
+  build e diff aprovados; handoff 2026-10-15-recarga-contexto-excluida.md.
+
 ## Publicacao DEV saldo cartoes / conferencia DP - 2026-10-15
 
 - Usuario autorizou commit/push na refactor/frontend e comandos EC2 dev,
@@ -3992,3 +4005,13 @@ Main e producao nao serao alteradas; sem EC2, banco ou reinicio pelo agente.
 Integracao seletiva em e5dd4c9f e testes repetidos aprovados; apenas conflito
 documental resolvido preservando Ticket/estorno. Reserva documental encerrada
 e ownership liberado para publicacao dev. outputs/ permanece fora do commit.
+
+## Publicacao da correcao de contexto de recarga - 2026-10-15
+
+- Usuario autorizou commit/push na refactor/frontend e comandos DEV.
+- Reserva temporaria: delta de contexto de recarga ja implementado, script
+  atualizar-dev-recarga-contexto-20261015.sh, validarDeployRecargaContextoDev.js
+  e handoff/documentacao correspondente. Sem outros agentes ou delegacao.
+- Sem alteracao de main, EC2, banco real, migrations ou flags pelo agente.
+- Script/teste de deploy preparados e validados; reserva encerrada e ownership
+  liberado para publicacao do delta aprovado. outputs/ preservado fora do Git.

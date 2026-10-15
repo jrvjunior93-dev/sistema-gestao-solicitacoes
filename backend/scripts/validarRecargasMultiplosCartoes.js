@@ -98,6 +98,7 @@ vm.runInNewContext(source, { module: moduleService, console, require: (id) => {
   if (id === 'sequelize') return { Op };
   if (id === '../models') return models;
   if (id === './cartaoRecargaSaldoService') return saldoModule.exports;
+  if (id === './solicitacaoDisponibilidade') return require('../src/services/solicitacaoDisponibilidade');
   if (id === './authorizationService') return auth;
   if (id === './notificacoes') return { criarNotificacao: async () => {} };
   if (id === './solicitacaoRealtimeService') return { publishSolicitacaoRealtimeEvent() {} };
@@ -163,6 +164,7 @@ async function main() {
     tabelas.CartaoRecargaObra.push({ id, cartao_recarga_id: id, obra_id: id === 3 ? 10 : 11, ativo: true });
   }
   const user = { id: 2, perfil: 'USUARIO', area: 'OBRA' };
+  await validarContextoExcluido(user);
   assert.equal(tabelas.CartaoRecargaUsuario.length, 0);
   assert.equal((await service.listarMeusCartoes(user, 11)).length, 2);
   await rejeita(() => service.listarMeusCartoes({ id: 99 }, 11), 403);
@@ -259,6 +261,72 @@ async function main() {
   assert.equal(legado.tipo_documento_prestacao, 'PRESTACAO_RECARGA');
   await validarSaldoGastosReais();
   console.log('Recargas multiplas: origem, acesso sem vinculo individual, rollback, locks ordenados, duplicidade, baixa parcial/integral, anexos e prestacoes separados validados. Sem banco ou servicos externos.');
+}
+
+async function validarContextoExcluido(user) {
+  const base = JSON.parse(JSON.stringify(tabelas));
+  const restaurar = () => Object.assign(tabelas, JSON.parse(JSON.stringify(base)));
+  const acessos = [];
+  const controllerModule = { exports: {} };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/controllers/RecargaCartaoController.js'), 'utf8'), {
+    module: controllerModule, console: { error() {} }, require: id => {
+      if (id === '../services/recargaCartaoService') return service;
+      if (id === '../services/solicitacaoRetornoService') return {
+        assertPodeVisualizarSolicitacao: async (_, id) => {
+          acessos.push(Number(id));
+          const s = tabelas.Solicitacao.find(s => s.id === Number(id));
+          if (!s || s.cancelada) throw Object.assign(Error('Solicitacao nao encontrada.'), { statusCode: 404 });
+        },
+        montarContextoInteracao: async () => ({ pode_interagir: true })
+      };
+      throw Error(`Dependencia contexto nao simulada: ${id}`);
+    }
+  });
+  async function contexto(usuario = user) {
+    let status = 200, body;
+    const res = { status: s => { status = s; return res; }, json: b => { body = b; } };
+    await controllerModule.exports.contextoCartao({ user: usuario, params: { id: 1 }, query: { obra_id: 11 } }, res);
+    return { status, body };
+  }
+  const semAnterior = await contexto();
+  assert.equal(semAnterior.status, 200); assert.equal(semAnterior.body.ultima_recarga, null);
+  assert.equal(semAnterior.body.bloqueado, false); assert.equal(acessos.length, 0);
+  const dadosSolicitacao = { obra_id: 11, valor: 50, criado_por: user.id, data_vencimento: '2099-10-30' };
+  function registro({ id = 900, excluida = true, titulo = 'CANCELADO', pago = 0, prestacao = null } = {}) {
+    tabelas.Solicitacao.push({ id, obra_id: 11, criado_por: user.id, cancelada: excluida, codigo: `QA-${id}` });
+    tabelas.TituloFinanceiro.push({ id, status: titulo, valor_baixado: pago, valor_original: 50 });
+    tabelas.SolicitacaoRecargaCartao.push({ id, solicitacao_id: id, cartao_recarga_id: 1, titulo_financeiro_id: id,
+      valor_efetivo: pago, status_ciclo: titulo === 'CANCELADO' ? 'CANCELADA' : 'AGUARDANDO_PAGAMENTO' });
+    if (prestacao) tabelas.CartaoRecargaPrestacao.push({ id, solicitacao_recarga_id: id, status: prestacao, valor_base: pago });
+  }
+  registro();
+  let result = await contexto();
+  assert.equal(result.status, 200); assert.equal(result.body.ultima_recarga, null);
+  assert.equal(result.body.bloqueado, false, 'Excluida encerrada sem pagamento nao pode travar primeira recarga.');
+  assert.equal(acessos.length, 0, 'Nao consulta ACL de solicitacao excluida.');
+  await service.executarCriacaoRecargaComControle({ user, cartaoId: 1, dadosSolicitacao });
+  assert.equal(tabelas.Solicitacao.length, 2, 'POST tambem permite novo pedido, sem depender de esconder o alerta.');
+  restaurar();
+  registro({ id: 899, excluida: false, titulo: 'ABERTO' }); registro();
+  result = await contexto();
+  assert.equal(result.status, 200); assert.equal(result.body.ultima_recarga.solicitacao_id, 899);
+  assert.equal(result.body.bloqueado, true, 'Excluida recente nao pode encobrir pendencia ativa anterior.');
+  await rejeita(() => service.executarCriacaoRecargaComControle({ user, cartaoId: 1, dadosSolicitacao }), 409);
+  for (const cenario of [{ titulo: 'ABERTO' }, { titulo: 'QUITADO', pago: 50, prestacao: 'PENDENTE' }, { titulo: 'QUITADO', pago: 50, prestacao: 'ENVIADA' }]) {
+    restaurar(); registro(cenario);
+    result = await contexto();
+    assert.equal(result.status, 200); assert.equal(result.body.recarga_anterior_indisponivel, true);
+    assert.equal(result.body.bloqueado, true); assert.equal(result.body.ultima_recarga, null);
+    assert.match(result.body.motivo_bloqueio, /GEO.*regularizacao/);
+    const antes = JSON.stringify(tabelas);
+    await rejeita(() => service.executarCriacaoRecargaComControle({ user, cartaoId: 1, dadosSolicitacao }), 409);
+    assert.equal(JSON.stringify(tabelas), antes, 'Bloqueio nao altera titulos, pagamentos ou exclusao.');
+  }
+  restaurar(); registro({ titulo: 'QUITADO', pago: 50, prestacao: 'VALIDADA' });
+  result = await contexto(); assert.equal(result.status, 200); assert.equal(result.body.bloqueado, false);
+  assert.equal((await contexto({ id: 99, perfil: 'USUARIO', area: 'OBRA' })).status, 403);
+  restaurar();
+  console.log('Contexto recarga: primeira/encerrada excluida sem 404, fallback ativa, titulo e prestacao excluidos protegidos, POST/ACL e ausencia de escrita aprovados.');
 }
 
 async function validarSaldoGastosReais() {

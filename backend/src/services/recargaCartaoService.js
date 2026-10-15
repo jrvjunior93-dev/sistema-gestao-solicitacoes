@@ -26,6 +26,7 @@ const { publishSolicitacaoRealtimeEvent } = require('./solicitacaoRealtimeServic
 const { findSetorByCapability, resolveSetorPersistenciaValue } = require('./setorCapabilityService');
 const { apropriacaoPodeReceberLancamento } = require('./apropriacaoSelecaoService');
 const saldoCartaoService = require('./cartaoRecargaSaldoService');
+const { solicitacaoIndisponivel } = require('./solicitacaoDisponibilidade');
 
 const STATUS_CICLO = {
   PENDENTE: 'PENDENTE',
@@ -166,7 +167,7 @@ async function assertCartaoVinculado(cartaoId, userId, { transaction = null, loc
 
 const includeRecarga = [
   { model: CartaoRecarga, as: 'cartao', include: [{ model: Parceiro, as: 'parceiro', attributes: ['id', 'nome'] }] },
-  { model: Solicitacao, as: 'solicitacao', attributes: ['id', 'codigo', 'criado_por', 'data_vencimento', 'status_global', 'obra_id', 'area_responsavel'] },
+  { model: Solicitacao, as: 'solicitacao', attributes: ['id', 'codigo', 'criado_por', 'data_vencimento', 'status_global', 'obra_id', 'area_responsavel', 'cancelada'] },
   { model: TituloFinanceiro, as: 'titulo', attributes: ['id', 'codigo', 'status', 'valor_original', 'valor_baixado', 'valor_saldo', 'data_vencimento', 'considera_dre'] },
   {
     model: CartaoRecargaPrestacao,
@@ -185,18 +186,33 @@ const includeRecarga = [
 ];
 
 async function buscarUltimaRecarga(cartaoId, options = {}) {
-  return SolicitacaoRecargaCartao.findOne({
-    where: { cartao_recarga_id: Number(cartaoId) },
-    include: includeRecarga,
-    order: [['createdAt', 'DESC']],
-    transaction: options.transaction || null,
-    lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
-  });
+  const ignoradas = [];
+  for (;;) {
+    const recarga = await SolicitacaoRecargaCartao.findOne({
+      where: { cartao_recarga_id: Number(cartaoId), ...(ignoradas.length ? { id: { [Op.notIn]: ignoradas } } : {}) },
+      include: includeRecarga,
+      order: [['createdAt', 'DESC'], ['id', 'DESC']],
+      transaction: options.transaction || null,
+      lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+    });
+    // Excluida sem obrigacao pendente nao encobre a recarga ativa anterior.
+    // Leitura com lock e mantida na criacao para nao liberar dois pedidos.
+    if (!recarga || !solicitacaoIndisponivel(recarga.solicitacao) || motivoBloqueio(recarga)) return recarga;
+    ignoradas.push(recarga.id);
+  }
 }
 
 function motivoBloqueio(recarga) {
   if (!recarga) return null;
   const ciclo = normalizarToken(recarga.status_ciclo);
+  if (solicitacaoIndisponivel(recarga.solicitacao)) {
+    const status = normalizarToken(recarga.titulo?.status);
+    const pago = Math.max(Number(recarga.valor_efetivo || 0), Number(recarga.titulo?.valor_baixado || 0));
+    const prestacaoValidada = normalizarToken(recarga.prestacao?.status) === 'VALIDADA';
+    const pendente = ['PREVISAO', 'ABERTO', 'PARCIAL'].includes(status)
+      || (pago > 0 && !prestacaoValidada) || (!recarga.titulo && Boolean(recarga.titulo_financeiro_id));
+    return pendente ? 'Existe recarga vinculada a uma solicitacao excluida ou indisponivel com titulo ou prestacao pendente. Solicite ao GEO a regularizacao antes de criar outra recarga.' : null;
+  }
   if (ciclo === STATUS_CICLO.CANCELADA || ciclo === STATUS_CICLO.VALIDADA) return null;
   const tituloStatus = normalizarToken(recarga.titulo?.status);
   if (tituloStatus === 'PREVISAO') return 'A recarga anterior ainda esta em analise.';
@@ -392,8 +408,12 @@ async function obterContextoCartao(cartaoId, user, obraId) {
   await assertOrigemAcessivel(obraId, user);
   await assertCartaoVinculado(cartaoId, user.id, { obraId });
   const recarga = await buscarUltimaRecarga(cartaoId);
+  if (recarga && solicitacaoIndisponivel(recarga.solicitacao)) {
+    return { ...serializarContexto(null), bloqueado: true, motivo_bloqueio: motivoBloqueio(recarga),
+      recarga_anterior_indisponivel: true, saldo_cartao: await saldoCartaoService.obterSaldo(cartaoId) };
+  }
   if (recarga && !(await require('./authorizationService').hasObraAccess(user, recarga.solicitacao?.obra_id)) && !isGerenciaProcessos(user)) {
-    return { bloqueado: Boolean(motivoBloqueio(recarga)), motivo_bloqueio: motivoBloqueio(recarga), ultima_recarga: null, obras_disponiveis: [], saldo_cartao: await saldoCartaoService.obterSaldo(cartaoId) };
+    return { bloqueado: Boolean(motivoBloqueio(recarga)), motivo_bloqueio: motivoBloqueio(recarga), ultima_recarga: null, obras_disponiveis: [], historico_restrito: true, saldo_cartao: await saldoCartaoService.obterSaldo(cartaoId) };
   }
   const obras = recarga ? await listarDestinosPrestacao(recarga) : [];
   const contexto = serializarContexto(recarga, { obras });

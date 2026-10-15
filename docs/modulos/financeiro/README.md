@@ -1,5 +1,23 @@
 # Modulo FINANCEIRO
 
+## Consulta de cartao com solicitacao excluida - 2026-10-15
+
+- Ausencia de recarga e resposta normal: sem alerta vermelho e sem bloqueio
+  quando os demais campos/vinculos estiverem validos.
+- Busca da ultima recarga ignora referencias a solicitacoes excluidas/ausentes
+  somente se nao restar titulo aberto/previsao, pagamento sem prestacao validada
+  ou referencia financeira quebrada. Nao altera titulos nem pagamentos.
+- A mesma busca protege contexto e POST de criacao, com lock e desempate por
+  ID. Recarga excluida encerrada nao encobre uma anterior ainda ativa.
+- Exclusao com pendencia retorna contexto 200, bloqueado, sem dados da
+  solicitacao excluida e com orientacao de regularizacao pelo GEO. Nao tenta
+  abrir o detalhe excluido, que permanece protegido por 404/ACL.
+- UI distingue sem historico, consulta em andamento, falha real, historico
+  restrito e recarga anterior indisponivel. Falha nao libera criacao nem
+  aparece como ausencia de historico; retry preserva os valores digitados.
+- Testes isolados: validarRecargasMultiplosCartoes.js e
+  frontend/scripts/validarRecargaContextoExcluidoUI.mjs. Sem nova migration.
+
 ## Saldo dos cartoes e prestacao pelos gastos reais - 2026-10-15
 
 - Saldo calculado por cartao = baixas efetivas nao estornadas + ajustes auditados

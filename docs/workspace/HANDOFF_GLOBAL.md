@@ -1,5 +1,14 @@
 # Handoff Global
 
+## Contexto da recarga excluida - 2026-10-15
+
+- Concluido local: nao buscar detalhe de solicitacao excluida sem pendencia;
+  encontrar ativa anterior, preservar trava financeira e mostrar regularizacao GEO.
+- Falha de consulta nao aparece como Sem recarga anterior e tem retry; primeira
+  recarga real sem pendencia nao mostra erro nem bloqueio de historico.
+- Backend/UI desktop/mobile/build aprovados. Sem migration/commit/push/EC2.
+  Handoff: docs/handoffs/2026-10-15-recarga-contexto-excluida.md.
+
 ## Publicacao DEV saldo cartoes e DP - 2026-10-15
 
 - Commit/push autorizados na refactor/frontend e comandos de atualizacao dev.
