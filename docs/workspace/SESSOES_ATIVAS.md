@@ -1,5 +1,10 @@
 # Sessoes Ativas
 
+- codex-promocao-compra-direta-admissao-main-20261015: integracao validada,
+  ownership liberado para PR/merge autorizado. Main1341e1a3/devd72a9c93;
+  backup/timer e schema real confirmados. Sem migration, EC2 ou banco pelo agente.
+  Handoff 2026-10-15-promocao-compra-direta-admissao-main.md.
+
 - codex-promocao-rh-cadastro-main-20261015: finalizado, sem delegacao, ownership
   liberado; promocao autorizada main6af7b192/devb9ef16e4, backup/timer e schema
   real producao conferidos. Sem banco/EC2/migration; scripts/testes aprovados.
@@ -14,6 +19,15 @@ Integracao autorizada de refactor/frontend na main, preservando contratos e
 registros de ambos os agentes. Ownership documental liberado, integracao
 validada e publicacao Git autorizada; sem banco, EC2, aplicacao de migration
 ou reinicio. Backup confirmado pelo usuario.
+- Publicacao dev Compra Direta/admissao autorizada em 2026-10-15; arquivos do
+  handoff validados para commit/push na refactor/frontend, sem main ou EC2.
+  Reserva de edicao liberada; homologacao real permanece com o operador.
+
+- codex-compra-direta-admissao-20261015: finalizado local, sem delegacao; branch
+  codex/compra-direta-admissao-20261015 no worktree promocao-dp-main-20261014.
+  Ownership liberado; handoff 2026-10-15-compra-direta-admissao.
+  Sem banco real, migration, commit/push ou publicacao.
+
 - codex-rh-pagamento-cadastro-atual-20261015: finalizado local, sem delegacao,
   worktree promocao-dp-main-20261014, branch codex/rh-pagamento-cadastro-atual-20261015.
   Ownership liberado; commit/push dev autorizados na continuacao. Sem banco real,

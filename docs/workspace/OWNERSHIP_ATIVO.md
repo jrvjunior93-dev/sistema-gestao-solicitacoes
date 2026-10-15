@@ -1,5 +1,21 @@
 # Ownership Ativo
 
+## Promocao main Compra Direta e admissao - 2026-10-15
+
+- Usuario homologou d72a9c93 em dev e autorizou promocao para main/comandos EC2
+  producao. Backup cifrado recente/timer ativo confirmados nesta janela.
+- Preflight real do operador: producao 1341e1a352be4f6882278f60867e4f9c2408d372,
+  UUID 5ed4b970-009f-11f1-809c-0ad0e0c90c53, sem migration pendente.
+- Reserva exclusiva de integracao dos 28 arquivos do commit homologado,
+  registros workspace, novo handoff de promocao e script/teste de deploy prod.
+- Branch codex/promocao-compra-direta-admissao-main-20261015 a partir de main;
+  preservar historicos/hotfixes, outputs/ e demais checkouts. Sem delegacao.
+- Sem banco real, migration, mudanca de flags, EC2 ou restart pelo agente.
+- Integracao validada: runtime igual ao dev, tres conflitos documentais
+  resolvidos preservando ambos os lados; testes/build/navegacao/docs/ACL e
+  script producao com negativas aprovados. Ownership de edicao liberado para
+  PR/merge autorizado. Handoff 2026-10-15-promocao-compra-direta-admissao-main.
+
 ## Promocao main cadastro no pagamento RH - 2026-10-15
 
 - Sessao codex-promocao-rh-cadastro-main-20261015, sem delegacao. Usuario
@@ -176,6 +192,40 @@
 - Testes backend/visibilidade, UI desktop/mobile com APIs simuladas, build,
   sintaxe e documentacao aprovados. Handoff:
   docs/handoffs/2026-10-09-promocao-isolada-medicao-recarga-main.md.
+## Publicacao DEV Compra Direta e admissao - 2026-10-15
+
+- Usuario autorizou commit/push dos ajustes na refactor/frontend e comandos EC2
+  dev; sem main, banco real ou reinicio remoto pelo agente.
+- Reserva de staging dos arquivos do handoff 2026-10-15-compra-direta-admissao,
+  documentacao desta publicacao e novo script/teste de deploy DEV sem migrations.
+- Reserva documental complementar: somente atualizar contagem central de
+  permissoes em AGENTS.md e docs/seguranca/autenticacao_autorizacao.md.
+- Preservar outputs/ e demais checkouts; conferir remoto/base e push normal,
+  sem force. Homologacao EC2 permanece com o operador.
+- Backend, UI dos dois fluxos, build, ACL, documentacao, Bash e negativas do
+  deploy aprovados. Reserva de edicao liberada para commit/publicacao autorizada.
+
+## Compra Direta quantidade/frete e catalogo de admissao - 2026-10-15
+
+- Sessao codex-compra-direta-admissao-20261015, sem delegacao; finalizada localmente.
+- Reserva: backend/src/routes.js; novo RhAdmissaoCatalogoController e teste;
+  frontend/src/services/rhDp.js, pages/RhDpPessoal.jsx e teste de admissao;
+  SolicitacaoCompraController, novo servico/controller de gestao Compra Direta,
+  validadores/ACL caso necessarios; frontend pages/SolicitacaoDetalhe/index.jsx,
+  services/compras.js, novo formulario de frete reutilizando padroes existentes;
+  testes de quantidade/frete, READMEs canonicos e handoff deste escopo.
+- Reserva adicional: constants/moduloPermissoes.js, services/authorizationService.js,
+  frontend/src/utils/acessoProduto.js, generated/navegacaoFonteUnica.cjs gerado pelo
+  build e testes de ACL/UI deste fluxo.
+- Proprietario confirmou recalcular compra sem modificar titulos existentes.
+  Quantidade/frete terao permissoes proprias, revisao otimista e auditoria.
+  Catalogo admissao limitado a id/nome/CNPJ ativos,
+  sem liberar gestao de empresas, financeiro, outros dados ou outras obras.
+- Sem banco real, migrations, commit/push, EC2, restart ou deploy nesta tarefa.
+- Backend/ACL, UI dos novos fluxos, revisao visual, build e diff aprovados;
+  verificacoes legadas desatualizadas documentadas. Ownership liberado.
+  Handoff: docs/handoffs/2026-10-15-compra-direta-admissao.md.
+
 ## Correcao porta real do deploy DEV RH - 2026-10-15
 
 - Continuacao da publicacao/dev autorizada: operador confirmou backend-dev e

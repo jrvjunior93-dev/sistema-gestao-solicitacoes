@@ -1,5 +1,47 @@
 # Modulo COMPRAS
 
+## Compra Direta: quantidade e frete depois da criacao - 2026-10-15
+
+No detalhe, `Gerenciar todos os itens` e `Editar` permitem alterar a quantidade
+de itens cadastrados ou manuais (ate duas casas decimais, conforme o schema).
+O preco unitario e preservado; a compra e recalculada, mantendo o desconto total
+e redistribuindo-o entre itens. As apropriacoes do item alterado conservam seus
+destinos e proporcoes. A divisao entre formas de pagamento acompanha o novo
+total do fornecedor proporcionalmente, com fechamento de centavos.
+
+`Frete da compra` usa o modelo existente: sem frete, embutido ou pago a terceiro;
+valor global ou por item. Terceiro exige credor fornecedor ativo, vencimento e
+forma ativa (exceto FOPAG); favorecido ativo e PIX quando aplicavel. Boleto novo
+deve vir do upload temporario do proprio operador; boleto existente nao excluido
+pode ser mantido. O anexo entra na mesma transacao, sem duplicacao por repeticao.
+Frete embutido integra o valor do fornecedor; terceiro integra apenas o total
+da solicitacao e permanece disponivel para geracao financeira separada.
+
+Permissoes novas, nominais, independentes da edicao de apropriacoes:
+
+- `compras.compra_direta.editar_quantidade`;
+- `compras.compra_direta.gerenciar_frete`.
+
+Exigem tambem leitura/criacao para revisar a compra, modulo habilitado, escopo
+e interacao no setor atual da solicitacao. Bypass administrativo existente
+permanece. A permissao de frete libera somente seu catalogo de formas e upload
+temporario, sem conceder criacao de compras, gestao financeira ou de cadastros.
+
+PATCH `/compras/solicitacoes/:id/gestao-compra-direta` recebe acao, motivo e
+`revisao_gestao` da consulta. Locks na solicitacao, compra e itens serializam
+escritas; revisao de conteudo impede salvar sobre outra edicao. Repeticao igual
+nao cria auditoria duplicada. Compra cancelada/nao direta e recusada. Falha em
+validacao ou auditoria reverte a transacao inteira.
+
+**Titulos, pagamentos e baixas existentes nunca sao recalculados, criados ou
+cancelados por esta edicao.** Eventual acerto financeiro segue o fluxo proprio.
+Descricao/PDF historicos de criacao nao sao reescritos; novos valores ficam nos
+dados estruturados, no total e na auditoria. Sem migration ou alteracao de banco
+real nesta implementacao.
+
+Testes: backend `validarCompraDiretaGestao.js`, `validarCompraDiretaGeoAcesso.js`;
+frontend `validarCompraDiretaGestao.mjs`. [Handoff](../../handoffs/2026-10-15-compra-direta-admissao.md).
+
 ## Remocao isolada de arquivo financeiro do pedido - 2026-10-13
 
 Documentos financeiros possuem vinculo proprio; excluir titulos nao remove

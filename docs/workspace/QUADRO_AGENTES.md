@@ -1,5 +1,13 @@
 # Quadro de Agentes
 
+## Promocao main Compra Direta/admissao - 2026-10-15
+
+- Integracao autorizada main1341e1a3/devd72a9c93, sem delegacao; backup/timer
+  e schema real de producao confirmados. Tres conflitos apenas documentais.
+- Runtime homologado preservado, validacoes integradas aprovadas, ownership
+  liberado para PR/merge. Sem EC2, banco, migration ou restart pelo agente.
+- Handoff: docs/handoffs/2026-10-15-promocao-compra-direta-admissao-main.md.
+
 ## Promocao main cadastro no pagamento RH - 2026-10-15
 
 - Sessao codex-promocao-rh-cadastro-main-20261015: finalizado, sem delegacao,
@@ -34,6 +42,20 @@
   runtime conferidos sem diferenca contra suas bases corretas.
 - Sem banco, migration aplicada ou deploy; publicar somente Git autorizado.
 - Handoff: docs/handoffs/2026-10-08-promocao-operacional-main.md.
+## Publicacao DEV Compra Direta/admissao - 2026-10-15
+
+- Commit/push refactor/frontend autorizado; staging exclusivo dos ajustes e do
+  script/teste de deploy dev. Validacoes locais aprovadas; ownership liberado.
+- Sem main, EC2 pelo agente, alteracao de .env ou migration. Operador homologa.
+
+## Compra Direta e catalogo admissao - 2026-10-15
+
+- codex-compra-direta-admissao-20261015: finalizado local, sem delegacao;
+  ownership liberado. Quantidade/frete com recalculo autorizado, titulos
+  preservados, duas permissoes nominais e catalogo minimo de admissao.
+- Backend/ACL, UI, visual/build/diff aprovados; pendencias de testes legados
+  no handoff 2026-10-15-compra-direta-admissao. Sem banco real/deploy/Git.
+
 ## Pagamento RH cadastro atual - 2026-10-15
 
 - Sessao codex-rh-pagamento-cadastro-atual-20261015: finalizado local, sem delegacao,

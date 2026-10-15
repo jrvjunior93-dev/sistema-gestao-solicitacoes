@@ -204,7 +204,9 @@ const MODULO_PERMISSION_GROUPS = [
         key: 'compras.compra_direta',
         label: 'Compra Direta',
         permissoes: [
-          { key: 'compras.compra_direta.editar_apropriacoes_itens', label: 'Alterar apropriações dos itens', descricao: 'Alterar apropriações dos itens de compra direta com auditoria, sem alterar visualização de solicitações.' }
+          { key: 'compras.compra_direta.editar_apropriacoes_itens', label: 'Alterar apropriações dos itens', descricao: 'Alterar apropriações dos itens de compra direta com auditoria, sem alterar visualização de solicitações.' },
+          { key: 'compras.compra_direta.editar_quantidade', label: 'Alterar quantidade da compra direta', descricao: 'Recalcular itens e total da compra direta, com motivo e auditoria, sem modificar titulos existentes.' },
+          { key: 'compras.compra_direta.gerenciar_frete', label: 'Gerenciar frete da compra direta', descricao: 'Adicionar ou editar frete embutido ou pago a terceiro, sem modificar titulos existentes.' }
         ]
       },
       {

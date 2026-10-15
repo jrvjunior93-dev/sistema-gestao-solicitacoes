@@ -808,6 +808,13 @@ export async function atualizarQuantidadeItemSolicitacaoCompra(id, itemId, data)
   return handleJsonResponse(response, 'Erro ao atualizar quantidade do item da solicitacao de compra');
 }
 
+export async function editarGestaoCompraDireta(id, data) {
+  const response = await fetch(`${API_URL}/compras/solicitacoes/${id}/gestao-compra-direta`, {
+    method: 'PATCH', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(data)
+  });
+  return handleJsonResponse(response, 'Erro ao editar Compra Direta');
+}
+
 export async function cadastrarUnidadeItemSolicitacaoCompra(id, itemId) {
   const response = await fetch(`${API_URL}/compras/solicitacoes/${id}/itens/${itemId}/cadastrar-unidade`, {
     method: 'POST',

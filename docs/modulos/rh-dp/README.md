@@ -10,6 +10,15 @@ RH/DP e dono do cadastro funcional de colaboradores, documentos, vinculos, compe
 
 ## Regras
 
+- Admissao pela Obra: o formulario consulta GET
+  `/rh/solicitacoes/empresas-admissao`, protegido por `rh_dp.solicitacoes.abrir`.
+  Lista todas as empresas ativas somente com id/nome/CNPJ, sem filtro por obra.
+  Nao concede acesso ao cadastro/gestao de empresas ou a outras areas. As rotas
+  administrativas continuam restritas. Consulta sem escrita; falha de carga tem
+  tentativa novamente no formulario. Sem migration. Testes locais:
+  `node backend/scripts/validarRhAdmissaoCatalogo.js` e, no frontend,
+  `node scripts/validarRhPessoalPorLocal.mjs --admissao`.
+
 - Pagamento por solicitacao: previa e reabertura carregam salario/diaria e conta
   salario do cadastro atual, tanto para autor quanto DP, sem escrita na consulta.
   Atualizar cadastro no modal faz nova consulta sem descartar dias/faltas,

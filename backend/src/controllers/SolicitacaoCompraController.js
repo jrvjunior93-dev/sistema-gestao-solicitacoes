@@ -35,6 +35,7 @@ const { createWorkbookBuffer, sheetToJsonRows } = require('../utils/excelWorkboo
 const { getPresignedUrl, uploadToS3 } = require('../services/s3');
 const gerarCodigoSolicitacao = require('../services/solicitacao/gerarCodigo');
 const { normalizeOriginalName } = require('../utils/fileName');
+const { responderErroController } = require('../utils/controllerError');
 const { registrarAtencaoSolicitacao } = require('../services/solicitacaoAtencaoService');
 const { apropriacaoPodeReceberLancamento } = require('../services/apropriacaoSelecaoService');
 const { findSetorByCapability, isGeoToken, resolveSetorPersistenciaValue, userHasSetorCapability } = require('../services/setorCapabilityService');
@@ -79,6 +80,8 @@ const {
   canAccessCompras,
   canAccessSolicitacaoCompraByScope,
   canAlterarQuantidadeSolicitacaoCompra,
+  canAlterarQuantidadeCompraDireta,
+  canGerenciarFreteCompraDireta,
   canEditarItensSolicitacaoCompra,
   canEditarApropriacoesItemCompraDireta,
   canEditarApropriacoesItemSolicitacaoCompra,
@@ -95,6 +98,7 @@ const {
   isBusinessAdmin
 } = require('../services/authorizationService');
 const { assertPodeInteragirSolicitacao, assertPodeVisualizarSolicitacao } = require('../services/solicitacaoRetornoService');
+const { editarCompraDireta, revisaoGestao } = require('../services/compraDiretaGestaoService');
 const { ACAO_ENCAMINHAMENTO_COMPRA, extrairEncaminhamentoCompra } = require('../services/historicoEncaminhamentoCompraService');
 const { validateCompraEnviarBody } = require('../validators/operationalValidators');
 const { publishComprasRealtimeEventSafe } = require('../services/comprasRealtimeService');
@@ -660,12 +664,14 @@ async function validarEtapaGerenciamentoItens(usuario, solicitacao, res, transac
 }
 
 async function carregarSolicitacaoCompra(id) {
-  return SolicitacaoCompra.findByPk(id, {
+  const compra = await SolicitacaoCompra.findByPk(id, {
     include: [
       { model: Obra, as: 'obra', attributes: ['id', 'nome', 'codigo'] },
       { model: User, as: 'solicitante', attributes: ['id', 'nome', 'email'] },
       { model: User, as: 'compradorResponsavel', attributes: ['id', 'nome', 'email'] },
       { model: Parceiro, as: 'freteCredor', attributes: ['id', 'nome', 'cpf_cnpj', 'telefone', 'email'] },
+      { model: Parceiro, as: 'freteFavorecido', attributes: ['id', 'nome', 'cpf_cnpj'] },
+      { model: FormaPagamentoFinanceira, as: 'freteFormaPagamento', attributes: ['id', 'nome', 'codigo', 'tipo', 'gera_boleto'] },
       { model: Solicitacao, as: 'solicitacaoPrincipal', attributes: ['id', 'codigo', 'descricao', 'valor', 'area_responsavel', 'status_global'] },
       {
         model: SolicitacaoCompraItem,
@@ -806,6 +812,8 @@ async function carregarSolicitacaoCompra(id) {
       }
     ]
   });
+  if (compra && isSolicitacaoCompraDireta(compra)) compra.setDataValue('revisao_gestao', revisaoGestao(compra));
+  return compra;
 }
 
 async function carregarMapaApropriacoes({ obraId, itens, transaction }) {
@@ -2399,6 +2407,30 @@ async function encaminharSolicitacaoCompraParaFilaCompras({ solicitacao, usuario
 }
 
 module.exports = {
+  async editarGestaoCompraDireta(req, res) {
+    try {
+      const usuario = await validarAcesso(req, res);
+      if (!usuario) return;
+      const acao = req.body?.acao;
+      const permitido = acao === 'QUANTIDADE' ? await canAlterarQuantidadeCompraDireta(usuario)
+        : acao === 'FRETE' ? await canGerenciarFreteCompraDireta(usuario) : false;
+      if (!permitido) return res.status(403).json({ error: 'Acesso negado para esta alteracao da Compra Direta.' });
+      await editarCompraDireta({ compraId: Number(req.params.id), usuario, payload: req.body, acao,
+        autorizar: async (compra, principal, transaction) => {
+          // Revalidar escopo e setor sob lock; uma tela aberta nao concede acesso permanente.
+          if (!(await validarEscopoSolicitacaoCompra(usuario, compra, res, transaction, { permitirCompraDiretaGeo: true }))) {
+            throw Object.assign(new Error('Acesso negado a esta compra.'), { statusCode: 403, respondido: true });
+          }
+          await assertPodeInteragirSolicitacao({ user: usuario }, principal);
+        } });
+      return res.json(await carregarSolicitacaoCompra(req.params.id));
+    } catch (error) {
+      if (error.respondido) return;
+      if (!error.statusCode) console.error(error);
+      return responderErroController(res, error, 'Erro ao editar Compra Direta');
+    }
+  },
+
   async uploadTemporario(req, res) {
     try {
       const usuario = await validarAcesso(req, res);

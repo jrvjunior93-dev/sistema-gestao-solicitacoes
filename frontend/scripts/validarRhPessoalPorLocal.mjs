@@ -67,6 +67,7 @@ const overrides = {
   conferirRhApuracao: `async()=>{window.chamadas.push(['conferir']);window.apuracao.status='CONFERIDA';return structuredClone(window.apuracao);}`,
   fecharRhApuracao: `async(id,p)=>{window.chamadas.push(['fechar',id,p]);await new Promise(ok=>setTimeout(ok,150));if(window.apuracao.fechamentoRh)throw new Error('Ja fechada');const f={id:77,...p,total_titulos:2,total_valor:2000,titulos:[{id:1,titulo_financeiro_id:701,tipo_titulo:'SALARIO',valor_gerado:1000,tituloFinanceiro:{codigo:'TIT-QA-701'}}]};window.apuracao.fechamentoRh=f;return f;}`,
   getRhEmpresasGrupo: `async()=>[{id:3,nome:'Empresa QA'}]`,
+  getRhEmpresasAdmissao: `async()=>{window.chamadas.push(['catalogo-admissao']);return [{id:3,nome:'Empresa QA',cnpj:'111'},{id:4,nome:'Outra empresa QA',cnpj:'222'}];}`,
   rhTransferencias: `async(p,o)=>{window.chamadas.push(['transferencias',p,o]);return p==='/configuracao'?{obras:window.locais,obras_responsavel_ids:[7]}:{itens:[],total:0,total_paginas:1,pagina:1};}`
 };
 const rhModule = exportsRh.map(name => `export const ${name}=${overrides[name] || 'async()=>[]'};`).join('\n');
@@ -123,6 +124,17 @@ try {
   }
   const page = await abrir();
   await page.getByRole('button', { name: 'Abrir Obra QA', exact: true }).click();
+  await page.getByRole('button', { name: 'Pedir admissao', exact: true }).click();
+  const admissao = page.getByRole('dialog').last();
+  await admissao.getByLabel('Empresa do grupo', { exact: true }).selectOption('4');
+  assert.equal(await admissao.getByLabel('Empresa do grupo', { exact: true }).inputValue(), '4');
+  assert.equal(await page.evaluate(() => window.chamadas.filter(c => c[0] === 'catalogo-admissao').length), 1);
+  await admissao.getByRole('button', { name: /Cancelar|Fechar/, exact: true }).first().click();
+  await admissao.waitFor({ state: 'hidden' });
+  if (process.argv.includes('--admissao')) {
+    assert.deepEqual(errors, []);
+    console.log('Admissao OBRA sem gestao de empresas: catalogo completo, selecao e fechamento sem criar rascunho aprovados.');
+  } else {
   await page.getByRole('button', { name: 'Solicitar pagamento: Ana QA', exact: true }).waitFor();
   assert.deepEqual(await page.getByRole('tab').allTextContents(), ['Colaboradores', 'Solicitações', 'Transferências entre obras']);
   assert.ok(await page.evaluate(() => window.chamadas.some(c => c[0] === 'minhas' && c[1].escopo === 'TODOS')));
@@ -420,6 +432,7 @@ try {
   await dp.screenshot({ path: path.join(output, 'dp-modal.png'), fullPage: true });
   assert.deepEqual(errors, []);
   console.log('Colaboradores por local: seis abas DP, edição cadastral, documentos/relatórios locais e globais, escopos negativos, centros/obras, mobile e pagamento/conferência/fechamento validados (' + (gerencial ? 'gerencial' : etapas ? 'etapas' : 'legado') + ').');
+  }
 } catch (error) {
   console.error('Erros JavaScript da fixture:', errors);
   for (const page of pages) if (!page.isClosed()) console.error('Tela:', page.url(), (await page.locator('body').innerText()).slice(0, 3000));
