@@ -1,5 +1,26 @@
 # Quadro de Agentes
 
+## Publicacao DEV frete financeiro - 2026-10-15
+
+- Validado para publicacao, sem delegacao: commit/push autorizados na refactor/frontend,
+  script DEV com preflight de identidade/schema/flags e testes isolados.
+- Publicar somente delta funcional/documental da tarefa; main e outputs/
+  preservados. EC2 sera atualizada pelo operador, sem migration.
+- Backend, preflight/health isolados, UI desktop/mobile e build aprovados.
+  Evidencias no handoff 2026-10-15-compra-direta-frete-financeiro.md.
+
+## Sincronizacao financeira do frete Compra Direta - 2026-10-15
+
+- Sessao codex-compra-direta-frete-financeiro-20261015: finalizado local,
+  ownership liberado, sem delegacao.
+- Plano: mapear geracao/fila/baixa; sincronizar somente frete na transacao da
+  compra; complemento para pago; terceiro separado; bloquear reducao paga e
+  titulos protegidos; testes de replay, concorrencia, rollback e negativas.
+- Sem commit/push/deploy, migration ou banco real autorizado nesta etapa.
+- Services/geracao reais com adaptadores isolados, replay/rollback/concorrencia,
+  ACL/negativas, UI desktop/mobile, regressao SSE/modal, build, docs e sintaxe/diff
+  aprovados. Handoff: 2026-10-15-compra-direta-frete-financeiro.md.
+
 ## Publicacao DEV Compra Direta/admissao - 2026-10-15
 
 - Commit/push refactor/frontend autorizado; staging exclusivo dos ajustes e do

@@ -138,7 +138,7 @@ async function editarCompraDireta({ compraId, usuario, payload, acao, autorizar 
   if (!['QUANTIDADE', 'FRETE'].includes(acao)) fail('Acao invalida.');
   const motivo = String(payload?.motivo || '').trim();
   if (!motivo || motivo.length > 2000) fail('Informe o motivo da alteracao (ate 2000 caracteres).');
-  // Nenhuma operacao em TituloFinanceiro/Pagamento: estes sao documentos historicos.
+  // Quantidade preserva titulos. Somente FRETE sincroniza obrigacoes financeiras.
   return SolicitacaoCompra.sequelize.transaction(async transaction => {
     const referencia = await SolicitacaoCompra.findByPk(compraId, { transaction });
     if (!referencia) fail('Compra nao encontrada.', 404);
@@ -153,12 +153,14 @@ async function editarCompraDireta({ compraId, usuario, payload, acao, autorizar 
     const options = { where: { solicitacao_compra_id: compra.id }, order: [['id', 'ASC']], transaction, lock: transaction.LOCK.UPDATE };
     const cadastrados = await SolicitacaoCompraItem.findAll(options);
     const manuais = await SolicitacaoCompraItemManual.findAll(options);
-    const snapshot = { ...plain(compra), itens: cadastrados.map(plain), itensManuais: manuais.map(plain) };
+    const anterior = { ...plain(compra) };
+    const snapshot = { ...anterior, itens: cadastrados.map(plain), itensManuais: manuais.map(plain) };
     const revisao = revisaoGestao(snapshot);
     if (typeof payload.revisao_gestao !== 'string' || payload.revisao_gestao !== revisao) fail('A compra mudou desde a abertura do modal. Feche, reabra e confira os dados antes de salvar.', 409);
     let itens = itensDaCompra(snapshot);
     if (!itens.length) fail('Compra sem itens estruturados nao permite esta edicao.');
     let frete = null;
+    let freteSemMudanca = false;
     let alteracao;
     if (acao === 'QUANTIDADE') {
       const itemId = id(payload.item_id, 'Item');
@@ -189,9 +191,13 @@ async function editarCompraDireta({ compraId, usuario, payload, acao, autorizar 
         frete_parceiro_id: frete.values.frete_parceiro_id, frete_forma_pagamento_id: frete.values.frete_forma_pagamento_id };
       const anexoNovo = await anexarBoletoFrete({ payload, principal, usuario, transaction, obrigatorio: frete.boleto });
       const candidato = { ...snapshot, itens: itens.filter(i => i.item_tipo === 'CADASTRADO'), itensManuais: itens.filter(i => i.item_tipo === 'MANUAL') };
-      if (revisaoGestao(candidato) === revisao && !anexoNovo) return { alterada: false };
+      freteSemMudanca = revisaoGestao(candidato) === revisao && !anexoNovo;
     }
     const calculo = calcularCompra(snapshot, itens);
+    const eventosFinanceiros = acao === 'FRETE'
+      ? await require('./compraDiretaFreteFinanceiroService').sincronizarFrete({ anterior,
+        compra: snapshot, principal, usuario, transaction, motivo }) : [];
+    if (freteSemMudanca && !eventosFinanceiros.length) return { alterada: false };
     for (const item of calculo.itens) {
       const model = (item.item_tipo === 'MANUAL' ? manuais : cadastrados).find(i => Number(i.id) === Number(item.id));
       await model.update({ quantidade: item.quantidade, valor_total: item.valor_total,
@@ -202,14 +208,22 @@ async function editarCompraDireta({ compraId, usuario, payload, acao, autorizar 
     const valorAnterior = Number(principal.valor || 0);
     await principal.update({ valor: calculo.total }, { transaction });
     const metadata = { ...alteracao, motivo, valor_anterior: valorAnterior,
-      valor_total: calculo.total, valor_fornecedor: calculo.fornecedor, titulos_existentes_preservados: true };
+      valor_total: calculo.total, valor_fornecedor: calculo.fornecedor,
+      titulos_existentes_preservados: eventosFinanceiros.every(e => e.acao === 'CRIADO'), eventos_financeiros: eventosFinanceiros };
     await registrarLogSolicitacaoCompra({ solicitacaoCompraId: compra.id, usuarioId: usuario.id,
       tipoAcao: `COMPRA_DIRETA_${acao}_ALTERADA`, descricao: `Compra Direta: ${acao.toLowerCase()} alterada. ${motivo}`, metadados: metadata, transaction });
     await Historico.create({ solicitacao_id: principal.id, usuario_responsavel_id: usuario.id,
       setor: usuario.setor_id, acao: `COMPRA_DIRETA_${acao}_ALTERADA`,
-      descricao: `Compra recalculada para R$ ${calculo.total.toFixed(2)}. Titulos existentes preservados. Motivo: ${motivo}`,
+      descricao: `Compra recalculada para R$ ${calculo.total.toFixed(2)}. ${eventosFinanceiros.length ? 'Frete sincronizado no financeiro; pagamentos preservados.' : 'Titulos existentes preservados.'} Motivo: ${motivo}`,
       metadata: JSON.stringify(metadata) }, { transaction });
     return { alterada: true, total: calculo.total };
+  }).catch(error => {
+    // Baixa/fila podem bloquear titulo antes da solicitacao. O InnoDB reverte
+    // integralmente a vitima de um deadlock; nunca repetir criacao cegamente.
+    if (['ER_LOCK_DEADLOCK', 'ER_LOCK_WAIT_TIMEOUT'].includes(error.original?.code || error.parent?.code)) {
+      fail('Outro processamento financeiro ocorreu durante a edicao. Reabra a compra e confira antes de salvar novamente.', 409);
+    }
+    throw error;
   });
 }
 

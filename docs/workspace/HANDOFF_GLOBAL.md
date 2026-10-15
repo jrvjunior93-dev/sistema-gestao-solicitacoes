@@ -1,5 +1,18 @@
 # Handoff Global
 
+## Compra Direta: frete sincronizado no Financeiro - 2026-10-15
+
+- Implementacao local autorizada: embutido ajusta aberto sem baixa ou gera
+  complemento se pago; terceiro separado, sem duplicar na geracao do fornecedor.
+  Quantidade preserva regra anterior. Sem baixa/enqueue/debito automaticos.
+- Locks, transacao unica, auditoria, protecoes/ACL e negativas; services reais
+  com adaptadores de banco, UI desktop/mobile, regressao de modal/SSE, build,
+  documentos, permissoes e sintaxe/diff aprovados. Sem migration/dependencias.
+- Ownership liberado. Nao commitado/publicado; sem EC2/banco real alterado.
+  Branch codex/compra-direta-frete-financeiro-20261015; proximo passo e publicar
+  somente apos pedido e homologar dev. Handoff:
+  docs/handoffs/2026-10-15-compra-direta-frete-financeiro.md.
+
 ## Pagamento RH cadastro atualizado - 2026-10-15
 
 - Correcao local para autor/DP carregar salario/diaria e conta salario atuais;

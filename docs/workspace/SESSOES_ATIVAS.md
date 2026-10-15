@@ -1,5 +1,14 @@
 # Sessoes Ativas
 
+- codex-publicacao-frete-financeiro-dev-20261015: validado para publicacao, sem delegacao;
+  ownership de edicao liberado no OWNERSHIP_ATIVO. Commit/push somente refactor/frontend,
+  comandos para backend-dev8001, sem banco real/migration/deploy pelo agente.
+
+- codex-compra-direta-frete-financeiro-20261015: finalizado local neste worktree,
+  branch codex/compra-direta-frete-financeiro-20261015; ownership dos services,
+  integracao Financeiro/Compra e testes/documentacao liberado no OWNERSHIP_ATIVO.
+  Sem delegacao, banco real, migration, commit, push ou deploy.
+
 - Publicacao dev Compra Direta/admissao autorizada em 2026-10-15; arquivos do
   handoff validados para commit/push na refactor/frontend, sem main ou EC2.
   Reserva de edicao liberada; homologacao real permanece com o operador.

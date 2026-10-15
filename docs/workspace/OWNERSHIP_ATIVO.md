@@ -1,5 +1,40 @@
 # Ownership Ativo
 
+## Publicacao DEV frete financeiro - 2026-10-15
+
+- Usuario autorizou commit/push deste ajuste na refactor/frontend e comandos
+  EC2 dev. Reserva temporaria dos arquivos do handoff frete-financeiro para
+  revisao/staging, novo script/teste de deploy DEV e registros desta publicacao.
+- Reutilizar worktree atual, transportar somente o delta sobre origin/refactor;
+  nao incorporar commits exclusivos da main nem modificar outros checkouts.
+- Sem migration, flags alteradas, banco real, EC2/restart pelo agente; outputs/
+  fora dos commits. Script reinicia exclusivamente backend-dev na porta 8001.
+- Testes backend/ACL, preflight/health simulados, UI desktop/mobile e build
+  aprovados; ownership de edicao liberado para publicacao autorizada.
+
+## Compra Direta: sincronizacao financeira do frete - 2026-10-15
+
+- Sessao codex-compra-direta-frete-financeiro-20261015, finalizado local,
+  ownership de edicao liberado, sem delegacao.
+- Usuario autorizou atualizar titulo aberto sem baixa, complemento para pago e
+  titulo separado de terceiro sem duplicidade. Quantidade permanece sem sincronizacao.
+- Reserva exclusiva neste worktree: compraDiretaGestaoService.js, novo
+  compraDiretaFreteFinanceiroService.js, tituloFinanceiroService.js (geracao por
+  solicitacao), CompraDiretaFreteForm.jsx, FinanceiroCard.jsx, testes focados destes
+  fluxos, READMEs Compras/Financeiro, handoff desta tarefa e registros workspace.
+- Sem banco real, migration, commit, push, EC2, restart ou deploy nesta etapa.
+- Reserva complementar: financialValidators.js somente marcador de frete no
+  pagamento; validacao servidor obrigatoria de origem, valor, credor e forma.
+- Testes de regressao reservados: validarCartaoOpcionalSolicitacao.js e
+  validarAdiantamentoFinanceiro.js (fronteira do novo service), novo teste de
+  geracao atomica do frete e teste UI correspondente.
+- Preservar outputs/ e demais checkouts; titulo protegido exige regularizacao
+  financeira, sem fabricar aprovacao, baixa ou alterar historico de pagamento.
+- Services reais com models em memoria: cenarios de aberto/pago/parcial,
+  parcelas/rateios/fila, protecoes, corpo forjado, replay, concorrencia e rollback
+  aprovados. UI desktop/mobile, regressao de formulario, build, ACL, docs e
+  sintaxe/diff aprovados. Handoff 2026-10-15-compra-direta-frete-financeiro.md.
+
 ## Publicacao DEV Compra Direta e admissao - 2026-10-15
 
 - Usuario autorizou commit/push dos ajustes na refactor/frontend e comandos EC2

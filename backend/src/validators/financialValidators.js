@@ -233,6 +233,7 @@ function parsePagamentosTitulo(value) {
         'categoria_financeira_id',
         'payment_beneficiary_id',
         'favorecido_pagamento_id',
+        'origem_frete',
         'forma_pagamento_id',
         'cartao_id',
         'quantidade_parcelas',
@@ -243,6 +244,7 @@ function parsePagamentosTitulo(value) {
     );
 
     return {
+      origem_frete: parseBoolean(item?.origem_frete, `Origem frete do pagamento ${index + 1}`),
       valor: parseDecimal(item?.valor, `Valor do pagamento ${index + 1}`, { min: 0.01 }),
       data_vencimento: parseDateOnly(item?.data_vencimento, `Vencimento do pagamento ${index + 1}`),
       numero_documento: parseOptionalText(item?.numero_documento, `Documento do pagamento ${index + 1}`, 120),

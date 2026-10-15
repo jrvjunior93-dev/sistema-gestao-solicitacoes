@@ -2675,6 +2675,7 @@ async function listarTitulosPorSolicitacao(req, solicitacaoId) {
       'id',
       'solicitacao_id',
       'tipo',
+      'origem_titulo',
       'status',
       'descricao',
       'valor_original',
@@ -2728,6 +2729,8 @@ async function listarTitulosPorSolicitacao(req, solicitacaoId) {
 async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
   await assertFinanceAccess(req);
   const solicitacao = await carregarSolicitacaoFinanceira(req, solicitacaoId);
+  const freteCompraService = require('./compraDiretaFreteFinanceiroService');
+  const contextoCompraDireta = await freteCompraService.prepararGeracao(solicitacao);
   const competenciaSolicitacao = resolverCompetenciaCriacaoSolicitacao(solicitacao);
   const partesSolicitadas = await require('./solicitacaoFavorecidosService').listarFavorecidos(solicitacao.id);
   const adiantamento = await require('./adiantamentoService').ehAdiantamento(solicitacao);
@@ -2761,7 +2764,8 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
 
   const parceiroPadraoId = Number(payload.parceiro_id || solicitacao.parceiro_id || (adiantamento ? solicitacao.favorecido_id : null));
 
-  const valorSolicitacao = Number(solicitacao.valor != null ? solicitacao.valor : payload.valor);
+  const valorSolicitacao = contextoCompraDireta ? contextoCompraDireta.valor
+    : Number(solicitacao.valor != null ? solicitacao.valor : payload.valor);
   if (!Number.isFinite(valorSolicitacao) || valorSolicitacao <= 0) {
     throw createHttpError(400, 'Valor invalido para gerar o titulo.');
   }
@@ -2780,9 +2784,10 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
   });
   const intercompanyFieldsPadrao = await validarIntercompanyTitulo(payload);
 
-  const pagamentosInformados = Array.isArray(payload.pagamentos) && payload.pagamentos.length > 0
+  const pagamentosRecebidos = Array.isArray(payload.pagamentos) && payload.pagamentos.length > 0
     ? payload.pagamentos
     : [payload];
+  const pagamentosInformados = freteCompraService.prepararPagamentos(contextoCompraDireta, pagamentosRecebidos, payload);
   if (partesSolicitadas.length && pagamentosInformados.some(p => p.intercompany || p.transferencia_interna
     || p.impostos?.length || Number(p.desconto || 0) !== 0 || Number(p.desconto_financeiro || 0) !== 0
     || Number(p.valor_impostos || 0) !== 0 || Number(p.quantidade_parcelas || 1) !== 1 || p.parcelas?.length > 1)) {
@@ -2819,7 +2824,8 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
     const parceiroPagamento = await validarParceiro(parceiroIdPagamento);
     validarCompatibilidadeParceiroTitulo(parceiroPagamento, tipo);
     const favorecidoPagamentoId = Number(
-      pagamentoPayload.favorecido_pagamento_id || solicitacao.favorecido_id || 0
+      pagamentoPayload.origem_frete ? pagamentoPayload.favorecido_pagamento_id || 0
+        : pagamentoPayload.favorecido_pagamento_id || solicitacao.favorecido_id || 0
     );
     const favorecidoPagamento = favorecidoPagamentoId > 0
       ? await Parceiro.findOne({ where: { id: favorecidoPagamentoId, ativo: true }, attributes: ['id', 'nome', 'cpf_cnpj'] })
@@ -2931,6 +2937,7 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
   const titulosCriados = [];
   const baixasCartaoNoAto = [];
   try {
+    await freteCompraService.validarGeracao(solicitacao.id, contextoCompraDireta, transaction);
     if (partesSolicitadas.length) {
       const principal = await Solicitacao.findByPk(solicitacao.id, { transaction, lock: transaction.LOCK.UPDATE });
       if (!principal || Number(principal.valor) !== valorOriginal) throw createHttpError(409, 'Solicitacao alterada; atualize a divisao.');
@@ -3001,7 +3008,8 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
           data_compra: pagamento.dataCompra,
           competencia_data: competenciaSolicitacao,
           considera_dre: adiantamento ? false : pagamento.consideraDre,
-          origem_titulo: adiantamento ? 'ADIANTAMENTO' : 'SOLICITACAO',
+          origem_titulo: adiantamento ? 'ADIANTAMENTO'
+            : pagamento.payload.origem_frete ? freteCompraService.ORIGEM_FRETE : 'SOLICITACAO',
           tipo,
           status: statusTitulo,
           descricao: descricaoParcela || descricaoPadraoTitulo(solicitacao),

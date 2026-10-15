@@ -10,6 +10,7 @@ import { chromium } from 'playwright';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const baseline = process.argv.includes('--baseline');
+const freteMode = process.argv.includes('--frete');
 const original = baseline ? execFileSync('git', ['show', '31490a0d5ab39404b2b8bbb3e3285bc75f5faa3d:frontend/src/pages/SolicitacaoDetalhe/FinanceiroCard.jsx'], {cwd:root,encoding:'utf8'}) : null;
 const services = ['financeiro', 'parceiros', 'solicitacoes', 'empresasGrupo', 'obras'];
 const mocks = new Map(services.map(name => {
@@ -20,16 +21,25 @@ const mocks = new Map(services.map(name => {
 const fixture = `
 import React,{useState} from 'react';import {createRoot} from 'react-dom/client';
 import {MemoryRouter} from 'react-router-dom';
-import FinanceiroCard from '/src/pages/SolicitacaoDetalhe/FinanceiroCard.jsx';
+import FinanceiroCard,{buildDefaultForm} from '/src/pages/SolicitacaoDetalhe/FinanceiroCard.jsx';
 import {LiveUpdatesProvider,useLiveUpdateSubscription} from '/src/contexts/LiveUpdatesContext.jsx';
 window.qaUser={id:9,perfil:'COMPRAS',areas_permissoes_configuradas:true,areas_permissoes:['financeiro.titulos.criar','financeiro.titulos.visualizar']};
 window.qaReads=0;window.qaSends=[];window.qaFail=false;
 window.qaSource={id:10,codigo:'SOL-QA-10',valor:1000,data_vencimento:'2090-01-31',
  tipo:{nome:'DESPESA ADMINISTRATIVA'},obra:{id:2,nome:'Obra QA',empresa_grupo_id:3},
  parceiro:{id:4,nome:'Credor QA',fornecedor:true},forma_pagamento_id:1};
+window.qaTitles=[];window.qaTitleReads=0;
+${freteMode ? `window.qaSource={...window.qaSource,valor:200,tipo:{nome:'COMPRA DIRETA'},
+  compra_direta:{id:5,origem:'COMPRA_DIRETA',frete_tipo:'TERCEIRO',frete_valor:50,valor_fechado:150,
+    frete_data_vencimento:'2090-01-31',frete_parceiro_id:4,frete_forma_pagamento_id:2,
+    freteCredor:{id:4,nome:'Transportadora QA'},formas_pagamento_json:[{id:2,valor:150}]}};
+  window.qaTitles=[{id:1,solicitacao_id:10,origem_titulo:'COMPRA_DIRETA_FRETE',tipo:'PAGAR',
+    descricao:'Frete QA',status:'ABERTO',valor_original:50,valor_saldo:50,valor_baixado:0,data_vencimento:'2090-01-31'}];` : ''}
+window.qaDefaultForm=()=>buildDefaultForm(window.qaSource,window.qaTitles);
 const categories=[{id:6,nome:'Despesa QA',tipo:'PAGAR',ativo:true}];
 const forms=[{id:1,nome:'Boleto',tipo:'BOLETO',ativo:true,permite_parcelamento:true},{id:2,nome:'Transferencia',tipo:'TRANSFERENCIA',ativo:true}];
 window.qaService=async(name,args)=>{
+ if(name==='getTitulosFinanceirosPorSolicitacao'){window.qaTitleReads++;return structuredClone(window.qaTitles)}
  if(name==='getCategoriasFinanceiras')return categories;
  if(name==='getFormasPagamentoFinanceiras')return forms;
  if(name==='buscarParceiroPorId')return window.qaSource.parceiro;
@@ -84,6 +94,29 @@ try{
     const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error('Erro da pagina QA:',e.message)});
     await page.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():route.abort());
     await page.goto('http://127.0.0.1:'+server.httpServer.address().port+'/qa-titulo');
+    if(freteMode){
+      await page.waitForFunction(()=>window.qaTitleReads>0);
+      await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+      const padrao=await page.evaluate(()=>window.qaDefaultForm());
+      assert.match(padrao.valor,/150,00/);assert.equal(padrao.pagamentos.length,1);
+      assert.equal(padrao.pagamentos[0].origem_frete,false);
+      await page.getByRole('button',{name:'Criar Título',exact:true}).click();
+      const modal=page.getByRole('dialog');await modal.waitFor();
+      await modal.getByLabel('Categoria financeira deste título',{exact:true}).fill('Despesa');
+      await modal.getByRole('option',{name:/Despesa QA/}).click();
+      await modal.getByRole('button',{name:'Confirmar',exact:true}).click();
+      await page.waitForFunction(()=>window.qaCreated===true);
+      const enviado=await page.evaluate(()=>window.qaSends[0][1]);
+      assert.match(enviado.valor,/150,00/);assert.equal(enviado.pagamentos.length,1);
+      assert.equal(enviado.pagamentos[0].origem_frete,false);
+      await page.evaluate(()=>{window.qaTitles.push({...window.qaTitles[0],id:2,descricao:'Fornecedor QA',
+        origem_titulo:'SOLICITACAO',valor_original:150,valor_saldo:150});
+        window.qaReplace({compra_direta:{...window.qaSource.compra_direta,updatedAt:'nova-revisao'}})});
+      const bloqueado=page.getByRole('button',{name:/^Criar Título desabilitado/});
+      await bloqueado.waitFor();assert.equal(await bloqueado.isDisabled(),true);
+      assert.deepEqual(errors,[]);console.log('OK '+width+'px: frete existente omitido, valor do fornecedor, envio real sem frete duplicado e bloqueio de regeneracao.');
+      await page.close();continue;
+    }
     const open=page.getByRole('button',{name:'Criar Título',exact:true});await open.click();
     const modal=page.getByRole('dialog');await modal.waitFor();
     await modal.getByLabel(/^Forma de pagamento/).selectOption('1');

@@ -52,6 +52,8 @@ async function criacao() {
     baixarTituloCartaoNoAto: async () => null, Historico: { create: noop }, getSetorUsuario: () => 'GEO', formatCurrency: String,
     marcarSolicitacaoComTituloCadastrado: noop, carregarTituloPorId: async () => criados[0], registrarEventoSeguranca: noop,
     require: nome => {
+      if (nome === './compraDiretaFreteFinanceiroService') return { prepararGeracao: async () => null,
+        prepararPagamentos: (_contexto, pagamentos) => pagamentos, validarGeracao: noop };
       if (nome === './adiantamentoService') return { ehAdiantamento: async () => adianta };
       if (nome === './solicitacaoFavorecidosService') return { listarFavorecidos: async () => partes,
         validarFavorecidos: async (dados, opts) => require('../src/services/solicitacaoFavorecidosDomain').normalizarFavorecidos(dados, opts) };

@@ -1,5 +1,25 @@
 # Modulo FINANCEIRO
 
+## Compra Direta: frete apos geracao do titulo - 2026-10-15
+
+Salvar frete na gestao da Compra Direta sincroniza a obrigacao financeira na
+mesma transacao: embutido ajusta somente o delta nos titulos abertos sem baixa;
+havendo pagamento, cria complemento e preserva originais. Terceiro gera titulo
+separado, com origem `COMPRA_DIRETA_FRETE`, sem duplicar na geracao inicial do
+fornecedor. Complemento embutido usa `COMPRA_DIRETA_COMPLEMENTO`.
+
+Nenhuma baixa, debito, envio a fila ou autorizacao e automatico. Titulos pagos
+nao sao reescritos. Reducoes pagas e titulos protegidos por cobranca/integracao/
+autorizacao exigem regularizacao no fluxo financeiro. Titulos novos devem ser
+conferidos e classificados; frete a terceiro automatico nasce sem categoria e
+fora da DRE ate classificacao pelo Financeiro. Se a solicitacao estava PAGA,
+um novo titulo pendente muda para PARCIALMENTE PAGO, sem trocar setor.
+
+A permissao `compras.compra_direta.gerenciar_frete` autoriza somente esse efeito
+restrito na propria compra/obra, nao a edicao financeira geral. Detalhes,
+locks, rateios e excecoes no [canonico de Compras](../compras/README.md) e no
+[handoff](../../handoffs/2026-10-15-compra-direta-frete-financeiro.md).
+
 ## Fila: carteira de terceiros sem conta na massa - 2026-10-13
 
 - Conta pagadora exigida somente para cheques proprios do conjunto. Terceiros
