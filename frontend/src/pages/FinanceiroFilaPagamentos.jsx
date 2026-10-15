@@ -1,5 +1,7 @@
 import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import useConsultaSerial from '../hooks/useConsultaSerial';
+import PaginacaoConsulta from '../components/padrao/PaginacaoConsulta';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   HiOutlineArrowPath,
@@ -651,6 +653,14 @@ export default function FinanceiroFilaPagamentos() {
     ['origem', 'empresa_id', 'credor_id', 'recebimento_dp'].map(key => [key, searchParams.get(key) || ''])));
   const [opcoesFiltros, setOpcoesFiltros] = useState({ empresas: [], credores: [] });
   const [rows, setRows] = useState([]);
+  const [pagina, setPagina] = useWorkspaceState('fila:pagina', 1);
+  const [paginacao, setPaginacao] = useState(null);
+  const ultimaPaginaCarregada = useRef(null);
+  const idsPaginaCarregada = useRef(new Set());
+  const [linhasConhecidas, setLinhasConhecidas] = useState({});
+  const linhasConhecidasRef = useRef(linhasConhecidas);
+  linhasConhecidasRef.current = linhasConhecidas;
+  const linhasOperacao = useMemo(() => Object.values({ ...linhasConhecidas, ...Object.fromEntries(rows.map(r => [r.id, r])) }), [linhasConhecidas, rows]);
   const [summary, setSummary] = useState({});
   const [accounts, setAccounts] = useState([]);
   const [instrumentos, setInstrumentos] = useState({ formas: [], cartoes: [], cheques: [] });
@@ -661,8 +671,10 @@ export default function FinanceiroFilaPagamentos() {
   const [edicoesFila, setEdicoesFila] = useWorkspaceState('fila:edicoes', {});
   const edicoesFilaRef = useRef(edicoesFila);
   edicoesFilaRef.current = edicoesFila;
-  const consultaFila = useQueryRevision(`${status}|${appliedSearch}|${JSON.stringify(filtros)}`);
+  const consultaFila = useQueryRevision(`${status}|${appliedSearch}|${JSON.stringify(filtros)}|${pagina}|${user?.id}`);
   const [selected, setSelected] = useWorkspaceState('fila:selecionados', []);
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
   const [loading, setLoading] = useState(true);
   const [actionKey, setActionKey] = useState('');
   const [reasonOpenId, setReasonOpenId] = useWorkspaceState('fila:motivoId', null);
@@ -681,11 +693,22 @@ export default function FinanceiroFilaPagamentos() {
   const canReport = canReportarFilaPagamentos(user);
   const canResolve = canResolverFilaPagamentos(user);
   const canImportReceipts = canImportarComprovantesFilaPagamentos(user);
+  const usuarioSelecao = useRef(user?.id);
+  useLayoutEffect(() => {
+    if (usuarioSelecao.current !== user?.id) {
+      setSelected([]); setLinhasConhecidas({}); setRows([]);
+      setBaixaMassa(null); setComprovanteLote(null);
+      ultimaPaginaCarregada.current = null; idsPaginaCarregada.current = new Set();
+    }
+    usuarioSelecao.current = user?.id;
+  }, [user?.id, setSelected]);
 
   function applyFilters(nextStatus = status, nextSearch = appliedSearch, nextFiltros = filtros) {
+    setPagina(1);
     setStatus(nextStatus);
     setAppliedSearch(nextSearch);
     setSelected([]);
+    setLinhasConhecidas({});
     setFiltros(nextFiltros);
     const nextParams = new URLSearchParams();
     if (nextStatus !== 'PENDENTE') nextParams.set('status', nextStatus);
@@ -694,12 +717,12 @@ export default function FinanceiroFilaPagamentos() {
     setSearchParams(nextParams, { replace: true });
   }
 
-  const load = useCallback(async () => {
+  const loadConsulta = useCallback(async () => {
     const token = consultaFila.begin();
     setLoading(true);
     try {
       const [queueResult, accountResult, instrumentResult] = await Promise.all([
-        getFilaPagamentos({ status, q: appliedSearch || undefined,
+        getFilaPagamentos({ status, q: appliedSearch || undefined, pagina, limite: 50,
           ...Object.fromEntries(Object.entries(filtros).filter(([, value]) => value)) }),
         getContasFilaPagamentos(),
         canSettle ? getInstrumentosFilaPagamentos() : Promise.resolve({ formas: [], cartoes: [], cheques: [] })
@@ -707,13 +730,25 @@ export default function FinanceiroFilaPagamentos() {
       if (!consultaFila.isCurrent(token)) return;
       setFilaAutorizada(true);
       const nextRows = queueResult?.data || [];
+      const paginaEfetiva = queueResult?.pagina || pagina;
+      const anterioresMesmaPagina = ultimaPaginaCarregada.current === paginaEfetiva ? idsPaginaCarregada.current : new Set();
+      const novosIds = new Set(nextRows.map(r => Number(r.id)));
+      ultimaPaginaCarregada.current = paginaEfetiva;
+      idsPaginaCarregada.current = novosIds;
       setRows(nextRows);
+      setPaginacao(queueResult?.pagina ? { pagina: queueResult.pagina, total: queueResult.total, total_paginas: queueResult.total_paginas } : null);
+      setLinhasConhecidas(current => ({ ...Object.fromEntries(Object.entries(current).filter(([id]) => selectedRef.current.includes(Number(id))
+        && (!anterioresMesmaPagina.has(Number(id)) || novosIds.has(Number(id))))),
+        ...Object.fromEntries(nextRows.map(row => [row.id, row])) }));
       setOpcoesFiltros(queueResult?.filtros || { empresas: [], credores: [] });
       setSummary(queueResult?.resumo || {});
       setAccounts(Array.isArray(accountResult) ? accountResult : accountResult?.data || []);
       setInstrumentos(instrumentResult);
-      setSelected((current) => current.filter((id) => nextRows.some((row) => Number(row.id) === Number(id)
-        && !row.somente_consulta && ((row.status === 'PENDENTE' && !row.movimento_financeiro_id) || row.status === 'DIVERGENTE' || row.pendente_comprovante))));
+      setSelected((current) => current.filter(id => {
+        const row = nextRows.find(r => Number(r.id) === Number(id))
+          || (!anterioresMesmaPagina.has(Number(id)) ? linhasConhecidasRef.current[id] : null);
+        return row && !row.somente_consulta && ((row.status === 'PENDENTE' && !row.movimento_financeiro_id) || row.status === 'DIVERGENTE' || row.pendente_comprovante);
+      }));
       setDrafts((current) => {
         const next = { ...current };
         nextRows.forEach((row) => {
@@ -757,21 +792,51 @@ export default function FinanceiroFilaPagamentos() {
       if (!consultaFila.isCurrent(token)) return;
       setFilaAutorizada(false);
       setRows([]); setAccounts([]); setSummary({}); setSelected([]);
+      setLinhasConhecidas({}); setPaginacao(null);
       setOpcoesFiltros({ empresas: [], credores: [] });
       setInstrumentos({ formas: [], cartoes: [], cheques: [] }); setDrafts({});
       avisar.erro(error?.message || 'Erro ao carregar a fila de pagamentos.');
     } finally {
       if (consultaFila.isCurrent(token)) setLoading(false);
     }
-  }, [status, appliedSearch, filtros, avisar, canSettle]);
+  }, [status, appliedSearch, filtros, pagina, avisar, canSettle, user?.id]);
+  const identidadeConsulta = JSON.stringify([status, appliedSearch, filtros, canSettle, pagina, user?.id]);
+  const load = useConsultaSerial(loadConsulta, identidadeConsulta);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { consultaFila.begin(); load(); }, [load, identidadeConsulta]);
+
+  // Cache apenas em memoria para a selecao entre paginas. Antes de qualquer
+  // operacao, reler todos os IDs selecionados no mesmo recorte autorizado.
+  async function conferirSelecao(ids) {
+    const atuais = [];
+    try {
+      for (let i = 0; i < ids.length; i += 100) {
+        const lote = ids.slice(i, i + 100);
+        const r = await getFilaPagamentos({ status, q: appliedSearch || undefined, ...filtros,
+          pagina: 1, limite: 100, fila_ids: lote.join(',') });
+        atuais.push(...(r?.data || []).filter(row => lote.includes(Number(row.id))));
+      }
+      if (atuais.length !== ids.length || atuais.some(row => {
+        const anterior = linhasOperacao.find(r => Number(r.id) === Number(row.id));
+        return !anterior || revisaoFila(anterior) !== revisaoFila(row);
+      })) {
+        setSelected([]); setBaixaMassa(null); setComprovanteLote(null);
+        await load();
+        avisar.alerta('Um título selecionado mudou ou saiu deste recorte. A seleção foi limpa; confira os dados atuais antes de continuar.');
+        return null;
+      }
+      return ids.map(id => atuais.find(row => Number(row.id) === Number(id)));
+    } catch (error) {
+      avisar.erro(error.message || 'Não foi possível revalidar a seleção. Nenhuma operação foi executada.');
+      return null;
+    }
+  }
 
   function updateDraft(id, patch) {
       const previous = draftsRef.current[id] || {};
       const next = { ...previous, ...patch };
       const ownFields = camposFila(patch);
-      const row = rows.find(item => Number(item.id) === Number(id));
+      const row = linhasOperacao.find(item => Number(item.id) === Number(id));
       if (row && ('juros' in patch || 'multa' in patch || 'desconto' in patch)
         && valorEmCentavos(previous.valor_pago) === valorEmCentavos(totalPrevistoFila(row, previous))) {
         next.valor_pago = valorParaInput(totalPrevistoFila(row, next));
@@ -891,7 +956,9 @@ export default function FinanceiroFilaPagamentos() {
     await executarOperacao(async () => {
       const { ids, arquivo } = comprovanteLote;
       if (!ids.length || ids.length > 100) { avisar.erro('Selecione de 1 a 100 títulos por operação.'); return; }
-      const elegiveis = rows.filter(r => ids.includes(Number(r.id)) && !r.somente_consulta
+      const atuais = await conferirSelecao(ids);
+      if (!atuais) return;
+      const elegiveis = atuais.filter(r => ids.includes(Number(r.id)) && !r.somente_consulta
         && ((r.status === 'PENDENTE' && !r.movimento_financeiro_id) || r.pendente_comprovante));
       if (elegiveis.length !== ids.length) { avisar.erro('A seleção mudou. Feche e confira os títulos atuais.'); return; }
       setActionKey('comprovante-lote');
@@ -933,6 +1000,9 @@ export default function FinanceiroFilaPagamentos() {
   }
 
   async function performSettle(targetRows, dados = draftsRef.current, instrumentosLote = null) {
+    const atuais = await conferirSelecao(targetRows.map(row => Number(row.id)));
+    if (!atuais) return;
+    targetRows = atuais;
     const problem = validateRows(targetRows, dados, instrumentosLote);
     if (problem) {
       setBaixaMassa(null);
@@ -988,6 +1058,9 @@ export default function FinanceiroFilaPagamentos() {
 
   async function performApproveDivergences(targetRows) {
     if (targetRows.length === 0) return;
+    const atuais = await conferirSelecao(targetRows.map(row => Number(row.id)));
+    if (!atuais) return;
+    targetRows = atuais;
     const total = targetRows.reduce((sum, row) => sum + Number(row.valor_informado || 0), 0);
     const { ok, texto } = await confirmar({
       titulo: targetRows.length === 1 ? 'Autorizar baixa divergente?' : 'Autorizar baixas divergentes?',
@@ -1089,18 +1162,24 @@ export default function FinanceiroFilaPagamentos() {
     }
   }
 
-  const pendingRows = useMemo(() => rows.filter((row) => row.status === 'PENDENTE' && !row.somente_consulta
-    && Number(row.id) > 0 && !Number(row.movimento_financeiro_id)), [rows]);
-  const divergentRows = useMemo(() => rows.filter((row) => row.status === 'DIVERGENTE'), [rows]);
-  const receiptRows = useMemo(() => rows.filter(row => !row.somente_consulta && Number(row.id) > 0
-    && ((row.status === 'PENDENTE' && !row.movimento_financeiro_id) || row.pendente_comprovante)), [rows]);
-  const selectableRows = status === 'DIVERGENTE' && canResolve
+  const pendingRows = useMemo(() => linhasOperacao.filter((row) => row.status === 'PENDENTE' && !row.somente_consulta
+    && Number(row.id) > 0 && !Number(row.movimento_financeiro_id)), [linhasOperacao]);
+  const divergentRows = useMemo(() => linhasOperacao.filter((row) => row.status === 'DIVERGENTE'), [linhasOperacao]);
+  const receiptRows = useMemo(() => linhasOperacao.filter(row => !row.somente_consulta && Number(row.id) > 0
+    && ((row.status === 'PENDENTE' && !row.movimento_financeiro_id) || row.pendente_comprovante)), [linhasOperacao]);
+  const selectableAll = status === 'DIVERGENTE' && canResolve
     ? divergentRows
     : (['PENDENTE', 'PENDENTE_COMPROVANTE', 'TODOS'].includes(status) && canSettle ? receiptRows : []);
+  const selectableRows = selectableAll.filter(row => rows.some(r => Number(r.id) === Number(row.id)));
   const selectedRows = useMemo(
-    () => selectableRows.filter((row) => selected.includes(Number(row.id))),
-    [selectableRows, selected]
+    () => selectableAll.filter((row) => selected.includes(Number(row.id))),
+    [selectableAll, selected]
   );
+  const selecionadosPagina = selectableRows.filter(r => selected.includes(Number(r.id))).length;
+  function selecionarPagina(marcar) {
+    const ids = selectableRows.map(r => Number(r.id));
+    setSelected(current => marcar ? [...new Set([...current, ...ids])] : current.filter(id => !ids.includes(Number(id))));
+  }
   const approvingDivergences = status === 'DIVERGENTE';
   const selectedPayments = selectedRows.filter(row => pendingRows.some(r => Number(r.id) === Number(row.id)));
   const selectedReceipts = selectedRows.filter(row => receiptRows.some(r => Number(r.id) === Number(row.id)));
@@ -1135,7 +1214,8 @@ export default function FinanceiroFilaPagamentos() {
             : `${approvingDivergences ? 'Autorizar selecionados' : 'Baixa em massa'}${(approvingDivergences ? selectedRows : selectedPayments).length ? ` (${(approvingDivergences ? selectedRows : selectedPayments).length})` : ''}`,
           onClick: () => approvingDivergences ? approveDivergences(selectedRows) : setBaixaMassa({
             ids: selectedPayments.map(row => row.id), revisoes: selectedPayments.map(revisaoFila) }),
-          desabilitada: loading || busy || (approvingDivergences ? selectedRows : selectedPayments).length === 0,
+          desabilitada: loading || busy || (approvingDivergences ? selectedRows : selectedPayments).length === 0
+            || (!approvingDivergences && selectedPayments.length > 200),
           icone: <HiOutlineCheckCircle aria-hidden="true" />
         } : undefined}
         secundarias={[
@@ -1235,17 +1315,20 @@ export default function FinanceiroFilaPagamentos() {
           <button type="button" className="btn btn-outline btn-sm" disabled={busy || !Object.values(filtros).some(Boolean)}
             onClick={() => applyFilters(status, appliedSearch, { origem: '', empresa_id: '', credor_id: '', recebimento_dp: '' })}>Limpar filtros dos títulos</button>
         </div>
-        {rows.length >= 500 && <p role="status" className="mb-2 text-xs text-[var(--c-muted)]">A fila exibe até 500 títulos por consulta. Refine os filtros para localizar os demais; o relatório do DP lista todos os envios do recorte.</p>}
+        <PaginacaoConsulta pagina={paginacao?.pagina || pagina} paginas={paginacao?.total_paginas || 1}
+          total={paginacao?.total ?? rows.length} ocupado={loading || busy} aoMudar={setPagina} />
         {(hasBulkAction || hasReceiptSelection) && <div className="mb-2 flex flex-wrap items-center gap-3 text-sm">
           <label className="flex items-center gap-2">
-            <input type="checkbox" aria-label="Selecionar todos os elegíveis desta lista"
-              ref={(elemento) => { if (elemento) elemento.indeterminate = selectedRows.length > 0 && selectedRows.length < selectableRows.length; }}
-              checked={selectableRows.length > 0 && selectedRows.length === selectableRows.length}
+            <input type="checkbox" aria-label="Selecionar todos os elegíveis da página atual"
+              ref={(elemento) => { if (elemento) elemento.indeterminate = selecionadosPagina > 0 && selecionadosPagina < selectableRows.length; }}
+              checked={selectableRows.length > 0 && selecionadosPagina === selectableRows.length}
               disabled={loading || busy || !selectableRows.length}
-              onChange={(event) => setSelected(event.target.checked ? selectableRows.map((row) => Number(row.id)) : [])} />
-            {approvingDivergences ? 'Todas as divergências desta lista' : 'Todos os elegíveis desta lista'}
+              onChange={(event) => selecionarPagina(event.target.checked)} />
+            {approvingDivergences ? 'Todas as divergências da página atual' : 'Todos os elegíveis da página atual'}
           </label>
           <span className="text-[var(--c-muted)]" role="status">{selectedRows.length} selecionado(s) · {currency(selectedRows.reduce((total, row) => total + Number(drafts[row.id]?.valor_pago || 0), 0))}</span>
+          {selectedRows.length > 0 && <><span className="text-[var(--c-muted)]">{selecionadosPagina} nesta página · Baixa: até 200 por operação; comprovante: até 100.</span>
+            <button type="button" className="btn btn-outline btn-sm" disabled={loading || busy} onClick={() => setSelected([])}>Limpar seleção</button></>}
         </div>}
         <div className="min-w-0 rounded-xl border border-[var(--c-border)]">
           <ResizableTable
@@ -1259,9 +1342,9 @@ export default function FinanceiroFilaPagamentos() {
                 <ResizableTh columnKey="selecao" className="px-3 py-3">
                   <input
                     type="checkbox"
-                    aria-label={approvingDivergences ? 'Selecionar todas as divergências' : 'Selecionar todos os títulos pendentes'}
-                    checked={selectableRows.length > 0 && selectedRows.length === selectableRows.length}
-                    onChange={(event) => setSelected(event.target.checked ? selectableRows.map((row) => Number(row.id)) : [])}
+                    aria-label={approvingDivergences ? 'Selecionar todas as divergências da página atual' : 'Selecionar todos os títulos pendentes da página atual'}
+                    checked={selectableRows.length > 0 && selecionadosPagina === selectableRows.length}
+                    onChange={(event) => selecionarPagina(event.target.checked)}
                     disabled={selectableRows.length === 0 || loading || busy}
                   />
                 </ResizableTh>
@@ -1547,12 +1630,12 @@ export default function FinanceiroFilaPagamentos() {
         </p>
       </BlocoConteudo>
       <ErroRegistroBaixaModal erro={erroBaixa} onFechar={fecharErroRegistroBaixa} />
-      {baixaMassa && <BaixaMassaFilaModal rows={rows.filter(row => baixaMassa.ids.includes(row.id))}
+      {baixaMassa && <BaixaMassaFilaModal rows={linhasOperacao.filter(row => baixaMassa.ids.includes(row.id))}
         accounts={accounts} drafts={drafts} instrumentos={instrumentos}
         podeCadastrarCheque={hasPermissao(user, 'financeiro.cheques.cadastrar') && hasPermissao(user, 'financeiro.cheques.visualizar')}
         busy={Boolean(actionKey)} onFechar={() => setBaixaMassa(null)}
         onConfirmar={async patch => {
-          const atuais = baixaMassa.ids.map(id => rows.find(row => row.id === id));
+          const atuais = baixaMassa.ids.map(id => linhasOperacao.find(row => row.id === id));
           if (!canSettle || !filaAutorizada || atuais.some((row, i) => !row || row.status !== 'PENDENTE'
             || row.somente_consulta || revisaoFila(row) !== baixaMassa.revisoes[i])) return 'A seleção mudou. Feche o modal, atualize e confira a fila.';
           const dados = Object.fromEntries(atuais.map(row => [row.id, { ...draftsRef.current[row.id],
@@ -1570,7 +1653,7 @@ export default function FinanceiroFilaPagamentos() {
         <div className="p-4 space-y-4">
           <h2 className="app-bloco-titulo">Anexar mesmo comprovante · {comprovanteLote.ids.length} título(s)</h2>
           <p className="app-note">O PDF será anexado a todos os selecionados. Não altera valores, contas, datas ou pagamentos e não registra baixa. Um arquivo já vinculado ao mesmo título não será duplicado.</p>
-          <details><summary>Conferir títulos selecionados</summary><ul>{rows.filter(r => comprovanteLote.ids.includes(Number(r.id))).map(r => <li key={r.id}>{r.titulo?.codigo || r.id} · {r.titulo?.descricao}</li>)}</ul></details>
+          <details><summary>Conferir títulos selecionados</summary><ul>{linhasOperacao.filter(r => comprovanteLote.ids.includes(Number(r.id))).map(r => <li key={r.id}>{r.titulo?.codigo || r.id} · {r.titulo?.descricao}</li>)}</ul></details>
           <label className="block text-sm">Comprovante PDF (até 12 MB)
             <input aria-label="Comprovante compartilhado PDF" type="file" accept="application/pdf,.pdf" disabled={busy}
               onChange={e => { const arquivo = e.target.files?.[0];

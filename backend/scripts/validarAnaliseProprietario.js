@@ -8,7 +8,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const crypto = require('node:crypto');
 const root = path.resolve(__dirname, '..');
-const Op = { in: '$in', notIn: '$notIn', gt: '$gt' };
+const Op = { in: '$in', notIn: '$notIn', gt: '$gt', and: '$and' };
 const PREPARE = 'financeiro.autorizacoes_pagamento.preparar';
 const QUEUE = 'financeiro.fila_pagamentos.preparar';
 const DECIDE = 'financeiro.autorizacoes_pagamento.decidir';
@@ -25,6 +25,10 @@ const names = ['ConfiguracaoSistema', 'TituloFinanceiro', 'Solicitacao', 'Histor
   'FormaPagamentoFinanceira', 'CartaoFinanceiro', 'ChequeTerceiro', 'ContaBancaria', 'ContratoParcela', 'Contrato',
   'ContratoMedicao', 'MedicaoParcela', 'TituloRenegociacaoAlocacao'];
 function matches(row, where = {}) {
+  if (where.val?.includes('pagamento_autorizacao_itens nova')) return !state.PagamentoAutorizacaoItem.some(i => i.titulo_financeiro_id === row.titulo_financeiro_id && i.id > row.id);
+  if (where.val?.includes('pagamentos_manuais_fila ativa')) return !state.PagamentoManualFilaItem.some(i => i.titulo_financeiro_id === row.titulo_financeiro_id && ['PENDENTE','NAO_PAGO','DIVERGENTE','EM_EDICAO'].includes(i.status));
+  if (where.$and && !where.$and.every(w => matches(row, w))) return false;
+  where = Object.fromEntries(Object.entries(where).filter(([k]) => k !== '$and'));
   return Object.entries(where).every(([key, value]) => value && typeof value === 'object' && !(value instanceof Date)
     ? Object.entries(value).every(([op, candidate]) => op === '$in' ? candidate.includes(row[key])
       : op === '$notIn' ? !candidate.includes(row[key]) : op === '$gt' ? new Date(row[key]) > candidate : false)
@@ -82,7 +86,7 @@ models.sequelize = { async transaction(callback) {
 const services = new Map();
 const stubs = {
   '../utils/fileName': require('../src/utils/fileName'),
-  sequelize: { Op }, '../models': models, '../config/env': { env }, crypto,
+  sequelize: { Op, literal: val => ({ val }) }, '../models': models, '../config/env': { env }, crypto,
   './authorizationService': { getFinanceiroObraScopeIds: async () => scope,
     userHasNominalAreaPermission: async (actor, keys) => keys.every((key) => actor.grants.includes(key)) },
   './tituloFinanceiroService': {}, './tituloBloqueioRetornoObraService': { assertTituloDisponivelParaBaixa(title) {

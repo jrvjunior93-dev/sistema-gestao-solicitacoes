@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import RetornoNotificacaoPopup from './RetornoNotificacaoPopup';
+import useConsultaSerial from '../hooks/useConsultaSerial';
+import usePollingSeguro from '../hooks/usePollingSeguro';
 import {
   HiOutlineBell,
   HiOutlineCheck,
@@ -24,7 +26,7 @@ export default function NotificacoesBell() {
   const painelRef = useRef(null);
   const botaoRef = useRef(null);
 
-  async function carregar({ showLoading = false, page = 1, append = false } = {}) {
+  async function carregarConsulta({ showLoading = false, page = 1, append = false } = {}) {
     if (typeof document !== 'undefined' && document.hidden) {
       return;
     }
@@ -44,29 +46,20 @@ export default function NotificacoesBell() {
       });
       setMeta(data.meta || { page, has_more: false });
       setTotalNaoLidas(Number(data.total_nao_lidas) || itensRecebidos.filter((item) => !item.lida_em).length);
+      if (data.usuario_id && data.contadores_por_tipo) window.dispatchEvent(new CustomEvent('notificacoes:contagens', {
+        detail: { usuario_id: data.usuario_id, contadores: data.contadores_por_tipo }
+      }));
+      return true;
     } catch (error) {
       console.error(error);
+      return false;
     } finally {
       if (showLoading) setCarregando(false);
     }
   }
+  const carregar = useConsultaSerial(carregarConsulta);
 
-  useEffect(() => {
-    carregar();
-    const id = setInterval(() => carregar(), 30000);
-    const aoVoltarParaTela = () => {
-      if (!document.hidden) carregar();
-    };
-    window.addEventListener('focus', aoVoltarParaTela);
-    window.addEventListener('notificacoes:atualizar', aoVoltarParaTela);
-    document.addEventListener('visibilitychange', aoVoltarParaTela);
-    return () => {
-      clearInterval(id);
-      window.removeEventListener('focus', aoVoltarParaTela);
-      window.removeEventListener('notificacoes:atualizar', aoVoltarParaTela);
-      document.removeEventListener('visibilitychange', aoVoltarParaTela);
-    };
-  }, []);
+  usePollingSeguro(() => carregar(), { eventos: ['notificacoes:atualizar'] });
 
   useEffect(() => {
     if (!aberto) return undefined;

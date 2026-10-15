@@ -5,6 +5,8 @@ import OverlayModal from '../components/ui/OverlayModal';
 import { rhTransferencias } from '../services/rhDp';
 import { useWorkspaceState, useWorkspaceWork } from '../navigation/WorkspaceContext';
 import useQueryRevision from '../navigation/useQueryRevision';
+import useConsultaSerial from '../hooks/useConsultaSerial';
+import usePollingSeguro from '../hooks/usePollingSeguro';
 import '../styles/rh-pessoal-atividade.css';
 
 const data = v => v ? new Date(v).toLocaleString('pt-BR') : '—';
@@ -81,7 +83,7 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
   };
   const fluxoForm = fluxoDoFormulario(form);
 
-  const atualizar = useCallback(async (pagina = 1) => {
+  const atualizarConsulta = useCallback(async (pagina = 1) => {
     const token = consultaTransferencias.begin();
     paginaTransferencias.current = pagina;
     setPaginaSalva(pagina);
@@ -93,7 +95,9 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
         origem_id: recorte.origem_id[0] || undefined, destino_id: recorte.destino_id[0] || undefined } });
       if (!consultaTransferencias.isCurrent(token)) return null;
       if (resultado.pagina > resultado.total_paginas) {
-        return atualizar(resultado.total_paginas);
+        // A resposta anterior ja terminou. Nao aguardar a fila serial de si
+        // mesma, pois isso prenderia a consulta quando a ultima pagina sumir.
+        return atualizarConsulta(resultado.total_paginas);
       }
       setTransferencias(resultado);
       return resultado;
@@ -106,6 +110,8 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
       if (consultaTransferencias.isCurrent(token)) setCarregandoTransferencias(false);
     }
   }, [avisar, obraId, consultaTransferencias.begin, consultaTransferencias.isCurrent, setPaginaSalva]);
+  const atualizarSerial = useConsultaSerial(atualizarConsulta, obraId);
+  const atualizar = useCallback((pagina = 1) => atualizarSerial(pagina, JSON.stringify(filtrosRef.current)), [atualizarSerial]);
 
   function filtrar(proximo, espera = 0) {
     filtrosRef.current = proximo;
@@ -166,14 +172,11 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
     } });
     atualizar(paginaTransferencias.current);
     pesquisar(paginaDiretorio, buscaAplicada);
-    const atualizarVisivel = () => { if (!document.hidden) atualizar(paginaTransferencias.current); };
-    const timer = setInterval(atualizarVisivel, 30000);
-    window.addEventListener('focus', atualizarVisivel);
-    return () => { clearInterval(timer); window.removeEventListener('focus', atualizarVisivel); };
     // Pagina/busca aplicada sao o recorte inicial; nao reiniciar polling e
     // carregar diretorio a cada tecla ou resposta de pagina.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [atualizar, avisar, pesquisar, consultaConfig.begin, consultaConfig.isCurrent]);
+  usePollingSeguro(() => atualizar(paginaTransferencias.current), { ativo: secao === 'transferencias', imediato: false });
 
   const carregarDetalhe = useCallback(async id => {
     const token = consultaDetalhe.begin();

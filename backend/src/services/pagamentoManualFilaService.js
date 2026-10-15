@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { Op } = require('sequelize');
+const { Op, literal } = require('sequelize');
 const {
   Anexo,
   ContaBancaria,
@@ -42,7 +42,7 @@ const { pendenteComprovanteFila, wherePendenteComprovante, whereSemEstornoFila, 
 const { registrarComprovantesFilaNoHistorico } = require('./pagamentoFilaHistoricoService');
 const { calcularValoresFila, filaSemBaixaAtualizavel } = require('./pagamentoFilaValoresDomain');
 const { distribuirCheques, conferirChequesUnicosLote } = require('./pagamentoFilaChequesDomain');
-const { recebimentoDpAtributo, tituloWhere, opcoesDosTitulos } = require('./pagamentoFilaFiltrosDomain');
+const { tituloWhere, opcoesDosTitulos, buscaTituloWhere } = require('./pagamentoFilaFiltrosDomain');
 
 const ACTIVE_STATUSES = ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE', 'EM_EDICAO'];
 const PAYMENT_INTENT_INACTIVE_STATUSES = ['CANCELADO', 'REJEITADO', 'REJEITADO_BANCO', 'FALHA_INTEGRACAO', 'BAIXADO'];
@@ -75,8 +75,7 @@ function filaInclude() {
         'valor_original', 'valor_saldo', 'valor_baixado', 'juros', 'multa', 'data_vencimento',
         'forma_pagamento_id', 'empresa_id', 'linha_digitavel', 'codigo_barras',
         'banco_cobranca', 'observacoes', 'solicitacao_id', 'favorecido_pagamento_id',
-        'cartao_id', 'fatura_cartao_id', 'origem_titulo', 'status_interno_pagar',
-        recebimentoDpAtributo()
+        'cartao_id', 'fatura_cartao_id', 'origem_titulo', 'status_interno_pagar'
       ],
       include: [
         { model: Parceiro, as: 'parceiro', attributes: ['id', 'nome', 'cpf_cnpj', 'telefone', 'email'] },
@@ -142,18 +141,49 @@ function matchesSearch(item, rawTerm) {
 
 async function listarFilaPagamentos(req, filters = {}) {
   const status = String(filters.status || 'PENDENTE').trim().toUpperCase();
+  const paginado = filters.pagina != null || filters.limite != null || Array.isArray(filters.fila_ids);
+  const limite = paginado ? Number(filters.limite || 50) : 500;
+  const solicitada = Number(filters.pagina || 1);
+  if (!Number.isSafeInteger(limite) || limite < 1 || limite > (paginado ? 100 : 500)
+    || !Number.isSafeInteger(solicitada) || solicitada < 1 || solicitada > 100000) throw createHttpError(400, 'Paginacao invalida.');
   const where = status === 'PENDENTE_COMPROVANTE' ? wherePendenteComprovante()
     : status === 'BAIXADO' ? { status: { [Op.in]: ['BAIXADO', 'RESOLVIDO'] },
       movimento_financeiro_id: { [Op.gt]: 0 }, [Op.and]: whereSemEstornoFila() }
     : status === 'PENDENTE' ? { status: { [Op.in]: ['PENDENTE', 'EM_EDICAO'] } }
       : (status && status !== 'TODOS' ? { status } : { status: { [Op.ne]: 'CANCELADO' } });
-  const includeTitulo = () => ({ ...filaInclude().find(i => i.as === 'titulo'), where: tituloWhere(filters) });
-  const rows = await PagamentoManualFilaItem.findAll({
-    where,
-    include: filaInclude().map(i => i.as === 'titulo' ? { ...i, where: tituloWhere(filters) } : i),
+  if (filters.fila_ids) where.id = { [Op.in]: filters.fila_ids };
+  const filtroConsulta = tituloWhere(filters);
+  const filtroBusca = paginado && filters.q ? buscaTituloWhere(filters.q, valor => sequelize.escape(valor)) : null;
+  // Campos dos JOINs filhos so existem no WHERE externo, nao no ON do titulo.
+  const whereLista = filtroBusca ? { [Op.and]: [where, filtroBusca] } : where;
+  const includeTitulo = () => ({ ...filaInclude().find(i => i.as === 'titulo'), where: filtroConsulta });
+  const semAtributos = i => ({ ...i, attributes: [], ...(i.include ? { include: i.include.map(semAtributos) } : {}) });
+  const paraContagem = i => paginado && filters.q ? semAtributos(i) : { ...i, attributes: [], include: [] };
+  const rejeicaoWhere = { status: 'REJEITADO', [Op.and]: [
+    literal('NOT EXISTS (SELECT 1 FROM pagamento_autorizacao_itens nova WHERE nova.titulo_financeiro_id = `PagamentoAutorizacaoItem`.titulo_financeiro_id AND nova.id > `PagamentoAutorizacaoItem`.id)'),
+    literal(`NOT EXISTS (SELECT 1 FROM pagamentos_manuais_fila ativa WHERE ativa.titulo_financeiro_id = \`PagamentoAutorizacaoItem\`.titulo_financeiro_id AND ativa.status IN ('PENDENTE','NAO_PAGO','DIVERGENTE','EM_EDICAO'))`),
+    ...(filtroBusca ? [filtroBusca] : []),
+    ...(filters.fila_ids ? [literal('1 = 0')] : [])
+  ] };
+  const tituloRejeitado = { ...includeTitulo(), where: { [Op.and]: [filtroConsulta,
+    { status: { [Op.in]: ['ABERTO', 'PARCIAL'] }, valor_saldo: { [Op.gt]: 0 } }] } };
+  const rejeicaoWhereResumo = { ...rejeicaoWhere, [Op.and]: rejeicaoWhere[Op.and].filter(c => c !== filtroBusca) };
+  const contarRejeitadosResumo = () => PagamentoAutorizacaoItem.count({ where: rejeicaoWhereResumo,
+    include: [{ ...tituloRejeitado, attributes: [], include: [] }] });
+  const mostrarRejeitados = ['NAO_PAGO', 'TODOS'].includes(status);
+  const totalFila = paginado ? Number(await PagamentoManualFilaItem.count({ where: whereLista, include: [paraContagem(includeTitulo())] })) : 0;
+  const totalRejeitadosPagina = paginado && mostrarRejeitados && !filters.fila_ids ? Number(await PagamentoAutorizacaoItem.count({ where: rejeicaoWhere, include: [paraContagem(tituloRejeitado)] })) : 0;
+  const total = totalFila + totalRejeitadosPagina;
+  const paginas = Math.max(1, Math.ceil(total / limite)), pagina = Math.min(solicitada, paginas);
+  const inicio = (pagina - 1) * limite;
+  const quantidadeFila = paginado ? Math.min(limite, Math.max(0, totalFila - inicio)) : limite;
+  const rows = quantidadeFila ? await PagamentoManualFilaItem.findAll({
+    where: whereLista,
+    include: filaInclude().map(i => i.as === 'titulo' ? { ...i, where: filtroConsulta }
+      : paginado && i.as === 'comprovantes' ? { ...i, separate: true } : i),
     order: [['selecionado_em', 'ASC'], ['id', 'ASC']],
-    limit: 500
-  });
+    limit: quantidadeFila, ...(paginado ? { offset: inicio } : {})
+  }) : [];
   const data = rows
     .filter((item) => matchesSearch(item, filters.q))
     .map((item) => ({ ...item.toJSON(),
@@ -169,12 +199,15 @@ async function listarFilaPagamentos(req, filters = {}) {
       pendente_comprovante: pendenteComprovanteFila(item) }));
   // Rejeicao e uma decisao, nao um pagamento executavel. Projecao somente leitura:
   // nenhum registro de fila e criado e o id negativo nunca passa no validator de baixa.
-  const historicoAutorizacoes = await PagamentoAutorizacaoItem.findAll({
-    include: [includeTitulo()], order: [['id', 'DESC']]
-  });
-  const filasAtivas = await PagamentoManualFilaItem.findAll({ where: { status: { [Op.in]: ACTIVE_STATUSES } },
-    attributes: ['titulo_financeiro_id'] });
-  const ocupados = new Set(filasAtivas.map(item => Number(item.titulo_financeiro_id)));
+  // Ultima decisao de CADA titulo, nao a ultima rejeicao: uma aprovacao posterior
+  // deve esconder a rejeicao antiga. Nao baixar todo o historico para deduplicar.
+  const quantidadeRejeitados = paginado ? limite - quantidadeFila : null;
+  const historicoAutorizacoes = mostrarRejeitados && (!paginado || quantidadeRejeitados > 0) ? await PagamentoAutorizacaoItem.findAll({
+    where: rejeicaoWhere, include: [tituloRejeitado], order: [['id', 'DESC']],
+    ...(paginado ? { limit: quantidadeRejeitados, offset: Math.max(0, inicio - totalFila) } : {})
+  }) : [];
+  const totalRejeitados = filters.fila_ids ? 0 : paginado && mostrarRejeitados ? totalRejeitadosPagina : mostrarRejeitados ? historicoAutorizacoes.length
+    : Number(await contarRejeitadosResumo());
   const vistos = new Set();
   const rejeitados = [];
   for (const item of historicoAutorizacoes) {
@@ -182,7 +215,7 @@ async function listarFilaPagamentos(req, filters = {}) {
     if (vistos.has(tituloId)) continue;
     vistos.add(tituloId);
     const titulo = item.titulo;
-    if (item.status !== 'REJEITADO' || ocupados.has(tituloId) || !titulo ||
+    if (item.status !== 'REJEITADO' || !titulo ||
       !['ABERTO', 'PARCIAL'].includes(titulo.status) || Number(titulo.valor_saldo) <= 0) continue;
     rejeitados.push({ id: -Number(item.id), titulo_financeiro_id: tituloId, titulo: titulo.toJSON ? titulo.toJSON() : titulo,
       status: 'NAO_PAGO', somente_consulta: true, origem: 'REJEICAO_PROPRIETARIO',
@@ -190,6 +223,7 @@ async function listarFilaPagamentos(req, filters = {}) {
       selecionado_em: item.decidido_em, comprovantes: [] });
   }
   if (['NAO_PAGO', 'TODOS'].includes(status)) data.push(...rejeitados.filter(item => matchesSearch(item, filters.q)));
+  await require('./recebimentoDpConsultaService').anexarRecebimentosDp(data.map(item => item.titulo).filter(Boolean));
   const solicitacaoIds = Array.from(new Set(
     data
       .map((item) => Number(item?.titulo?.solicitacao_id || item?.titulo?.solicitacao?.id))
@@ -219,6 +253,7 @@ async function listarFilaPagamentos(req, filters = {}) {
     solicitacao.boletos = boletosPorSolicitacao.get(Number(solicitacao.id)) || [];
   });
   await require('./instrucaoFinanceiraFavorecidoService').anexarInstrucoes(data.map(item => item.titulo).filter(Boolean));
+  if (filters.fila_ids) return { data, total, pagina, limite, total_paginas: paginas, resumo: {}, filtros: { empresas: [], credores: [] } };
   const counts = await PagamentoManualFilaItem.findAll({
     attributes: ['status', [sequelize.fn('COUNT', sequelize.col('PagamentoManualFilaItem.id')), 'total']],
     include: [{ model: TituloFinanceiro, as: 'titulo', required: true, attributes: [], where: tituloWhere(filters) }],
@@ -229,7 +264,10 @@ async function listarFilaPagamentos(req, filters = {}) {
     acc[String(item.status || '').toUpperCase()] = Number(item.total || 0);
     return acc;
   }, {});
-  resumo.NAO_PAGO = Number(resumo.NAO_PAGO || 0) + rejeitados.length;
+  // Cards continuam contando todo o recorte estruturado, independentemente
+  // da busca textual da pagina, como no contrato anterior da fila.
+  const rejeitadosResumo = paginado && mostrarRejeitados && filtroBusca ? Number(await contarRejeitadosResumo()) : totalRejeitados;
+  resumo.NAO_PAGO = Number(resumo.NAO_PAGO || 0) + rejeitadosResumo;
   resumo.PENDENTE = Number(resumo.PENDENTE || 0) + Number(resumo.EM_EDICAO || 0);
   resumo.BAIXADO = await PagamentoManualFilaItem.count({ where: {
     status: { [Op.in]: ['BAIXADO', 'RESOLVIDO'] }, movimento_financeiro_id: { [Op.gt]: 0 },
@@ -245,7 +283,8 @@ async function listarFilaPagamentos(req, filters = {}) {
         { model: Parceiro, as: 'parceiro', attributes: ['id', 'nome'] }] }],
     group: ['titulo.empresa_id', 'titulo.parceiro_id', 'titulo.empresa.id', 'titulo.empresa.nome', 'titulo.parceiro.id', 'titulo.parceiro.nome'],
     raw: true, nest: true });
-  return { data, resumo, filtros: opcoesDosTitulos(opcoes), limite: 500 };
+  return { data, resumo, filtros: opcoesDosTitulos(opcoes), limite,
+    ...(paginado ? { total, pagina, total_paginas: paginas } : {}) };
 }
 
 async function listarContasPagadorasFila() {

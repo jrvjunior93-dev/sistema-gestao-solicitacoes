@@ -1,5 +1,28 @@
 # Modulo FINANCEIRO
 
+## Performance e paginacao da fila - 2026-10-15
+
+- Tela consulta 50 registros por pagina em TODOS os cards/status, inclusive
+  Baixados, Resolvidos e Pendentes de comprovante. API aceita pagina/limite
+  (maximo 100); consumidores legados sem paginacao conservam o contrato anterior.
+  Totais dos cards continuam representando o recorte estruturado completo.
+- Busca textual e filtros sao aplicados antes do LIMIT. Comprovantes 1:N sao
+  carregados separadamente para nao consumir vagas ou duplicar linhas da pagina.
+  Rejeicoes continuam virtuais, nao executaveis; somente ultima decisao por titulo.
+- Recebimento DP de exibicao e resolvido em lotes por solicitacao/snapshot,
+  vinculado ao ID exato do titulo. Filtro de recebimento conserva SQL e fallback
+  legado, sem reclassificar pelo cadastro atual. Nao ha backfill ou migration.
+- Selecao entre paginas conserva apenas dados em memoria da tela. Selecionar
+  todos/desmarcar todos afeta somente a pagina atual. Trocar filtro/status limpa
+  a selecao. Antes de baixar/autorizar/anexar, reler os IDs no mesmo recorte;
+  alteracao ou indisponibilidade bloqueia a operacao. Locks/ACLs/idempotencia
+  existentes continuam obrigatorios no backend.
+- Limites de operacao nao aumentaram: baixa ate 200 itens, comprovante
+  compartilhado ate 100. Paginar nao apaga titulos, comprovantes ou historico.
+- Testes isolados: npm run test:performance-fila-dp no backend e
+  node scripts/validarFilaInstrumentosUI.mjs --paginacao no frontend.
+  Cenarios com 650 titulos; nao constituem benchmark de RDS real.
+
 ## Comprovante compartilhado na fila - 2026-10-15
 
 - Mesmo PDF pode ser vinculado a titulos diferentes no upload individual,

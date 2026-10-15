@@ -1,5 +1,25 @@
 # Modulo RH/DP
 
+## Consultas e atualizacao segura - 2026-10-15
+
+- Relatorio de titulos enviados: paginas de 50, filtros no SQL, historico completo
+  somente dos titulos da pagina. Comparacao de possiveis duplicidades usa
+  metadados leves de TODO o universo autorizado, inclusive fora da pagina/filtro.
+  Catalogos, escopo e significado dos alertas permanecem os mesmos.
+- Lista de solicitacoes aceita paginado=1 e resumo=1; modo legado continua array.
+  Metadados compactos preservam a regra canonica de status normalizado, primeira
+  lotacao, rascunho privado/excluido e colaboradores removidos/desmarcados.
+  So a pagina recebe snapshots completos/associacoes. Nao grava leitura no GET.
+- Atualizacao de solicitacoes/transferencias e notificacoes aguarda a resposta
+  antes do proximo ciclo. Aba oculta nao inicia polling; erros esperam
+  60/120/240 segundos. Foco nao ultrapassa essa espera. Transferencias nao
+  atualizam periodicamente enquanto estiver aberta a secao Todos Colaboradores.
+- Contador de transferencias recebe os totais por tipo do sino global, sempre
+  identificados pelo usuario; elimina a consulta periodica duplicada do contador.
+- Sem novas permissoes, pool maior, flags de pagamento ou migrations.
+  Testes em memoria incluem 533 pedidos e 613 titulos historicos; medir latencia
+  e recursos no DEV antes de qualquer promocao. Nao comprova causa da queda RDS.
+
 ## Gestao da solicitacao de pagamento pelo DP - 2026-10-15
 
 - Modal oferece Remover da solicitacao por colaborador e Cancelar solicitacao

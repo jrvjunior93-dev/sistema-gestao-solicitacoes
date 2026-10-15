@@ -69,7 +69,7 @@ const models = new Proxy({ PagamentoManualFilaItem: queueModel,
       histories = snapshotHistories.map(record); attachments = snapshotAttachments.map(record); settlements = snapshotSettlements; audits = snapshotAudits; throw error; }
     finally { release(); }
   } }
-}, { get(target, key) { return target[key] || { findAll: async () => [] }; } });
+}, { get(target, key) { return target[key] || { findAll: async () => [], count: async () => 0 }; } });
 const receiptText = `SISBB - SISTEMA DE INFORMACOES BANCO DO BRASIL
 Comprovante Pix
 AGENCIA: 1234 CONTA: 99.999-0
@@ -79,7 +79,7 @@ DESCRICAO:SOL-5296
 PAGO PARA: FORNECEDOR TESTE
 CNPJ: 22.222.222/0001-22`;
 const deps = {
-  crypto, sequelize: { Op }, '../models': models,
+  crypto, sequelize: require('sequelize'), '../models': models,
   'pdf-parse': { PDFParse: class { async getText() { return { text: receiptText }; } async destroy() {} } },
   './s3': { async uploadToS3() { uploads++; if (changeDuringUpload) rows[0].status = 'NAO_PAGO'; return `isolado://comprovante-${uploads}`; } },
   './securityLogService': { registrarEventoSeguranca: async () => {} },
@@ -89,6 +89,7 @@ const deps = {
   './pagamentoFilaFiltrosDomain': require('../src/services/pagamentoFilaFiltrosDomain'),
   './pagamentoAutorizacaoEventosService': {},
   './instrucaoFinanceiraFavorecidoService': { anexarInstrucoes: async () => {} },
+  './recebimentoDpConsultaService': { anexarRecebimentosDp: async () => {} },
   './pagamentoFilaValoresDomain': require('../src/services/pagamentoFilaValoresDomain'),
   './tituloFinanceiroService': { baixarTitulo: async (_, id, payload, options) => {
     if (!allowSettlement) throw new Error('Anexo nao pode baixar titulo'); assert(options.transaction); settlements++;

@@ -29,7 +29,14 @@ const modules = {
     const db = ${JSON.stringify(solicitacoes)}; window.calls = [];
     const clone = v => JSON.parse(JSON.stringify(v));
     const chamada = (acao, id, motivo) => { window.calls.push({ acao, id, motivo }); return {}; };
-    export const listarRhSolicitacoes = async () => clone(db);
+    export const listarRhSolicitacoes = async p => {
+      window.consultas=window.consultas||[];window.consultas.push(p);
+      const data=new URLSearchParams(location.search).has('volume')?Array.from({length:205},(_,i)=>({...db[0],id:i+1,codigo:'RH-'+(i+1)})):clone(db);
+      if(!p.paginado)return data;
+      const total=data.length,total_paginas=Math.max(1,Math.ceil(total/p.limite)),pagina=Math.min(p.pagina,total_paginas),por_tipo={};
+      for(const s of data)por_tipo[s.tipo]=(por_tipo[s.tipo]||0)+1;
+      return {itens:data.slice((pagina-1)*p.limite,pagina*p.limite),total,total_paginas,pagina,por_tipo,abertas:data.filter(s=>s.situacao==='ABERTA').length,nao_lidas_abertas:1};
+    };
     export const getRhSolicitacao = async id => ({ ...clone(db.find(s => s.id === id)), historicos: [] });
     export const listarAnexosRhSolicitacao = async () => [];
     export const conferirDocumentacaoRhSolicitacao = async () => ({ faltando: [], anexosAguardando: 0 });
@@ -195,6 +202,18 @@ try {
     }
     await page.close();
   }
+  const volume=await browser.newPage({viewport:{width:390,height:850}});
+  volume.on('pageerror',e=>errors.push(e.message));
+  await volume.route('**/*',r=>r.request().url().startsWith('http://127.0.0.1:')?r.continue():r.abort());
+  await volume.goto(`${url}?perfil=consulta&volume=1`);
+  await volume.getByText('205 registro(s) · Página 1 de 5',{exact:true}).waitFor();
+  await volume.getByRole('button',{name:'Próxima',exact:true}).click();
+  await volume.getByText('205 registro(s) · Página 2 de 5',{exact:true}).waitFor();
+  await volume.getByText('RH-51',{exact:true}).waitFor();
+  assert.equal(await volume.getByText('RH-1',{exact:true}).count(),0);
+  assert.equal(await volume.getByRole('button',{name:/^(Aprovar|Devolver|Enviar|Cancelar): solicitação/}).count(),0,'Consulta continua sem permissoes de mutacao');
+  assert.equal((await volume.evaluate(()=>window.consultas.at(-1))).limite,50);
+  await volume.close();
   assert.deepEqual(errors, []);
   assert.deepEqual(externos, [], 'Nenhuma chamada externa ou de producao');
   console.log('Acoes de Pessoal validadas: icones, nomes acessiveis, callbacks, confirmacoes, permissoes, estados, temas e mobile. Somente fixtures locais.');

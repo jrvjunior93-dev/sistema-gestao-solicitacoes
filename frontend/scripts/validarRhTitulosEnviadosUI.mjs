@@ -29,8 +29,10 @@ const plugin = { name: 'qa-rh-envios', enforce: 'pre',
           valor:1200,baixado:0,saldo:1200,status_titulo:'ABERTO',status_fila:'PENDENTE',ultimo_envio:'2026-10-15T12:00:00Z',possiveis_duplicados:[2],envios:[{id:2,status:'PENDENTE',enviado_em:'2026-10-15T12:00:00Z',valor_previsto:1200},{id:1,status:'CANCELADO',enviado_em:'2026-10-14T12:00:00Z',valor_previsto:1200}]},
           {id:2,codigo:'TIT-DP-2',descricao:'RH-000002 - Salario 40% - Ana QA',credor:'Ana QA',competencia:'2026-10',empresa_id:3,empresa:'Empresa QA',obra_id:7,obra:'Obra QA',recebimento_dp:'PIX',
           valor:1200,baixado:1200,saldo:0,status_titulo:'QUITADO',status_fila:'BAIXADO',ultimo_envio:'2026-10-14T12:00:00Z',possiveis_duplicados:[1],envios:[{id:3,status:'BAIXADO',enviado_em:'2026-10-14T12:00:00Z',valor_previsto:1200}]}];
+        if(new URLSearchParams(location.search).has('volume'))data=Array.from({length:205},(_,i)=>({...data[0],id:i+1,codigo:'TIT-VOL-'+(i+1),possiveis_duplicados:i===0?[205]:i===204?[1]:[]}));
         data=data.filter(t=>(!q.recebimento_dp||t.recebimento_dp===q.recebimento_dp)&&(!q.status_titulo||t.status_titulo===q.status_titulo)&&(!q.q||t.credor.includes(q.q)));
-        return {data,total:data.length,suspeitos:data.length,filtros:{empresas:[{id:3,nome:'Empresa QA'}],obras:[{id:7,nome:'Obra QA'}]}};
+        const total=data.length,total_paginas=Math.max(1,Math.ceil(total/q.limite)),pagina=Math.min(q.pagina,total_paginas),suspeitos=data.filter(t=>t.possiveis_duplicados.length).length;
+        return {data:data.slice((pagina-1)*q.limite,pagina*q.limite),total,suspeitos,pagina,limite:q.limite,total_paginas,filtros:{empresas:[{id:3,nome:'Empresa QA'}],obras:[{id:7,nome:'Obra QA'}]}};
       }`;
   },
   configureServer(server) {
@@ -76,6 +78,21 @@ try {
     await page.getByRole('alert').getByText('Falha de consulta simulada').waitFor();
     assert.equal(await page.getByText('TIT-DP-1', { exact: true }).count(), 0, 'Erro nao conserva dados antigos como atuais');
   }
+  await page.goto('http://127.0.0.1:5315/qa-envios?volume=1');
+  await page.getByText('205 registro(s) · Página 1 de 5', { exact: true }).waitFor();
+  await page.getByText('TIT-VOL-1', { exact: true }).waitFor();
+  assert(await page.getByText('Possível duplicidade com #205', { exact: true }).isVisible());
+  for(let pagina=2;pagina<=5;pagina++) {
+    await page.getByRole('button',{name:'Próxima',exact:true}).click();
+    await page.getByText('205 registro(s) · Página '+pagina+' de 5',{exact:true}).waitFor();
+    assert.equal(await page.getByText('TIT-VOL-1',{exact:true}).count(),0);
+  }
+  await page.getByText('TIT-VOL-205',{exact:true}).waitFor();
+  assert(await page.getByRole('button',{name:'Próxima',exact:true}).isDisabled());
+  await page.getByLabel('Recebimento DP',{exact:true}).selectOption('PIX');
+  await page.getByRole('button',{name:'Aplicar filtros',exact:true}).click();
+  await page.getByText('0 registro(s) · Página 1 de 1',{exact:true}).waitFor();
+  assert.equal((await page.evaluate(()=>window.chamadas.at(-1))).pagina,1,'Alterar filtro volta a primeira pagina');
   await page.goto('http://127.0.0.1:5315/qa-envios?negado=1');
   await page.getByText('Sem permissão para relatórios do DP.', { exact: true }).waitFor();
   assert.equal(await page.evaluate(() => window.chamadas.length), 0);

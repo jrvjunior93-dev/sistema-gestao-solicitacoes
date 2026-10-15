@@ -11,6 +11,7 @@ import { validarColunasFila } from './filaColunasQA.mjs';
 import { validarArquivosPreviewFila } from './filaArquivosPreviewQA.mjs';
 import { validarDadosPagamentoFila } from './filaDadosPagamentoQA.mjs';
 import { validarFiltrosDpFila } from './filaFiltrosDpQA.mjs';
+import { validarPaginacaoFila } from './filaPaginacaoQA.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const stub = '\0qa-fila-instrumentos-';
 const forms = [
@@ -43,6 +44,17 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
         const paid=window.__paid,receipt=window.__receipt,saldo=window.__saldo||200;
         const row={id:1,status:paid?'BAIXADO':'PENDENTE',movimento_financeiro_id:paid?10:null,valor_informado:paid?200:null,valor_previsto:saldo,juros:window.__juros||0,multa:window.__multa||0,conta_bancaria_id:5,data_baixa:paid?'2026-10-08':null,pendente_comprovante:paid&&!receipt,comprovante_hash:receipt||!window.__receiptScenario?'qa':null,comprovante_url:receipt||!window.__receiptScenario?'qa':null,titulo:{id:1,codigo:'TIT-QA',status:paid?'QUITADO':'ABERTO',valor_saldo:paid?0:saldo,forma_pagamento_id:1,solicitacao_id:100,solicitacao:{id:100,codigo:'SOL-QA'}}};
         row.titulo.descricao='SOL-QA - MEDIÇÃO';
+        if(new URLSearchParams(location.search).has('volume')) {
+          const pago=['BAIXADO','RESOLVIDO','PENDENTE_COMPROVANTE'].includes(status),estado=status==='PENDENTE_COMPROVANTE'?'BAIXADO':status==='TODOS'?'PENDENTE':status;
+          let data=Array.from({length:650},(_,i)=>({...structuredClone(row),id:i+1,status:i===0&&window.__volumeChanged?'EM_EDICAO':estado,
+            movimento_financeiro_id:pago?1000+i:null,pendente_comprovante:status==='PENDENTE_COMPROVANTE',
+            titulo:{...structuredClone(row.titulo),id:i+1,codigo:'TIT-VOL-'+(i+1),forma_pagamento_id:3,status:pago?'QUITADO':'ABERTO',valor_saldo:pago?0:200}}));
+          if(params.fila_ids){const ids=params.fila_ids.split(',').map(Number);data=data.filter(r=>ids.includes(r.id));}
+          if(params.q)data=data.filter(r=>r.titulo.codigo.includes(params.q));
+          const total=data.length,total_paginas=Math.max(1,Math.ceil(total/params.limite)),pagina=Math.min(params.pagina,total_paginas);
+          return {data:data.slice((pagina-1)*params.limite,pagina*params.limite),total,pagina,total_paginas,limite:params.limite,
+            resumo:Object.fromEntries(['PENDENTE','PENDENTE_COMPROVANTE','NAO_PAGO','DIVERGENTE','EM_EDICAO','BAIXADO','RESOLVIDO','TODOS'].map(s=>[s,650]))};
+        }
         if(filtrosDpScenario) {
           const dp=(id,codigo,empresa,credor,modo,origem='RH_DP')=>({...structuredClone(row),id,titulo:{...structuredClone(row.titulo),id,codigo,origem_titulo:origem,
             empresa_id:empresa,empresa:{id:empresa,nome:empresa===3?'Empresa colaborador QA':'Outra empresa QA'},parceiro_id:credor,parceiro:{id:credor,nome:'Credor '+credor},recebimento_dp:modo}});
@@ -105,6 +117,10 @@ try {
     if (new URL(route.request().url()).origin === 'http://127.0.0.1:5308') return route.continue();
     unexpected.push(route.request().url()); return route.abort();
   });
+  if (process.argv.includes('--paginacao')) {
+    await validarPaginacaoFila(page);
+    assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
+  } else {
   if (process.argv.includes('--filtros-dp')) await validarFiltrosDpFila(page);
   await page.goto('http://127.0.0.1:5308/qa-fila');
   const forma = page.getByLabel('Forma de pagamento de TIT-QA', { exact: true });
@@ -307,7 +323,7 @@ try {
   for(const width of [1366,390]) {
     await page.setViewportSize({width,height:900});
     await page.goto('http://127.0.0.1:5308/qa-fila?massa=1&status=TODOS');
-    const selectAll=page.getByLabel('Selecionar todos os elegíveis desta lista',{exact:true});
+    const selectAll=page.getByLabel('Selecionar todos os elegíveis da página atual',{exact:true});
     await selectAll.waitFor();
     await page.getByLabel('Selecionar TIT-MASSA-1',{exact:true}).check();
     assert(await selectAll.evaluate(el=>el.indeterminate));
@@ -625,7 +641,7 @@ try {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('http://127.0.0.1:5308/qa-fila?compartilhado=1&status=TODOS');
     await page.getByText('TIT-OUTRO', {exact:true}).waitFor();
-    await page.getByLabel('Selecionar todos os elegíveis desta lista', {exact:true}).check();
+    await page.getByLabel('Selecionar todos os elegíveis da página atual', {exact:true}).check();
     assert.equal(await page.getByRole('button',{name:'Baixa em massa (1)',exact:true}).count(),1,'Baixa nao inclui os ja pagos');
     await page.getByRole('button',{name:'Anexar mesmo comprovante (2)',exact:true}).click();
     const compartilhado = page.getByRole('dialog',{name:'Anexar mesmo comprovante',exact:true});
@@ -639,13 +655,15 @@ try {
     assert.equal(await page.evaluate(()=>window.__settles.length),0,'Anexo nunca registra baixa');
     await page.goto('http://127.0.0.1:5308/qa-fila?compartilhado=1&status=PENDENTE_COMPROVANTE');
     await page.getByText('TIT-OUTRO',{exact:true}).waitFor();
-    await page.getByLabel('Selecionar todos os elegíveis desta lista',{exact:true}).check();
+    await page.getByLabel('Selecionar todos os elegíveis da página atual',{exact:true}).check();
     assert.equal(await page.getByRole('button',{name:/Baixa em massa/}).count(),0);
     assert(await page.getByRole('button',{name:'Anexar mesmo comprovante (1)',exact:true}).isEnabled());
     await page.goto('http://127.0.0.1:5308/qa-fila?compartilhado=1&readonly=1&status=PENDENTE_COMPROVANTE');
     await page.getByText('TIT-OUTRO',{exact:true}).waitFor();
     assert.equal(await page.getByRole('button',{name:/Anexar mesmo comprovante/}).count(),0,'Sem permissao de anexo individual nao recebe lote');
   }
+  await validarPaginacaoFila(page);
   assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
   console.log('OK: fila real desktop/mobile, cabecalho unico da massa conta/data/forma/instrumentos, quantidade/proprio/carteira, cancelamento/mutex, desconto, cheques, estorno, devolver nao pago, selecao/colunas e rolagem. APIs isoladas.');
+  }
 } finally { await browser?.close(); await server.close(); }

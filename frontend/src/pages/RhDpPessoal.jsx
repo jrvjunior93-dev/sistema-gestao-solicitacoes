@@ -560,6 +560,7 @@ export default function RhDpPessoal() {
 
   useEffect(() => {
     let ativo = true;
+    let contagemGlobalRecebida = false;
     const carregarAvisosTransferencia = async () => {
       try {
         const resposta = await getNotificacoes({
@@ -567,19 +568,23 @@ export default function RhDpPessoal() {
           limit: 1,
           tipos: ['RH_TRANSFERENCIA_ATUALIZADA']
         });
-        if (ativo) setTransferenciasNaoLidas(Number(resposta.total_nao_lidas || 0));
+        if (ativo && !contagemGlobalRecebida) setTransferenciasNaoLidas(Number(resposta.total_nao_lidas || 0));
       } catch {
         // A central global continua sendo a fonte de verdade. Uma falha temporaria
         // neste contador nao deve impedir o restante da tela de Pessoal.
       }
     };
     carregarAvisosTransferencia();
-    const timer = setInterval(carregarAvisosTransferencia, 30000);
-    window.addEventListener('notificacoes:atualizar', carregarAvisosTransferencia);
+    const receberContagens = event => {
+      if (ativo && Number(event.detail?.usuario_id) === Number(user?.id)) {
+        contagemGlobalRecebida = true;
+        setTransferenciasNaoLidas(Number(event.detail.contadores?.RH_TRANSFERENCIA_ATUALIZADA || 0));
+      }
+    };
+    window.addEventListener('notificacoes:contagens', receberContagens);
     return () => {
       ativo = false;
-      clearInterval(timer);
-      window.removeEventListener('notificacoes:atualizar', carregarAvisosTransferencia);
+      window.removeEventListener('notificacoes:contagens', receberContagens);
     };
   }, [user?.id]);
 
@@ -720,7 +725,7 @@ export default function RhDpPessoal() {
             status: localValido ? 'ATIVO' : undefined,
             q: busca || undefined
           }),
-        listarRhSolicitacoes({ situacao: 'EM_ANDAMENTO', obra_id: localValido?.id || undefined })
+        listarRhSolicitacoes({ situacao: 'EM_ANDAMENTO', obra_id: localValido?.id || undefined, resumo: 1 })
       ]);
       if (consultaId !== ultimaConsultaColaboradoresRef.current) return;
       const listaConfirmada = Array.isArray(lista) ? lista : [];
@@ -735,7 +740,7 @@ export default function RhDpPessoal() {
         return vigente.status === 'ATIVO' && vigente.obra_id ? [[id, vigente]] : [];
       })));
       restaurandoSelecao.current = false;
-      setTotalSolicitacoesAbertas(Array.isArray(solicitacoesAbertas) ? solicitacoesAbertas.length : 0);
+      setTotalSolicitacoesAbertas(Array.isArray(solicitacoesAbertas) ? solicitacoesAbertas.length : Number(solicitacoesAbertas?.total || 0));
       if (!obras.length) setObras(Array.isArray(listaObras) ? listaObras : []);
     } catch (error) {
       if (consultaId !== ultimaConsultaColaboradoresRef.current) return;

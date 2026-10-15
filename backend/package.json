@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
+    "test:performance-fila-dp": "node scripts/validarPerformanceFilaDp.js && node scripts/validarFilaPaginacao.js && node scripts/validarFilaFiltrosDp.js && node scripts/validarRhTitulosEnviadosRelatorio.js && node scripts/validarDeployPerformanceFilaDpDev.js",
     "test:fila-filtros-dp": "node scripts/validarFilaFiltrosDp.js",
     "test:rhdp-titulos-enviados": "node scripts/validarRhTitulosEnviadosRelatorio.js",
     "test:rhdp-envio-parcial": "node scripts/validarRhPagamentoEnvioParcial.js",

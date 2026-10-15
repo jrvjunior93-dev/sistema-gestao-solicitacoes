@@ -1,5 +1,25 @@
 # Ownership Ativo
 
+## Performance da fila e RH/DP - 2026-10-15
+
+- Reserva ativa do agente unico desta conversa, sem delegacao. Base DEV da9cf569.
+- Usuario autorizou implementar/publicar em refactor/frontend e preparar comandos
+  EC2 DEV. Proibido alterar main, producao, dados de negocio ou flags.
+- Reservados: services de filtros/fila/relatorio e listagem RH, controller de
+  solicitacoes/notificacoes, polling e servicos frontend dessas telas,
+  componentes auxiliares de paginacao, testes isolados, scripts de deploy DEV,
+  package.json, documentacao e handoff desta tarefa.
+- Preservar escopo/permissoes, snapshots, duplicidades entre paginas, estados
+  legados/normalizados, selecao e regras financeiras. Sem aumentar pool.
+- Worktree isolado: performance-fila-dp-20261015; mudancas de contratos de outro
+  checkout permanecem intocadas e nao serao publicadas junto.
+- Usuario ampliou para paginacao de TODOS os cards/status da fila e selecao entre
+  paginas, com revalidacao antes de operacoes. Implementacao/QA concluidos:
+  650 titulos na UI, 533 pedidos/613 titulos no backend, regressoes financeiras,
+  ACL, polling, build/navegacao/docs. Reserva encerrada; ownership liberado.
+  Handoff: docs/handoffs/2026-10-15-performance-fila-dp.md. Publicacao so DEV;
+  sem migration nova, sem EC2/banco/producao executados pelo agente.
+
 ## Filtros/recebimento da fila e relatorio DP - 2026-10-15
 
 - Publicacao DEV agora autorizada pelo usuario: reserva temporaria do delta,
