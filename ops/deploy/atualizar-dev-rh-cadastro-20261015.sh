@@ -27,7 +27,7 @@ const { assertMigrationsUpToDate } = require('./src/database/runMigrations');
     throw new Error('backend-dev nao aponta para o checkout dev.');
   }
   const pmEnv = processo.pm2_env;
-  if (Number(pmEnv.PORT || env.port) !== 8100 || Number(env.port) !== 8100) throw new Error('Porta de dev diferente de 8100.');
+  if (Number(pmEnv.PORT || env.port) !== 8001 || Number(env.port) !== 8001) throw new Error('Porta de dev diferente de 8001.');
   for (const key of ['DB_HOST', 'DB_NAME', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_PASS', 'DB_SSL_CA_FILE', 'DEPLOYMENT_ENV', 'DEV_USER_SWITCH_ENABLED', 'PRODUCTION_USER_SWITCH_ENABLED', 'PAYMENT_OWNER_APPROVAL_MODE']) {
     if (pmEnv[key] !== undefined && String(pmEnv[key]) !== String(process.env[key] ?? '')) {
       throw new Error(`Variavel ${key} diverge entre PM2 e terminal/.env. Confira sem compartilhar segredos.`);
@@ -50,8 +50,8 @@ node <<'NODE'
 (async () => {
   for (let tentativa = 0; tentativa < 20; tentativa++) {
     try {
-      const response = await fetch('http://127.0.0.1:8100/health', { signal: AbortSignal.timeout(2000) });
-      if (response.ok) { console.log('backend-dev saudavel na porta 8100.'); return; }
+      const response = await fetch('http://127.0.0.1:8001/health', { signal: AbortSignal.timeout(2000) });
+      if (response.ok) { console.log('backend-dev saudavel na porta 8001.'); return; }
     } catch {}
     await new Promise(resolve => setTimeout(resolve, 2000));
   }

@@ -84,7 +84,7 @@ comandos para homologacao EC2 dev. Conferencia contra origin/refactor/frontend
 
 Script ops/deploy/atualizar-dev-rh-cadastro-20261015.sh: checkout/branch limpos,
 dependencias fixadas no lockfile, testes financeiros em memoria, preflight de
-processo backend-dev/caminho, porta8100, endpoint/UUID/banco staging e schema
+processo backend-dev/caminho, porta8001, endpoint/UUID/banco staging e schema
 totalmente atualizado. Nao aplica migrations, seeds/backfills nem altera flags.
 Reinicia exclusivamente backend-dev e verifica health. Operador executa na EC2;
 agente nao acessa a maquina nem banco externo.
@@ -97,3 +97,18 @@ pois o runtime nao mudou nesta etapa. Ownership de edicao/staging liberado.
 
 Depois da publicacao: operador atualiza EC2 dev pelo SHA fornecido e confirma
 deployment frontend dev na Vercel antes da homologacao. Sem promocao para main.
+
+## Porta real confirmada pelo operador
+
+Diagnostico EC2 de 15/10 confirmou backend-dev online com PORT=8001 no caminho
+dev e env.deploymentEnvironment=development/env.port=8001, sem PORT herdada do
+terminal. backend-solicitacoes permanece online em 8000 no checkout main.
+O primeiro deploy parou na guarda incorreta de 8100 antes do restart. A origem
+do erro foi o valor fixado no script, nao a configuracao da EC2.
+
+Corrigidos apenas guarda de porta, URL de health e fixture. Testes incluem
+recusa de 8000/producao e de 8100, identidade/schema/env divergentes e health
+efetivamente consultado em 8001 (fetch simulado, sem rede). Bash/sintaxe e diff
+conferidos. Nao mudar .env, Nginx ou configuracao PM2; nao aplicar migrations.
+Publicar correcao na refactor/frontend como continuacao da atualizacao dev
+autorizada e entregar novo SHA ao operador. Sem runtime alterado ou EC2 executada.

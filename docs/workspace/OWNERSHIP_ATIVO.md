@@ -1,5 +1,16 @@
 # Ownership Ativo
 
+## Correcao porta real do deploy DEV RH - 2026-10-15
+
+- Continuacao da publicacao/dev autorizada: operador confirmou backend-dev e
+  .env development em 8001; producao backend-solicitacoes permanece em 8000.
+- Reserva exclusiva: atualizar-dev-rh-cadastro-20261015.sh,
+  validarDeployRhCadastroDev.js, handoff pagamento-rh-cadastro-atual e este registro.
+- Corrigir somente preflight/health/fixture de porta; nao mudar .env/PM2/flags,
+  runtime do pagamento ou schema. Sem execucao EC2 pelo agente.
+- Preflight/health em memoria, negativas, Bash/docs/diff aprovados; ownership
+  liberado para publicacao corretiva autorizada. Outputs/ e checkouts preservados.
+
 ## Publicacao dev cadastro RH - 2026-10-15
 
 - Usuario autorizou commit/push desta correcao na refactor/frontend e comandos

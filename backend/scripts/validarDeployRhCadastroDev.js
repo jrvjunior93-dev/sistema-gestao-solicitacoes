@@ -10,8 +10,8 @@ assert(!/\brunMigrations\s*\(/.test(source) && !source.includes('ALLOW_SCHEMA_MI
 assert(source.indexOf('pm2 restart') > source.indexOf('await assertMigrationsUpToDate()'));
 async function testar(modify = () => {}) {
   let verified = 0;
-  const env = { deploymentEnvironment: 'development', port: 8100, dbHost: 'fluxy-staging.cn820k66sdx7.us-east-2.rds.amazonaws.com' };
-  const processo = { name: 'backend-dev', pm2_env: { pm_exec_path: '/home/ubuntu/sistema-gestao-solicitacoes-dev/backend/server.js', PORT: '8100' } };
+  const env = { deploymentEnvironment: 'development', port: 8001, dbHost: 'fluxy-staging.cn820k66sdx7.us-east-2.rds.amazonaws.com' };
+  const processo = { name: 'backend-dev', pm2_env: { pm_exec_path: '/home/ubuntu/sistema-gestao-solicitacoes-dev/backend/server.js', PORT: '8001' } };
   const database = { uuid: '60f043e9-4025-11f1-9a61-06d8a063012d', banco: 'gestao_solicitacoes' };
   const fakeProcess = { env: {}, exitCode: 0 }; const state = { pending: false };
   modify({ env, processo, database, fakeProcess, state });
@@ -35,6 +35,7 @@ async function testar(modify = () => {}) {
     ({ env }) => { env.deploymentEnvironment = 'production'; },
     ({ env }) => { env.dbHost = 'producao.invalid'; },
     ({ env }) => { env.port = 8000; },
+    ({ env, processo }) => { env.port = 8100; processo.pm2_env.PORT = '8100'; },
     ({ database }) => { database.uuid = '5ed4b970-009f-11f1-809c-0ad0e0c90c53'; },
     ({ database }) => { database.banco = 'outro'; },
     ({ processo }) => { processo.name = 'backend-solicitacoes'; },
@@ -45,5 +46,11 @@ async function testar(modify = () => {}) {
     ({ processo, fakeProcess }) => { processo.pm2_env.PAYMENT_OWNER_APPROVAL_MODE = 'OFF'; fakeProcess.env.PAYMENT_OWNER_APPROVAL_MODE = 'ENFORCED'; },
     ({ state }) => { state.pending = true; }
   ]) assert.deepEqual(await testar(modify), { verified: 0, exitCode: 1 });
+  let healthConsultado = false;
+  await vm.runInNewContext(blocks[1], { process: { exitCode: 0 }, AbortSignal,
+    console: { log() {}, error(e) { throw Error(e); } }, fetch: async url => {
+      assert.equal(url, 'http://127.0.0.1:8001/health'); healthConsultado = true; return { ok: true };
+    } });
+  assert(healthConsultado, 'Health deve consultar a porta DEV real, sem rede');
   console.log('Deploy DEV RH: PM2/porta/env, banco/endpoint/UUID e schema aprovados; negativas bloqueadas. Sem migration/banco real.');
 })().catch(e => { console.error(e); process.exitCode = 1; });
