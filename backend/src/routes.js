@@ -269,6 +269,7 @@ const {
   canAccessPagamentos,
   canAccessProvisoes,
   canAlterarQuantidadeSolicitacaoCompra,
+  canGerenciarFreteCompraDireta,
   canAlterarStatusComprasPedidos,
   canAnexarDocumentoPedidoCompraFinanceiro,
   canDeleteSolicitacaoAnexo,
@@ -461,6 +462,7 @@ const ProvisaoFinanceiraController = require('./controllers/ProvisaoFinanceiraCo
 const ProvisaoCategoriaMacroController = require('./controllers/ProvisaoCategoriaMacroController');
 const ProvisaoFinanceiraDashboardController = require('./controllers/ProvisaoFinanceiraDashboardController');
 const RhEmpresaGrupoController = require('./controllers/RhEmpresaGrupoController');
+const RhAdmissaoCatalogoController = require('./controllers/RhAdmissaoCatalogoController');
 const RhColaboradorController = require('./controllers/RhColaboradorController');
 const RhSolicitacaoController = require('./controllers/RhSolicitacaoController');
 const RhTransferenciaController = require('./controllers/RhTransferenciaController');
@@ -1046,6 +1048,11 @@ const allowCompraSolicitacoesCreate = allowPaymentAction(
   canCreateCompraSolicitacao,
   'Acesso negado para criar solicitacao de compra'
 );
+const allowCompraDiretaFormasRead = allowPaymentAction(
+  'COMPRAS_COMPRA_DIRETA_FORMAS_READ',
+  async user => await canCreateCompraSolicitacao(user) || await canGerenciarFreteCompraDireta(user),
+  'Acesso negado ao catalogo de formas de pagamento da compra direta'
+);
 const allowCompraSolicitacoesManage = allowPaymentAction(
   'COMPRAS_SOLICITACOES_MANAGE',
   canManageCompraSolicitacoes,
@@ -1079,6 +1086,7 @@ const allowCompraSolicitacoesUpload = allowPaymentAction(
     || await canManageComprasPedidos(user)
     || await canAnexarDocumentoPedidoCompraFinanceiro(user)
     || await canGerarPrevisaoPedidoCompraFinanceiro(user)
+    || await canGerenciarFreteCompraDireta(user)
   ),
   'Acesso negado para enviar anexos de compras'
 );
@@ -2085,6 +2093,7 @@ router.get('/rh/transferencias/:id', allowRhDpSolicitacaoVer, validateRequest({ 
 router.post('/rh/transferencias/:id/:acao', allowRhDpSolicitacaoVer, criticalRateLimit, RhTransferenciaController.agir);
 router.get('/rh/solicitacoes', allowRhDpSolicitacaoVer, RhSolicitacaoController.index);
 router.get('/rh/solicitacoes/checklist', allowRhDpSolicitacaoVer, RhSolicitacaoController.checklistDoTipo);
+router.get('/rh/solicitacoes/empresas-admissao', allowRhDpSolicitacaoAbrir, RhAdmissaoCatalogoController.empresas);
 router.get('/rh/solicitacoes/:id', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.show);
 router.get('/rh/solicitacoes/:id/jornada', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.jornada);
 router.get('/rh/solicitacoes/:id/conferencia', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.conferencia);
@@ -2451,7 +2460,7 @@ router.get('/compras/fornecedores/:id', requireEnabledModule('COTACOES'), allowC
 router.put('/compras/fornecedores/:id', requireEnabledModule('COTACOES'), allowComprasFornecedoresManage, FornecedorCompraController.update);
 router.delete('/compras/fornecedores/:id', requireEnabledModule('COTACOES'), allowComprasFornecedoresManage, FornecedorCompraController.destroy);
 router.post('/compras/anexos-temporarios', allowCompraSolicitacoesUpload, uploadRateLimit, uploadComprovantes.single('file'), SolicitacaoCompraController.uploadTemporario);
-router.get('/compras/formas-pagamento-ativas', allowCompraSolicitacoesCreate, SolicitacaoCompraController.formasPagamentoAtivas);
+router.get('/compras/formas-pagamento-ativas', allowCompraDiretaFormasRead, SolicitacaoCompraController.formasPagamentoAtivas);
 router.get('/compras/solicitacoes/modelo-itens-xlsx', allowCompraSolicitacoesCreate, requireCompraQueryObraCreationAccess, SolicitacaoCompraController.modeloSolicitacaoCompraXlsx);
 router.post(
   '/compras/solicitacoes/importar-itens-xlsx',
@@ -2502,6 +2511,7 @@ router.patch('/compras/solicitacoes/:id/recusar', allowCompraSolicitacoesManage,
 router.patch('/compras/solicitacoes/:id/encerrar', allowComprasCotacoesEncerrar, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de compra'), body: validateCompraEncerrarBody }), requireCompraAccess, SolicitacaoCompraController.encerrar);
 router.patch('/compras/solicitacoes/:id/encerrar-sem-pedido', requireEnabledModule('COTACOES'), allowComprasCotacoesEncerrarSemPedido, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de compra'), body: validateCompraEncerrarSemPedidoBody }), requireCompraAccess, SolicitacaoCompraController.encerrarSemPedido);
 router.patch('/compras/solicitacoes/:id/itens/:itemId/quantidade', allowCompraSolicitacoesAlterarQuantidade, criticalRateLimit, validateRequest({ params: validateCompraSolicitacaoItemQuantidadeParams, body: validateCompraSolicitacaoItemQuantidadeBody }), requireCompraAccess, SolicitacaoCompraController.atualizarQuantidadeItem);
+router.patch('/compras/solicitacoes/:id/gestao-compra-direta', allowCompraSolicitacoesCreateFlowRead, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Compra direta') }), requireCompraAccess, SolicitacaoCompraController.editarGestaoCompraDireta);
 router.post('/compras/solicitacoes/:id/itens/:itemId/cadastrar-unidade', allowCompraSolicitacoesCreateFlowRead, criticalRateLimit, validateRequest({ params: validateCompraSolicitacaoItemQuantidadeParams }), requireCompraAccess, SolicitacaoCompraController.cadastrarUnidadeItem);
 router.patch('/compras/solicitacoes/:id/itens/:itemId/apropriacoes', allowCompraSolicitacoesCreateFlowRead, criticalRateLimit, validateRequest({ params: validateCompraSolicitacaoItemQuantidadeParams, body: validateCompraSolicitacaoItemApropriacoesBody }), requireCompraAccess, SolicitacaoCompraController.atualizarApropriacoesItem);
 router.post(

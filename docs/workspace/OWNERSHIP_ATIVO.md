@@ -1,5 +1,39 @@
 # Ownership Ativo
 
+## Publicacao DEV Compra Direta e admissao - 2026-10-15
+
+- Usuario autorizou commit/push dos ajustes na refactor/frontend e comandos EC2
+  dev; sem main, banco real ou reinicio remoto pelo agente.
+- Reserva de staging dos arquivos do handoff 2026-10-15-compra-direta-admissao,
+  documentacao desta publicacao e novo script/teste de deploy DEV sem migrations.
+- Reserva documental complementar: somente atualizar contagem central de
+  permissoes em AGENTS.md e docs/seguranca/autenticacao_autorizacao.md.
+- Preservar outputs/ e demais checkouts; conferir remoto/base e push normal,
+  sem force. Homologacao EC2 permanece com o operador.
+- Backend, UI dos dois fluxos, build, ACL, documentacao, Bash e negativas do
+  deploy aprovados. Reserva de edicao liberada para commit/publicacao autorizada.
+
+## Compra Direta quantidade/frete e catalogo de admissao - 2026-10-15
+
+- Sessao codex-compra-direta-admissao-20261015, sem delegacao; finalizada localmente.
+- Reserva: backend/src/routes.js; novo RhAdmissaoCatalogoController e teste;
+  frontend/src/services/rhDp.js, pages/RhDpPessoal.jsx e teste de admissao;
+  SolicitacaoCompraController, novo servico/controller de gestao Compra Direta,
+  validadores/ACL caso necessarios; frontend pages/SolicitacaoDetalhe/index.jsx,
+  services/compras.js, novo formulario de frete reutilizando padroes existentes;
+  testes de quantidade/frete, READMEs canonicos e handoff deste escopo.
+- Reserva adicional: constants/moduloPermissoes.js, services/authorizationService.js,
+  frontend/src/utils/acessoProduto.js, generated/navegacaoFonteUnica.cjs gerado pelo
+  build e testes de ACL/UI deste fluxo.
+- Proprietario confirmou recalcular compra sem modificar titulos existentes.
+  Quantidade/frete terao permissoes proprias, revisao otimista e auditoria.
+  Catalogo admissao limitado a id/nome/CNPJ ativos,
+  sem liberar gestao de empresas, financeiro, outros dados ou outras obras.
+- Sem banco real, migrations, commit/push, EC2, restart ou deploy nesta tarefa.
+- Backend/ACL, UI dos novos fluxos, revisao visual, build e diff aprovados;
+  verificacoes legadas desatualizadas documentadas. Ownership liberado.
+  Handoff: docs/handoffs/2026-10-15-compra-direta-admissao.md.
+
 ## Correcao porta real do deploy DEV RH - 2026-10-15
 
 - Continuacao da publicacao/dev autorizada: operador confirmou backend-dev e

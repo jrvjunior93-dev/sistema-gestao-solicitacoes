@@ -19,6 +19,7 @@ import RecargaCartaoDetalhe from './RecargaCartaoDetalhe';
 import AdiantamentoDetalhe from './AdiantamentoDetalhe';
 import ObraCadastroModal from '../../components/obras/ObraCadastroModal';
 import CompraEtapas from './CompraEtapas';
+import CompraDiretaFreteForm from './CompraDiretaFreteForm';
 import { descricaoItensCompraDireta } from './estadoItensCompraDireta';
 import { getContratoParcelas } from '../../services/contratos';
 import { API_URL, authHeaders, fileUrl } from '../../services/api';
@@ -31,6 +32,7 @@ import ApropriacaoAutocomplete from '../../components/ui/ApropriacaoAutocomplete
 import TratamentoItemManual from '../../modules/solicitacao-compra/components/TratamentoItemManual';
 import StatusBadge from '../../components/StatusBadge';
 import { formatarDataLocalPtBr } from '../../utils/dateLocal';
+import { parseQuantidadeDigitadaBR } from '../../utils/quantidadeBR';
 import { getTipoSolicitacaoBehavior } from '../../utils/tipoSolicitacao';
 import OverlayModal from '../../components/ui/OverlayModal';
 import ModalEditarDadosSolicitacao from '../../components/solicitacoes/ModalEditarDadosSolicitacao';
@@ -59,6 +61,7 @@ import {
 import {
   atualizarApropriacoesItemSolicitacaoCompra,
   atualizarQuantidadeItemSolicitacaoCompra,
+  editarGestaoCompraDireta,
   cadastrarUnidadeItemSolicitacaoCompra,
   obterSolicitacaoCompraPorSolicitacao
 } from '../../services/compras';
@@ -75,6 +78,8 @@ import { isGeoSetor, solicitacaoEstaNoSetorDoUsuario, userHasSetorCapability } f
 import {
   canAccessFinanceiro,
   canAlterarQuantidadeSolicitacaoCompra,
+  canAlterarQuantidadeCompraDireta,
+  canGerenciarFreteCompraDireta,
   canCatalogarItensManuaisCompras,
   canCreateCompraSolicitacao,
   canDeleteSolicitacaoAnexo,
@@ -449,6 +454,7 @@ export default function SolicitacaoDetalhe() {
   const [carregandoCompraDireta, setCarregandoCompraDireta] = useState(false);
   const [erroItensCompraDireta, setErroItensCompraDireta] = useState('');
   const abrindoItensCompraRef = useRef(false);
+  const salvandoQuantidadeRef = useRef(false);
   const [itemCompraDiretaSelecionado, setItemCompraDiretaSelecionado] = useState(null);
   const [rateiosCompraDireta, setRateiosCompraDireta] = useState([]);
   const [motivoCompraDireta, setMotivoCompraDireta] = useState('');
@@ -497,12 +503,13 @@ export default function SolicitacaoDetalhe() {
   );
   const podeEditarQuantidadeItemCompra = podeInteragirSolicitacao
     && isSolicitacaoCompra
-    && !isCompraDiretaSolicitacao
     && moduloComprasHabilitado
-    && canAlterarQuantidadeSolicitacaoCompra(user);
+    && (isCompraDiretaSolicitacao ? canAlterarQuantidadeCompraDireta(user) : canAlterarQuantidadeSolicitacaoCompra(user));
+  const podeGerenciarFreteCompraDireta = isCompraDiretaSolicitacao && podeInteragirSolicitacao && canGerenciarFreteCompraDireta(user);
   const podeGerenciarItensCompra = isSolicitacaoCompra && podeInteragirSolicitacao && (
     (isCompraDiretaSolicitacao ? podeEditarItensCompraDiretaBase : podeEditarItensSolicitacaoCompraBase)
     || podeCatalogarItensManuaisCompra
+    || podeEditarQuantidadeItemCompra || podeGerenciarFreteCompraDireta
   );
   const contratoSomenteLeitura = contratoDoFluxo && !podeInteragirSolicitacao
     ? { ...contratoDoFluxo, permissoes: {} }
@@ -958,6 +965,7 @@ export default function SolicitacaoDetalhe() {
   }
 
   function selecionarItemCompraDireta(item) {
+    if (salvandoCompraDireta) return;
     const rateios = normalizarRateiosEntrada(item);
     setItemCompraDiretaSelecionado(item);
     setRateiosCompraDireta(rateios.length ? rateios : [criarRateioBase(item?.quantidade)]);
@@ -967,7 +975,7 @@ export default function SolicitacaoDetalhe() {
     setAcaoItemCompraDireta(
       item?.item_tipo === 'MANUAL' && podeCatalogarItensManuaisCompra
         ? 'CATALOGAR'
-        : 'APROPRIAR'
+        : podeEditarApropriacoesItemCompra ? 'APROPRIAR' : 'QUANTIDADE'
     );
   }
 
@@ -1030,9 +1038,10 @@ export default function SolicitacaoDetalhe() {
   async function salvarQuantidadeItemCompra() {
     const compraAlvo = Number(compraDiretaDetalhe?.id || 0);
     const itemAlvo = itemCompraDiretaSelecionado;
-    if (!compraAlvo || !itemAlvo?.id || !podeEditarQuantidadeItemCompra) return;
+    if (!compraAlvo || !itemAlvo?.id || !podeEditarQuantidadeItemCompra || salvandoCompraDireta || salvandoQuantidadeRef.current) return;
 
-    const quantidade = Number(String(quantidadeItemCompra || '').trim().replace(/\./g, '').replace(',', '.'));
+    const quantidade = isCompraDiretaSolicitacao ? parseQuantidadeDigitadaBR(quantidadeItemCompra)
+      : Number(String(quantidadeItemCompra || '').trim().replace(/\./g, '').replace(',', '.'));
     if (!Number.isFinite(quantidade) || quantidade <= 0) {
       avisar.alerta('Informe uma quantidade válida maior que zero.');
       return;
@@ -1046,24 +1055,36 @@ export default function SolicitacaoDetalhe() {
 
     try {
       setSalvandoCompraDireta(true);
-      const data = await atualizarQuantidadeItemSolicitacaoCompra(compraAlvo, itemAlvo.id, {
+      salvandoQuantidadeRef.current = true;
+      const payload = {
         item_tipo: itemAlvo.item_tipo,
         quantidade,
         motivo
-      });
+      };
+      const data = isCompraDiretaSolicitacao
+        ? await editarGestaoCompraDireta(compraAlvo, { ...payload, acao: 'QUANTIDADE', item_id: itemAlvo.id, revisao_gestao: compraDiretaDetalhe.revisao_gestao })
+        : await atualizarQuantidadeItemSolicitacaoCompra(compraAlvo, itemAlvo.id, payload);
       setCompraDiretaDetalhe(data || null);
       const itemAtualizado = montarItensCompraDireta(data).find(
         (item) => item.item_tipo === itemAlvo.item_tipo && Number(item.id) === Number(itemAlvo.id)
       );
-      selecionarItemCompraDireta(itemAtualizado || { ...itemAlvo, quantidade });
-      setAcaoItemCompraDireta('APROPRIAR');
+      const novoItem = itemAtualizado || { ...itemAlvo, quantidade };
+      setItemCompraDiretaSelecionado(novoItem);
+      setRateiosCompraDireta(normalizarRateiosEntrada(novoItem));
+      setQuantidadeItemCompra(String(novoItem.quantidade).replace('.', ','));
+      setMotivoQuantidadeItemCompra('');
+      setAcaoItemCompraDireta(isCompraDiretaSolicitacao ? 'QUANTIDADE' : 'APROPRIAR');
       registrarMutacaoLocal(solicitacao?.id);
-      avisar.sucesso('Quantidade atualizada. Revise e salve as apropriações deste item antes de continuar.');
+      if (isCompraDiretaSolicitacao) await carregar({ silent: true });
+      avisar.sucesso(isCompraDiretaSolicitacao
+        ? 'Quantidade e total da compra recalculados. Títulos existentes preservados; apropriações redistribuídas proporcionalmente.'
+        : 'Quantidade atualizada. Revise e salve as apropriações deste item antes de continuar.');
     } catch (error) {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao atualizar a quantidade do item');
     } finally {
       setSalvandoCompraDireta(false);
+      salvandoQuantidadeRef.current = false;
     }
   }
 
@@ -2217,6 +2238,8 @@ export default function SolicitacaoDetalhe() {
               {isCompraDiretaSolicitacao ? 'Itens da compra direta' : 'Itens da solicitação de compra'}
             </h2>
             <span className="app-bloco-acoes">
+              {podeGerenciarFreteCompraDireta && <button type="button" className={`btn btn-sm ${acaoItemCompraDireta === 'FRETE' ? 'btn-primary' : 'btn-outline'}`}
+                disabled={salvandoCompraDireta} onClick={() => setAcaoItemCompraDireta('FRETE')}>Frete da compra</button>}
               <button type="button" className="btn btn-outline btn-sm" onClick={fecharModalCompraDireta}>
                 Fechar
               </button>
@@ -2231,9 +2254,11 @@ export default function SolicitacaoDetalhe() {
           <div className="h-[76dvh] min-w-0 p-4 sm:p-6">
             <p
               className="app-bloco-lead app-bloco-lead--integral"
-              title="Selecione um item para catalogar, cadastrar sua unidade ou corrigir as apropriações."
+              title="Gerencie os itens e o frete conforme suas permissões."
             >
-              Selecione um item para catalogar, cadastrar sua unidade ou corrigir as apropriações.
+              {isCompraDiretaSolicitacao
+                ? 'Selecione um item para gerenciar. Alterações de quantidade e frete da Compra Direta não modificam títulos ou pagamentos existentes.'
+                : 'Selecione um item para catalogar, cadastrar sua unidade ou corrigir as apropriações.'}
             </p>
 
             <div className="mt-4 flex min-h-full min-w-0 flex-col gap-4 md:flex-row md:items-stretch">
@@ -2247,6 +2272,7 @@ export default function SolicitacaoDetalhe() {
                 ) : (
                   montarItensCompraDireta().map((item) => {
                     const selecionado =
+                      acaoItemCompraDireta !== 'FRETE' &&
                       itemCompraDiretaSelecionado?.id === item.id &&
                       itemCompraDiretaSelecionado?.item_tipo === item.item_tipo;
                     const resumoApropriacao = montarLinhasResumoApropriacao(item, apropriacoesCatalogo).join(' | ') || '-';
@@ -2257,6 +2283,7 @@ export default function SolicitacaoDetalhe() {
                         type="button"
                         className={`btn w-full shrink-0 justify-start text-left ${selecionado ? 'btn-primary' : 'btn-outline'}`}
                         aria-pressed={selecionado}
+                        disabled={salvandoCompraDireta}
                         onClick={() => selecionarItemCompraDireta(item)}
                       >
                         <span className="flex min-w-0 flex-col gap-1">
@@ -2278,7 +2305,17 @@ export default function SolicitacaoDetalhe() {
               </div>
 
               <div className="min-w-0 flex-1">
-              {!itemCompraDiretaSelecionado ? (
+              {acaoItemCompraDireta === 'FRETE' && podeGerenciarFreteCompraDireta ? (
+                <CompraDiretaFreteForm key={compraDiretaDetalhe.revisao_gestao} compra={compraDiretaDetalhe}
+                  itens={montarItensCompraDireta()} ocupado={salvandoCompraDireta} onOcupado={setSalvandoCompraDireta}
+                  onSalvar={async payload => {
+                    const data = await editarGestaoCompraDireta(compraDiretaDetalhe.id, payload);
+                    setCompraDiretaDetalhe(data);
+                    registrarMutacaoLocal(solicitacao.id);
+                    await carregar({ silent: true });
+                    avisar.sucesso('Frete e total da compra atualizados. Títulos existentes preservados.');
+                  }} />
+              ) : !itemCompraDiretaSelecionado ? (
                 <BlocoConteudo variante="secundario">
                   Selecione um item para ver as ações disponíveis.
                 </BlocoConteudo>
@@ -2386,7 +2423,9 @@ export default function SolicitacaoDetalhe() {
                         </CampoForm>
                       </FormSecao>
                       <p className="text-sm text-muted">
-                        Depois de salvar a quantidade, revise obrigatoriamente as apropriações do item.
+                        {isCompraDiretaSolicitacao
+                          ? 'Recalcula o item pelo preço unitário e redistribui desconto e apropriações proporcionalmente. Títulos e pagamentos existentes não serão alterados.'
+                          : 'Depois de salvar a quantidade, revise obrigatoriamente as apropriações do item.'}
                       </p>
                       <div className="app-actionbar">
                         <button

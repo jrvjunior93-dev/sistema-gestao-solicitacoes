@@ -1,5 +1,14 @@
 # Sessoes Ativas
 
+- Publicacao dev Compra Direta/admissao autorizada em 2026-10-15; arquivos do
+  handoff validados para commit/push na refactor/frontend, sem main ou EC2.
+  Reserva de edicao liberada; homologacao real permanece com o operador.
+
+- codex-compra-direta-admissao-20261015: finalizado local, sem delegacao; branch
+  codex/compra-direta-admissao-20261015 no worktree promocao-dp-main-20261014.
+  Ownership liberado; handoff 2026-10-15-compra-direta-admissao.
+  Sem banco real, migration, commit/push ou publicacao.
+
 - codex-rh-pagamento-cadastro-atual-20261015: finalizado local, sem delegacao,
   worktree promocao-dp-main-20261014, branch codex/rh-pagamento-cadastro-atual-20261015.
   Ownership liberado; commit/push dev autorizados na continuacao. Sem banco real,

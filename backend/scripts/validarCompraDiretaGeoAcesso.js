@@ -160,8 +160,9 @@ async function executar(name) {
   reset(); principal.area_responsavel = 'FINANCEIRO';
   assert.equal((await executar('atualizarApropriacoesItem')).statusCode, 403);
 
-  // Exatamente estes quatro pontos optam pela nova excecao; nenhuma lista/pedido/cotacao.
-  assert.equal((controller.match(/permitirCompraDiretaGeo: true/g) || []).length, 4);
+  // Quatro pontos de itens/leitura mais a gestao granular de quantidade/frete.
+  // Nenhuma lista/pedido/cotacao recebe a excecao.
+  assert.equal((controller.match(/permitirCompraDiretaGeo: true/g) || []).length, 5);
   assert.match(routes, /itens-manuais\/:itemId\/catalogar'[\s\S]*?allowComprasCatalogarItensManuais[\s\S]*?requireCompraAccess/);
   assert.match(controller, /if \(totalTitulos > 0\)/);
   console.log('Compra Direta GEO: leitura de dois itens, escopo restrito, permissoes de acao, setor atual e bloqueio financeiro validados. Sem banco ou servicos externos.');

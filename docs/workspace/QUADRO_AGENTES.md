@@ -1,5 +1,19 @@
 # Quadro de Agentes
 
+## Publicacao DEV Compra Direta/admissao - 2026-10-15
+
+- Commit/push refactor/frontend autorizado; staging exclusivo dos ajustes e do
+  script/teste de deploy dev. Validacoes locais aprovadas; ownership liberado.
+- Sem main, EC2 pelo agente, alteracao de .env ou migration. Operador homologa.
+
+## Compra Direta e catalogo admissao - 2026-10-15
+
+- codex-compra-direta-admissao-20261015: finalizado local, sem delegacao;
+  ownership liberado. Quantidade/frete com recalculo autorizado, titulos
+  preservados, duas permissoes nominais e catalogo minimo de admissao.
+- Backend/ACL, UI, visual/build/diff aprovados; pendencias de testes legados
+  no handoff 2026-10-15-compra-direta-admissao. Sem banco real/deploy/Git.
+
 ## Pagamento RH cadastro atual - 2026-10-15
 
 - Sessao codex-rh-pagamento-cadastro-atual-20261015: finalizado local, sem delegacao,
