@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { HiOutlineArrowUturnLeft, HiOutlineClock, HiOutlinePencilSquare } from 'react-icons/hi2';
 import DateInputBR from '../DateInputBR';
 import PrestacaoRecargaCartao from './PrestacaoRecargaCartao';
+import SaldoCartaoRecarga from './SaldoCartaoRecarga';
 import { editarRecargaPendente, listarMeusCartoesRecarga, obterContextoCartaoRecarga } from '../../services/recargasCartao';
 import { solicitarRetornoSolicitacao } from '../../services/solicitacoes';
 
@@ -204,7 +205,7 @@ export default function RecargaCartaoFields({ ativo, obraId, fixarCartao = false
 
   if (!ativo) return null;
   // A linha de selecao ja identifica o cartao; repetir o formulario sem historico nao agrega informacao.
-  if (fixarCartao && !ultima && !erro && !contexto?.bloqueado) return null;
+  if (fixarCartao && !ultima && !erro && !contexto?.bloqueado && !contexto?.saldo_cartao) return null;
 
   return (
     <section className="min-w-0 space-y-3 border-y border-[var(--c-border)] py-3 lg:col-span-12" aria-label="Contexto do cartão">
@@ -236,6 +237,7 @@ export default function RecargaCartaoFields({ ativo, obraId, fixarCartao = false
         </div>
       </div>
 
+      <SaldoCartaoRecarga contexto={contexto} />
       {contexto?.bloqueado ? (
         <div className="space-y-3 border-y border-amber-300 bg-amber-50/70 px-3 py-3 text-amber-950" role="status">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -247,7 +249,7 @@ export default function RecargaCartaoFields({ ativo, obraId, fixarCartao = false
                 {aguardandoBaixa
                   ? 'Esta recarga ainda não possui valor efetivamente baixado. Assim que o Financeiro registrar uma baixa, a solicitação voltará automaticamente para a Obra e o card de prestação aparecerá aqui, sem atualizar o navegador.'
                   : podePrestarNestaTela
-                  ? 'A solicitação já está no seu setor. Preencha a prestação abaixo; quando os rateios fecharem o valor efetivamente recarregado, o próximo pedido será liberado e esta solicitação seguirá para conferência da Gerência de Processos.'
+                  ? 'A solicitação já está no seu setor. Informe os gastos reais abaixo. A sobra continuará no cartão; o próximo pedido será liberado após enviar a prestação para conferência do GEO.'
                   : podeEditarRecargaAnterior
                   ? 'A solicitação já voltou ao seu setor. Corrija o valor e a data prevista abaixo para reenviar o mesmo pedido à Gerência de Processos.'
                   : contextoInteracao?.pode_interagir

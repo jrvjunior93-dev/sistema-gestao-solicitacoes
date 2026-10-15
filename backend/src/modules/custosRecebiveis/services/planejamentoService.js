@@ -852,7 +852,7 @@ async function totalBaixasFinanceirasPorCompetencia(obraId, competencias, tipo, 
         ...(rateioTitleIds.length ? [{ id: { [Op.in]: rateioTitleIds } }] : [])
       ]
     },
-    attributes: ['id', 'obra_id', 'origem_titulo', 'valor_original', 'valor_despesa_prestacao'],
+    attributes: ['id', 'obra_id', 'origem_titulo', 'valor_original', 'valor_despesa_prestacao', 'possui_rateio', 'considera_dre'],
     include: [
       {
         model: deps.TituloFinanceiroRateio,
@@ -880,11 +880,14 @@ async function totalBaixasFinanceirasPorCompetencia(obraId, competencias, tipo, 
     if (title.origem_titulo === 'DEVOLUCAO_ADIANTAMENTO'
       || (title.origem_titulo === 'ADIANTAMENTO' && title.valor_despesa_prestacao == null)) return;
     const rateios = Array.isArray(title.rateios) ? title.rateios : [];
+    if (title.origem_titulo === 'RECARGA_CARTAO'
+      && (!rateios.length || title.possui_rateio === false || title.considera_dre === false)) return;
     const totalWeight = rateios.reduce((sum, item) => sum + rateioWeight(item), 0);
     const workWeight = rateios
       .filter((item) => Number(item.obra_id) === Number(obraId))
       .reduce((sum, item) => sum + rateioWeight(item), 0);
-    const factor = title.origem_titulo === 'ADIANTAMENTO'
+    const gastoPrestacao = ['ADIANTAMENTO', 'RECARGA_CARTAO'].includes(title.origem_titulo);
+    const factor = gastoPrestacao
       ? (number(title.valor_original) > 0 ? workWeight / number(title.valor_original) : 0)
       : rateios.length
       ? (totalWeight > 0 ? workWeight / totalWeight : 0)
@@ -892,7 +895,7 @@ async function totalBaixasFinanceirasPorCompetencia(obraId, competencias, tipo, 
     (title.movimentos || []).forEach((movement) => {
       const month = String(movement.data_movimento || '').slice(0, 7);
       if (!totals.has(month)) return;
-      const received = Math.abs(number(title.origem_titulo === 'ADIANTAMENTO' ? movement.valor : movement.valor_quitacao || movement.valor));
+      const received = Math.abs(number(gastoPrestacao ? movement.valor : movement.valor_quitacao || movement.valor));
       totals.set(month, money(number(totals.get(month)) + (received * factor)));
     });
   });

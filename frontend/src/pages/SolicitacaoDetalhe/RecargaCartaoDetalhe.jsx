@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import PrestacaoRecargaCartao from '../../components/recarga-cartao/PrestacaoRecargaCartao';
+import SaldoCartaoRecarga from '../../components/recarga-cartao/SaldoCartaoRecarga';
 import { obterRecargaDaSolicitacao } from '../../services/recargasCartao';
 import StatusBadge from '../../components/StatusBadge';
 import { BlocoConteudo, CamposComVazios } from '../../components/padrao';
@@ -92,6 +93,7 @@ function RecargaCartaoItem({ solicitacaoId, contexto, podeInteragir, carregar })
       ) : null}
 
       <div className="mt-4">
+        <SaldoCartaoRecarga contexto={contexto} solicitacaoId={solicitacaoId} onAtualizado={carregar} />
         <PrestacaoRecargaCartao
           solicitacaoId={solicitacaoId}
           contexto={contexto}

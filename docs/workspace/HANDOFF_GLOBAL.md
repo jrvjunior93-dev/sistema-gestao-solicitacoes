@@ -1,5 +1,26 @@
 # Handoff Global
 
+## Publicacao DEV saldo cartoes e DP - 2026-10-15
+
+- Commit/push autorizados na refactor/frontend e comandos de atualizacao dev.
+- Script atualizar-dev-saldo-cartoes-dp-20261015.sh confere ambiente e aplica
+  exclusivamente 202610150001_cartoes_recarga_saldo.js antes do restart dev8001.
+- Teste de deploy simula pendencias extras, banco/processo/porta incorretos,
+  flags divergentes, repeticao, falha de migration e health. Sem EC2/banco real.
+- Conteudo/handoff da implementacao preservados; nao publicar outputs/.
+
+## Saldo dos cartoes e limite de conferencia DP - 2026-10-15
+
+- Concluido localmente, branch codex/cartao-saldo-dp-20261015, sem publicacao.
+- Gastos reais/sobra por cartao, saldo historico calculado, ajuste GEO com
+  motivo/extrato e auditoria imutavel. Custo por destino, caixa preservado.
+- Salvar/conferir RH isolado por usuario (300/min); enviar/revisar protegidos.
+- Nova migration estrutural 202610150001_cartoes_recarga_saldo nao aplicada.
+  Sem backfill de prestacoes/titulos. Sem banco real alterado ou EC2/restart.
+- Backend/middleware/schema/UI desktop/mobile/build/docs aprovados, ownership
+  liberado. Detalhes e proximo passo em
+  docs/handoffs/2026-10-15-saldo-cartoes-conferencia-dp.md.
+
 ## Compra Direta: frete sincronizado no Financeiro - 2026-10-15
 
 - Implementacao local autorizada: embutido ajusta aberto sem baixa ou gera

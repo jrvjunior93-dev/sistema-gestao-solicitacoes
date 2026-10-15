@@ -1,5 +1,18 @@
 # Sessoes Ativas
 
+- codex-publicacao-saldo-cartoes-dev-20261015: commit/push refactor/frontend
+  autorizado; script dev com migration estrutural unica e preflight isolado.
+  Sem main/EC2 pelo agente, sem backfill/seeds/flags persistentes. Homologacao
+  com o operador; outputs/ e demais checkouts preservados.
+
+## codex-cartao-saldo-dp-20261015
+
+- Worktree promocao-dp-main-20261014/Fluxy, branch codex/cartao-saldo-dp-20261015.
+- Escopo: saldo/ajuste GEO/prestacao parcial cartoes e limite de salvamento DP.
+- Agente unico; sem banco real ou publicacao autorizada nesta etapa.
+- Concluida localmente, ownership liberado; handoff completo e validacoes
+  aprovadas. Alteracoes nao commitadas, migration nao aplicada.
+
 - codex-publicacao-frete-financeiro-dev-20261015: validado para publicacao, sem delegacao;
   ownership de edicao liberado no OWNERSHIP_ATIVO. Commit/push somente refactor/frontend,
   comandos para backend-dev8001, sem banco real/migration/deploy pelo agente.

@@ -1,5 +1,19 @@
 # Modulo RH/DP
 
+## Limite operacional da conferencia de pagamento - 2026-10-15
+
+O autosave e as marcacoes Conferido usam limite dedicado de 300 salvamentos por
+minuto, por usuario autenticado, agregado entre solicitacoes. Usuarios na mesma
+rede nao disputam o limite de um mesmo IP. O limite generico de 60 operacoes
+sensíveis nao e mais consumido pelos endpoints POST `/rh/pagamentos-solicitacao/salvar`
+e PUT `/rh/pagamentos-solicitacao/:id`.
+
+ACL, autor/DP, revisao, primeiro save idempotente, transacao, autosave com espera
+e preservacao dos inputs permanecem. Envio para fila, revisao e exclusao continuam
+com seus controles existentes. Sem bypass geral para DP/SUPERADMIN. Testes:
+`validarSaldoCartaoSchemaLimiteDp.js`, `validarRhPagamentoSolicitacao.js` e
+`validarRhPagamentoEnvioParcial.js`, todos isolados de banco/rede.
+
 Para o percurso completo da tela Pessoal, suas permissões,
 situações, cálculos e integração financeira, consulte o
 [Guia operacional de Pessoal](GUIA_OPERACIONAL_PESSOAL.md).

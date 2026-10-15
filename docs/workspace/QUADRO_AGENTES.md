@@ -1,5 +1,25 @@
 # Quadro de Agentes
 
+## Publicacao DEV saldo cartoes / DP - 2026-10-15
+
+- Commit/push refactor/frontend e script EC2 dev com migration unica autorizados.
+- Agente unico: staging do delta, testes backend/UI/build e preflight de deploy
+  com adaptadores isolados. Sem EC2 pelo agente ou alteracao na main/producao.
+- Script protege processo/porta8001/banco/flags, bloqueia outras migrations e
+  preserva repeticao segura. Operador homologa apos publicacao.
+- Backend/UI/build/docs e deploy isolado aprovados; ownership liberado para
+  staging/commit/publicacao solicitados. Nenhum comando remoto executado.
+
+## Saldo cartoes e conferencia DP - 2026-10-15
+
+- codex-cartao-saldo-dp-20261015: concluido local, sem delegacao;
+  ownership liberado, sem commit/push/deploy.
+- Prestacao pelos gastos reais, sobra por cartao e ajuste auditado GEO;
+  salvamento RH isolado do limite de operacoes criticas por IP.
+- Sem banco real/publicacao/deploy. Ownership no documento correspondente.
+- Testes services/middleware/migration isolados, regressao RH/financeiro,
+  UI desktop/mobile, build e docs aprovados; handoff registrado.
+
 ## Publicacao DEV frete financeiro - 2026-10-15
 
 - Validado para publicacao, sem delegacao: commit/push autorizados na refactor/frontend,

@@ -1,5 +1,40 @@
 # Modulo FINANCEIRO
 
+## Saldo dos cartoes e prestacao pelos gastos reais - 2026-10-15
+
+- Saldo calculado por cartao = baixas efetivas nao estornadas + ajustes auditados
+  - despesas declaradas. Previsoes/pedidos ainda nao pagos nao creditam saldo.
+- A interface distingue saldo apos gastos validados, gastos enviados/rejeitados
+  ainda a conferir e saldo disponivel estimado. Nao consulta a operadora.
+- Prestacao aceita gasto inferior a recarga e uso de sobra anterior. Rateios
+  somam os gastos reais, nao o credito; motivo e documento obrigatorios para
+  declarar ausencia de gastos. Documento continua obrigatorio nos demais casos.
+- Envio reserva o gasto e libera a proxima solicitacao pela regra existente;
+  so a validacao GEO libera custo. Rejeicao nao disponibiliza o mesmo gasto de
+  novo; a correcao substitui exclusivamente a propria reserva.
+- Cartao bloqueado em transacao, revisao do saldo no formulario e CAS de status
+  protegem cliques/envios concorrentes. Excesso e saldo negativo sao bloqueados.
+- GEO/SUPERADMIN pode ajustar o saldo disponivel real pelo detalhe da recarga,
+  com motivo, extrato enviado pelo proprio usuario e chave idempotente. Ajuste
+  nao altera titulos, pagamentos nem despesas/prestacoes antigas; trilha registra
+  usuario, data, antes/depois e documento. Extrato utilizado nao pode ser removido.
+- Cartoes existentes usam calculo historico, sem seed/backfill. Historico
+  anteriormente inflado permanece preservado; GEO pode reconciliar o saldo,
+  mas corrigir despesas antigas exige procedimento distinto e autorizacao.
+- Apropriacao/Gestao de Obras, Resultado/Painel, Financeiro de Obras, DRE e
+  Custos e Recebiveis usam gasto efetivo por destino. Sobra nao e custo. Fluxo
+  de caixa/Contas a Pagar continuam mostrando a baixa integral da recarga.
+  Financeiro de Obras e relatorio de custo, nao extrato bancario.
+- Migration estrutural `202610150001_cartoes_recarga_saldo.js`: tres campos
+  nullable de snapshot na prestacao e tabela imutavel de ajustes, sem reescrita
+  de negocio. Aplicar com backup e preflight no ambiente autorizado antes do
+  backend novo. Rollback automatico bloqueado para preservar auditoria.
+
+Testes isolados: `validarRecargasMultiplosCartoes.js`,
+`validarSaldoCartaoSchemaLimiteDp.js`, `validarFinanceiroObrasComprometido.js`,
+`validarAdiantamentoFinanceiro.js`; UI `validarSaldoCartoesUI.mjs` e
+`validarRecargasMultiplasUI.mjs`. Banco real/migration nao executados nesta entrega.
+
 ## Compra Direta: frete apos geracao do titulo - 2026-10-15
 
 Salvar frete na gestao da Compra Direta sincroniza a obrigacao financeira na

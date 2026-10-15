@@ -572,6 +572,8 @@ const criticalRateLimit = createRateLimit({
   resource: 'ROUTE'
 });
 
+const rhPagamentoSaveRateLimit = require('./middlewares/rhPagamentoRateLimit');
+
 const crmWebhookRateLimit = createRateLimit({
   windowMs: 60 * 1000,
   max: 300,
@@ -1773,6 +1775,7 @@ router.patch('/recargas-cartao/solicitacoes/:id', criticalRateLimit, validateReq
 router.post('/recargas-cartao/solicitacoes/:id/prestacao', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), RecargaCartaoController.enviarPrestacao);
 router.patch('/recargas-cartao/solicitacoes/:id/prestacao/rateios', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), RecargaCartaoController.editarRateiosPrestacao);
 router.post('/recargas-cartao/solicitacoes/:id/prestacao/decisao', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), RecargaCartaoController.decidirPrestacao);
+router.post('/recargas-cartao/solicitacoes/:id/saldo/ajuste', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), RecargaCartaoController.ajustarSaldo);
 router.get('/configuracoes/cartoes-recarga', RecargaCartaoController.adminIndex);
 router.post('/configuracoes/cartoes-recarga', criticalRateLimit, RecargaCartaoController.adminCreate);
 router.patch('/configuracoes/cartoes-recarga/:id', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Cartao de recarga') }), RecargaCartaoController.adminUpdate);
@@ -2130,10 +2133,10 @@ const allowRhDpPagamentoWrite = permit({ resource: 'RH_DP_SOLICITACOES', custom:
     ? true : 'Acesso negado ao pagamento RH/DP' });
 router.post('/rh/pagamentos-solicitacao', allowRhDpSolicitacaoAbrir, criticalRateLimit, RhPagamentoSolicitacaoController.iniciar);
 router.post('/rh/pagamentos-solicitacao/preparar', allowRhDpSolicitacaoAbrir, RhPagamentoSolicitacaoController.preparar);
-router.post('/rh/pagamentos-solicitacao/salvar', allowRhDpSolicitacaoAbrir, criticalRateLimit, RhPagamentoSolicitacaoController.salvarNovo);
+router.post('/rh/pagamentos-solicitacao/salvar', allowRhDpSolicitacaoAbrir, rhPagamentoSaveRateLimit, RhPagamentoSolicitacaoController.salvarNovo);
 router.delete('/rh/pagamentos-solicitacao/:id/rascunho', allowRhDpSolicitacaoAbrir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Rascunho de pagamento') }), RhPagamentoSolicitacaoController.excluirRascunho);
 router.get('/rh/pagamentos-solicitacao/:id', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pagamento') }), RhPagamentoSolicitacaoController.mostrar);
-router.put('/rh/pagamentos-solicitacao/:id', allowRhDpPagamentoWrite, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pagamento') }), RhPagamentoSolicitacaoController.salvar);
+router.put('/rh/pagamentos-solicitacao/:id', allowRhDpPagamentoWrite, rhPagamentoSaveRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pagamento') }), RhPagamentoSolicitacaoController.salvar);
 router.post('/rh/pagamentos-solicitacao/:id/enviar', allowRhDpPagamentoWrite, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pagamento') }), RhPagamentoSolicitacaoController.enviar);
 router.post('/rh/pagamentos-solicitacao/:id/revisar', allowRhDpPagamentoWrite, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pagamento') }), RhPagamentoSolicitacaoController.revisar);
 router.post('/rh/jornada/importar', allowRhDpSolicitacaoAbrir, uploadRateLimit, criticalRateLimit, uploadComprovantes.fields([{ name: 'planilha', maxCount: 1 }, { name: 'fichas', maxCount: 20 }]), RhJornadaController.importar);

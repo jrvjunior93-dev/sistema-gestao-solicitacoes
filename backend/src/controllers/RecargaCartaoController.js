@@ -1,4 +1,5 @@
 const {
+  ajustarSaldo,
   decidirPrestacao,
   editarRecargaPendente,
   editarRateiosPrestacaoGeo,
@@ -24,6 +25,12 @@ function responderErro(res, error, fallback) {
 }
 
 module.exports = {
+  async ajustarSaldo(req, res) {
+    try {
+      await assertPodeVisualizarSolicitacao(req, req.params.id);
+      return res.json({ ajuste: await ajustarSaldo(req.params.id, req.body || {}, req.user) });
+    } catch (error) { return responderErro(res, error, 'Erro ao ajustar saldo do cartao.'); }
+  },
   async meusCartoes(req, res) {
     try {
       return res.json({ cartoes: await listarMeusCartoes(req.user, req.query.obra_id) });
@@ -41,7 +48,7 @@ module.exports = {
           await assertPodeVisualizarSolicitacao(req, solicitacaoAnterior.id);
         } catch (error) {
           if (Number(error.statusCode) !== 403) throw error;
-          return res.json({ bloqueado: contexto.bloqueado, motivo_bloqueio: contexto.motivo_bloqueio, ultima_recarga: null, obras_disponiveis: [] });
+          return res.json({ bloqueado: contexto.bloqueado, motivo_bloqueio: contexto.motivo_bloqueio, ultima_recarga: null, obras_disponiveis: [], saldo_cartao: contexto.saldo_cartao });
         }
         contexto.contexto_interacao = await montarContextoInteracao(req, solicitacaoAnterior);
       }

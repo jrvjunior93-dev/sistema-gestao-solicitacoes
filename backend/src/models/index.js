@@ -146,6 +146,7 @@ db.SolicitacaoRecargaCartao = require('./SolicitacaoRecargaCartao')(sequelize, S
 db.SolicitacaoAdiantamento = require('./SolicitacaoAdiantamento')(sequelize, Sequelize);
 db.CartaoRecargaPrestacao = require('./CartaoRecargaPrestacao')(sequelize, Sequelize);
 db.CartaoRecargaPrestacaoRateio = require('./CartaoRecargaPrestacaoRateio')(sequelize, Sequelize);
+db.CartaoRecargaSaldoAjuste = require('./CartaoRecargaSaldoAjuste')(sequelize, Sequelize);
 db.FinanceiroTituloImportacao = require('./FinanceiroTituloImportacao')(sequelize, Sequelize);
 db.FinanceiroTituloImportacaoLinha = require('./FinanceiroTituloImportacaoLinha')(sequelize, Sequelize);
 db.FinanceiroTituloImportacaoResultado = require('./FinanceiroTituloImportacaoResultado')(sequelize, Sequelize);

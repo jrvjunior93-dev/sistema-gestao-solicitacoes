@@ -1,5 +1,37 @@
 # Ownership Ativo
 
+## Publicacao DEV saldo cartoes / conferencia DP - 2026-10-15
+
+- Usuario autorizou commit/push na refactor/frontend e comandos EC2 dev,
+  incluindo exclusivamente a migration estrutural 202610150001_cartoes_recarga_saldo.
+- Reserva do delta do handoff saldo-cartoes-conferencia-dp para revisao/staging,
+  novo script/teste de deploy dev e registros de publicacao. Agente unico.
+- Sem executar migration ou comandos EC2 pelo agente; producao/main intocadas.
+- Preservar outputs/, credenciais/.env, flags e outros checkouts. Aplicacao pelo
+  operador somente apos preflight de processo/porta/banco/schema e testes isolados.
+- Backend/regressoes, UI desktop/mobile, build, docs, Bash e negativas do
+  deploy aprovados. Reserva liberada para commit/publicacao autorizada.
+
+## Saldo de cartoes e conferencia DP - 2026-10-15
+
+- Sessao codex-cartao-saldo-dp-20261015, agente unico, concluida localmente;
+  ownership de edicao liberado, alteracoes ainda nao commitadas.
+- Reserva: recargaCartaoService, novo cartaoRecargaSaldoService/model/migration,
+  models/index, RecargaCartaoController, AnexoController, routes e middleware RH;
+  componentes/services recarga-cartao, consumidores de custo/apropriacao/DRE,
+  testes isolados, READMEs Financeiro/RH, handoff e registros workspace.
+- Saldo derivado das baixas e despesas existentes; ajuste GEO com motivo/extrato
+  autorizado. Sem reescrever prestacoes antigas. Manter protecao de duplicidade.
+- Sem banco real, migration aplicada, commit/push, deploy ou restart nesta etapa.
+- Preservar outputs/ e outros checkouts.
+- Reserva complementar de consumidor de custo: planejamentoService de
+  custosRecebiveis (totalBaixasFinanceirasPorCompetencia) e teste isolado
+  validarAdiantamentoFinanceiro, somente para reconhecer gasto real de recarga.
+- Services reais com adaptadores isolados, middleware/schema, regressao RH,
+  financeiro/custos/adiantamento/anexos, UI desktop/mobile, build, docs e diff
+  aprovados. Proximo passo depende de autorizacao de publicacao e homologacao
+  dev com nova migration; handoff 2026-10-15-saldo-cartoes-conferencia-dp.md.
+
 ## Publicacao DEV frete financeiro - 2026-10-15
 
 - Usuario autorizou commit/push deste ajuste na refactor/frontend e comandos
