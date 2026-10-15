@@ -39,7 +39,6 @@ const { assertMigrationsUpToDate } = require('./src/database/runMigrations');
   validateRequiredEnv();
   if (env.deploymentEnvironment !== 'production') throw new Error('Ambiente diferente de production. Pare e confira.');
   if (env.devUserSwitchEnabled !== false) throw new Error('Troca exclusiva de DEV deve permanecer desabilitada em producao.');
-  if (env.paymentOwnerApprovalMode !== 'OFF') throw new Error('Esta promocao exige PAYMENT_OWNER_APPROVAL_MODE=OFF; nao alterar a flag para contornar.');
   const processos = JSON.parse(execFileSync('pm2', ['jlist'], { encoding: 'utf8' })).filter(p => p.name === 'backend-solicitacoes');
   const processo = processos[0];
   if (processos.length !== 1 || path.resolve(processo.pm2_env?.pm_exec_path || '') !== '/home/ubuntu/sistema-gestao-solicitacoes-main/backend/server.js') {
@@ -58,9 +57,14 @@ const { assertMigrationsUpToDate } = require('./src/database/runMigrations');
       throw new Error(`Flag ${key} diverge funcionalmente entre PM2 e configuracao carregada.`);
     }
   }
-  if (pmEnv.PAYMENT_OWNER_APPROVAL_MODE !== undefined
-    && String(pmEnv.PAYMENT_OWNER_APPROVAL_MODE || 'OFF').trim().toUpperCase() !== env.paymentOwnerApprovalMode) {
-    throw new Error('PAYMENT_OWNER_APPROVAL_MODE diverge entre PM2 e configuracao carregada.');
+  // Deploy de codigo nao ativa, desativa ou muda o modo ja registrado no PM2.
+  // Ausencia so equivale a OFF; modo ativo sem evidencia no PM2 deve bloquear.
+  const modos = ['OFF', 'PILOT', 'ENFORCED', 'PAUSED'];
+  const modoConfigurado = String(process.env.PAYMENT_OWNER_APPROVAL_MODE || 'OFF').trim().toUpperCase();
+  const modoAtual = String(pmEnv.PAYMENT_OWNER_APPROVAL_MODE || 'OFF').trim().toUpperCase();
+  if (!modos.includes(modoConfigurado) || !modos.includes(modoAtual)
+    || modoConfigurado !== env.paymentOwnerApprovalMode || modoAtual !== modoConfigurado) {
+    throw new Error('PAYMENT_OWNER_APPROVAL_MODE invalido ou divergente entre PM2 e configuracao carregada. Nao alterar a flag para contornar.');
   }
   const [rows] = await db.query('SELECT @@GLOBAL.server_uuid AS uuid, DATABASE() AS banco');
   if (rows[0]?.uuid !== '5ed4b970-009f-11f1-809c-0ad0e0c90c53'
@@ -69,6 +73,7 @@ const { assertMigrationsUpToDate } = require('./src/database/runMigrations');
     throw new Error('Identidade do banco de PRODUCAO diferente da esperada.');
   }
   await assertMigrationsUpToDate();
+  console.log('Modo de autorizacao preservado:', modoAtual);
   console.log('PRODUCAO: processo/porta 8000/banco/flags/schema conferidos. Nenhuma migration aplicada.');
 })().catch(e => { console.error(e.message); process.exitCode = 1; }).finally(() => db.close());
 NODE

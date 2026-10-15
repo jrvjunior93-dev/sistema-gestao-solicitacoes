@@ -69,3 +69,33 @@ cancelamento/anexos compartilhados, DINHEIRO e mutex). Ownership liberado.
 Publicar branch/PR e merge normal autorizado, conferir arvore/SHA remotos e
 entregar comandos fixados.
 EC2, migrations, PM2, S3 e Vercel nao foram executados pelo agente.
+
+## Correcao operacional apos tentativa de deploy
+
+- PR #16 integrado em dbf5acea30705ac25829e1c74b4bbb07f1c91d7a. Operador
+  atualizou checkout e dependencias; testes passaram. Script parou ANTES de
+  conferir banco/reiniciar, por exigencia indevida de modo OFF neste script.
+- Diagnostico somente leitura do usuario: terminal AUSENTE, configuracao
+  carregada PILOT e PM2 producao PILOT. Ja existente; nao e ativacao no deploy.
+  O backup/timer e schema ja conferidos continuam sendo evidencias desta mesma
+  janela; nenhum novo schema ou runtime entra nesta correcao.
+- Retirar a exigencia fixa OFF SOMENTE deste deploy. Exigir modo valido igual
+  no ambiente carregado e PM2; ausencia do PM2 so equivale a OFF. Bloquear
+  transicoes inclusive PILOT->OFF e PAUSED->OFF, e bloquear valores invalidos.
+- Preservar PILOT registrado; nao executar export OFF, update-env isolado,
+  sed no servidor, alteracao de permissoes ou mudanca das regras financeiras.
+- Testar todos os quatro modos inalterados, matriz de transicoes negadas,
+  ausencia/invalidos, guardas anteriores e health, tudo em memoria.
+- Reexecutar o script completo apos publicar a correcao: identidade/banco/schema
+  ainda serao validados antes de restart exclusivo backend-solicitacoes/8000.
+  Arquivos de auditoria nao rastreados continuam preservados.
+- Matriz de preservacao dos quatro modos, 12 transicoes negadas, invalidos e
+  modo ativo sem evidencia no PM2 aprovada. Ambiente/flags/porta/banco/schema e
+  health, testes anteriores DEV/PROD, filtros/relatorio/pagamentos/envio parcial,
+  comprovantes/baixa/estorno e seguranca direta tambem aprovados sem banco/rede.
+  Bash -n, docs (544 Markdown/19 canonicos) e diff aprovados; sem mudanca UI.
+- Base remota dbf5acea preservada com referencia backup/main-pre-fix-pilot-20261015-dbf5acea,
+  tag local e bundle verificado fora da EC2 em outputs/main-dbf5acea-pre-fix-pilot-20261015.bundle.
+  SHA256 CF596610A13151E0B7117CE2A9B4D003C7276EFDDFCFFA2B6776BD0F105E0538.
+  Bundle nao enviado ao Drive pelo agente. Ownership liberado para PR/merge;
+  somente quatro arquivos operacionais/docs, runtime e schema identicos ao aprovado.
