@@ -1,5 +1,18 @@
 # Ownership Ativo
 
+## Correcao do deploy PROD com PILOT existente - 2026-10-15
+
+- Reserva do agente unico: script atualizar-prod-fila-dp-20261015.sh, seu teste
+  isolado e handoff da promocao. Correcao operacional do deploy ja autorizado.
+- Operador confirmou codigo dbf5acea em disco, testes aprovados, parada antes
+  do restart. PAYMENT_OWNER_APPROVAL_MODE=PILOT tanto carregado quanto PM2;
+  terminal ausente. Preservar esse estado, nao desligar nem ativar autorizacoes.
+- Sem alterar runtime, permissoes, .env, flags, dados, migrations ou refactor;
+  nenhuma execucao de EC2/banco/PM2 pelo agente. Outputs/ preservado.
+- Matriz de quatro modos estaveis/transicoes negadas/invalidos, guardas e
+  regressoes backend aprovadas, Bash/docs/diff validados. Ownership liberado
+  para publicar correcao operacional na main e retomar o deploy autorizado.
+
 ## Promocao fila/recebimento DP para main - 2026-10-15
 
 - Reserva temporaria do agente unico: integracao main + da9cf569, script/teste

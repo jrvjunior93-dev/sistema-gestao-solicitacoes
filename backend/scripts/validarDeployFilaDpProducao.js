@@ -46,6 +46,21 @@ async function testar(alterar = () => {}) {
 }
 (async () => {
   assert.deepEqual(await testar(), { queries: 1, schema: 1, exitCode: 0, validacao: 1 });
+  for (const modo of ['OFF', 'PILOT', 'ENFORCED', 'PAUSED']) {
+    assert.deepEqual(await testar(({ env, processos, proc }) => {
+      env.paymentOwnerApprovalMode = modo;
+      processos[0].pm2_env.PAYMENT_OWNER_APPROVAL_MODE = modo;
+      proc.env.PAYMENT_OWNER_APPROVAL_MODE = modo;
+    }), { queries: 1, schema: 1, exitCode: 0, validacao: 1 });
+    // Qualquer mudanca entre o processo atual e a configuracao bloqueia antes do banco.
+    for (const destino of ['OFF', 'PILOT', 'ENFORCED', 'PAUSED'].filter(m => m !== modo)) {
+      assert.deepEqual(await testar(({ env, processos, proc }) => {
+        env.paymentOwnerApprovalMode = destino;
+        processos[0].pm2_env.PAYMENT_OWNER_APPROVAL_MODE = modo;
+        proc.env.PAYMENT_OWNER_APPROVAL_MODE = destino;
+      }), { queries: 0, schema: 0, exitCode: 1, validacao: 1 });
+    }
+  }
   for (const alterar of [
     ({ processos }) => { processos[0].pm2_env.DEV_USER_SWITCH_ENABLED = 'false'; },
     ({ processos }) => { processos[0].pm2_env.DEV_USER_SWITCH_ENABLED = '0'; },
@@ -67,6 +82,12 @@ async function testar(alterar = () => {}) {
     ({ processos }) => { processos[0].pm2_env.DEV_USER_SWITCH_ENABLED = 'true'; },
     ({ processos }) => { processos[0].pm2_env.PRODUCTION_USER_SWITCH_ENABLED = 'false'; },
     ({ processos }) => { processos[0].pm2_env.PAYMENT_OWNER_APPROVAL_MODE = 'ENFORCED'; },
+    ({ processos }) => { processos[0].pm2_env.PAYMENT_OWNER_APPROVAL_MODE = 'INVALIDO'; },
+    ({ proc }) => { proc.env.PAYMENT_OWNER_APPROVAL_MODE = 'INVALIDO'; },
+    ({ env, proc, processos }) => {
+      env.paymentOwnerApprovalMode = 'PILOT'; proc.env.PAYMENT_OWNER_APPROVAL_MODE = 'PILOT';
+      delete processos[0].pm2_env.PAYMENT_OWNER_APPROVAL_MODE;
+    },
     ({ state }) => { state.falhaConfig = true; }
   ]) assert.deepEqual(await testar(alterar), { queries: 0, schema: 0, exitCode: 1, validacao: 1 });
   for (const alterar of [
@@ -83,5 +104,5 @@ async function testar(alterar = () => {}) {
     assert.equal(proc.exitCode, sucesso ? 0 : 1); assert.equal(tentativas, sucesso ? 1 : 20);
   }
   assert.equal(falhas, 1);
-  console.log('Deploy PROD: identidade/porta/processo/schema, flags preservadas/OFF, negativas, mutex e health aprovados. Sem EC2/banco/rede.');
+  console.log('Deploy PROD: identidade/porta/processo/schema, modo existente OFF/PILOT/ENFORCED/PAUSED preservado, transicoes/invalidos bloqueados, mutex e health aprovados. Sem EC2/banco/rede.');
 })().catch(e => { console.error(e); process.exitCode = 1; });
