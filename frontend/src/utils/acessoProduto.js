@@ -137,6 +137,8 @@ export function canAccessCompras(user) {
       'compras.solicitacoes.encaminhar_compras',
       'compras.solicitacoes.editar_itens',
       'compras.solicitacoes.editar_quantidade',
+      'compras.compra_direta.editar_quantidade',
+      'compras.compra_direta.gerenciar_frete',
       'compras.solicitacoes.editar_apropriacoes_itens',
       'compras.solicitacoes.gerar_pedidos',
       'compras.pedidos.visualizar',
@@ -280,6 +282,16 @@ export function canEditarApropriacoesItemCompraDireta(user) {
     return hasPermissao(user, 'compras.compra_direta.editar_apropriacoes_itens');
   }
   return false;
+}
+
+export function canAlterarQuantidadeCompraDireta(user) {
+  return hasEnabledModule(user, 'COMPRAS') && (isBusinessAdmin(user)
+    || (hasConfiguredAreaPermissions(user) && hasPermissao(user, 'compras.compra_direta.editar_quantidade')));
+}
+
+export function canGerenciarFreteCompraDireta(user) {
+  return hasEnabledModule(user, 'COMPRAS') && (isBusinessAdmin(user)
+    || (hasConfiguredAreaPermissions(user) && hasPermissao(user, 'compras.compra_direta.gerenciar_frete')));
 }
 
 export function canCatalogarItensManuaisCompras(user) {

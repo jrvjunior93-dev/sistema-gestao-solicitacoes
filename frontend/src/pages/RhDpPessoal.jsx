@@ -37,7 +37,7 @@ import {
   conferirDocumentacaoRhSolicitacao,
   getRhColaboradores,
   getRhColaborador,
-  getRhEmpresasGrupo,
+  getRhEmpresasAdmissao,
   listarRhSolicitacoes,
   reenviarRhSolicitacao,
   rejeitarRhSolicitacao
@@ -344,6 +344,7 @@ export default function RhDpPessoal() {
   const [obrasDestino, setObrasDestino] = useState([]);
   const [statusObrasDestino, setStatusObrasDestino] = useState('ocioso');
   const [empresas, setEmpresas] = useState([]);
+  const [statusEmpresasAdmissao, setStatusEmpresasAdmissao] = useState('inicial');
   // O catalogo de cargos (Fase 7). Carregado sob demanda, e nao junto da lista principal: e usado
   // so na alteracao de cargo, e buscar sempre faria uma consulta que quase ninguem aproveita.
   const [cargos, setCargos] = useState([]);
@@ -1057,20 +1058,20 @@ export default function RhDpPessoal() {
   /**
    * As empresas do grupo so sao buscadas quando o formulario de ADMISSAO abre.
    *
-   * Buscar junto com a lista quebrava a tela para quem nao tem `rh_dp.empresas.gerenciar`: a
-   * chamada respondia 403 e o erro subia como faixa vermelha no topo, dando a impressao de que a
-   * pagina inteira falhou — quando na verdade so um campo de um formulario fechado nao carregou.
-   *
-   * A falha aqui tambem NAO vira erro de pagina: quem nao pode ver empresas simplesmente nao
-   * consegue abrir admissao, e o formulario diz isso no lugar certo.
+   * Catalogo minimo dedicado ao pedido, autorizado por solicitacoes.abrir.
+   * Nao exige nem concede permissao administrativa de empresas. Falhas ficam
+   * no formulario, sem quebrar a consulta de colaboradores/solicitacoes.
    */
   async function carregarEmpresasSePreciso() {
     if (empresas.length) return;
+    setStatusEmpresasAdmissao('carregando');
     try {
-      const lista = await getRhEmpresasGrupo();
+      const lista = await getRhEmpresasAdmissao();
       setEmpresas(Array.isArray(lista) ? lista : []);
+      setStatusEmpresasAdmissao('pronto');
     } catch (error) {
       setEmpresas([]);
+      setStatusEmpresasAdmissao('erro');
     }
   }
 
@@ -1710,20 +1711,18 @@ export default function RhDpPessoal() {
 
                 <label className="form-field">
                   <span className="form-label form-label--required">Empresa do grupo</span>
-                  <select className="form-control" value={formulario.empresa_grupo_id}
+                  <select aria-label="Empresa do grupo" className="form-control" value={formulario.empresa_grupo_id}
                     onChange={(e) => setFormulario({ ...formulario, empresa_grupo_id: e.target.value })} required>
-                    {/*
-                      Aqui a primeira opcao NAO e o rotulo: quando nao ha empresas, ela avisa que o
-                      problema e de PERMISSAO, e nao que a lista esta vazia. Trocar por "Selecione"
-                      apagaria essa informacao.
-                    */}
                     <option value="">
-                      {empresas.length ? 'Selecione' : 'Sem acesso as empresas do grupo'}
+                      {empresas.length ? 'Selecione' : statusEmpresasAdmissao === 'carregando' ? 'Carregando empresas…'
+                        : statusEmpresasAdmissao === 'erro' ? 'Falha ao carregar empresas' : 'Nenhuma empresa ativa disponível'}
                     </option>
                     {empresas.map((empresa) => (
-                      <option key={empresa.id} value={empresa.id}>{empresa.nome}</option>
+                      <option key={empresa.id} value={empresa.id}>{empresa.nome}{empresa.cnpj ? ` · ${empresa.cnpj}` : ''}</option>
                     ))}
                   </select>
+                  {statusEmpresasAdmissao === 'erro' && <button type="button" className="btn btn-outline btn-sm"
+                    onClick={carregarEmpresasSePreciso}>Tentar carregar empresas novamente</button>}
                 </label>
 
                 <label className="form-field">

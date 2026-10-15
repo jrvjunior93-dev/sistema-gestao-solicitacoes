@@ -61,6 +61,11 @@ export async function getRhEmpresasGrupo(params = {}) {
   return parseJson(response, 'Erro ao buscar empresas do grupo');
 }
 
+export async function getRhEmpresasAdmissao() {
+  const response = await fetch(`${API_URL}/rh/solicitacoes/empresas-admissao`, { headers: authHeaders() });
+  return parseJson(response, 'Erro ao carregar empresas para o pedido de admissão');
+}
+
 export async function criarRhEmpresaGrupo(data) {
   const response = await fetch(`${API_URL}/rh/empresas-grupo`, {
     method: 'POST',

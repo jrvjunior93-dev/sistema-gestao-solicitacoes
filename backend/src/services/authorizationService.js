@@ -362,6 +362,8 @@ const COMPRAS_PERMISSION_KEYS = [
   ...COMPRAS_SOLICITACOES_EDIT_QUANTIDADE_KEYS,
   ...COMPRAS_SOLICITACOES_EDIT_APROPRIACOES_KEYS,
   ...COMPRAS_COMPRA_DIRETA_EDIT_APROPRIACOES_KEYS,
+  'compras.compra_direta.editar_quantidade',
+  'compras.compra_direta.gerenciar_frete',
   ...COMPRAS_SOLICITACOES_DELETE_KEYS,
   ...COMPRAS_PEDIDOS_VIEW_KEYS,
   ...COMPRAS_PEDIDOS_MANAGE_KEYS,
@@ -1924,6 +1926,18 @@ async function canEditarApropriacoesItemCompraDireta(user) {
   return false;
 }
 
+async function canAlterarQuantidadeCompraDireta(user) {
+  if (isBusinessAdmin(user)) return true;
+  return await userHasConfiguredAreaPermissions(user)
+    && userHasAreaPermission(user, ['compras.compra_direta.editar_quantidade']);
+}
+
+async function canGerenciarFreteCompraDireta(user) {
+  if (isBusinessAdmin(user)) return true;
+  return await userHasConfiguredAreaPermissions(user)
+    && userHasAreaPermission(user, ['compras.compra_direta.gerenciar_frete']);
+}
+
 async function canEncaminharCompraSolicitacoes(user) {
   if (isBusinessAdmin(user)) {
     return true;
@@ -3469,6 +3483,8 @@ module.exports = {
   canEncaminharCompraSolicitacoes,
   canDeleteCompraSolicitacoes,
   canEditarApropriacoesItemCompraDireta,
+  canAlterarQuantidadeCompraDireta,
+  canGerenciarFreteCompraDireta,
   canEditarApropriacoesItemSolicitacaoCompra,
   canEditarApropriacoesSolicitacao,
   canViewComprasCotacoes,
