@@ -16,6 +16,27 @@ const { ensureCategoriaFinanceiraPagar, syncParceiroFavorecido, syncFavorecidoBa
 
 const dadosDe = s => normalizarAndamento(typeof s.dados_json === 'string' ? JSON.parse(s.dados_json) : s.dados_json || {});
 const plain = s => s?.get ? s.get({ plain: true }) : s;
+const { atualizarLinhaCadastro, contaIgual } = require('./rhPagamentoCadastroDomain');
+
+async function cadastroAtual(s, dados, transaction) {
+  const ids = dados.linhas.filter(l => !['ENVIADO', 'CANCELADO'].includes(l.pagamento_estado)).map(l => Number(l.colaborador_id));
+  if (!ids.length || ['CANCELADA', 'REJEITADA'].includes(s.situacao)) return dados;
+  // A autorizacao da solicitacao ocorre antes desta consulta. Nao inclui pessoas
+  // novas nem revela cadastro de quem saiu da obra ao autor da solicitacao antiga.
+  const lista = await RhColaborador.findAll({ where: { id: { [Op.in]: ids }, obra_id: s.obra_id },
+    attributes: ['id', 'nome', 'cpf', 'forma_calculo_gerencial', 'salario_base', 'valor_diaria',
+      'banco', 'agencia', 'conta', 'conta_tipo', 'pix_chave'],
+    include: [{ model: RhColaboradorPagamento, as: 'pagamento', required: false }], transaction,
+    ...(transaction ? { lock: transaction.LOCK.UPDATE } : {}) });
+  const porId = new Map(lista.map(c => [Number(c.id), plain(c)]));
+  return { ...dados, linhas: dados.linhas.map(l => atualizarLinhaCadastro(l, porId.get(Number(l.colaborador_id)))) };
+}
+
+function exigirCadastroConferido(linha, atual) {
+  if (linha.cadastro_versao ? linha.cadastro_versao !== atual.cadastro_versao : atual.cadastro_atualizado) {
+    throw new ValidationError(`O cadastro de ${atual.nome} mudou. Use Atualizar cadastro e confira novamente antes de salvar ou enviar.`, 409);
+  }
+}
 async function ehDp(user) {
   return (auth.isBusinessAdmin(user) || await userBelongsToDpSetor(user))
     && await auth.canEditRhDpApuracao(user);
@@ -86,7 +107,7 @@ async function avisosAnteriores(dados, transaction, user) {
 
 async function mostrar(req, id) {
   const s = await buscar(req, id);
-  const dados = dadosDe(s);
+  const dados = await cadastroAtual(s, dadosDe(s));
   return { solicitacao: { ...plain(s), dados_json: dados, situacao: situacaoPagamento(dados, s.situacao) }, responsaveis: (await responsaveis(s.obra_id)).map(plain),
     pagamentos_financeiros: dados.titulos.length ? (await TituloFinanceiro.findAll({
       where: { id: { [Op.in]: dados.titulos.map(t => t.id) } },
@@ -139,14 +160,15 @@ async function iniciar(req, payload, { persistir = true, transactionExterna = nu
       criada_por: req.user.id, setor_origem: codigoDoSetor(req.user), situacao: 'RASCUNHO',
       dados_json: { fluxo_pagamento: FLUXO, solicitacao_independente: true, colaboradores_escopo: escopo,
         revisao: 0, competencia: hoje.slice(0, 7), data_vencimento: hoje,
-        linhas: lista.filter(c => !escopo || escopo.includes(Number(c.id))).map(c => ({ colaborador_id: c.id, nome: c.nome, cpf: c.cpf,
+        linhas: lista.filter(c => !escopo || escopo.includes(Number(c.id))).map(c => atualizarLinhaCadastro({ colaborador_id: c.id, nome: c.nome, cpf: c.cpf,
           empresa_grupo_id: c.empresa_grupo_id, forma_calculo_gerencial: c.forma_calculo_gerencial,
           salario_base: Number(c.salario_base || 0), valor_diaria: Number(c.valor_diaria || 0),
           selecionado: Boolean(escopo),
           dias: c.forma_calculo_gerencial === 'DIARIA' ? 0 : 30, faltas: 0, acrescimos: 0, descontos: 0,
           parcela_40: false, parcela_50: false, parcela_60: false, conferido_obra: false, conferido_dp: false,
+          recebimento_personalizado: false,
           conta_salario: recebimento({ modo_recebimento: 'CONTA_SALARIO' }, c, c.pagamento || {}),
-          ...recebimento({ modo_recebimento: c.pagamento?.chave_pix || c.pix_chave ? 'PIX' : 'CONTA_SALARIO' }, c, c.pagamento || {}) })) } };
+          ...recebimento({ modo_recebimento: c.pagamento?.chave_pix || c.pix_chave ? 'PIX' : 'CONTA_SALARIO' }, c, c.pagamento || {}) }, plain(c))) } };
     if (!persistir) return { solicitacao: { ...plano, id: null, codigo: null, dados_json: normalizarAndamento(plano.dados_json) },
       responsaveis: (await responsaveis(obra.id, transaction)).map(plain), pagamentos_financeiros: [],
       avisos: (await avisosAnteriores(plano.dados_json, transaction, req.user)).map(plain),
@@ -182,6 +204,8 @@ async function salvar(req, id, payload, transactionExterna = null) {
     }
     const porId = new Map(payload.linhas.map(l => [Number(l.colaborador_id), l]));
     if (porId.size !== anterior.linhas.length) throw new ValidationError('Colaborador repetido.');
+    const atuais = await cadastroAtual(s, anterior, transaction);
+    const cadastroPorId = new Map(atuais.linhas.map(l => [Number(l.colaborador_id), l]));
     const vigentes = s.situacao === 'RASCUNHO' ? await colaboradores(s.obra_id, transaction) : null;
     const ativos = vigentes && new Set(vigentes.map(c => Number(c.id)));
     const responsaveisIds = new Set((await responsaveis(s.obra_id, transaction)).map(r => Number(r.id)));
@@ -189,11 +213,13 @@ async function salvar(req, id, payload, transactionExterna = null) {
       const l = porId.get(Number(original.colaborador_id));
       if (!l) throw new ValidationError('Colaborador nao pertence a esta solicitacao.');
       if (['ENVIADO', 'CANCELADO'].includes(original.pagamento_estado)) return original;
+      const atualizada = cadastroPorId.get(Number(original.colaborador_id));
+      exigirCadastroConferido(l, atualizada);
       if (l.selecionado && ativos && !ativos.has(Number(original.colaborador_id))) {
         throw new ValidationError(`${original.nome} nao esta mais ativo neste local. Desmarque-o.`, 409);
       }
-      const calculo = calcularLinha(l, original);
-      const dadosConta = recebimento(l, original);
+      const calculo = calcularLinha(l, atualizada);
+      const dadosConta = recebimento(l, atualizada);
       let reembolso = null;
       if (l.reembolso && calculo.descontos > 0) {
         if (!responsaveisIds.has(Number(l.reembolso.responsavel_id))) throw new ValidationError('Selecione um responsavel vigente do local.');
@@ -206,12 +232,14 @@ async function salvar(req, id, payload, transactionExterna = null) {
         parcela_40: !calculo.diaria && Boolean(l.parcela_40), parcela_60: !calculo.diaria && Boolean(l.parcela_60),
         parcela_50: !calculo.diaria && Boolean(l.parcela_50),
         observacoes: texto(l.observacoes, 1000), ...dadosConta, reembolso,
+        recebimento_personalizado: dadosConta.modo_recebimento === 'OUTRA_CONTA'
+          || (dadosConta.modo_recebimento === 'PIX' && !contaIgual(dadosConta, atualizada.pix_cadastro)),
         desconto_sem_reembolso: calculo.descontos > 0 && !reembolso };
       const mudou = Object.keys(campos).some(k => JSON.stringify(campos[k] ?? null)
         !== JSON.stringify((k === 'parcela_50' ? Boolean(original[k]) : original[k]) ?? null));
       // Alterar dados invalida a conferencia anterior. A marcacao explicita pode conferir a nova versao.
-      return { ...original, ...campos, ...calculo,
-        conferido_obra: dp ? original.conferido_obra : Boolean(l.conferido_obra),
+      return { ...atualizada, ...campos, ...calculo, cadastro_atualizado: false,
+        conferido_obra: dp ? atualizada.conferido_obra : Boolean(l.conferido_obra),
         conferido_dp: dp ? Boolean(l.conferido_dp) && (!mudou || l.conferir_alteracoes === true) : false };
     });
     const dados = { ...anterior, competencia: payload.competencia,
@@ -282,6 +310,8 @@ async function enviar(req, id, payload) {
     validarPeriodo(d);
     const selecionados = d.linhas.filter(l => l.selecionado && ['PENDENTE', 'EM_EDICAO'].includes(l.pagamento_estado));
     if (!selecionados.length || selecionados.length > 100) throw new ValidationError('Selecione entre 1 e 100 colaboradores.');
+    const atuais = await cadastroAtual(s, d, transaction);
+    for (const l of selecionados) exigirCadastroConferido(l, atuais.linhas.find(a => Number(a.colaborador_id) === Number(l.colaborador_id)));
     if (selecionados.some(l => !l[dp ? 'conferido_dp' : 'conferido_obra'])) throw new ValidationError('Marque os colaboradores selecionados como conferidos.');
     await require('../modules/custosRecebiveis/services/bloqueioObraService')
       .assertObrasSemTrava([s.obra_id], 'Pagamento DP por solicitacao');

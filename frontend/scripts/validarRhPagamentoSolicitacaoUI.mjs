@@ -56,6 +56,43 @@ try {
   await page.route('**/*',route=>route.request().url().startsWith(base)?route.continue():route.abort());
   await page.goto(base);
   const modal=page.getByRole('dialog',{name:'Solicitar pagamento',exact:true});
+  if (process.argv.includes('--cadastro')) {
+    for (const dp of [false, true]) {
+      await page.goto(base);
+      if (dp) { await modal.getByRole('button',{name:'Fechar',exact:true}).click(); await page.getByRole('button',{name:'Conferir como DP',exact:true}).click(); }
+      await modal.locator('tbody tr').first().getByRole('button',{name:'Pix',exact:true}).click();
+      const conta=page.getByRole('dialog',{name:'Dados de recebimento',exact:true});
+      await conta.getByLabel('Recebimento',{exact:true}).selectOption('CONTA_SALARIO');
+      await conta.getByRole('button',{name:'Confirmar',exact:true}).click();
+      await modal.getByLabel('Selecionar: Ana QA',{exact:true}).check();
+      await modal.getByLabel('Dias: Ana QA',{exact:true}).fill('17');
+      await modal.getByLabel('Observações: Ana QA',{exact:true}).fill('Manter meu preenchimento');
+      await modal.getByRole('button',{name:'Salvar',exact:true}).click();
+      await page.waitForFunction(()=>window.putsAtivos===0);
+      await page.evaluate(()=>{
+        const l=window.pedido.dados_json.linhas[0];
+        Object.assign(l,{salario_base:10000,modo_recebimento:'CONTA_SALARIO',conta:'CONTA-ATUAL',
+          banco:'104',agencia:'1234',cadastro_versao:'cadastro-v2',cadastro_atualizado:true,conferido_dp:false,conferido_obra:false});
+        l.conta_salario={...l.conta_salario,conta:'CONTA-ATUAL'};
+      });
+      const putsAntes=await page.evaluate(()=>window.chamadas.filter(c=>c[1].method==='PUT').length);
+      await modal.getByRole('button',{name:'Atualizar cadastro',exact:true}).click();
+      await page.waitForFunction(()=>document.body.textContent.includes('Cadastro atualizado. Confira'));
+      assert.ok((await modal.locator('tbody tr').first().innerText()).includes('10.000,00'));
+      assert.ok((await modal.locator('tbody tr').first().innerText()).includes('CONTA-ATUAL'));
+      assert.equal(await modal.getByLabel('Dias: Ana QA',{exact:true}).inputValue(),'17');
+      assert.equal(await modal.getByLabel('Observações: Ana QA',{exact:true}).inputValue(),'Manter meu preenchimento');
+      assert.ok(!await modal.getByLabel('Conferido: Ana QA',{exact:true}).isChecked());
+      await page.waitForTimeout(1100);
+      assert.equal(await page.evaluate(()=>window.chamadas.filter(c=>c[1].method==='PUT').length),putsAntes,'Atualizar cadastro nao salva nem envia automaticamente');
+      await page.setViewportSize({width:dp?390:1550,height:dp?844:920});
+      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
+      await modal.screenshot({path:path.join(output,dp?'cadastro-dp-mobile.png':'cadastro-autor.png')});
+      await page.setViewportSize({width:1550,height:920});
+    }
+    console.log('UI cadastro autor/DP: atualizacao explicita, salario/conta, preservacao de inputs, conferencia e sem escrita automatica aprovados.');
+    await page.goto(base);
+  }
   if (!process.argv.includes('--workspace-only')) {
   // Mascara existente BRL: digitos sao centavos; limpar envia zero, nunca texto formatado.
   const acrescimoMoeda=modal.getByLabel('Acréscimos: Ana QA',{exact:true});

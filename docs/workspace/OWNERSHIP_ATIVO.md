@@ -1,5 +1,21 @@
 # Ownership Ativo
 
+## Promocao main cadastro no pagamento RH - 2026-10-15
+
+- Sessao codex-promocao-rh-cadastro-main-20261015, sem delegacao. Usuario
+  homologou dev b9ef16e4, autorizou main e confirmou backup/timer ativos.
+- Operador comprovou EC2 main 6af7b192, UUID/banco de producao corretos e zero
+  migrations pendentes. Inventario de migrations/dependencias/env nao muda.
+- Base main preservada com tag/bundle completo fora da EC2; branch criada de
+  origin/main. Reserva: conflitos documentais da integracao, script/teste de
+  deploy exclusivo producao sem migrations, este registro e handoff da promocao.
+- Sem alterar runtime homologado, .env/flags, permissoes, banco real ou EC2.
+  Outputs/ e outros checkouts preservados; merge/PR sem reset ou force-push.
+- Integracao e testes backend/ACL/UI desktop-mobile/workspace/50%/navegacao/build,
+  scripts de deploy/flags/health, docs/diff aprovados; ownership de edicao
+  liberado para publicacao autorizada. Handoff:
+  docs/handoffs/2026-10-15-promocao-rh-cadastro-main.md.
+
 ## Promocao main: RH/DP e Treinamento homologados - 2026-10-14
 
 - Usuario aprovou dev e autorizou promocao completa destes ajustes/main e
@@ -160,6 +176,42 @@
 - Testes backend/visibilidade, UI desktop/mobile com APIs simuladas, build,
   sintaxe e documentacao aprovados. Handoff:
   docs/handoffs/2026-10-09-promocao-isolada-medicao-recarga-main.md.
+## Correcao porta real do deploy DEV RH - 2026-10-15
+
+- Continuacao da publicacao/dev autorizada: operador confirmou backend-dev e
+  .env development em 8001; producao backend-solicitacoes permanece em 8000.
+- Reserva exclusiva: atualizar-dev-rh-cadastro-20261015.sh,
+  validarDeployRhCadastroDev.js, handoff pagamento-rh-cadastro-atual e este registro.
+- Corrigir somente preflight/health/fixture de porta; nao mudar .env/PM2/flags,
+  runtime do pagamento ou schema. Sem execucao EC2 pelo agente.
+- Preflight/health em memoria, negativas, Bash/docs/diff aprovados; ownership
+  liberado para publicacao corretiva autorizada. Outputs/ e checkouts preservados.
+
+## Publicacao dev cadastro RH - 2026-10-15
+
+- Usuario autorizou commit/push desta correcao na refactor/frontend e comandos
+  para EC2 dev; sem main ou execucao remota pelo agente.
+- Reserva de staging dos arquivos do handoff 2026-10-15-pagamento-rh-cadastro-atual,
+  atualizacao documental, novo script/teste de deploy somente dev sem migrations.
+- Preservar outputs/ e demais checkouts; push normal, sem force, com guarda da base.
+- Conferencia/testes e script sem migration aprovados; reserva de edicao/staging
+  liberada para publicacao autorizada. Nenhuma permissao/flag/dependencia nova.
+
+## Pagamento RH: cadastro atualizado - 2026-10-15
+
+- Sessao codex-rh-pagamento-cadastro-atual-20261015, sem delegacao; validado localmente,
+  ownership de edicao liberado. Publicacao dev autorizada na continuacao abaixo.
+- Reserva: rhPagamentoSolicitacaoService.js, novo rhPagamentoCadastroDomain.js,
+  validarRhPagamentoSolicitacao.js, novo teste de cadastro; RhDpPagamentoModal.jsx,
+  rhPagamentoWorkspaceDraft.js, testes UI/workspace e handoff deste ajuste.
+- Reserva documental complementar: README RH/DP e HANDOFF_GLOBAL.md; liberada.
+- Escopo: carregar salario/diaria e conta salario atuais na previa/reabertura para
+  autor e DP, preservar inputs e contas personalizadas, invalidar conferencia
+  obsoleta e negar envio com cadastro desatualizado. Titulos enviados imutaveis.
+- Sem banco real, migration, commit/push, EC2, reinicio ou deploy.
+- Backend real com fixtures, UI desktop/mobile, workspace, 50%, escopos e build
+  aprovados. Handoff: docs/handoffs/2026-10-15-pagamento-rh-cadastro-atual.md.
+
 ## Publicacao dev: pendencias RH/DP - 2026-10-14
 
 - Usuario autorizou commit/push de todas as pendencias RH/DP desta conversa:

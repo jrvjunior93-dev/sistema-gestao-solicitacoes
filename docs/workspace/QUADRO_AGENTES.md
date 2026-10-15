@@ -1,5 +1,15 @@
 # Quadro de Agentes
 
+## Promocao main cadastro no pagamento RH - 2026-10-15
+
+- Sessao codex-promocao-rh-cadastro-main-20261015: finalizado, sem delegacao,
+  ownership liberado para publicacao autorizada. Usuario aprovou dev/backup/timer.
+- Main 6af7b192 + dev b9ef16e4; schema real producao conferido sem pendencias.
+- Snapshot/bundle verificado, historicos preservados, conflitos apenas documentais;
+  backend/ACL/UI/workspace/50%/navegacao/build/docs/scripts de deploy aprovados.
+- Sem banco/EC2/migrations/flags alterados. Operador executa deploy exclusivo
+  backend-solicitacoes8000; handoff 2026-10-15-promocao-rh-cadastro-main.md.
+
 ## Promocao DP global e salario - 2026-10-14
 
 - Sessao codex-promocao-dp-global-salario-main-20261014: finalizado, sem delegacao,
@@ -24,6 +34,17 @@
   runtime conferidos sem diferenca contra suas bases corretas.
 - Sem banco, migration aplicada ou deploy; publicar somente Git autorizado.
 - Handoff: docs/handoffs/2026-10-08-promocao-operacional-main.md.
+## Pagamento RH cadastro atual - 2026-10-15
+
+- Sessao codex-rh-pagamento-cadastro-atual-20261015: finalizado local, sem delegacao,
+  ownership liberado. Usuario autorizou commit/push na continuacao; homologacao
+  EC2 dev permanece com o operador, sem main ou migration nova.
+- Plano: hidratar cadastro no backend sem escrita em GET; proteger save/envio;
+  preservar formulario/workspace, testar autor/DP, parcial e historico financeiro.
+- Sem banco real, migration, publicacao Git ou deploy.
+- Backend/calculos/ACL/revisao/idempotencia, UI desktop/mobile/workspace/50%, build
+  e diff aprovados; handoff 2026-10-15-pagamento-rh-cadastro-atual.md.
+
 ## Base e piloto Solicitacoes 2026-10-11
 
 - codex-workspace-piloto-20261011: finalizado local, ownership liberado,

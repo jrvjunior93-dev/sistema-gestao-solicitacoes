@@ -52,7 +52,8 @@ const auth = { isBusinessAdmin: () => false, canEditRhDpApuracao: async u => u.d
   userHasAreaPermission: async () => true, getUserObraIds: async () => [7], userHasNominalAreaPermission: async () => permissao };
 function load(nome, extras = {}) {
   const deps = { sequelize: { Op }, '../models': models, '../middlewares/validation': { ValidationError },
-    './rhPagamentoSolicitacaoDomain': domain, './rhPagamentoRevisaoPolicy': require('../src/services/rhPagamentoRevisaoPolicy'), ...extras };
+    './rhPagamentoSolicitacaoDomain': domain, './rhPagamentoCadastroDomain': require('../src/services/rhPagamentoCadastroDomain'),
+    './rhPagamentoRevisaoPolicy': require('../src/services/rhPagamentoRevisaoPolicy'), ...extras };
   const ctx = { module: { exports: {} }, console, Date, require: id => {
     if (id in deps) return deps[id]; throw new Error('Dependencia nao simulada: ' + id);
   } };
