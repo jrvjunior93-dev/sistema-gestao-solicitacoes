@@ -1,5 +1,18 @@
 # Ownership Ativo
 
+## Promocao fila/recebimento DP para main - 2026-10-15
+
+- Reserva temporaria do agente unico: integracao main + da9cf569, script/teste
+  exclusivo PROD e handoff desta promocao. Sem delegacao ou mudanca funcional.
+- Usuario aprovou em dev, autorizou promocao e confirmou backup Drive cifrado
+  conferido/timer ativo. EC2 main=41e154f4, identidade de producao e schema sem
+  pendencias confirmados pelo usuario. Nenhuma nova migration no delta.
+- Preservar arquivos de auditoria nao rastreados da EC2 e historico exclusivo
+  de main; nao executar EC2/banco/PM2, nem alterar flags ou refactor/frontend.
+- Integracao e regressoes backend/UI desktop-mobile, build/navegacao/docs e
+  novo script PROD sem migrations aprovados. Ownership liberado para PR/merge
+  autorizado; handoff 2026-10-15-promocao-fila-dp-main.md. Outputs/ fora do Git.
+
 ## Promocao das pendencias para main - 2026-10-15
 
 - Agente unico desta conversa, sem delegacao. Reserva temporaria: integracao
@@ -204,6 +217,24 @@
 - Testes backend/visibilidade, UI desktop/mobile com APIs simuladas, build,
   sintaxe e documentacao aprovados. Handoff:
   docs/handoffs/2026-10-09-promocao-isolada-medicao-recarga-main.md.
+## Filtros/recebimento da fila e relatorio DP - 2026-10-15
+
+- Publicacao DEV agora autorizada pelo usuario: reserva temporaria do delta,
+  script atualizar-dev-fila-filtros-dp-20261015.sh, teste isolado e handoff para
+  commit/push refactor/frontend. Sem executar EC2, banco ou alterar main.
+- Script/teste DEV, regressoes backend/UI desktop/mobile, build, navegacao e
+  documentacao aprovados novamente. Reserva de publicacao liberada; somente
+  arquivos desta tarefa no commit, outputs/ e outros checkouts preservados.
+- Reserva temporaria do agente unico desta conversa, sem delegacao: services e
+  validators da fila/pagamento DP, tela da fila e modal DP, relatorios RH/DP,
+  dominios auxiliares, testes/docs correspondentes. Handoff:
+  docs/handoffs/2026-10-15-fila-filtros-recebimento-dp.md.
+- Usuario autorizou implementacao; sem commit/push/deploy/banco real nesta etapa.
+- Implementacao e testes locais concluidos; ownership liberado. Build,
+  navegacao, docs e QA real desktop/mobile aprovados; sem nova migration.
+  SQL gerado testado com execucao interceptada, sem banco real. Proximo passo:
+  publicar somente com autorizacao e homologar o recorte em dev.
+
 ## DP cancelamento e comprovante compartilhado - 2026-10-15
 
 - Reserva ativa deste agente, sem delegacao. Usuario confirmou remover linha

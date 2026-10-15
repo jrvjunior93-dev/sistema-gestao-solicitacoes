@@ -46,6 +46,7 @@ import InstrumentoPagamentoFila, { payloadInstrumentoFila, tipoInstrumentoFila }
 import { ResizableTable, ResizableTh } from '../components/ResizableTable';
 import { listarComprovantesFila } from '../utils/comprovantesFila';
 import useRolagemModal from '../hooks/useRolagemModal';
+import { RECEBIMENTOS_DP, rotuloRecebimentoDp, ehTituloDp } from '../utils/recebimentoDp';
 import useColunasOperacionais, { LinhaColunasOperacionais } from '../hooks/useColunasOperacionais';
 import {
   Avisos,
@@ -95,13 +96,15 @@ const PAYMENT_QUEUE_COLUMNS = [
   { key: 'titulo', titulo: 'Título / documento', size: 'wider', sempreVisivel: true },
   { key: 'local', titulo: 'Obra / Centro de Custo', size: 'wide' },
   { key: 'credor', titulo: 'Credor / favorecido', size: 'wide' },
+  { key: 'empresa_colaborador', titulo: 'Empresa do colaborador', size: 'wide', antesDe: 'dados' },
+  { key: 'recebimento_dp', titulo: 'Recebimento DP', size: 'standard', antesDe: 'dados' },
   { key: 'dados', titulo: 'Dados para pagamento', size: 'wide' },
   { key: 'vencimento', titulo: 'Vencimento', size: 'compact' },
   { key: 'saldo', titulo: 'Previsto / saldo', size: 'standard' },
   { key: 'data', titulo: 'Data da baixa', size: 'standard' },
   { key: 'conta', titulo: 'Conta pagadora', size: 'wide' },
   { key: 'instrumento', titulo: 'Forma / instrumento', size: 'wider' },
-  { key: 'empresa', titulo: 'Empresa', size: 'standard' },
+  { key: 'empresa', titulo: 'Empresa pagadora', size: 'standard' },
   { key: 'desconto', titulo: 'Desconto (R$)', size: 'compact', antesDe: 'juros' },
   { key: 'juros', titulo: 'Juros (R$)', size: 'compact' },
   { key: 'multa', titulo: 'Multa (R$)', size: 'compact' },
@@ -168,6 +171,9 @@ function statusKind(status) {
 }
 
 function beneficiaryData(titulo) {
+  if (ehTituloDp(titulo) && titulo.recebimento_dp === 'DINHEIRO') return {
+    nome: titulo.parceiro?.nome || 'Não informado', documento: titulo.parceiro?.cpf_cnpj || '', pagamento: 'Recebimento em dinheiro'
+  };
   const beneficiary = titulo?.paymentBeneficiary;
   const instrucao = titulo?.instrucao_favorecido;
   const solicitacao = instrucao ? { ...titulo?.solicitacao,
@@ -641,6 +647,9 @@ export default function FinanceiroFilaPagamentos() {
   const [status, setStatus] = useWorkspaceState('fila:status', initialStatus);
   const [search, setSearch] = useWorkspaceState('fila:busca', initialSearch);
   const [appliedSearch, setAppliedSearch] = useWorkspaceState('fila:buscaAplicada', initialSearch);
+  const [filtros, setFiltros] = useWorkspaceState('fila:filtrosTitulos', Object.fromEntries(
+    ['origem', 'empresa_id', 'credor_id', 'recebimento_dp'].map(key => [key, searchParams.get(key) || ''])));
+  const [opcoesFiltros, setOpcoesFiltros] = useState({ empresas: [], credores: [] });
   const [rows, setRows] = useState([]);
   const [summary, setSummary] = useState({});
   const [accounts, setAccounts] = useState([]);
@@ -652,7 +661,7 @@ export default function FinanceiroFilaPagamentos() {
   const [edicoesFila, setEdicoesFila] = useWorkspaceState('fila:edicoes', {});
   const edicoesFilaRef = useRef(edicoesFila);
   edicoesFilaRef.current = edicoesFila;
-  const consultaFila = useQueryRevision(`${status}|${appliedSearch}`);
+  const consultaFila = useQueryRevision(`${status}|${appliedSearch}|${JSON.stringify(filtros)}`);
   const [selected, setSelected] = useWorkspaceState('fila:selecionados', []);
   const [loading, setLoading] = useState(true);
   const [actionKey, setActionKey] = useState('');
@@ -673,13 +682,15 @@ export default function FinanceiroFilaPagamentos() {
   const canResolve = canResolverFilaPagamentos(user);
   const canImportReceipts = canImportarComprovantesFilaPagamentos(user);
 
-  function applyFilters(nextStatus = status, nextSearch = appliedSearch) {
+  function applyFilters(nextStatus = status, nextSearch = appliedSearch, nextFiltros = filtros) {
     setStatus(nextStatus);
     setAppliedSearch(nextSearch);
     setSelected([]);
+    setFiltros(nextFiltros);
     const nextParams = new URLSearchParams();
     if (nextStatus !== 'PENDENTE') nextParams.set('status', nextStatus);
     if (nextSearch) nextParams.set('q', nextSearch);
+    Object.entries(nextFiltros).forEach(([key, value]) => { if (value) nextParams.set(key, value); });
     setSearchParams(nextParams, { replace: true });
   }
 
@@ -688,7 +699,8 @@ export default function FinanceiroFilaPagamentos() {
     setLoading(true);
     try {
       const [queueResult, accountResult, instrumentResult] = await Promise.all([
-        getFilaPagamentos({ status, q: appliedSearch || undefined }),
+        getFilaPagamentos({ status, q: appliedSearch || undefined,
+          ...Object.fromEntries(Object.entries(filtros).filter(([, value]) => value)) }),
         getContasFilaPagamentos(),
         canSettle ? getInstrumentosFilaPagamentos() : Promise.resolve({ formas: [], cartoes: [], cheques: [] })
       ]);
@@ -696,6 +708,7 @@ export default function FinanceiroFilaPagamentos() {
       setFilaAutorizada(true);
       const nextRows = queueResult?.data || [];
       setRows(nextRows);
+      setOpcoesFiltros(queueResult?.filtros || { empresas: [], credores: [] });
       setSummary(queueResult?.resumo || {});
       setAccounts(Array.isArray(accountResult) ? accountResult : accountResult?.data || []);
       setInstrumentos(instrumentResult);
@@ -744,12 +757,13 @@ export default function FinanceiroFilaPagamentos() {
       if (!consultaFila.isCurrent(token)) return;
       setFilaAutorizada(false);
       setRows([]); setAccounts([]); setSummary({}); setSelected([]);
+      setOpcoesFiltros({ empresas: [], credores: [] });
       setInstrumentos({ formas: [], cartoes: [], cheques: [] }); setDrafts({});
       avisar.erro(error?.message || 'Erro ao carregar a fila de pagamentos.');
     } finally {
       if (consultaFila.isCurrent(token)) setLoading(false);
     }
-  }, [status, appliedSearch, avisar, canSettle]);
+  }, [status, appliedSearch, filtros, avisar, canSettle]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -1168,7 +1182,7 @@ export default function FinanceiroFilaPagamentos() {
         titulo={status === 'PENDENTE_COMPROVANTE' ? 'Pagamentos pendentes de comprovante' : 'Pagamentos preparados'}
         variante="primario"
         cor="var(--module-financeiro)"
-        descricao="A empresa vem da conta ou do cartão; na baixa em massa com cheque de terceiro, vem da carteira, sem conta bancária."
+        descricao="Empresa do título é a empresa do colaborador no DP. Empresa pagadora vem da conta, cartão ou carteira usados na baixa."
         controles={(
           <div className="flex flex-wrap items-end gap-2">
             {colunasConfiguradas.painel}
@@ -1195,6 +1209,33 @@ export default function FinanceiroFilaPagamentos() {
           </div>
         )}
       >
+        <div className="mb-3 flex flex-wrap items-end gap-2" aria-label="Filtros dos títulos da fila">
+          <label className="min-w-40 text-xs">Origem
+            <select aria-label="Origem dos títulos" className="input input-sm w-full" value={filtros.origem} disabled={busy}
+              onChange={e => applyFilters(status, appliedSearch, { ...filtros, origem: e.target.value })}>
+              <option value="">Todas</option><option value="RH_DP">RH/DP</option><option value="OUTROS">Outras origens</option>
+            </select></label>
+          <label className="min-w-40 max-w-full text-xs">Empresa do título / colaborador
+            <select aria-label="Empresa do título / colaborador" className="input input-sm w-full max-w-72" value={filtros.empresa_id} disabled={busy}
+              onChange={e => applyFilters(status, appliedSearch, { ...filtros, empresa_id: e.target.value })}>
+              <option value="">Todas</option>{opcoesFiltros.empresas.map(o => <option key={o.id} value={o.id}>{o.nome}</option>)}
+              {filtros.empresa_id && !opcoesFiltros.empresas.some(o => String(o.id) === String(filtros.empresa_id)) && <option value={filtros.empresa_id}>Empresa #{filtros.empresa_id} · sem títulos nesta situação</option>}
+            </select></label>
+          <label className="min-w-40 max-w-full text-xs">Credor
+            <select aria-label="Credor" className="input input-sm w-full max-w-72" value={filtros.credor_id} disabled={busy}
+              onChange={e => applyFilters(status, appliedSearch, { ...filtros, credor_id: e.target.value })}>
+              <option value="">Todos</option>{opcoesFiltros.credores.map(o => <option key={o.id} value={o.id}>{o.nome}</option>)}
+              {filtros.credor_id && !opcoesFiltros.credores.some(o => String(o.id) === String(filtros.credor_id)) && <option value={filtros.credor_id}>Credor #{filtros.credor_id} · sem títulos nesta situação</option>}
+            </select></label>
+          <label className="min-w-40 text-xs">Recebimento DP
+            <select aria-label="Recebimento DP" className="input input-sm w-full" value={filtros.recebimento_dp} disabled={busy}
+              onChange={e => applyFilters(status, appliedSearch, { ...filtros, recebimento_dp: e.target.value })}>
+              <option value="">Todos</option>{RECEBIMENTOS_DP.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select></label>
+          <button type="button" className="btn btn-outline btn-sm" disabled={busy || !Object.values(filtros).some(Boolean)}
+            onClick={() => applyFilters(status, appliedSearch, { origem: '', empresa_id: '', credor_id: '', recebimento_dp: '' })}>Limpar filtros dos títulos</button>
+        </div>
+        {rows.length >= 500 && <p role="status" className="mb-2 text-xs text-[var(--c-muted)]">A fila exibe até 500 títulos por consulta. Refine os filtros para localizar os demais; o relatório do DP lista todos os envios do recorte.</p>}
         {(hasBulkAction || hasReceiptSelection) && <div className="mb-2 flex flex-wrap items-center gap-3 text-sm">
           <label className="flex items-center gap-2">
             <input type="checkbox" aria-label="Selecionar todos os elegíveis desta lista"
@@ -1227,13 +1268,15 @@ export default function FinanceiroFilaPagamentos() {
                 <ResizableTh columnKey="titulo" className="px-3 py-3">Título / documento</ResizableTh>
                 <ResizableTh columnKey="local" className="px-3 py-3">Obra / Centro de Custo</ResizableTh>
                 <ResizableTh columnKey="credor" className="px-3 py-3">Credor / favorecido</ResizableTh>
+                <ResizableTh columnKey="empresa_colaborador" className="px-3 py-3">Empresa do colaborador</ResizableTh>
+                <ResizableTh columnKey="recebimento_dp" className="px-3 py-3">Recebimento DP</ResizableTh>
                 <ResizableTh columnKey="dados" className="px-3 py-3">Dados para pagamento</ResizableTh>
                 <ResizableTh columnKey="vencimento" className="px-3 py-3">Vencimento</ResizableTh>
                 <ResizableTh columnKey="saldo" className="px-3 py-3 text-right">Previsto / saldo</ResizableTh>
                 <ResizableTh columnKey="data" className="px-3 py-3">Data da baixa</ResizableTh>
                 <ResizableTh columnKey="conta" className="px-3 py-3">Conta pagadora</ResizableTh>
                 <ResizableTh columnKey="instrumento" className="px-3 py-3">Forma / instrumento</ResizableTh>
-                <ResizableTh columnKey="empresa" className="px-3 py-3">Empresa</ResizableTh>
+                <ResizableTh columnKey="empresa" className="px-3 py-3">Empresa pagadora</ResizableTh>
                 <ResizableTh columnKey="desconto" className="px-3 py-3 text-right">Desconto (R$)</ResizableTh>
                 <ResizableTh columnKey="juros" className="px-3 py-3 text-right">Juros (R$)</ResizableTh>
                 <ResizableTh columnKey="multa" className="px-3 py-3 text-right">Multa (R$)</ResizableTh>
@@ -1348,6 +1391,8 @@ export default function FinanceiroFilaPagamentos() {
                       <div className="max-w-60 font-medium" title={beneficiary.nome}>{beneficiary.nome}</div>
                       <div className="text-xs text-[var(--c-muted)]">{beneficiary.documento || 'Documento não informado'}</div>
                     </td>
+                    <td className="px-3 py-3 align-top">{ehTituloDp(title) ? title.empresa?.nome || 'Não informada no título' : '—'}</td>
+                    <td className="px-3 py-3 align-top">{ehTituloDp(title) ? rotuloRecebimentoDp(title.recebimento_dp) : '—'}</td>
                     <td className="px-3 py-3 align-top">
                       <DadosPagamentoFila texto={beneficiary.pagamento} titulo={title.codigo || `#${row.id}`} favorecido={beneficiary.nome} />
                       {title.observacoes?.includes('\nReembolsos de vale:\n') && <details className="mt-2 max-w-64 text-xs">

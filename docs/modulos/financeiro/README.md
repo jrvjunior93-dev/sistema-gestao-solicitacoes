@@ -833,3 +833,26 @@ Recebe dimensoes de Parceiros, Empresas, Obras e Apropriacoes; recebe origens de
 ## Idempotencia
 
 Geracao de titulo, baixa, estorno, importacao OFX e conciliacao sao transacionais e protegidos contra repeticao. O frontend bloqueia duplo clique e o backend garante unicidade e estado valido.
+
+## Fila: filtros e recebimento do DP (2026-10-15)
+
+- Filtros combinaveis: origem RH/DP (folha/pagamento e Ticket) ou outras origens,
+  empresa do titulo, credor e recebimento DP. Os filtros estruturados entram no
+  SQL antes do limite de 500 e nos totais por situacao; a busca textual mantem
+  seu comportamento anterior sobre a lista. O catalogo minimo vem de titulos da
+  propria fila/situacao, sem liberar cadastro geral de empresas ou parceiros.
+- No DP, empresa do titulo e a empresa do colaborador registrada na geracao,
+  nao a empresa pagadora. Colunas distintas de empresa do colaborador,
+  recebimento DP e empresa pagadora evitam confundir as duas dimensoes.
+- Recebimento DP: conta salario, Pix, dinheiro, outra conta ou nao informado.
+  Reflete a referencia/snapshot do titulo no pedido, nunca o cadastro atual.
+  Referencias novas conservam modo explicitamente no JSON ja existente.
+  Legados usam a linha de origem vinculada pelo id do titulo/pedido e empresa
+  do vale; em revisao nao inferem modo de uma linha ainda nao reenviada.
+  Sem origem suficiente, fica nao informado, sem adivinhar salario/outra conta.
+- GET apenas projeta; nao executa backfill, migration ou reescrita de pagamentos.
+  O recebimento solicitado nao escolhe nem registra automaticamente a baixa.
+- Filtros ficam na URL/workspace, limpam a selecao para a baixa e preservam os
+  campos em rascunho. Colunas novas usam o mesmo painel/ordem/largura da fila.
+- Mesmas permissoes de leitura, baixa, comprovante e visibilidade anteriores.
+  Validar com test:fila-filtros-dp e validarFilaInstrumentosUI.mjs --filtros-dp.

@@ -591,7 +591,8 @@ export const NAV_MODULES = [
     commandItems: [
       { id: 'rhdp-colaboradores', fixavel: true, label: 'Cadastro de colaboradores', desc: 'Cadastro global de colaboradores.', icon: HiOutlineUsers, to: '/rh-dp/colaboradores', can: (user) => canAccessRhDpCadastroColaboradores(user) },
       { id: 'rhdp-fechamentos', fixavel: true, label: 'Fechamentos', desc: 'Fechamentos que geram títulos financeiros.', icon: HiOutlineBanknotes, to: '/rh-dp/fechamentos', can: (user) => canViewRhDpObrigacoes(user) && hasEnabledModule(user, 'FINANCEIRO') },
-      { id: 'rhdp-relatorio-operacional', label: 'Painel Operacional RH/DP', desc: 'Relatório de colaboradores, documentos, apurações e fechamentos.', icon: HiOutlineChartBar, to: '/rh-dp/relatorios/operacional', can: (user) => canAccessRhDpDashboard(user) && canViewRhDpColaboradores(user) }
+      { id: 'rhdp-relatorio-operacional', label: 'Painel Operacional RH/DP', desc: 'Relatório de colaboradores, documentos, apurações e fechamentos.', icon: HiOutlineChartBar, to: '/rh-dp/relatorios/operacional', can: (user) => canAccessRhDpDashboard(user) && canViewRhDpColaboradores(user) },
+      { id: 'rhdp-titulos-enviados', label: 'Títulos enviados pelo DP', desc: 'Status da fila, histórico e conferência de possíveis duplicidades.', icon: HiOutlineChartBar, to: '/rh-dp/relatorios/titulos-enviados', can: (user) => canAccessRhDpDashboard(user) && hasPermissao(user, 'rh_dp.relatorios.visualizar') }
     ]
   },
   {

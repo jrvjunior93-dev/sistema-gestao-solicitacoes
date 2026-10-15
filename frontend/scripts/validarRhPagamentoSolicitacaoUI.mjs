@@ -572,6 +572,23 @@ try {
     console.log('Workspace pagamento '+width+'px: GET do ID existente, ultima edicao/editor, sem POST/PUT por retorno, revisao/salario atual e negativa OK.');
   }
   await validarGestaoDp(page, base, modal, output);
+  for (const width of [1366, 390]) {
+    await page.setViewportSize({ width, height: 900 }); await page.goto(base);
+    const primeira = modal.locator('tbody tr').first();
+    await primeira.getByRole('button', { name: 'Pix', exact: true }).click();
+    const conta = page.getByRole('dialog', { name: 'Dados de recebimento', exact: true });
+    await conta.getByLabel('Recebimento', { exact: true }).selectOption('DINHEIRO');
+    assert.equal(await conta.getByLabel('Chave Pix / Copia e Cola', { exact: true }).count(), 0);
+    assert.equal(await conta.getByLabel('Banco (código)', { exact: true }).count(), 0);
+    await conta.getByRole('button', { name: 'Confirmar', exact: true }).click();
+    await primeira.getByRole('button', { name: 'Dinheiro', exact: true }).waitFor();
+    await modal.getByRole('button', { name: 'Salvar', exact: true }).click();
+    await page.waitForFunction(() => window.pedido.dados_json.linhas[0].modo_recebimento === 'DINHEIRO');
+    const salvo = await page.evaluate(() => window.pedido.dados_json.linhas[0]);
+    for (const k of ['chave_pix', 'banco', 'agencia', 'conta', 'tipo_conta']) assert.equal(salvo[k], '');
+    assert.equal(salvo.favorecido_documento, linha.favorecido_documento);
+  }
+  console.log('UI DINHEIRO: sem campos bancarios/Pix, identidade e persistencia do modo preservadas; desktop/mobile aprovados.');
   assert.deepEqual(errors,[]);
   console.log('Modal real: moeda durante digitacao, limpar/legado vazio como zero, numeros no payload, persistencia/foco/mobile; reembolso somente no clique, desconto comum, dias informativos, diaria, autosave, 100%, vales agrupados, contas, conferencia e Obra/DP OK.');
 } catch (error) {

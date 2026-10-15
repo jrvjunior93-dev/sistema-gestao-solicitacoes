@@ -476,3 +476,34 @@ Dados pessoais, documentos e remuneracao exigem menor privilegio. Exportacoes pr
 ## Mudanca segura
 
 Testar cadastro, vinculos temporais, documentos, importacao, jornada mensalista/diarista/empreitada, faltas informativas, acrescimos e descontos, decimo terceiro, consolidacao multiobra, ticket, eventos recorrentes, apuracao, fechamento, reabertura, geracao financeira, SST, escopo por obra e relatorios.
+
+## Recebimento em dinheiro e relatorio de envios (2026-10-15)
+
+- No pagamento por solicitacao (individual, todos ou selecionados), DINHEIRO
+  conserva nome/CPF-CNPJ e nao exige nem inventa Pix, banco, agencia ou conta.
+  Exige forma financeira DINHEIRO ativa ao enviar ao financeiro. Nao cadastra
+  formas automaticamente, nao cria favorecido bancario falso e nao altera as
+  permissoes, revisao/conferencia, geracao atomica/idempotente ou regra de baixa.
+  Tambem compativel com o editor de reembolso, mantendo sua identificacao.
+- Relatorios > Titulos enviados pelo DP: GET /rh/relatorios/titulos-enviados.
+  Requer acesso ao dashboard/relatorios do RH/DP e rh_dp.relatorios.visualizar,
+  mantendo bypass administrativo e escopo de obras existentes. Obra nao ganha
+  acesso ao relatorio global por abrir solicitacao. Consulta nao libera titulos,
+  solicitacoes, documentos ou baixa de outros modulos.
+- Lista todos os titulos RH_DP/RH_DP_TICKET com registro real na fila (sem corte
+  de 500), preservando a exclusao logica normal dos titulos. Mostra codigo,
+  solicitacao DP quando identificada, competencia, credor, empresa/obra,
+  recebimento, valor/baixado/saldo, status financeiro e situacao atual da fila.
+  Registros de fila anteriores/cancelados/estornados ficam consultaveis; data de
+  entrada nao e auditoria completa de cada revisao sobre a mesma linha de fila.
+- Filtros: competencia, empresa, local, recebimento, status financeiro, situacao
+  atual da fila, busca e somente possiveis duplicidades.
+- Alerta de duplicidade: titulos salariais ativos distintos com mesmo colaborador,
+  competencia, empresa, percentual e valor. Nao trata 40% e 60%, empresas distintas,
+  vales/pensao ou repeticao do mesmo id como duplicidade. Outros casos exigem
+  conferencia manual. Exibe codigos relacionados sem cancelar ou bloquear nada.
+- SQL/GET nao grava. Usa tabelas/JSON existentes, sem nova migration/backfill;
+  legado sem modo identificavel fica nao informado. O relatorio nao devolve conta,
+  CPF, chave Pix ou JSON bancario da baixa.
+- Validar com test:rhdp-titulos-enviados, validarRhTitulosEnviadosUI.mjs e suites
+  de pagamento/fila. Homologar com dados reais em dev antes de publicar producao.

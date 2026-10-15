@@ -240,6 +240,7 @@ const RhDpDocumentos = lazy(() => import('./pages/RhDpDocumentos'));
 const RhDpImportacoes = lazy(() => import('./pages/RhDpImportacoes'));
 const RhDpFechamentos = lazy(() => import('./pages/RhDpFechamentos'));
 const RhDpRelatorioOperacional = lazy(() => import('./pages/RhDpRelatorioOperacional'));
+const RhDpTitulosEnviados = lazy(() => import('./pages/RhDpTitulosEnviados'));
 const SolicitacoesCompra = lazy(() => import('./modules/solicitacao-compra/pages/SolicitacoesCompra'));
 const CotacaoFornecedorPublica = lazy(() => import('./modules/solicitacao-compra/pages/CotacaoFornecedorPublica'));
 const SolicitacaoCompraDetalhe = lazy(() => import('./modules/solicitacao-compra/pages/SolicitacaoCompraDetalheView'));
@@ -1093,6 +1094,7 @@ export default function App() {
         <Route path="rh-dp" element={<Navigate to="/hub/rhdp" replace />} />
         <Route path="rh-dp/relatorios" element={<RhDpDashboardRoute><ModuloRelatorios modulo="rhdp" /></RhDpDashboardRoute>} />
         <Route path="rh-dp/relatorios/operacional" element={<RhDpDashboardRoute><RhDpRelatorioOperacional /></RhDpDashboardRoute>} />
+        <Route path="rh-dp/relatorios/titulos-enviados" element={<RhDpDashboardRoute><RhDpTitulosEnviados /></RhDpDashboardRoute>} />
         {/*
           D2 (02/09): Empresas do grupo passa a existir uma vez so, em
           Cadastros. Redirecionamento em vez de rota morta.
