@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useUiVisibility } from '../hooks/useUiVisibility';
 import { BlocoConteudo, Pagina, PageHeader } from '../components/padrao';
 import StatusBadge from '../components/StatusBadge';
+import { NAV_MODULES } from '../navigation/navigationConfig';
 import {
   canViewContratos,
   canViewContratosRelatorios,
@@ -64,6 +65,7 @@ const PERMISSIONS = {
   mudam. Por isso `status` continua sem acento ('Disponivel') no dado e
   ganha acento só na EXIBIÇÃO (ROTULO_STATUS, abaixo).
 */
+const relatorioEnviosDp = NAV_MODULES.find(modulo => modulo.id === 'rhdp').commandItems.find(item => item.id === 'rhdp-titulos-enviados');
 const HUBS = {
   solicitacoes: {
     modulo: 'Solicitações',
@@ -218,6 +220,7 @@ const HUBS = {
         titulo: 'Disponíveis',
         itens: [
           { titulo: 'Painel operacional RH/DP', descricao: 'Headcount, documentos críticos, apurações, fechamentos e base cadastrada.', to: '/rh-dp/relatorios/operacional', status: 'Disponivel', permissao: 'rhDpColaboradores', componentKey: 'relatorios.rhdp.operacional' },
+          { titulo: relatorioEnviosDp.label, descricao: relatorioEnviosDp.desc, to: relatorioEnviosDp.to, can: relatorioEnviosDp.can, status: 'Disponivel' },
           { titulo: 'Apuração', descricao: 'Pré-folha, eventos e ajustes por competência.', to: '/rh-dp/apuracao', status: 'Disponivel', permissao: 'rhDpApuracao', componentKey: 'relatorios.rhdp.apuracao' },
           { titulo: 'Fechamentos', descricao: 'Competências fechadas e títulos gerados ao financeiro.', to: '/rh-dp/fechamentos', status: 'Disponivel', permissao: 'rhDpObrigacoes', componentKey: 'relatorios.rhdp.fechamentos' },
           { titulo: 'Importações', descricao: 'Histórico de importações e lotes processados.', to: '/rh-dp/importacoes', status: 'Disponivel', permissao: 'rhDpImportacoes', componentKey: 'relatorios.rhdp.importacoes' }
@@ -344,6 +347,7 @@ export default function ModuloRelatorios({ modulo }) {
   const { isVisible } = useUiVisibility();
   const hub = HUBS[modulo] || HUBS.solicitacoes;
   const podeVerItem = (item) => {
+    if (item.can && !item.can(user)) return false;
     if (item.componentKey && !isVisible(item.componentKey)) {
       return false;
     }

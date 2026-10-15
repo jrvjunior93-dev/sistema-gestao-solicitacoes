@@ -29,16 +29,17 @@ function DadosRecebimento({ dados, alterar, reembolso = false }) {
   return <div className="rh-pagamento-conta">
     <label>Recebimento<select aria-label="Recebimento" className="form-control" value={dados.modo_recebimento || 'PIX'}
       onChange={e => alterar({ ...(e.target.value === 'CONTA_SALARIO' ? dados.conta_salario || {}
-        : e.target.value === 'PIX' ? dados.pix_cadastro || {} : {}), modo_recebimento: e.target.value })}>
+        : e.target.value === 'PIX' ? dados.pix_cadastro || {} : e.target.value === 'DINHEIRO'
+          ? { chave_pix: '', banco: '', agencia: '', conta: '', tipo_conta: '' } : {}), modo_recebimento: e.target.value })}>
       <option value="PIX">Pix</option>{!reembolso && <option value="CONTA_SALARIO">Conta salário</option>}
-      <option value="OUTRA_CONTA">Outra conta</option></select></label>
+      <option value="OUTRA_CONTA">Outra conta</option><option value="DINHEIRO">Dinheiro</option></select></label>
     {dados.modo_recebimento !== 'CONTA_SALARIO' && <>
       <label>Favorecido<input className="form-control" value={dados.favorecido_nome || ''} onChange={e => alterar({ favorecido_nome: e.target.value })} /></label>
       <label>CPF/CNPJ<input className="form-control" value={dados.favorecido_documento || ''} maxLength={20} onChange={e => alterar({ favorecido_documento: e.target.value })} /></label>
     </>}
     {(dados.modo_recebimento || 'PIX') === 'PIX' ? <label className="rh-pagamento-conta-chave">Chave Pix / Copia e Cola
       <textarea aria-label="Chave Pix / Copia e Cola" className="form-control" rows={2} maxLength={8192} value={dados.chave_pix || ''} onChange={e => alterar({ chave_pix: e.target.value })} /></label>
-      : <>{[['banco', 'Banco (código)'], ['agencia', 'Agência'], ['conta', 'Conta'], ['tipo_conta', 'Tipo de conta']].map(([campo, rotulo]) =>
+      : dados.modo_recebimento !== 'DINHEIRO' && <>{[['banco', 'Banco (código)'], ['agencia', 'Agência'], ['conta', 'Conta'], ['tipo_conta', 'Tipo de conta']].map(([campo, rotulo]) =>
         <label key={campo}>{rotulo}<input className="form-control" value={dados[campo] || ''}
           readOnly={dados.modo_recebimento === 'CONTA_SALARIO'} onChange={e => alterar({ [campo]: e.target.value })} /></label>)}</>}
   </div>;
@@ -436,7 +437,7 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
                 valor: Number(l.reembolso?.valor ?? l.descontos)
               } })}>{l.reembolso ? 'Reembolso de vale' : 'Solicitar reembolso'}</button>}</td>
               <td className={calculo.liquido < 0 ? 'text-red-700' : ''}><strong>{moeda(calculo.liquido)}</strong></td><td>{numero('dias', 'Dias', 31)}</td><td>{numero('faltas', 'Faltas', 31)}</td>
-              <td><button disabled={bloqueada} type="button" className="btn btn-outline btn-sm" onClick={() => setEditor({ id: l.colaborador_id, tipo: 'conta', dados: contaPagamentoInputs(l) })}>{l.modo_recebimento === 'CONTA_SALARIO' ? 'Conta salário' : l.modo_recebimento === 'OUTRA_CONTA' ? 'Outra conta' : 'Pix'}</button><small className="rh-pagamento-dados" title={l.modo_recebimento === 'PIX' ? l.chave_pix : `${l.banco || '—'} · ${l.agencia || '—'} · ${l.conta || '—'}`}>{l.modo_recebimento === 'PIX' ? l.chave_pix : `Banco ${l.banco || '—'} · Ag. ${l.agencia || '—'} · Conta ${l.conta || '—'}`}</small></td>
+              <td><button disabled={bloqueada} type="button" className="btn btn-outline btn-sm" onClick={() => setEditor({ id: l.colaborador_id, tipo: 'conta', dados: contaPagamentoInputs(l) })}>{l.modo_recebimento === 'CONTA_SALARIO' ? 'Conta salário' : l.modo_recebimento === 'OUTRA_CONTA' ? 'Outra conta' : l.modo_recebimento === 'DINHEIRO' ? 'Dinheiro' : 'Pix'}</button>{l.modo_recebimento !== 'DINHEIRO' && <small className="rh-pagamento-dados" title={l.modo_recebimento === 'PIX' ? l.chave_pix : `${l.banco || '—'} · ${l.agencia || '—'} · ${l.conta || '—'}`}>{l.modo_recebimento === 'PIX' ? l.chave_pix : `Banco ${l.banco || '—'} · Ag. ${l.agencia || '—'} · Conta ${l.conta || '—'}`}</small>}</td>
               <td><input disabled={bloqueada} className="form-control" aria-label={`Observações: ${l.nome}`} value={l.observacoes || ''} maxLength={1000} onChange={e => linhaAlterar(l.colaborador_id, { observacoes: e.target.value })} /></td>
             </tr>;
           })}</tbody></table>

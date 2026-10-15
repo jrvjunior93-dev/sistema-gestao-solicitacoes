@@ -86,6 +86,7 @@ const deps = {
   './pagamentoFilaComprovanteDomain': domain,
   './pagamentoFilaInstrumentoDomain': require('../src/services/pagamentoFilaInstrumentoDomain'),
   './pagamentoFilaChequesDomain': require('../src/services/pagamentoFilaChequesDomain'),
+  './pagamentoFilaFiltrosDomain': require('../src/services/pagamentoFilaFiltrosDomain'),
   './pagamentoAutorizacaoEventosService': {},
   './instrucaoFinanceiraFavorecidoService': { anexarInstrucoes: async () => {} },
   './pagamentoFilaValoresDomain': require('../src/services/pagamentoFilaValoresDomain'),

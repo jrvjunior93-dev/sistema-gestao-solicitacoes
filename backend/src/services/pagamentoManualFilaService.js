@@ -42,6 +42,7 @@ const { pendenteComprovanteFila, wherePendenteComprovante, whereSemEstornoFila, 
 const { registrarComprovantesFilaNoHistorico } = require('./pagamentoFilaHistoricoService');
 const { calcularValoresFila, filaSemBaixaAtualizavel } = require('./pagamentoFilaValoresDomain');
 const { distribuirCheques, conferirChequesUnicosLote } = require('./pagamentoFilaChequesDomain');
+const { recebimentoDpAtributo, tituloWhere, opcoesDosTitulos } = require('./pagamentoFilaFiltrosDomain');
 
 const ACTIVE_STATUSES = ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE', 'EM_EDICAO'];
 const PAYMENT_INTENT_INACTIVE_STATUSES = ['CANCELADO', 'REJEITADO', 'REJEITADO_BANCO', 'FALHA_INTEGRACAO', 'BAIXADO'];
@@ -74,7 +75,8 @@ function filaInclude() {
         'valor_original', 'valor_saldo', 'valor_baixado', 'juros', 'multa', 'data_vencimento',
         'forma_pagamento_id', 'empresa_id', 'linha_digitavel', 'codigo_barras',
         'banco_cobranca', 'observacoes', 'solicitacao_id', 'favorecido_pagamento_id',
-        'cartao_id', 'fatura_cartao_id', 'origem_titulo', 'status_interno_pagar'
+        'cartao_id', 'fatura_cartao_id', 'origem_titulo', 'status_interno_pagar',
+        recebimentoDpAtributo()
       ],
       include: [
         { model: Parceiro, as: 'parceiro', attributes: ['id', 'nome', 'cpf_cnpj', 'telefone', 'email'] },
@@ -145,9 +147,10 @@ async function listarFilaPagamentos(req, filters = {}) {
       movimento_financeiro_id: { [Op.gt]: 0 }, [Op.and]: whereSemEstornoFila() }
     : status === 'PENDENTE' ? { status: { [Op.in]: ['PENDENTE', 'EM_EDICAO'] } }
       : (status && status !== 'TODOS' ? { status } : { status: { [Op.ne]: 'CANCELADO' } });
+  const includeTitulo = () => ({ ...filaInclude().find(i => i.as === 'titulo'), where: tituloWhere(filters) });
   const rows = await PagamentoManualFilaItem.findAll({
     where,
-    include: filaInclude(),
+    include: filaInclude().map(i => i.as === 'titulo' ? { ...i, where: tituloWhere(filters) } : i),
     order: [['selecionado_em', 'ASC'], ['id', 'ASC']],
     limit: 500
   });
@@ -167,7 +170,7 @@ async function listarFilaPagamentos(req, filters = {}) {
   // Rejeicao e uma decisao, nao um pagamento executavel. Projecao somente leitura:
   // nenhum registro de fila e criado e o id negativo nunca passa no validator de baixa.
   const historicoAutorizacoes = await PagamentoAutorizacaoItem.findAll({
-    include: [filaInclude().find(include => include.as === 'titulo')], order: [['id', 'DESC']]
+    include: [includeTitulo()], order: [['id', 'DESC']]
   });
   const filasAtivas = await PagamentoManualFilaItem.findAll({ where: { status: { [Op.in]: ACTIVE_STATUSES } },
     attributes: ['titulo_financeiro_id'] });
@@ -217,8 +220,9 @@ async function listarFilaPagamentos(req, filters = {}) {
   });
   await require('./instrucaoFinanceiraFavorecidoService').anexarInstrucoes(data.map(item => item.titulo).filter(Boolean));
   const counts = await PagamentoManualFilaItem.findAll({
-    attributes: ['status', [sequelize.fn('COUNT', sequelize.col('id')), 'total']],
-    group: ['status'],
+    attributes: ['status', [sequelize.fn('COUNT', sequelize.col('PagamentoManualFilaItem.id')), 'total']],
+    include: [{ model: TituloFinanceiro, as: 'titulo', required: true, attributes: [], where: tituloWhere(filters) }],
+    group: ['PagamentoManualFilaItem.status'],
     raw: true
   });
   const resumo = counts.reduce((acc, item) => {
@@ -230,10 +234,18 @@ async function listarFilaPagamentos(req, filters = {}) {
   resumo.BAIXADO = await PagamentoManualFilaItem.count({ where: {
     status: { [Op.in]: ['BAIXADO', 'RESOLVIDO'] }, movimento_financeiro_id: { [Op.gt]: 0 },
     [Op.and]: whereSemEstornoFila()
-  }, include: [{ model: TituloFinanceiro, as: 'titulo', required: true, attributes: [] }] });
+  }, include: [{ model: TituloFinanceiro, as: 'titulo', required: true, attributes: [], where: tituloWhere(filters) }] });
   resumo.PENDENTE_COMPROVANTE = await PagamentoManualFilaItem.count({ where: wherePendenteComprovante(),
-    include: [{ model: TituloFinanceiro, as: 'titulo', required: true, attributes: [] }] });
-  return { data, resumo };
+    include: [{ model: TituloFinanceiro, as: 'titulo', required: true, attributes: [], where: tituloWhere(filters) }] });
+  // Catalogo minimo apenas de titulos desta fila/status, nao de todas as empresas/credores.
+  // Independente dos filtros estruturados para permitir trocar/limpar selecoes vazias.
+  const opcoes = await PagamentoManualFilaItem.findAll({ where, attributes: [],
+    include: [{ model: TituloFinanceiro, as: 'titulo', required: true, attributes: ['empresa_id', 'parceiro_id'],
+      include: [{ model: EmpresaGrupo, as: 'empresa', attributes: ['id', 'nome'] },
+        { model: Parceiro, as: 'parceiro', attributes: ['id', 'nome'] }] }],
+    group: ['titulo.empresa_id', 'titulo.parceiro_id', 'titulo.empresa.id', 'titulo.empresa.nome', 'titulo.parceiro.id', 'titulo.parceiro.nome'],
+    raw: true, nest: true });
+  return { data, resumo, filtros: opcoesDosTitulos(opcoes), limite: 500 };
 }
 
 async function listarContasPagadorasFila() {

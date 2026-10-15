@@ -48,13 +48,13 @@ export async function validarColunasFila(browser) {
     const menu = page.getByRole('menu'); await menu.waitFor(); return menu;
   };
   const aguardarGravacao = async page => {
-    await page.waitForFunction(() => JSON.parse(localStorage.getItem('financeiro-fila-pagamentos:colunas'))?.ordem?.length === 17);
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem('financeiro-fila-pagamentos:colunas'))?.ordem?.length === 19);
     // Debounce existente e mock de servidor. Nenhuma escrita em banco real.
     await page.waitForResponse(response => response.request().method() === 'PUT' && response.url().endsWith('/preferencias/colunas'));
   };
   try {
     const page = await abrir(71);
-    const original = await ordem(page); assert.equal(original.length, 17);
+    const original = await ordem(page); assert.equal(original.length, 19);
     await page.getByLabel('Selecionar TIT-MASSA-1', { exact: true }).check();
     const juros = page.getByLabel('Juros de TIT-MASSA-1', { exact: true });
     await juros.fill('25');

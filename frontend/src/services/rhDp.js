@@ -102,6 +102,12 @@ export async function getRhRelatorioOperacional(params = {}) {
   return parseJson(response, 'Erro ao buscar relatorio operacional RH/DP');
 }
 
+export async function getRhTitulosEnviados(params = {}) {
+  const query = buildQuery(params);
+  const response = await fetch(`${API_URL}/rh/relatorios/titulos-enviados${query ? '?' + query : ''}`, { headers: authHeaders() });
+  return parseJson(response, 'Erro ao consultar títulos enviados pelo DP');
+}
+
 export async function getRhColaborador(id) {
   const response = await fetch(`${API_URL}/rh/colaboradores/${id}`, {
     headers: authHeaders()
