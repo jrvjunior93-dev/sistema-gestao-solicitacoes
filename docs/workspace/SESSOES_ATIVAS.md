@@ -1,5 +1,9 @@
 # Sessoes Ativas
 
+- codex-promocao-rh-cadastro-main-20261015: finalizado, sem delegacao, ownership
+  liberado; promocao autorizada main6af7b192/devb9ef16e4, backup/timer e schema
+  real producao conferidos. Sem banco/EC2/migration; scripts/testes aprovados.
+
 - codex-promocao-dp-global-salario-main-20261014: finalizado, ownership liberado;
   promocao autorizada
   4fd60afc + 208ae8e2, backup/timer e dev confirmados; sem banco/EC2/delegacao.
@@ -10,6 +14,11 @@ Integracao autorizada de refactor/frontend na main, preservando contratos e
 registros de ambos os agentes. Ownership documental liberado, integracao
 validada e publicacao Git autorizada; sem banco, EC2, aplicacao de migration
 ou reinicio. Backup confirmado pelo usuario.
+- codex-rh-pagamento-cadastro-atual-20261015: finalizado local, sem delegacao,
+  worktree promocao-dp-main-20261014, branch codex/rh-pagamento-cadastro-atual-20261015.
+  Ownership liberado; commit/push dev autorizados na continuacao. Sem banco real,
+  migration aplicada ou deploy pelo agente. Homologacao dev pendente.
+
 Sessao codex-workspace-piloto-20261011: finalizado local, ownership liberado
 na refactor/frontend, sem delegacao. Handoff:
 docs/handoffs/2026-10-11-piloto-navegacao-solicitacoes.md.

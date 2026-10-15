@@ -62,7 +62,9 @@ const models = {
     } catch (e) { store = JSON.parse(snapshot); hydrate(); throw e; } finally { release(); }
   } },
   Obra: { findByPk: async id => Number(id) === 7 ? { id: 7 } : null },
-  RhColaborador: { findAll: async () => ativo ? cadastros.map(c => instance({ ...c, pagamento: contaSalario })) : [] },
+  RhColaborador: { findAll: async o => ativo ? cadastros.filter(c => Number(c.obra_id) === Number(o.where.obra_id)
+    && (!o.where.id || o.where.id[Op.in].includes(Number(c.id))))
+    .map(c => instance({ ...c, pagamento: c.pagamento || contaSalario })) : [] },
   RhColaboradorPagamento: {},
   RhSolicitacao: {
     findOne: async o => store.requests.find(r => Object.entries(o.where).every(([k, v]) => r[k] === v)),
@@ -83,6 +85,7 @@ const deps = {
   'node:crypto': require('node:crypto'),
   sequelize: { Op }, '../models': models, '../middlewares/validation': { ValidationError },
   './rhPagamentoSolicitacaoDomain': domain,
+  './rhPagamentoCadastroDomain': require('../src/services/rhPagamentoCadastroDomain'),
   '../utils/codigoDoSetor': { codigoDoSetor: u => u.dp ? 'DP' : 'OBRA' },
   './setorCapabilityService': { userBelongsToDpSetor: async u => u.dp },
   './authorizationService': { isBusinessAdmin: () => false, canEditRhDpApuracao: async u => u.dp,
@@ -193,7 +196,57 @@ async function validarPreviaRascunho() {
     console.log('Previa sem escrita; primeiro save atomico/idempotente; exclusao propria, historico, privacidade e negativas aprovados.');
   } finally { store = JSON.parse(estadoInicial); hydrate(); scope = [7]; }
 }
+async function validarCadastroAtual() {
+  const snapshot = JSON.stringify(store), antes = cadastros;
+  try {
+    cadastros = [{ ...cadastro }];
+    let p = await service.iniciar(obra, { obra_id: 7, colaborador_id: 11 });
+    const id = p.solicitacao.id;
+    p = await service.salvar(obra, id, { ...p.solicitacao.dados_json, linhas: p.solicitacao.dados_json.linhas.map(l => ({ ...l,
+      modo_recebimento: 'CONTA_SALARIO', parcela_50: true, dias: 17, faltas: 2, acrescimos: 20, descontos: 50,
+      observacoes: 'Preservar ajustes', conferido_obra: true })) });
+    const antigo = p.solicitacao.dados_json;
+    cadastros[0] = { ...cadastro, salario_base: 10000, pagamento: { ...contaSalario, conta: 'NOVA-CONTA' } };
+    const estadoAntesGet = JSON.stringify(store);
+    p = await service.mostrar(obra, id);
+    assert.equal(JSON.stringify(store), estadoAntesGet, 'GET nao grava');
+    const l = p.solicitacao.dados_json.linhas[0];
+    assert.equal(l.salario_base, 10000); assert.equal(l.conta, 'NOVA-CONTA');
+    assert.equal(l.conferido_obra, false); assert.equal(l.cadastro_atualizado, true);
+    assert.equal(l.dias, 17); assert.equal(l.faltas, 2); assert.equal(l.observacoes, 'Preservar ajustes');
+    await assert.rejects(service.salvar(obra, id, antigo), /cadastro.*mudou/);
+    await assert.rejects(service.enviar(obra, id, { revisao: antigo.revisao }), /cadastro.*mudou/);
+    assert.equal(JSON.stringify(store), estadoAntesGet, 'Negativas sem escrita');
+    p = await service.salvar(obra, id, { ...p.solicitacao.dados_json,
+      linhas: [{ ...l, salario_base: 999999, conta: 'CONTA-FORJADA', conferido_obra: true }] });
+    assert.equal(p.solicitacao.dados_json.linhas[0].liquido, 4970, '50% do cadastro, nao do body');
+    assert.equal(p.solicitacao.dados_json.linhas[0].conta, 'NOVA-CONTA');
+    await service.enviar(obra, id, { revisao: p.solicitacao.dados_json.revisao });
+    cadastros[0] = { ...cadastros[0], salario_base: 12000, pagamento: { ...contaSalario, conta: 'DP-CONTA' } };
+    p = await service.mostrar(dp, id);
+    assert.equal(p.solicitacao.dados_json.linhas[0].salario_base, 12000, 'DP recebe atualizado');
+    assert.equal(p.solicitacao.dados_json.linhas[0].conferido_dp, false);
+    p = await service.salvar(dp, id, { ...p.solicitacao.dados_json, linhas: p.solicitacao.dados_json.linhas.map(l => ({ ...l,
+      conferido_dp: true, conferir_alteracoes: true })) });
+    const revisao = p.solicitacao.dados_json.revisao;
+    cadastros[0].salario_base = 13000;
+    await assert.rejects(service.enviar(dp, id, { revisao }), /cadastro.*mudou/, 'Mudanca apos conferencia bloqueia fila');
+    p = await service.mostrar(dp, id);
+    p = await service.salvar(dp, id, { ...p.solicitacao.dados_json, linhas: p.solicitacao.dados_json.linhas.map(l => ({ ...l,
+      conferido_dp: true, conferir_alteracoes: true })) });
+    p = await service.enviar(dp, id, { revisao: p.solicitacao.dados_json.revisao });
+    assert.equal(p.solicitacao.dados_json.linhas[0].liquido, 6470);
+    const historico = JSON.stringify(p.solicitacao.dados_json.linhas[0]);
+    const titulos = JSON.stringify(store.titles);
+    cadastros[0] = { ...cadastros[0], salario_base: 90000, pagamento: { ...contaSalario, conta: 'FUTURA' } };
+    p = await service.mostrar(dp, id);
+    assert.equal(JSON.stringify(p.solicitacao.dados_json.linhas[0]), historico, 'Enviado conserva snapshot');
+    assert.equal(JSON.stringify(store.titles), titulos, 'Titulos intocados');
+    console.log('Cadastro: autor/DP atualizados, GET sem escrita, nova conferencia, corpo forjado, envio obsoleto e titulos historicos aprovados.');
+  } finally { store = JSON.parse(snapshot); hydrate(); cadastros = antes; }
+}
 (async () => {
+  await validarCadastroAtual();
   await validarPreviaRascunho();
   await filaCanonicaTransacaoExterna();
   const [primeiro, replay] = await Promise.all([service.iniciar(obra, { obra_id: 7 }), service.iniciar(obra, { obra_id: 7 })]);

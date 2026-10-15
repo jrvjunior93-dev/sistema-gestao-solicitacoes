@@ -26,7 +26,8 @@ export function valoresDaLinha(l, concluido = false) {
 function DadosRecebimento({ dados, alterar, reembolso = false }) {
   return <div className="rh-pagamento-conta">
     <label>Recebimento<select aria-label="Recebimento" className="form-control" value={dados.modo_recebimento || 'PIX'}
-      onChange={e => alterar({ ...(e.target.value === 'CONTA_SALARIO' ? dados.conta_salario || {} : {}), modo_recebimento: e.target.value })}>
+      onChange={e => alterar({ ...(e.target.value === 'CONTA_SALARIO' ? dados.conta_salario || {}
+        : e.target.value === 'PIX' ? dados.pix_cadastro || {} : {}), modo_recebimento: e.target.value })}>
       <option value="PIX">Pix</option>{!reembolso && <option value="CONTA_SALARIO">Conta salário</option>}
       <option value="OUTRA_CONTA">Outra conta</option></select></label>
     {dados.modo_recebimento !== 'CONTA_SALARIO' && <>
@@ -103,7 +104,8 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
     const saved = restaurar ? draftsRef.current[result.solicitacao.id || chavePrevia] : null;
     if (saved?.chave_rascunho) chaveRascunho.current = saved.chave_rascunho;
     atual.current = restaurarPagamentoInputs(fresh, saved?.inputs, result.pode_conferir, result.solicitacao.situacao);
-    const mudou = JSON.stringify(pagamentoInputs(atual.current)) !== JSON.stringify(pagamentoInputs(fresh));
+    const mudou = JSON.stringify(pagamentoInputs(atual.current)) !== JSON.stringify(pagamentoInputs(fresh))
+      || fresh.linhas.some(l => l.cadastro_atualizado && ['PENDENTE', 'EM_EDICAO'].includes(l.pagamento_estado));
     sujoRef.current = mudou; restauradoSemSalvar.current = mudou;
     setConflito(Boolean(saved && saved.revisao !== fresh.revisao));
     if (!restaurar) { limparDraft(result.solicitacao.id || chavePrevia); setEditor(null); }
@@ -185,8 +187,8 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
             onIniciada?.(result.solicitacao.id);
           }
           // Nao substituir os inputs: mantem foco, texto em digitacao e novas edicoes.
-          atual.current = { ...(novo ? restaurarPagamentoInputs(result.solicitacao.dados_json,
-            pagamentoInputs(atual.current), result.pode_conferir, result.solicitacao.situacao) : atual.current),
+          atual.current = { ...(editadoDuranteGravacao ? restaurarPagamentoInputs(result.solicitacao.dados_json,
+            pagamentoInputs(atual.current), result.pode_conferir, result.solicitacao.situacao) : result.solicitacao.dados_json),
             revisao: result.solicitacao.dados_json.revisao,
             salvo_por: result.solicitacao.dados_json.salvo_por, salvo_em: result.solicitacao.dados_json.salvo_em };
           sujoRef.current = editadoDuranteGravacao;
@@ -220,6 +222,25 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
     if (conflito) { onFechar(); return; }
     if (!respostaRef.current?.solicitacao.id) { onFechar(); return; }
     await operacao(async () => { await salvar(true); onFechar(); });
+  }
+  async function atualizarCadastro() {
+    await operacao(async () => {
+      if (salvamentoPromise.current) await salvamentoPromise.current;
+      const anterior = respostaRef.current;
+      const inputs = pagamentoInputs(atual.current);
+      const result = anterior.solicitacao.id ? await pagamentoRhSolicitacao(`/${anterior.solicitacao.id}`)
+        : await pagamentoRhSolicitacao('/preparar', { method: 'POST', data: {
+          obra_id: Number(localId), colaborador_id: colaborador?.id, colaborador_ids: colaboradorIds
+        } });
+      if (!montado.current) return;
+      const mudouRevisao = anterior.solicitacao.id && anterior.solicitacao.dados_json.revisao !== result.solicitacao.dados_json.revisao;
+      respostaRef.current = result; setResposta(result);
+      atual.current = restaurarPagamentoInputs(result.solicitacao.dados_json, inputs, result.pode_conferir, result.solicitacao.situacao);
+      setForm(atual.current); setConflito(Boolean(mudouRevisao));
+      sujoRef.current = true; setSujo(true); restauradoSemSalvar.current = true;
+      guardar(atual.current, anterior.solicitacao.dados_json.revisao);
+      avisar.sucesso('Cadastro atualizado. Confira os valores e dados para pagamento antes de enviar.');
+    });
   }
   async function enviar() {
     await operacao(async () => {
@@ -333,7 +354,10 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
             e.target.value = '';
           }}><option value="">Selecione</option><option value="40">40%</option><option value="50">50%</option><option value="60">60%</option><option value="100">100%</option><option value="conferir">Conferido</option></select></label>
           <label>Pesquisar<input className="form-control" type="search" value={busca} onChange={e => setBusca(e.target.value)} /></label>
+          {editaveis.length > 0 && <button type="button" className="btn btn-outline btn-sm" disabled={ocupado || salvando || carregando || Boolean(editor) || conflito}
+            onClick={atualizarCadastro}>Atualizar cadastro</button>}
         </div>
+        {linhas.some(l => l.cadastro_atualizado && linhaEditavel(l)) && <p role="status" className="app-note">Salário/diária e dados de cadastro atualizados. Confira novamente as linhas alteradas. Pagamentos já enviados não foram modificados.</p>}
         {resposta.avisos?.length > 0 && <details className="rh-pagamento-aviso"><summary>Pagamentos anteriores nesta competência ({resposta.avisos.length})</summary>
           <ul>{resposta.avisos.map(a => <li key={a.id}>{a.codigo} · {a.status} · {moeda(a.valor_original)}</li>)}</ul></details>}
         <fieldset disabled={ocupado || Boolean(editor)} className="rh-pagamento-table-wrap">
@@ -410,7 +434,15 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
           }}><option value="">Selecione</option>{resposta.responsaveis.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}</select></label>
         </div>
       </>}
-        <DadosRecebimento dados={{ ...editor.dados, conta_salario: linhas.find(l => Number(l.colaborador_id) === Number(editor.id))?.conta_salario }} reembolso={editor.tipo === 'reembolso'} alterar={patch => setEditor(v => ({ ...v, dados: { ...v.dados, ...patch } }))} />
+        <DadosRecebimento dados={{ ...editor.dados,
+          ...(editor.tipo !== 'reembolso' && editor.dados.modo_recebimento === 'CONTA_SALARIO'
+            ? linhas.find(l => Number(l.colaborador_id) === Number(editor.id))?.conta_salario || {} : {}),
+          conta_salario: linhas.find(l => Number(l.colaborador_id) === Number(editor.id))?.conta_salario,
+          pix_cadastro: editor.tipo !== 'reembolso' ? linhas.find(l => Number(l.colaborador_id) === Number(editor.id))?.pix_cadastro : null }} reembolso={editor.tipo === 'reembolso'} alterar={patch => setEditor(v => ({ ...v, dados: { ...v.dados, ...patch } }))} />
+        {editor.tipo !== 'reembolso' && <button type="button" className="btn btn-outline btn-sm" onClick={() => {
+          const pix = linhas.find(l => Number(l.colaborador_id) === Number(editor.id))?.pix_cadastro;
+          if (pix) setEditor(v => ({ ...v, dados: { ...v.dados, ...pix } }));
+        }}>Usar Pix do cadastro</button>}
         <div className="rh-pagamento-rodape"><button className="btn btn-outline btn-sm" onClick={() => setEditor(null)}>Cancelar</button>
           <button className="btn btn-primary btn-sm" onClick={() => {
             if (editor.tipo === 'reembolso' && !editor.dados.responsavel_id) { avisar.erro('Selecione o responsável pelo reembolso.'); return; }
@@ -423,7 +455,9 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
               }
             }
             const conta = Object.fromEntries(['modo_recebimento', 'favorecido_nome', 'favorecido_documento', 'chave_pix', 'banco', 'agencia', 'conta', 'tipo_conta'].map(k => [k, editor.dados[k] || '']));
-            linhaAlterar(editor.id, editor.tipo === 'reembolso' ? { reembolso: editor.dados, desconto_sem_reembolso: false } : conta); setEditor(null);
+            linhaAlterar(editor.id, editor.tipo === 'reembolso' ? { reembolso: editor.dados, desconto_sem_reembolso: false }
+              : { ...conta, recebimento_personalizado: conta.modo_recebimento !== 'CONTA_SALARIO'
+                && (conta.modo_recebimento !== 'PIX' || Object.keys(conta).some(k => String(conta[k]) !== String(linhas.find(l => Number(l.colaborador_id) === Number(editor.id))?.pix_cadastro?.[k] || ''))) }); setEditor(null);
           }}>Confirmar</button></div>
       </div>
     </OverlayModal>}

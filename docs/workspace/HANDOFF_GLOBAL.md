@@ -1,5 +1,16 @@
 # Handoff Global
 
+## Promocao main cadastro no pagamento RH - 2026-10-15
+
+- Usuario homologou dev e autorizou main; backup/timer conferidos. EC2 main
+  6af7b192 e schema real sem pendencias confirmados pelo operador.
+- Integracao de b9ef16e4 preserva main e snapshots enviados; runtime homologado,
+  dependencias/env/migrations inalterados. Conflitos apenas documentais resolvidos
+  preservando ambos os lados. Testes backend/ACL/UI/workspace/50%/build aprovados.
+- Script producao sem migrations, validacao semantica de flags sem alterar valores,
+  restart apenas backend-solicitacoes8000 e health. Sem EC2 pelo agente.
+- Ownership liberado; docs/handoffs/2026-10-15-promocao-rh-cadastro-main.md.
+
 ## Promocao DP global e salario - 2026-10-14
 
 - codex-promocao-dp-global-salario-main-20261014: finalizado, ownership liberado.
@@ -23,6 +34,17 @@
 - Somente publicacao Git. EC2/schema ainda exigem preflight e procedimento
   de deploy; inclui 202610080001_fila_pagamentos_instrumento.js nao aplicada.
 - Handoff: docs/handoffs/2026-10-08-promocao-operacional-main.md.
+## Pagamento RH cadastro atualizado - 2026-10-15
+
+- Correcao local para autor/DP carregar salario/diaria e conta salario atuais;
+  inputs preservados, nova conferencia quando cadastro muda, guarda de versao
+  no save/envio e snapshot de titulos enviados preservado.
+- Testes backend, UI desktop/mobile, workspace, 50% e build aprovados.
+- Sem banco real, migration, commit/push ou deploy. Ownership liberado;
+  publicacao refactor/frontend autorizada pelo usuario na continuacao;
+  script/teste de deploy somente dev sem aplicar migrations anexados.
+- Detalhes: docs/handoffs/2026-10-15-pagamento-rh-cadastro-atual.md.
+
 ## Base e piloto de navegacao em Solicitacoes 2026-10-11
 
 - QA isolada desktop/mobile revalidada em 12/10; commit/push autorizado na
