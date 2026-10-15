@@ -219,10 +219,14 @@ function validateManualPaymentQueueCreateBody(payload = {}) {
 }
 
 function validateManualPaymentQueueQuery(payload = {}) {
-  ensureAllowedKeys(payload, ['status', 'q'], 'Consulta da fila de pagamentos');
+  ensureAllowedKeys(payload, ['status', 'q', 'origem', 'empresa_id', 'credor_id', 'recebimento_dp'], 'Consulta da fila de pagamentos');
   return cleanUndefined({
     status: parseEnum(payload.status, 'Status', ['PENDENTE', 'PENDENTE_COMPROVANTE', 'NAO_PAGO', 'DIVERGENTE', 'EM_EDICAO', 'BAIXADO', 'RESOLVIDO', 'TODOS']),
-    q: parseOptionalText(payload.q, 'Busca', 120)
+    q: parseOptionalText(payload.q, 'Busca', 120),
+    origem: parseEnum(payload.origem, 'Origem', ['RH_DP', 'OUTROS']),
+    empresa_id: parseInteger(payload.empresa_id, 'Empresa'),
+    credor_id: parseInteger(payload.credor_id, 'Credor'),
+    recebimento_dp: parseEnum(payload.recebimento_dp, 'Recebimento DP', ['CONTA_SALARIO', 'PIX', 'DINHEIRO', 'OUTRA_CONTA', 'NAO_INFORMADO'])
   });
 }
 

@@ -32,9 +32,10 @@ function calcularLinha(linha, cadastro) {
 }
 
 function recebimento(linha, cadastro, pagamento = {}, exigir = false) {
-  const modo = ['PIX', 'CONTA_SALARIO', 'OUTRA_CONTA'].includes(linha.modo_recebimento)
+  const modo = ['PIX', 'CONTA_SALARIO', 'OUTRA_CONTA', 'DINHEIRO'].includes(linha.modo_recebimento)
     ? linha.modo_recebimento : 'PIX';
   const contaSalario = modo === 'CONTA_SALARIO';
+  const especie = modo === 'DINHEIRO';
   const salario = cadastro.conta_salario || {
     favorecido_nome: pagamento.favorecido_nome || cadastro.nome,
     favorecido_documento: pagamento.favorecido_documento || cadastro.cpf,
@@ -46,13 +47,13 @@ function recebimento(linha, cadastro, pagamento = {}, exigir = false) {
     favorecido_nome: texto(contaSalario ? salario.favorecido_nome : linha.favorecido_nome || cadastro.nome),
     favorecido_documento: texto(contaSalario ? salario.favorecido_documento : linha.favorecido_documento || cadastro.cpf, 20),
     chave_pix: modo === 'PIX' ? texto(linha.chave_pix ?? pagamento.chave_pix ?? cadastro.pix_chave, 8192) : '',
-    banco: modo === 'PIX' ? '' : texto(contaSalario ? salario.banco : linha.banco, 10),
-    agencia: modo === 'PIX' ? '' : texto(contaSalario ? salario.agencia : linha.agencia, 20),
-    conta: modo === 'PIX' ? '' : texto(contaSalario ? salario.conta : linha.conta, 30),
-    tipo_conta: texto(contaSalario ? salario.tipo_conta : linha.tipo_conta, 30)
+    banco: modo === 'PIX' || especie ? '' : texto(contaSalario ? salario.banco : linha.banco, 10),
+    agencia: modo === 'PIX' || especie ? '' : texto(contaSalario ? salario.agencia : linha.agencia, 20),
+    conta: modo === 'PIX' || especie ? '' : texto(contaSalario ? salario.conta : linha.conta, 30),
+    tipo_conta: especie ? '' : texto(contaSalario ? salario.tipo_conta : linha.tipo_conta, 30)
   };
   if (exigir && (!dados.favorecido_nome || ![11, 14].includes(dados.favorecido_documento.replace(/\D/g, '').length)
-    || (modo === 'PIX' ? !dados.chave_pix : !dados.banco || !dados.agencia || !dados.conta))) {
+    || (!especie && (modo === 'PIX' ? !dados.chave_pix : !dados.banco || !dados.agencia || !dados.conta)))) {
     throw new ValidationError(`Informe os dados de recebimento de ${cadastro.nome}.`);
   }
   return dados;

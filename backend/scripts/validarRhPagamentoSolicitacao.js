@@ -43,9 +43,15 @@ for (const valor of [0, '', null, -1, 100.01, NaN, Infinity, 'R$ 60,00']) {
 }
 const contaSalario = { favorecido_nome: 'Ana QA', favorecido_documento: cadastro.cpf, banco: '104', agencia: '1234', conta: '23456', tipo_conta: 'SALARIO' };
 assert.equal(domain.recebimento({ modo_recebimento: 'CONTA_SALARIO', conta: 'fraude' }, { ...cadastro, conta_salario: contaSalario }, {}, true).conta, '23456');
+const especie = domain.recebimento({ modo_recebimento: 'DINHEIRO', chave_pix: 'nao-usar', banco: '104', agencia: '1', conta: '2', tipo_conta: 'SALARIO' }, cadastro, {}, true);
+assert.equal(especie.modo_recebimento, 'DINHEIRO');
+for (const campo of ['chave_pix', 'banco', 'agencia', 'conta', 'tipo_conta']) assert.equal(especie[campo], '');
+assert.equal(especie.favorecido_documento, cadastro.cpf);
+assert.throws(() => domain.recebimento({ modo_recebimento: 'DINHEIRO' }, { nome: 'Sem CPF' }, {}, true), /recebimento/);
 let store = { requests: [], titles: [{ id: 1, codigo: 'TIT-ANTERIOR', status: 'BAIXADO', valor_original: 8760,
   numero_documento: 'RHDP-2026-10-COL-11-INTEGRAL' }], historicos: [], filas: [] };
 let bloquearFila = false, scope = [7], ativo = true, podeFila = true;
+let dinheiroAtivo = true;
 let cadastros = [cadastro];
 const beneficiariosCriados = [];
 let tail = Promise.resolve();
@@ -75,7 +81,8 @@ const models = {
   RhSolicitacaoHistorico: { create: async p => store.historicos.push(p) },
   CrResponsavelObra: { findAll: async () => [{ user_id: 77 }] },
   User: { findAll: async () => [{ id: 77, nome: 'Responsavel QA' }] },
-  FormaPagamentoFinanceira: { findOne: async o => ({ id: o.where.tipo === 'PIX' ? 4 : 5 }) },
+  FormaPagamentoFinanceira: { findOne: async o => o.where.tipo === 'DINHEIRO' && !dinheiroAtivo ? null
+    : ({ id: o.where.tipo === 'PIX' ? 4 : o.where.tipo === 'DINHEIRO' ? 6 : 5 }) },
   TituloFinanceiro: {
     findAll: async () => store.titles,
     create: async p => { const t = instance({ id: store.titles.length + 1, codigo: `TIT-${store.titles.length + 1}`, ...p }); store.titles.push(t); return t; }
@@ -462,6 +469,30 @@ async function validarCadastroAtual() {
     assert.ok(store.titles.slice(antesFila50).every(t => t.descricao.includes('50%')));
   }
   assert.equal(JSON.stringify(store.titles.slice(0, JSON.parse(titulosAntes50).length)), titulosAntes50);
+  for (const selecao of [{ colaborador_id: 11 }, {}, { colaborador_ids: [11, 12] }]) {
+    const pedido = await service.iniciar(obra, { obra_id: 7, ...selecao });
+    const salvo = await service.salvar(obra, pedido.solicitacao.id, { ...pedido.solicitacao.dados_json,
+      linhas: pedido.solicitacao.dados_json.linhas.map(l => ({ ...l, modo_recebimento: 'DINHEIRO',
+        selecionado: true, conferido_obra: true, descontos: 0, reembolso: null })) });
+    await service.enviar(obra, pedido.solicitacao.id, { revisao: salvo.solicitacao.dados_json.revisao });
+    const recebido = await service.mostrar(dp, pedido.solicitacao.id);
+    const conferido = await service.salvar(dp, pedido.solicitacao.id, { ...recebido.solicitacao.dados_json,
+      linhas: recebido.solicitacao.dados_json.linhas.map(l => ({ ...l, conferido_dp: true, conferir_alteracoes: true })) });
+    const antes = store.titles.length, beneficiariosAntes = beneficiariosCriados.length;
+    dinheiroAtivo = false;
+    await assert.rejects(() => service.enviar(dp, pedido.solicitacao.id, { revisao: conferido.solicitacao.dados_json.revisao }), /forma de pagamento ativa/);
+    assert.equal(store.titles.length, antes, 'Forma DINHEIRO ausente nao cria titulo ou pagamento');
+    dinheiroAtivo = true;
+    await Promise.all([service.enviar(dp, pedido.solicitacao.id, { revisao: conferido.solicitacao.dados_json.revisao }),
+      service.enviar(dp, pedido.solicitacao.id, { revisao: conferido.solicitacao.dados_json.revisao })]);
+    assert.equal(store.titles.length - antes, conferido.solicitacao.dados_json.linhas.length);
+    assert.equal(beneficiariosCriados.length, beneficiariosAntes, 'Dinheiro nao cria favorecido bancario falso');
+    assert(store.titles.slice(antes).every(t => t.payment_beneficiary_id === null));
+    assert(store.titles.slice(antes).every(t => t.forma_pagamento_id === 6));
+    const final = await service.mostrar(dp, pedido.solicitacao.id);
+    assert(final.solicitacao.dados_json.titulos.every(t => t.modo_recebimento === 'DINHEIRO'));
+  }
+  console.log('DINHEIRO: individual/todos/selecionados, sem Pix/conta, identificacao preservada, snapshot por titulo e replay concorrente aprovados.');
   const outroRascunho = await service.iniciar(obra, { obra_id: 7 });
   ativo = false;
   await assert.rejects(service.salvar(obra, outroRascunho.solicitacao.id, { ...outroRascunho.solicitacao.dados_json,

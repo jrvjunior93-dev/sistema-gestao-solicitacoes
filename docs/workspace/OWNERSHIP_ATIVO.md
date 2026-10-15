@@ -1,5 +1,23 @@
 # Ownership Ativo
 
+## Filtros/recebimento da fila e relatorio DP - 2026-10-15
+
+- Publicacao DEV agora autorizada pelo usuario: reserva temporaria do delta,
+  script atualizar-dev-fila-filtros-dp-20261015.sh, teste isolado e handoff para
+  commit/push refactor/frontend. Sem executar EC2, banco ou alterar main.
+- Script/teste DEV, regressoes backend/UI desktop/mobile, build, navegacao e
+  documentacao aprovados novamente. Reserva de publicacao liberada; somente
+  arquivos desta tarefa no commit, outputs/ e outros checkouts preservados.
+- Reserva temporaria do agente unico desta conversa, sem delegacao: services e
+  validators da fila/pagamento DP, tela da fila e modal DP, relatorios RH/DP,
+  dominios auxiliares, testes/docs correspondentes. Handoff:
+  docs/handoffs/2026-10-15-fila-filtros-recebimento-dp.md.
+- Usuario autorizou implementacao; sem commit/push/deploy/banco real nesta etapa.
+- Implementacao e testes locais concluidos; ownership liberado. Build,
+  navegacao, docs e QA real desktop/mobile aprovados; sem nova migration.
+  SQL gerado testado com execucao interceptada, sem banco real. Proximo passo:
+  publicar somente com autorizacao e homologar o recorte em dev.
+
 ## DP cancelamento e comprovante compartilhado - 2026-10-15
 
 - Reserva ativa deste agente, sem delegacao. Usuario confirmou remover linha

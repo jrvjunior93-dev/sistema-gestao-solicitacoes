@@ -10,6 +10,7 @@ import tailwindConfig from '../tailwind.config.js';
 import { validarColunasFila } from './filaColunasQA.mjs';
 import { validarArquivosPreviewFila } from './filaArquivosPreviewQA.mjs';
 import { validarDadosPagamentoFila } from './filaDadosPagamentoQA.mjs';
+import { validarFiltrosDpFila } from './filaFiltrosDpQA.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const stub = '\0qa-fila-instrumentos-';
 const forms = [
@@ -35,10 +36,22 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
     if (id === stub + 'padrao') return `export{default as Pagina}from'/src/components/padrao/Pagina.jsx';export{default as BlocoConteudo}from'/src/components/padrao/BlocoConteudo.jsx';export{default as PageHeader}from'/src/components/padrao/PageHeader.jsx';const avisar={erro:console.error,sucesso:()=>{},alerta:message=>window.__alerts.push(message)};const confirmar=async()=>({ok:true,texto:'Correção QA'});export const Avisos=()=>null;export const useAvisos=()=>({avisos:[],fechar:()=>{},limpar:()=>{},avisar});export const useConfirmacao=()=>({confirmar});`;
     if (id === stub + 'api') return `
       const onlyConsult=new URLSearchParams(location.search).has('somente-consulta');
-      export const getFilaPagamentos=async({status})=>{
+      const filtrosDpScenario=new URLSearchParams(location.search).has('filtros-dp');
+      export const getFilaPagamentos=async(params)=>{
+        const {status}=params;
+        (window.__filterQueries ||= []).push(params);
         const paid=window.__paid,receipt=window.__receipt,saldo=window.__saldo||200;
         const row={id:1,status:paid?'BAIXADO':'PENDENTE',movimento_financeiro_id:paid?10:null,valor_informado:paid?200:null,valor_previsto:saldo,juros:window.__juros||0,multa:window.__multa||0,conta_bancaria_id:5,data_baixa:paid?'2026-10-08':null,pendente_comprovante:paid&&!receipt,comprovante_hash:receipt||!window.__receiptScenario?'qa':null,comprovante_url:receipt||!window.__receiptScenario?'qa':null,titulo:{id:1,codigo:'TIT-QA',status:paid?'QUITADO':'ABERTO',valor_saldo:paid?0:saldo,forma_pagamento_id:1,solicitacao_id:100,solicitacao:{id:100,codigo:'SOL-QA'}}};
         row.titulo.descricao='SOL-QA - MEDIÇÃO';
+        if(filtrosDpScenario) {
+          const dp=(id,codigo,empresa,credor,modo,origem='RH_DP')=>({...structuredClone(row),id,titulo:{...structuredClone(row.titulo),id,codigo,origem_titulo:origem,
+            empresa_id:empresa,empresa:{id:empresa,nome:empresa===3?'Empresa colaborador QA':'Outra empresa QA'},parceiro_id:credor,parceiro:{id:credor,nome:'Credor '+credor},recebimento_dp:modo}});
+          const data=[dp(1,'TIT-DP-DINHEIRO',3,11,'DINHEIRO'),dp(2,'TIT-DP-PIX',4,12,'PIX'),dp(3,'TIT-EXTERNO',3,13,null,'MANUAL')]
+            .filter(r=>(!params.origem||r.titulo.origem_titulo===params.origem)&&(!params.empresa_id||String(r.titulo.empresa_id)===String(params.empresa_id))
+              &&(!params.credor_id||String(r.titulo.parceiro_id)===String(params.credor_id))&&(!params.recebimento_dp||r.titulo.recebimento_dp===params.recebimento_dp));
+          return {data,resumo:{PENDENTE:data.length},filtros:{empresas:[{id:3,nome:'Empresa colaborador QA'},{id:4,nome:'Outra empresa QA'}],
+            credores:[11,12,13].map(id=>({id,nome:'Credor '+id}))}};
+        }
         row.somente_consulta=onlyConsult;
         row.titulo.numero_documento=new URLSearchParams(location.search).has('documento')?'DOC-QA':null;
         row.titulo.formaPagamento=${JSON.stringify(forms[0])};
@@ -92,6 +105,7 @@ try {
     if (new URL(route.request().url()).origin === 'http://127.0.0.1:5308') return route.continue();
     unexpected.push(route.request().url()); return route.abort();
   });
+  if (process.argv.includes('--filtros-dp')) await validarFiltrosDpFila(page);
   await page.goto('http://127.0.0.1:5308/qa-fila');
   const forma = page.getByLabel('Forma de pagamento de TIT-QA', { exact: true });
   await forma.waitFor();

@@ -236,7 +236,7 @@ async function salvar(req, id, payload, transactionExterna = null) {
         parcela_40: !calculo.diaria && Boolean(l.parcela_40), parcela_60: !calculo.diaria && Boolean(l.parcela_60),
         parcela_50: !calculo.diaria && Boolean(l.parcela_50),
         observacoes: texto(l.observacoes, 1000), ...dadosConta, reembolso,
-        recebimento_personalizado: dadosConta.modo_recebimento === 'OUTRA_CONTA'
+        recebimento_personalizado: ['OUTRA_CONTA', 'DINHEIRO'].includes(dadosConta.modo_recebimento)
           || (dadosConta.modo_recebimento === 'PIX' && !contaIgual(dadosConta, atualizada.pix_cadastro)),
         desconto_sem_reembolso: calculo.descontos > 0 && !reembolso };
       const mudou = Object.keys(campos).some(k => JSON.stringify(campos[k] ?? null)
@@ -336,6 +336,8 @@ async function enviar(req, id, payload) {
     const responsaveisIds = new Set((await responsaveis(s.obra_id, transaction)).map(r => Number(r.id)));
     const formaPix = await FormaPagamentoFinanceira.findOne({ where: { tipo: 'PIX', ativo: true }, transaction });
     const formaConta = await FormaPagamentoFinanceira.findOne({ where: { tipo: 'TRANSFERENCIA', ativo: true }, transaction });
+    const formaDinheiro = selecionados.some(l => l.modo_recebimento === 'DINHEIRO' || l.reembolso?.modo_recebimento === 'DINHEIRO')
+      ? await FormaPagamentoFinanceira.findOne({ where: { tipo: 'DINHEIRO', ativo: true }, transaction }) : null;
     const revisando = selecionados.filter(l => l.pagamento_estado === 'EM_EDICAO');
     const revisaoService = revisando.length ? require('./rhPagamentoSolicitacaoRevisaoService') : null;
     for (const l of revisando) {
@@ -366,14 +368,15 @@ async function enviar(req, id, payload) {
           usuarioId: req.user.id };
         const parceiro = await syncParceiroFavorecido(favorecido, transaction);
         // Snapshot por titulo: editar a conta deste pedido nao muda pagamentos anteriores.
-        const beneficiario = await syncFavorecidoBancarioRh({ ...favorecido, parceiro, isolado: true }, transaction);
-        const forma = conta.modo_recebimento === 'PIX' ? formaPix : formaConta;
-        if (!forma) throw new ValidationError('Cadastre a forma Pix/Transferencia ativa antes de enviar.', 409);
+        const beneficiario = conta.modo_recebimento === 'DINHEIRO' ? null
+          : await syncFavorecidoBancarioRh({ ...favorecido, parceiro, isolado: true }, transaction);
+        const forma = conta.modo_recebimento === 'DINHEIRO' ? formaDinheiro : conta.modo_recebimento === 'PIX' ? formaPix : formaConta;
+        if (!forma) throw new ValidationError('Cadastre a forma de pagamento ativa correspondente ao recebimento (Pix, Transferencia ou Dinheiro) antes de enviar.', 409);
         const payloadTitulo = buildTituloRhPayload({ apuracao: { competencia: d.competencia, obra_id: s.obra_id },
           item: { colaborador: { id: l.colaborador_id, nome: l.nome }, observacoes: l.observacoes }, parceiro,
           dataVencimento: d.data_vencimento, categoriaFinanceiraId: categoria.id,
           empresaId: l.empresa_grupo_id, usuarioId: req.user.id, valor: destino.valor,
-          paymentBeneficiaryId: beneficiario.id });
+          paymentBeneficiaryId: beneficiario?.id || null });
         const existente = registros.find(r => !idsEnvio.includes(Number(r.ref.id)) && (destino.sufixo === 'SALARIO'
           ? r.ref.tipo === 'SALARIO' && Number(r.ref.colaborador_id) === Number(l.colaborador_id)
           : r.ref.tipo === 'REEMBOLSO' && Number(r.ref.responsavel_id) === Number(destino.responsavel_id)
@@ -398,6 +401,7 @@ async function enviar(req, id, payload) {
         const ref = { id: titulo.id, codigo: titulo.codigo,
           ...(destino.sufixo === 'SALARIO' ? { colaborador_id: l.colaborador_id } : { origens: destino.origens }),
           tipo: destino.sufixo, valor: destino.valor, empresa_id: destino.empresa_id || l.empresa_grupo_id,
+          modo_recebimento: conta.modo_recebimento,
           responsavel_id: destino.responsavel_id || null };
         const index = titulos.findIndex(t => Number(t.id) === Number(titulo.id));
         if (index >= 0) titulos[index] = ref; else titulos.push(ref);

@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
+    "test:fila-filtros-dp": "node scripts/validarFilaFiltrosDp.js",
+    "test:rhdp-titulos-enviados": "node scripts/validarRhTitulosEnviadosRelatorio.js",
     "test:rhdp-envio-parcial": "node scripts/validarRhPagamentoEnvioParcial.js",
     "test:pix-copia-cola": "node scripts/validarPixCopiaCola.js",
     "test:medicao-recarga-envio": "node scripts/validarMedicaoRecargaFluxoPagamento.js && node scripts/validarRecargasMultiplosCartoes.js && node scripts/validarObraGestaoApropriacoes.js && node scripts/validarAnaliseProprietario.js",
