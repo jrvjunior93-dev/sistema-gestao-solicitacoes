@@ -1,5 +1,16 @@
 # Quadro de Agentes
 
+## Pagamento RH cadastro atual - 2026-10-15
+
+- Sessao codex-rh-pagamento-cadastro-atual-20261015: finalizado local, sem delegacao,
+  ownership liberado. Usuario autorizou commit/push na continuacao; homologacao
+  EC2 dev permanece com o operador, sem main ou migration nova.
+- Plano: hidratar cadastro no backend sem escrita em GET; proteger save/envio;
+  preservar formulario/workspace, testar autor/DP, parcial e historico financeiro.
+- Sem banco real, migration, publicacao Git ou deploy.
+- Backend/calculos/ACL/revisao/idempotencia, UI desktop/mobile/workspace/50%, build
+  e diff aprovados; handoff 2026-10-15-pagamento-rh-cadastro-atual.md.
+
 ## Base e piloto Solicitacoes 2026-10-11
 
 - codex-workspace-piloto-20261011: finalizado local, ownership liberado,

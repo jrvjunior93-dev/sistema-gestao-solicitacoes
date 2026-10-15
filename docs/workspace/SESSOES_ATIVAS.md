@@ -1,5 +1,10 @@
 # Sessoes Ativas
 
+- codex-rh-pagamento-cadastro-atual-20261015: finalizado local, sem delegacao,
+  worktree promocao-dp-main-20261014, branch codex/rh-pagamento-cadastro-atual-20261015.
+  Ownership liberado; commit/push dev autorizados na continuacao. Sem banco real,
+  migration aplicada ou deploy pelo agente. Homologacao dev pendente.
+
 Sessao codex-workspace-piloto-20261011: finalizado local, ownership liberado
 na refactor/frontend, sem delegacao. Handoff:
 docs/handoffs/2026-10-11-piloto-navegacao-solicitacoes.md.

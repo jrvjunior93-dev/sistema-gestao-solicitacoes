@@ -10,6 +10,17 @@ RH/DP e dono do cadastro funcional de colaboradores, documentos, vinculos, compe
 
 ## Regras
 
+- Pagamento por solicitacao: previa e reabertura carregam salario/diaria e conta
+  salario do cadastro atual, tanto para autor quanto DP, sem escrita na consulta.
+  Atualizar cadastro no modal faz nova consulta sem descartar dias/faltas,
+  percentuais, ajustes, observacoes ou reembolso. Mudanca cadastral invalida
+  conferencia da linha; salvar/enviar revalidam a versao do cadastro sob lock.
+  Conta salario sempre vem do servidor; outra conta e PIX personalizado sao
+  preservados. PIX legado nao e substituido silenciosamente: Usar Pix do cadastro
+  permite adotar a chave atual. Linhas enviadas/canceladas e titulos existentes
+  conservam o snapshot. Sem mudar permissao, competencia, historico salarial
+  ou antecipar vigencias futuras; usa a base corrente do cadastro.
+
 - No hub de Colaboradores, Solicitacoes globais e um card separado para DP e
   demais usuarios com acesso global autorizado. Obras/Centros de Custo abre os
   cards de locais; abrir um local mostra seus colaboradores e suas solicitacoes.

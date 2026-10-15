@@ -1,5 +1,16 @@
 # Handoff Global
 
+## Pagamento RH cadastro atualizado - 2026-10-15
+
+- Correcao local para autor/DP carregar salario/diaria e conta salario atuais;
+  inputs preservados, nova conferencia quando cadastro muda, guarda de versao
+  no save/envio e snapshot de titulos enviados preservado.
+- Testes backend, UI desktop/mobile, workspace, 50% e build aprovados.
+- Sem banco real, migration, commit/push ou deploy. Ownership liberado;
+  publicacao refactor/frontend autorizada pelo usuario na continuacao;
+  script/teste de deploy somente dev sem aplicar migrations anexados.
+- Detalhes: docs/handoffs/2026-10-15-pagamento-rh-cadastro-atual.md.
+
 ## Base e piloto de navegacao em Solicitacoes 2026-10-11
 
 - QA isolada desktop/mobile revalidada em 12/10; commit/push autorizado na

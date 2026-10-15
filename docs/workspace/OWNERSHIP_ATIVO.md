@@ -1,5 +1,30 @@
 # Ownership Ativo
 
+## Publicacao dev cadastro RH - 2026-10-15
+
+- Usuario autorizou commit/push desta correcao na refactor/frontend e comandos
+  para EC2 dev; sem main ou execucao remota pelo agente.
+- Reserva de staging dos arquivos do handoff 2026-10-15-pagamento-rh-cadastro-atual,
+  atualizacao documental, novo script/teste de deploy somente dev sem migrations.
+- Preservar outputs/ e demais checkouts; push normal, sem force, com guarda da base.
+- Conferencia/testes e script sem migration aprovados; reserva de edicao/staging
+  liberada para publicacao autorizada. Nenhuma permissao/flag/dependencia nova.
+
+## Pagamento RH: cadastro atualizado - 2026-10-15
+
+- Sessao codex-rh-pagamento-cadastro-atual-20261015, sem delegacao; validado localmente,
+  ownership de edicao liberado. Publicacao dev autorizada na continuacao abaixo.
+- Reserva: rhPagamentoSolicitacaoService.js, novo rhPagamentoCadastroDomain.js,
+  validarRhPagamentoSolicitacao.js, novo teste de cadastro; RhDpPagamentoModal.jsx,
+  rhPagamentoWorkspaceDraft.js, testes UI/workspace e handoff deste ajuste.
+- Reserva documental complementar: README RH/DP e HANDOFF_GLOBAL.md; liberada.
+- Escopo: carregar salario/diaria e conta salario atuais na previa/reabertura para
+  autor e DP, preservar inputs e contas personalizadas, invalidar conferencia
+  obsoleta e negar envio com cadastro desatualizado. Titulos enviados imutaveis.
+- Sem banco real, migration, commit/push, EC2, reinicio ou deploy.
+- Backend real com fixtures, UI desktop/mobile, workspace, 50%, escopos e build
+  aprovados. Handoff: docs/handoffs/2026-10-15-pagamento-rh-cadastro-atual.md.
+
 ## Publicacao dev: pendencias RH/DP - 2026-10-14
 
 - Usuario autorizou commit/push de todas as pendencias RH/DP desta conversa:
