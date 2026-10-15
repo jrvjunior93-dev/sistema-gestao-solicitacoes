@@ -3,23 +3,31 @@
 ## Regularizar recarga de solicitacao excluida - 2026-10-15
 
 - Menu Solicitacoes > Regularizar recargas, exclusivo de GEO/SUPERADMIN,
-  respeitando o escopo de obras. Nao concede gestao de cartoes ou acesso
-  financeiro geral. O aviso da Nova Solicitacao tem atalho somente para GEO.
+  com consulta/regularizacao global de recargas excluidas de todas as obras.
+  Esta excecao NAO altera vinculos de obra, permissoes ou regras de visibilidade
+  da lista/detalhe/anexos das solicitacoes. Nao concede acesso financeiro geral.
 - GET /recargas-cartao/regularizacao lista solicitacoes excluidas com recarga;
   filtro exato codigo e pagina de 30 solicitacoes por cursor antes_de.
   GET /recargas-cartao/regularizacao/:id confere todos os cartoes e titulos.
   Consultar/abrir a tela nao grava dados.
 - POST no mesmo caminho exige motivo, revisao atual e chave de idempotencia;
   uma transacao, mutex por cartao em ordem crescente e locks da solicitacao,
-  recargas, titulos e prestacoes. Historico guarda autor, motivo, estado
-  anterior, resultado e chave. Falha de auditoria desfaz a operacao.
+  recargas, titulos e prestacoes. LogExclusao, entidade REGULARIZACAO_RECARGA,
+  guarda autor, motivo completo em payload_json, estado anterior, resultado
+  e chave. Nao cria Historico, atribuicao, mencao ou envio ao setor que possa
+  conceder visibilidade. Falha de auditoria desfaz a operacao; replay legado
+  ainda consulta o Historico antigo, sem reescrever ou remover esses registros.
 - Sem pagamento: cancela titulo aberto/previsao e encerra o ciclo; preserva
   exclusao da solicitacao, valor original, anexos e log de exclusao.
-- Com pagamento quitado: recupera a solicitacao original no GEO, com os mesmos
-  IDs e titulos. Retoma a prestacao, sem resetar rateios/decisoes ja existentes;
+- Com pagamento quitado: recupera a solicitacao original preservando setor,
+  status, IDs e titulos. Retoma a prestacao, sem resetar rateios/decisoes existentes;
   cria somente o formulario se estiver ausente. Nao valida gastos automaticamente.
   Em solicitacao mista, encerra os cartoes nao pagos e recupera os pagos,
   com o tratamento de todos exibido antes da confirmacao.
+- Prestacao/detalhe continuam com os usuarios ja autorizados pela regra normal.
+  A resposta do POST revalida assertPodeVisualizarSolicitacao, inclusive no
+  replay; link operacional so aparece se pode_abrir_solicitacao=true. Negativa
+  ou indisponibilidade da ACL omite o link e nao concede acesso por outro caminho.
 - Nao altera baixas, pagamentos, titulos pagos, saldo informado nem ajuste do
   cartao. Despesa continua vindo apenas dos gastos reais validados.
 - Fila/envio bancario/autorizacao ativa, negociacao/cobranca protegida,

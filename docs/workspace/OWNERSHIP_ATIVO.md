@@ -4032,3 +4032,20 @@ e ownership liberado para publicacao dev. outputs/ permanece fora do commit.
   Sem main, EC2 ou escrita real no banco pelo agente; outputs/ fora do commit.
 - Validacoes locais repetidas e script DEV aprovado em teste isolado. Reserva
   de publicacao encerrada e ownership liberado para o commit/push autorizado.
+
+## Regularizacao global GEO sem ampliar visibilidade - 2026-10-15
+
+- Trabalho concluido localmente pelo agente desta conversa, sem delegacao. Usuario autorizou
+  GEO regularizar recargas de todas as obras, sem ampliar acesso a solicitacoes.
+- Reservados: recargaCartaoRegularizacaoService/controller, testes backend da
+  regularizacao/isolamento, RecargasRegularizacao.jsx/teste UI e docs/handoff.
+- Preservar setor/status/ACL, anexos, financeiro e idempotencia. Avaliar auditoria
+  isolada para nao conceder leitura por historico de interacao. Sem mudanca das
+  regras genericas de visibilidade. Sem commit/push/EC2/banco real/migration.
+- Testes de regularizacao, ACL/anexos, UI, build, navegacao e documentacao
+  aprovados. Reserva encerrada e ownership liberado; handoff registrado em
+  docs/handoffs/2026-10-15-recarga-geo-global-visibilidade.md.
+- Publicacao autorizada pelo usuario: reserva documental e do delta acima para
+  commit/push em refactor/frontend. Sem main, EC2, banco real ou migrations.
+- Validacoes de publicacao repetidas com sucesso. Reserva encerrada e ownership
+  liberado para publicar somente este delta; outputs/ excluido do commit.

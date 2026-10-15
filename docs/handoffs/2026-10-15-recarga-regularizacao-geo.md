@@ -1,5 +1,9 @@
 # Regularizacao GEO de recarga excluida
 
+Atualizacao posterior: o escopo global GEO, a preservacao de setor/status e a
+auditoria isolada estao em 2026-10-15-recarga-geo-global-visibilidade.md.
+O mapa abaixo registra a implementacao original anterior a essa mudanca.
+
 ## Pedido e estado
 
 - Usuario autorizou implementar o caminho de regularizacao que faltava ao aviso.

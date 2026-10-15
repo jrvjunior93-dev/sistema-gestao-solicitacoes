@@ -4,12 +4,11 @@ const { createHash } = require('node:crypto');
 const { Op } = require('sequelize');
 const { sequelize, Solicitacao, SolicitacaoRecargaCartao, CartaoRecarga, CartaoRecargaPrestacao,
   TituloFinanceiro, MovimentoFinanceiro, PaymentIntent, PagamentoManualFilaItem,
-  PagamentoAutorizacaoItem, IntegracaoSiengeFila, CaixaPagamentoRemessaItem, Historico, Obra } = require('../models');
-const auth = require('./authorizationService');
+  PagamentoAutorizacaoItem, IntegracaoSiengeFila, CaixaPagamentoRemessaItem, Historico, LogExclusao, Obra } = require('../models');
 const { bloquearCartao } = require('./cartaoRecargaSaldoService');
-const { findSetorByCapability, resolveSetorPersistenciaValue } = require('./setorCapabilityService');
 
 const ACAO = 'RECARGA_EXCLUIDA_REGULARIZADA';
+const ENTIDADE_AUDITORIA = 'REGULARIZACAO_RECARGA';
 const token = v => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_');
 const cents = v => Math.round(Number(v || 0) * 100);
 const hash = v => createHash('sha256').update(JSON.stringify(v)).digest('hex');
@@ -22,11 +21,6 @@ function assertGeo(user = {}) {
   }
 }
 
-async function assertEscopo(solicitacao, user) {
-  if (!solicitacao) fail(404, 'Solicitacao de recarga nao encontrada.');
-  if (!(await auth.hasObraAccess(user, solicitacao.obra_id))) fail(403, 'Acesso negado a obra desta recarga.');
-}
-
 function idValido(id) {
   if (!Number.isSafeInteger(Number(id)) || Number(id) <= 0) fail(400, 'Solicitacao invalida.');
   return Number(id);
@@ -34,8 +28,8 @@ function idValido(id) {
 
 async function listar(user, filtro = {}) {
   assertGeo(user);
-  const scope = await auth.getUserObraScopeIds(user);
-  const where = { cancelada: true, ...(scope ? { obra_id: { [Op.in]: scope } } : {}) };
+  // Excecao exclusiva deste fluxo: nao altera o escopo de obras/solicitacoes do usuario.
+  const where = { cancelada: true };
   if (filtro.antes_de) where.id = { [Op.lt]: idValido(filtro.antes_de) };
   if (filtro.codigo) where.codigo = String(filtro.codigo).trim().slice(0, 40);
   const rows = await Solicitacao.findAll({ where, attributes: ['id', 'codigo', 'obra_id'],
@@ -51,9 +45,10 @@ async function listar(user, filtro = {}) {
 // Ler os titulos sem defaultScope permite identificar exclusao logica financeira;
 // nunca os restaura ou recria implicitamente. IDs/valores enviados pelo cliente nao comandam a operacao.
 async function carregar(id, user, transaction = null) {
+  assertGeo(user);
   const opts = { transaction, ...(transaction ? { lock: transaction.LOCK.UPDATE } : {}) };
   const solicitacao = await Solicitacao.findByPk(id, opts);
-  await assertEscopo(solicitacao, user);
+  if (!solicitacao) fail(404, 'Solicitacao de recarga nao encontrada.');
   const recargas = await SolicitacaoRecargaCartao.findAll({ where: { solicitacao_id: id }, order: [['id', 'ASC']], ...opts });
   if (!recargas.length) fail(404, 'Esta solicitacao nao pertence ao fluxo de recarga.');
   const titulos = await TituloFinanceiro.unscoped().findAll({ where: { solicitacao_id: id }, order: [['id', 'ASC']], ...opts });
@@ -130,7 +125,7 @@ function serializar(ctx) {
     revisao: ctx.revisao, encerrada, pode_regularizar: Boolean(ctx.solicitacao.cancelada) && !ctx.impedimento && !encerrada,
     impedimento: ctx.impedimento, acao: recupera ? 'RECUPERAR_PRESTACAO' : 'ENCERRAR_SEM_PAGAMENTO',
     descricao: recupera
-      ? 'Recuperar a solicitacao original no GEO para prestar contas dos pagamentos. Cartoes sem pagamento serao encerrados e seus titulos pendentes cancelados. Nenhum pagamento sera alterado.'
+      ? 'Recuperar a solicitacao original, preservando setor, status e regras de visibilidade. A prestacao continua com os usuarios ja autorizados. Cartoes sem pagamento serao encerrados e seus titulos pendentes cancelados. Nenhum pagamento sera alterado.'
       : 'Encerrar todas as recargas desta solicitacao e cancelar os titulos sem pagamento. A solicitacao permanecera excluida; historico e anexos serao preservados.',
     recargas: ctx.linhas.map(l => ({ id: l.r.id, cartao: `${l.cartao?.nome || 'Cartao'} · final ${l.cartao?.ultimos_quatro || '----'}`,
       titulo_id: l.titulo?.id || null, titulo_codigo: l.titulo?.codigo, titulo_status: l.titulo?.status || 'AUSENTE',
@@ -160,11 +155,17 @@ async function regularizar(id, payload, user) {
     for (const cartao of cartoes) await bloquearCartao(cartao, transaction);
     const ctx = await carregar(id, user, transaction);
     if (JSON.stringify(cartoes) !== JSON.stringify([...new Set(ctx.linhas.map(l => Number(l.r.cartao_recarga_id)))].sort((a, b) => a - b))) fail(409, 'Os cartoes mudaram. Atualize a consulta.');
-    const historicos = await Historico.findAll({ where: { solicitacao_id: id, acao: ACAO }, transaction, order: [['id', 'DESC']] });
-    for (const historico of historicos) {
-      let dados; try { dados = JSON.parse(historico.metadata || '{}'); } catch { continue; }
+    const auditorias = await LogExclusao.findAll({ where: { entidade: ENTIDADE_AUDITORIA, entidade_id: id, solicitacao_id: id }, transaction, order: [['id', 'DESC']] });
+    // Compatibilidade de replay com a versao anterior. Nao criar novo Historico:
+    // autoria/interacao e setor GEO nessa tabela podem conceder visibilidade.
+    const legados = await Historico.findAll({ where: { solicitacao_id: id, acao: ACAO }, transaction, order: [['id', 'DESC']] });
+    for (const registro of [
+      ...auditorias.map(a => ({ usuario_id: a.usuario_id, metadata: a.payload_json })),
+      ...legados.map(h => ({ usuario_id: h.usuario_responsavel_id, metadata: h.metadata }))
+    ]) {
+      let dados; try { dados = JSON.parse(registro.metadata || '{}'); } catch { continue; }
       if (dados.chave_idempotencia !== chave) continue;
-      if (Number(historico.usuario_responsavel_id) !== Number(user.id) || dados.fingerprint !== fingerprint) fail(409, 'Chave de regularizacao reutilizada com dados diferentes. Atualize a consulta.');
+      if (Number(registro.usuario_id) !== Number(user.id) || dados.fingerprint !== fingerprint) fail(409, 'Chave de regularizacao reutilizada com dados diferentes. Atualize a consulta.');
       return { ...dados.resultado, replay: true };
     }
     if (!ctx.solicitacao.cancelada) fail(409, 'Esta solicitacao ja esta ativa. Abra o detalhe para continuar.');
@@ -195,16 +196,18 @@ async function regularizar(id, payload, user) {
     const statusAnterior = ctx.solicitacao.status_global;
     const setorAnterior = ctx.solicitacao.area_responsavel;
     if (recupera) {
-      const setorGeo = await findSetorByCapability('eh_setor_geo', { transaction, attributes: ['id', 'codigo', 'nome'] });
-      await ctx.solicitacao.update({ cancelada: false, area_responsavel: resolveSetorPersistenciaValue(setorGeo, 'GEO'),
-        status_global: ctx.linhas.every(l => l.pago === 0 || l.prestacao?.status === 'VALIDADA') ? 'APROVADA'
-          : ctx.linhas.some(l => l.prestacao?.status === 'ENVIADA') ? 'ATENDIDO' : 'PAGA' }, { transaction });
+      // Reativar nao equivale a enviar ao GEO, atribuir responsavel ou aprovar.
+      // Preservar estes campos impede acesso indireto pela regra normal de setor/status.
+      await ctx.solicitacao.update({ cancelada: false }, { transaction });
     }
     const resultado = { solicitacao_id: id, codigo: ctx.solicitacao.codigo, recuperada: recupera,
-      mensagem: recupera ? 'Solicitacao original recuperada no GEO. Abra a prestacao para conferir os gastos reais.' : 'Recarga encerrada sem pagamento. Titulos pendentes cancelados; historico preservado.' };
-    await Historico.create({ solicitacao_id: id, usuario_responsavel_id: user.id, setor: user.area || 'GEO',
-      acao: ACAO, status_anterior: statusAnterior, status_novo: ctx.solicitacao.status_global,
-      observacao: motivo, metadata: JSON.stringify({ chave_idempotencia: chave, fingerprint, resultado,
+      mensagem: recupera ? 'Solicitacao original recuperada, sem alterar setor, status ou regras de visibilidade. A prestacao deve continuar com os usuarios ja autorizados.' : 'Recarga encerrada sem pagamento. Titulos pendentes cancelados; historico preservado.' };
+    // LogExclusao ja possui trilha transacional para exclusao/recuperacao. Entidade
+    // propria distingue regularizacao de exclusao e nao participa de ACLs por historico.
+    await LogExclusao.create({ entidade: ENTIDADE_AUDITORIA, entidade_id: id, solicitacao_id: id,
+      usuario_id: user.id, perfil: token(user.perfil) || 'USUARIO', setor: user.area || 'GEO',
+      motivo: motivo.slice(0, 255), payload_json: JSON.stringify({ acao: ACAO, motivo, chave_idempotencia: chave, fingerprint, resultado,
+        status_anterior: statusAnterior, status_novo: ctx.solicitacao.status_global,
         setor_anterior: setorAnterior, antes,
         exclusao_preservada: !recupera, pagamentos_preservados: true }) }, { transaction });
     return resultado;

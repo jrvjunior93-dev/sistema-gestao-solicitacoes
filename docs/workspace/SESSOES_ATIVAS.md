@@ -1,5 +1,9 @@
 # Sessoes Ativas
 
+- codex-recarga-geo-global-visibilidade-20261015: implementacao local concluida,
+  ownership liberado; GEO global so na regularizacao, sem ampliar visibilidade
+  de solicitacoes/anexos. Sem nova migration/commit/push/EC2/banco real.
+
 - codex-recarga-regularizacao-geo-20261015: concluida localmente, ownership
   liberado; testes isolados/backend/UI/build/navegacao aprovados. Publicacao
   e homologacao real pendentes; sem nova migration/EC2/banco real.

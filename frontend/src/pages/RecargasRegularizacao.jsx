@@ -62,7 +62,8 @@ export default function RecargasRegularizacao() {
     <PageHeader titulo="Regularizar recargas" descricao="Solicitações excluídas · GEO / SUPERADMIN" />
     {erro && <div className="app-alert app-alert--error" role="alert">{erro}</div>}
     {resultado && <div className="app-alert app-alert--success" role="status">
-      {resultado.mensagem} {resultado.recuperada && <a className="btn btn-outline btn-sm" href={`/solicitacoes/${resultado.solicitacao_id}`}>Abrir prestação de contas · {resultado.codigo}</a>}
+      {resultado.mensagem} {resultado.recuperada && resultado.pode_abrir_solicitacao === true && <a className="btn btn-outline btn-sm" href={`/solicitacoes/${resultado.solicitacao_id}`}>Abrir prestação de contas · {resultado.codigo}</a>}
+      {resultado.recuperada && resultado.pode_abrir_solicitacao !== true && <p className="mt-2">A regularização não concede acesso ao detalhe. A prestação e os anexos continuam sujeitos à regra normal de visibilidade.</p>}
     </div>}
     <BlocoConteudo titulo="Solicitações de recarga excluídas">
       <form className="flex flex-wrap items-end gap-3" onSubmit={e => { e.preventDefault(); setErro(''); void carregar({ filtro: codigo.trim() }); }}>
@@ -72,7 +73,7 @@ export default function RecargasRegularizacao() {
         <button className="btn btn-outline btn-sm" disabled={carregando || salvando}>Consultar lista</button>
         {aplicado && <button type="button" className="btn btn-ghost btn-sm" disabled={carregando || salvando} onClick={() => { setCodigo(''); void carregar({ filtro: '' }); }}>Limpar filtro</button>}
       </form>
-      <p className="py-3 text-sm text-[var(--c-muted)]">Confira a solicitação antes de agir. A regularização abrange todos os cartões dela; não apaga pagamentos, anexos ou histórico.</p>
+      <p className="py-3 text-sm text-[var(--c-muted)]">Consulte recargas excluídas de todas as obras. A regularização abrange todos os cartões da solicitação, sem conceder acesso ao detalhe ou aos anexos fora da regra de visibilidade.</p>
       <TabelaPadrao storageKey="recargas-regularizacao" itens={lista.items} carregando={carregando} vazio="Nenhuma recarga excluída neste recorte."
         acoesLinha={i => <button type="button" className="btn btn-outline btn-sm" disabled={consultando || salvando} onClick={() => conferir(i.id)}>Conferir {i.codigo}</button>} colunas={[
         { id: 'codigo', titulo: 'Solicitação', tipo: 'codigo', render: i => i.codigo },

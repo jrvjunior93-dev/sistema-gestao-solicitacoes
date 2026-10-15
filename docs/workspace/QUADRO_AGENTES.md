@@ -1,5 +1,12 @@
 # Quadro de Agentes
 
+## Regularizacao GEO global e visibilidade - 2026-10-15
+
+- Agente unico, sem delegacao. Usuario autorizou excecao apenas na regularizacao.
+- Setor/status e ACLs genericas preservados; auditoria isolada nao concede
+  leitura. Backend/UI/isolamento aprovados; sem migration/publicacao/banco real.
+- Handoff 2026-10-15-recarga-geo-global-visibilidade.md registrado.
+
 ## Regularizacao de recarga excluida - 2026-10-15
 
 - Agente unico, sem delegacao. Implementacao local e testes isolados concluidos.

@@ -1,5 +1,14 @@
 # Handoff Global
 
+## Regularizacao GEO global sem ampliar visibilidade - 2026-10-15
+
+- Excecao global apenas na regularizacao de recargas excluidas; sem alterar
+  regras de lista/detalhe/anexos. Recuperacao preserva setor e status; auditoria
+  isolada em LogExclusao nao concede leitura por interacao/historico GEO.
+- Testes com ACLs reais e UI aprovados. Link exige visibilidade normal em todo
+  replay. Sem migration, commit/push/EC2 ou banco real. Handoff especifico:
+  docs/handoffs/2026-10-15-recarga-geo-global-visibilidade.md.
+
 ## Regularizacao de recarga excluida - 2026-10-15
 
 - Implementada localmente a area Solicitacoes > Regularizar recargas, GEO/
