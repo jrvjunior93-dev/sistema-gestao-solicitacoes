@@ -34,6 +34,85 @@
 - Somente publicacao Git. EC2/schema ainda exigem preflight e procedimento
   de deploy; inclui 202610080001_fila_pagamentos_instrumento.js nao aplicada.
 - Handoff: docs/handoffs/2026-10-08-promocao-operacional-main.md.
+## DP: cancelamento e comprovante compartilhado - 2026-10-15
+
+- Concluido local, sem publicacao. Remover colaborador/cancelar pagamento inteiro
+  com motivo, revisao, auditoria e bloqueio de baixa/banco; preserva permissoes.
+- Mesmo PDF em titulos distintos e lote sem baixa. Migration estrutural nova
+  202610150002_comprovante_compartilhado_fila.js, NAO aplicada pelo agente.
+- Codigo antes do Tipo no padrao DP; consulta atualizada nao tenta salvar ao
+  fechar em modo leitura. Testes backend/UI/build/navegacao aprovados.
+- Handoff: docs/handoffs/2026-10-15-dp-cancelamento-comprovante-compartilhado.md.
+  Ownership liberado; sem commit/push/EC2/banco real. outputs/ fora do Git.
+- Publicacao posterior autorizada pelo usuario na refactor/frontend. Script
+  DEV dp-comprovante-compartilhado-20261015 e teste isolado preparados; comandos
+  aplicam apenas a migration nova apos conferir identidade e reiniciam backend-dev.
+  Nenhuma operacao real na EC2/banco pelo agente; main preservada.
+
+## Regularizacao GEO global sem ampliar visibilidade - 2026-10-15
+
+- Excecao global apenas na regularizacao de recargas excluidas; sem alterar
+  regras de lista/detalhe/anexos. Recuperacao preserva setor e status; auditoria
+  isolada em LogExclusao nao concede leitura por interacao/historico GEO.
+- Testes com ACLs reais e UI aprovados. Link exige visibilidade normal em todo
+  replay. Sem migration, commit/push/EC2 ou banco real. Handoff especifico:
+  docs/handoffs/2026-10-15-recarga-geo-global-visibilidade.md.
+
+## Regularizacao de recarga excluida - 2026-10-15
+
+- Implementada localmente a area Solicitacoes > Regularizar recargas, GEO/
+  SUPERADMIN com escopo de obra. Encerra sem baixa ou recupera original paga
+  para prestacao, preservando financeiro/historico; mistos tratados em conjunto.
+- Auditoria/revisao/idempotencia/locks e guardas de fila/banco. Backend/UI/
+  regressoes/build/navegacao aprovados; layout sem novas falhas (legado pendente).
+- Sem nova migration, commit/push, EC2 ou banco real. Handoff detalhado:
+  docs/handoffs/2026-10-15-recarga-regularizacao-geo.md.
+- Usuario autorizou publicacao refactor/frontend; script DEV sem migrations
+  e teste isolado preparados. Reinicio exclusivo backend-dev8001 pelo operador.
+
+## Contexto da recarga excluida - 2026-10-15
+
+- Concluido local: nao buscar detalhe de solicitacao excluida sem pendencia;
+  encontrar ativa anterior, preservar trava financeira e mostrar regularizacao GEO.
+- Falha de consulta nao aparece como Sem recarga anterior e tem retry; primeira
+  recarga real sem pendencia nao mostra erro nem bloqueio de historico.
+- Backend/UI desktop/mobile/build aprovados. Sem migration/commit/push/EC2.
+  Handoff: docs/handoffs/2026-10-15-recarga-contexto-excluida.md.
+
+## Publicacao DEV saldo cartoes e DP - 2026-10-15
+
+- Commit/push autorizados na refactor/frontend e comandos de atualizacao dev.
+- Script atualizar-dev-saldo-cartoes-dp-20261015.sh confere ambiente e aplica
+  exclusivamente 202610150001_cartoes_recarga_saldo.js antes do restart dev8001.
+- Teste de deploy simula pendencias extras, banco/processo/porta incorretos,
+  flags divergentes, repeticao, falha de migration e health. Sem EC2/banco real.
+- Conteudo/handoff da implementacao preservados; nao publicar outputs/.
+
+## Saldo dos cartoes e limite de conferencia DP - 2026-10-15
+
+- Concluido localmente, branch codex/cartao-saldo-dp-20261015, sem publicacao.
+- Gastos reais/sobra por cartao, saldo historico calculado, ajuste GEO com
+  motivo/extrato e auditoria imutavel. Custo por destino, caixa preservado.
+- Salvar/conferir RH isolado por usuario (300/min); enviar/revisar protegidos.
+- Nova migration estrutural 202610150001_cartoes_recarga_saldo nao aplicada.
+  Sem backfill de prestacoes/titulos. Sem banco real alterado ou EC2/restart.
+- Backend/middleware/schema/UI desktop/mobile/build/docs aprovados, ownership
+  liberado. Detalhes e proximo passo em
+  docs/handoffs/2026-10-15-saldo-cartoes-conferencia-dp.md.
+
+## Compra Direta: frete sincronizado no Financeiro - 2026-10-15
+
+- Implementacao local autorizada: embutido ajusta aberto sem baixa ou gera
+  complemento se pago; terceiro separado, sem duplicar na geracao do fornecedor.
+  Quantidade preserva regra anterior. Sem baixa/enqueue/debito automaticos.
+- Locks, transacao unica, auditoria, protecoes/ACL e negativas; services reais
+  com adaptadores de banco, UI desktop/mobile, regressao de modal/SSE, build,
+  documentos, permissoes e sintaxe/diff aprovados. Sem migration/dependencias.
+- Ownership liberado. Nao commitado/publicado; sem EC2/banco real alterado.
+  Branch codex/compra-direta-frete-financeiro-20261015; proximo passo e publicar
+  somente apos pedido e homologar dev. Handoff:
+  docs/handoffs/2026-10-15-compra-direta-frete-financeiro.md.
+
 ## Pagamento RH cadastro atualizado - 2026-10-15
 
 - Correcao local para autor/DP carregar salario/diaria e conta salario atuais;

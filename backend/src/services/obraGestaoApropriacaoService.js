@@ -138,6 +138,12 @@ function distribuirPorApropriacao({ valor, titulo = null, solicitacao = null } =
   // solicitacao para antecipar despesas antes dos rateios da prestacao validada.
   if (titulo?.origem_titulo === 'RECARGA_CARTAO'
     && (titulo.considera_dre === false || !titulo.possui_rateio || !normalizarRateios(titulo.rateios).length)) return [];
+  // A baixa credita o cartao, mas apenas o gasto validado e custo. Proporcao
+  // tambem suporta uso da sobra de recargas anteriores (gasto > recarga atual).
+  if (titulo?.origem_titulo === 'RECARGA_CARTAO' && titulo.valor_despesa_prestacao != null) {
+    valor = asNumber(titulo.valor_original) > 0
+      ? Math.min(asNumber(valor) / asNumber(titulo.valor_original), 1) * asNumber(titulo.valor_despesa_prestacao) : 0;
+  }
   return distribuirCentavos(
     valor,
     selecionarFonteApropriacao({ titulo, solicitacao })

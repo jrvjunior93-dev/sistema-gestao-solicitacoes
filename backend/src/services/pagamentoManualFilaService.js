@@ -32,7 +32,7 @@ const { resolverSolicitacoesDosTitulos, registrarVinculosContratuaisAoEnfileirar
 const { sincronizarDossiesComFila } = require('./pagamentoAutorizacaoFilaService');
 const { uploadToS3, getPresignedUrl } = require('./s3');
 const { canAccessSolicitacaoFile } = require('./fileAccessService');
-const { canAccessFilaPagamentos, getFinanceiroObraScopeIds } = require('./authorizationService');
+const { canAccessFilaPagamentos, getFinanceiroObraScopeIds, canBaixarFilaPagamentos } = require('./authorizationService');
 const { encaminharSolicitacaoParaFinanceiroAoEnfileirar } = require('./solicitacaoFinanceiroStatusService');
 const { env } = require('../config/env');
 const { userHasNominalAreaPermission } = require('./authorizationService');
@@ -523,68 +523,73 @@ function enfileirarTitulosAutorizados(req, payload, autorizacaoLoteId, autorizac
 }
 
 async function anexarComprovanteFila(req, filaId, file) {
-  const id = Number(filaId);
-  if (!Number.isInteger(id) || id <= 0 || !file?.buffer?.length) {
-    throw createHttpError(400, 'Selecione um comprovante PDF valido.');
-  }
-  if (file.buffer.subarray(0, 5).toString() !== '%PDF-') {
-    throw createHttpError(400, 'O comprovante selecionado nao e um PDF valido.');
-  }
-  const hash = crypto.createHash('sha256').update(file.buffer).digest('hex');
-  const itemAtual = await PagamentoManualFilaItem.findByPk(id);
-  if (!podeAnexarComprovanteFila(itemAtual)) {
-    throw createHttpError(409, 'O item nao permite anexar comprovantes.');
-  }
-  if (itemAtual.comprovante_hash === hash) return sincronizarComprovanteRepetido(req, id);
-  const comprovanteExistente = await PagamentoManualFilaItem.findOne({ where: { comprovante_hash: hash } });
-  if (comprovanteExistente) throw createHttpError(409, 'Este comprovante ja foi vinculado a outro titulo.');
-  const comprovanteNovoExistente = await PagamentoManualFilaComprovante.findOne({ where: { hash } });
-  if (comprovanteNovoExistente?.fila_id === id) return sincronizarComprovanteRepetido(req, id);
-  if (comprovanteNovoExistente) throw createHttpError(409, 'Este comprovante ja foi vinculado a outro titulo.');
-  const url = await uploadToS3(file, `financeiro/fila-pagamentos/${id}/comprovantes`);
-  return sequelize.transaction(async (transaction) => {
-    const item = await PagamentoManualFilaItem.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
-    if (!podeAnexarComprovanteFila(item)) {
-      throw createHttpError(409, 'O item nao permite anexar comprovantes.');
-    }
-    if (item.comprovante_hash === hash) {
-      await registrarComprovantesFilaNoHistorico(req, item, transaction);
-      return item;
-    }
-    const existente = await PagamentoManualFilaItem.findOne({ where: { comprovante_hash: hash }, transaction });
-    if (existente) throw createHttpError(409, 'Este comprovante ja foi vinculado a outro titulo.');
-    const existenteNovo = await PagamentoManualFilaComprovante.findOne({ where: { hash }, transaction });
-    if (existenteNovo?.fila_id === id) {
-      await registrarComprovantesFilaNoHistorico(req, item, transaction);
-      return item;
-    }
-    if (existenteNovo) throw createHttpError(409, 'Este comprovante ja foi vinculado a outro titulo.');
-    const vinculadoEm = new Date();
-    await PagamentoManualFilaComprovante.create({
-      fila_id: id, nome: file.originalname, url, hash, tipo: 'PDF',
-      vinculado_por: req.user?.id || null, vinculado_em: vinculadoEm
-    }, { transaction });
-    if (!item.comprovante_hash) {
-      await item.update({
-        comprovante_nome: file.originalname,
-        comprovante_url: url,
-        comprovante_hash: hash,
-        comprovante_tipo: 'PDF',
-        comprovante_vinculado_por: req.user?.id || null,
-        comprovante_vinculado_em: vinculadoEm
-      }, { transaction });
-    }
-    await registrarComprovantesFilaNoHistorico(req, item, transaction);
-    return item;
-  });
+  const result = await vincularArquivoFila(req, [filaId], file, false);
+  return result.itens[0];
 }
 
-async function sincronizarComprovanteRepetido(req, id) {
+async function anexarComprovanteFilaLote(req, filaIds, file) {
+  // Mesma permissao do anexo individual; nao e uma permissao de baixa automatica.
+  if (!await canBaixarFilaPagamentos(req.user)) throw createHttpError(403, 'Acesso negado para anexar comprovantes da fila.');
+  return vincularArquivoFila(req, filaIds, file, true);
+}
+
+async function vincularArquivoFila(req, filaIds, file, lote) {
+  if (!Array.isArray(filaIds) || !filaIds.length || filaIds.length > 100
+    || filaIds.some(id => !['number', 'string'].includes(typeof id) || !/^[1-9]\d*$/.test(String(id)) || !Number.isSafeInteger(Number(id)))
+    || new Set(filaIds.map(Number)).size !== filaIds.length || !file?.buffer?.length) {
+    throw createHttpError(400, 'Selecione um comprovante PDF valido.');
+  }
+  if (file.buffer.length > 12 * 1024 * 1024 || file.buffer.subarray(0, 5).toString() !== '%PDF-') {
+    throw createHttpError(400, 'O comprovante selecionado nao e um PDF valido.');
+  }
+  const ids = filaIds.map(Number).sort((a, b) => a - b);
+  const hash = crypto.createHash('sha256').update(file.buffer).digest('hex');
+  const podeAnexar = item => podeAnexarComprovanteFila(item) && (!lote
+    || (item.status === 'PENDENTE' && !item.movimento_financeiro_id) || pendenteComprovanteFila(item));
+  const uploads = new Map();
+  const anteriores = new Map();
+  for (const id of ids) {
+    const item = await PagamentoManualFilaItem.findByPk(id);
+    // Repetir o mesmo par fila/hash e inofensivo mesmo apos sair do filtro de pendencia.
+    const existente = await PagamentoManualFilaComprovante.findOne({ where: { fila_id: id, hash } });
+    const repetido = item && (item.comprovante_hash === hash || existente);
+    if (!podeAnexarComprovanteFila(item) || (!repetido && !podeAnexar(item))) {
+      throw createHttpError(409, 'O item nao permite anexar comprovantes.');
+    }
+    anteriores.set(id, [item.status, Number(item.movimento_financeiro_id || 0)]);
+    uploads.set(id, repetido ? null : false);
+  }
+  for (const [id, url] of uploads) if (url === false) {
+    // Chave por destino: compartilhar bytes nao compartilha ACL de arquivo/S3.
+    uploads.set(id, await uploadToS3(file, `financeiro/fila-pagamentos/${id}/comprovantes`));
+  }
   return sequelize.transaction(async transaction => {
-    const item = await PagamentoManualFilaItem.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
-    if (!podeAnexarComprovanteFila(item)) throw createHttpError(409, 'O item nao permite anexar comprovantes.');
-    await registrarComprovantesFilaNoHistorico(req, item, transaction);
-    return item;
+    const itens = []; let criados = 0;
+    for (const id of ids) {
+      const item = await PagamentoManualFilaItem.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
+      if (!podeAnexarComprovanteFila(item)) throw createHttpError(409, 'O item nao permite anexar comprovantes.');
+      const existente = item.comprovante_hash === hash || await PagamentoManualFilaComprovante.findOne({ where: { fila_id: id, hash }, transaction });
+      if (!existente) {
+        if (!podeAnexar(item) || JSON.stringify(anteriores.get(id)) !== JSON.stringify([item.status, Number(item.movimento_financeiro_id || 0)]) || !uploads.get(id)) {
+          throw createHttpError(409, 'O item mudou enquanto o comprovante era processado. Atualize a fila.');
+        }
+        const vinculadoEm = new Date();
+        const nome = String(file.originalname || 'Comprovante.pdf').slice(0, 255);
+        await PagamentoManualFilaComprovante.create({ fila_id: id, nome, url: uploads.get(id), hash, tipo: 'PDF',
+          vinculado_por: req.user?.id || null, vinculado_em: vinculadoEm }, { transaction });
+        if (!item.comprovante_hash) await item.update({ comprovante_nome: nome, comprovante_url: uploads.get(id),
+          comprovante_hash: hash, comprovante_tipo: 'PDF', comprovante_vinculado_por: req.user?.id || null,
+          comprovante_vinculado_em: vinculadoEm }, { transaction });
+        criados++;
+      }
+      await registrarComprovantesFilaNoHistorico(req, item, transaction);
+      itens.push(item);
+    }
+    if (lote && criados) await SecurityEventLog.create({ usuario_id: req.user?.id || null,
+      tipo_evento: 'MANUAL_PAYMENT_RECEIPT_SHARED', recurso_tipo: 'PAGAMENTO_MANUAL_FILA', recurso_id: String(ids[0]),
+      status: 'SUCCESS', descricao: 'Mesmo comprovante anexado aos destinos selecionados, sem registrar baixa.',
+      metadata: { fila_ids: ids, arquivo_hash: hash, criados, pagamentos_preservados: true } }, { transaction });
+    return { quantidade: itens.length, criados, ja_vinculados: itens.length - criados, itens };
   });
 }
 
@@ -1165,6 +1170,7 @@ async function estornarLiquidacaoFila(req, anchorId, grupoId, payload) {
 
 module.exports = {
   anexarComprovanteFila,
+  anexarComprovanteFilaLote,
   aprovarDivergenciasFila,
   classificarDivergenciaPagamento,
   enfileirarTitulos,

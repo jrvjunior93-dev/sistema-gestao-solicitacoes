@@ -1488,12 +1488,11 @@ function buildFinanceiroObrasTituloWhere(filters, obraWhere, periodo, analise) {
   const where = {
     ...obraWhere,
     status: { [Op.notIn]: ['CANCELADO', 'ESTORNADO'] },
-    // Neste relatorio de obras a recarga e custo somente apos classificacao
-    // da prestacao. Nao aplicar esta guarda ao contas a pagar ou fluxo de caixa.
+    // Custos de prestacao entram pelos destinos dos rateios, nunca pela origem
+    // operacional da recarga. Contas a pagar e fluxo de caixa nao usam esta guarda.
     [Op.and]: [...(obraWhere[Op.and] || []), { [Op.or]: [
       { origem_titulo: { [Op.notIn]: ['RECARGA_CARTAO', 'ADIANTAMENTO', 'DEVOLUCAO_ADIANTAMENTO'] } },
-      { origem_titulo: null },
-      { origem_titulo: 'RECARGA_CARTAO', possui_rateio: true, considera_dre: true }
+      { origem_titulo: null }
     ] }]
   };
 
@@ -2119,12 +2118,15 @@ async function gerarRelatorioFinanceiroObras(req, filters = {}) {
   }
 
   if (analise !== 'A_REALIZAR') {
-    // O pagamento do adiantamento e caixa, nao custo da origem. Aqui aparecem
+    // O pagamento do adiantamento/recarga e caixa, nao custo da origem. Aqui aparecem
     // somente as despesas efetivas por destino da prestacao validada.
     const filtroAdiantamento = buildFinanceiroObrasTituloWhere(filters, {}, periodo, analise);
     filtroAdiantamento[Op.and] = (filtroAdiantamento[Op.and] || []).filter(condicao => !condicao[Op.or]?.some(item => item.origem_titulo !== undefined));
-    filtroAdiantamento.origem_titulo = 'ADIANTAMENTO';
-    filtroAdiantamento.valor_despesa_prestacao = { [Op.gt]: 0 };
+    filtroAdiantamento.origem_titulo = { [Op.in]: ['ADIANTAMENTO', 'RECARGA_CARTAO'] };
+    filtroAdiantamento[Op.and].push({ [Op.or]: [
+      { origem_titulo: 'ADIANTAMENTO', valor_despesa_prestacao: { [Op.gt]: 0 } },
+      { origem_titulo: 'RECARGA_CARTAO', possui_rateio: true, considera_dre: true }
+    ] });
     const rateios = await TituloFinanceiroRateio.findAll({
       where: obraWhere,
       include: [{ model: Obra, as: 'obra', attributes: ['id', 'codigo', 'nome'] }, {
@@ -2542,7 +2544,8 @@ function summarizeDreRows(titulos = [], empresas = [], movimentosAvulsos = []) {
     const tipo = String(titulo.tipo || '').toUpperCase();
     const rawValue = titulo.renegociacao_id
       ? Number(titulo.juros_renegociacao || 0) + Number(titulo.multa_renegociacao || 0)
-      : Number(titulo.origem_titulo === 'ADIANTAMENTO' ? titulo.valor_despesa_prestacao || 0 : titulo.valor_original || 0);
+      : Number(titulo.origem_titulo === 'ADIANTAMENTO' || (titulo.origem_titulo === 'RECARGA_CARTAO' && titulo.valor_despesa_prestacao != null)
+        ? titulo.valor_despesa_prestacao || 0 : titulo.valor_original || 0);
     const baseSignedValue = tipo === 'RECEBER' ? rawValue : -rawValue;
     const signedValue = isCategoriaRedutora(titulo.categoriaFinanceira)
       ? baseSignedValue * -1

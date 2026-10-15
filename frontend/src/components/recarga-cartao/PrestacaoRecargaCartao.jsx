@@ -1,5 +1,5 @@
 import useVisualizadorArquivo from '../../hooks/useVisualizadorArquivo';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import ApropriacaoAutocomplete from '../ui/ApropriacaoAutocomplete';
 import { listarApropriacoes } from '../../services/apropriacoes';
 import { decidirPrestacaoRecarga, editarRateiosPrestacaoRecarga, enviarPrestacaoRecarga } from '../../services/recargasCartao';
@@ -47,6 +47,8 @@ export default function PrestacaoRecargaCartao({ solicitacaoId, contexto, podeIn
   const [documentos, setDocumentos] = useState(documentosContexto);
   const [erro, setErro] = useState('');
   const [rateiosAlterados, setRateiosAlterados] = useState(false);
+  const [semGastos, setSemGastos] = useState(false);
+  const travaEnvio = useRef(false);
   const assinaturaRateios = (prestacao?.rateios || [])
     .map((item) => `${item.id}:${item.obra_id}:${item.apropriacao_id}:${item.valor_rateio}`)
     .join('|');
@@ -65,6 +67,7 @@ export default function PrestacaoRecargaCartao({ solicitacaoId, contexto, podeIn
         }))
       : [linhaVazia(obras.length === 1 ? obras[0]?.id : '')]);
     setObservacoes(prestacao?.observacoes || '');
+    setSemGastos(prestacao?.valor_despesas != null && Number(prestacao.valor_despesas) === 0);
     setMotivo(prestacao?.motivo_rejeicao || '');
     setRateiosAlterados(false);
   }, [prestacao?.id, prestacao?.updatedAt, assinaturaRateios, obras.length]);
@@ -91,12 +94,15 @@ export default function PrestacaoRecargaCartao({ solicitacaoId, contexto, podeIn
   }, [linhas, apropriacoesPorObra]);
 
   const valorBase = Number(prestacao?.valor_base || recarga?.valor_efetivo || 0);
-  const total = useMemo(() => linhas.reduce((acc, linha) => acc + numero(linha.valor_rateio), 0), [linhas]);
-  const saldo = Math.round((valorBase - total + Number.EPSILON) * 100) / 100;
+  const total = useMemo(() => semGastos ? 0 : Math.round(linhas.reduce((acc, linha) => acc + numero(linha.valor_rateio), 0) * 100) / 100, [linhas, semGastos]);
+  const disponivel = contexto.saldo_para_prestacao?.saldo_disponivel ?? valorBase;
+  const saldo = Math.round((disponivel - total + Number.EPSILON) * 100) / 100;
+  const remanescente = prestacao?.saldo_remanescente;
   const status = String(prestacao?.status || 'PENDENTE').toUpperCase();
   // A prestacao faz parte das interacoes da solicitacao. Vinculos secundarios e permissoes de
   // visualizacao podem mostrar os dados, mas nunca liberam rateio, envio ou decisao fora do setor.
   const podeEditarPrestacao = podeInteragir && ['PENDENTE', 'REJEITADA'].includes(status);
+  const sobraExibida = podeEditarPrestacao ? saldo : remanescente ?? Math.round((valorBase - total) * 100) / 100;
   const podeEditarDestinosGeo = podeInteragir && podeValidar && status === 'ENVIADA';
 
   function atualizar(index, campo, value) {
@@ -109,18 +115,21 @@ export default function PrestacaoRecargaCartao({ solicitacaoId, contexto, podeIn
   }
 
   async function enviar() {
-    if (!solicitacaoId || salvando || enviandoDocumentos) return;
+    if (!solicitacaoId || salvando || enviandoDocumentos || travaEnvio.current) return;
     if (documentos.length === 0) {
       setErro('Anexe ao menos um documento da prestação de contas antes de enviar.');
       return;
     }
     setErro('');
+    travaEnvio.current = true;
     setSalvando(true);
     try {
       await enviarPrestacaoRecarga(solicitacaoId, {
         recarga_id: recarga.id,
         observacoes,
-        rateios: linhas.map((linha) => ({
+        sem_gastos: semGastos,
+        revisao_saldo: contexto.saldo_para_prestacao?.revisao,
+        rateios: semGastos ? [] : linhas.map((linha) => ({
           obra_id: Number(linha.obra_id),
           apropriacao_id: linha.apropriacao_id ? Number(linha.apropriacao_id) : null,
           valor_rateio: numero(linha.valor_rateio)
@@ -130,6 +139,7 @@ export default function PrestacaoRecargaCartao({ solicitacaoId, contexto, podeIn
     } catch (error) {
       setErro(error.message);
     } finally {
+      travaEnvio.current = false;
       setSalvando(false);
     }
   }
@@ -217,7 +227,7 @@ export default function PrestacaoRecargaCartao({ solicitacaoId, contexto, podeIn
             Prestação de contas da recarga
           </h3>
           <p className="text-xs text-[var(--c-muted)]">
-            Distribua {moeda(valorBase)} entre os destinos disponíveis. Obras exigem apropriação; centros de custo não.
+            Recarga efetiva: {moeda(valorBase)}. Informe apenas os gastos reais; a sobra fica no cartão. Obras exigem apropriação; centros de custo não.
           </p>
         </div>
         <span className="app-status-pill bg-[var(--ui-surface-2)] text-[var(--c-text)]">{status}</span>
@@ -227,7 +237,11 @@ export default function PrestacaoRecargaCartao({ solicitacaoId, contexto, podeIn
         <div className="app-alert app-alert--warning">Correção solicitada: {prestacao.motivo_rejeicao}</div>
       ) : null}
 
-      <div className="overflow-hidden rounded-lg border border-[var(--c-border)]">
+      {podeEditarPrestacao && contexto.saldo_para_prestacao && <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={semGastos} onChange={e => setSemGastos(e.target.checked)} disabled={salvando} />
+        Não houve gastos nesta prestação (informe motivo e anexe extrato)
+      </label>}
+      {!semGastos && <div className="overflow-hidden rounded-lg border border-[var(--c-border)]">
         <div className="hidden grid-cols-[minmax(190px,0.9fr)_minmax(240px,1.3fr)_minmax(130px,0.45fr)_auto] gap-3 bg-[var(--ui-surface-2)] px-3 py-2 text-xs uppercase tracking-wide text-[var(--c-muted)] lg:grid">
           <span>Obra / Centro de custo</span>
           <span>Apropriação</span>
@@ -297,9 +311,9 @@ export default function PrestacaoRecargaCartao({ solicitacaoId, contexto, podeIn
             </div>
           ))}
         </div>
-      </div>
+      </div>}
 
-      {podeEditarPrestacao ? (
+      {podeEditarPrestacao && !semGastos ? (
         <button
           type="button"
           className="btn btn-outline btn-sm"
@@ -360,12 +374,12 @@ export default function PrestacaoRecargaCartao({ solicitacaoId, contexto, podeIn
 
       <div className="grid gap-3 text-sm lg:grid-cols-[1fr_auto] lg:items-center">
         <div className="grid gap-1 tabular-nums sm:grid-cols-3 sm:gap-x-5">
-          <span>Valor a prestar: <strong>{moeda(valorBase)}</strong></span>
-          <span>Informado: <strong>{moeda(total)}</strong></span>
-          <span className={saldo === 0 ? 'text-emerald-700' : 'text-amber-700'}>Diferença: <strong>{moeda(saldo)}</strong></span>
+          <span>Disponível para esta prestação: <strong>{moeda(podeEditarPrestacao ? disponivel : prestacao?.saldo_disponivel_envio ?? valorBase)}</strong></span>
+          <span>Gastos informados: <strong>{moeda(total)}</strong></span>
+          <span className={sobraExibida >= 0 ? 'text-emerald-700' : 'text-red-700'}>Sobra: <strong>{moeda(sobraExibida)}</strong></span>
         </div>
         {podeEditarPrestacao ? (
-          <button type="button" className="btn btn-primary btn-sm w-full sm:w-auto" onClick={enviar} disabled={salvando || enviandoDocumentos || saldo !== 0 || documentos.length === 0}>
+          <button type="button" className="btn btn-primary btn-sm w-full sm:w-auto" onClick={enviar} disabled={salvando || enviandoDocumentos || saldo < 0 || (!contexto.saldo_para_prestacao && saldo !== 0) || (semGastos && !observacoes.trim()) || documentos.length === 0}>
             {salvando ? 'Enviando prestação...' : 'Enviar prestação'}
           </button>
         ) : null}
@@ -373,7 +387,7 @@ export default function PrestacaoRecargaCartao({ solicitacaoId, contexto, podeIn
 
       {podeEditarPrestacao ? (
         <label className="grid gap-1 text-sm">
-          Observações
+          {semGastos ? 'Motivo de não haver gastos *' : 'Observações'}
           <textarea className="input min-h-[72px]" value={observacoes} onChange={(event) => setObservacoes(event.target.value)} disabled={salvando} />
         </label>
       ) : null}

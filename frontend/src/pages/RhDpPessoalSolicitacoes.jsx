@@ -681,6 +681,7 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
       <div className="card sol-surface-card">
         <TabelaPadrao
           colunas={[
+            { id: 'codigo', titulo: 'Código', tipo: 'codigo', render: s => s.codigo || '—' },
             {
               id: 'tipo',
               titulo: 'Tipo',
@@ -705,7 +706,9 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
               noCard: 'titulo',
               /* Na admissao o colaborador ainda nao existe: o nome vive no pedido. */
               render: (s) => s.tipo === 'JORNADA'
-                ? `${s.dados_json?.total_colaboradores ?? s.dados_json?.linhas?.filter(l => l.selecionado).length ?? 0} colaborador(es)`
+                ? `${ehPagamentoPorSolicitacao(s) ? s.dados_json?.linhas?.filter(l => !l.removido_em && l.pagamento_estado !== 'CANCELADO'
+                  && (l.selecionado || ['ENVIADO', 'EM_EDICAO'].includes(l.pagamento_estado))).length ?? 0
+                  : s.dados_json?.total_colaboradores ?? s.dados_json?.linhas?.filter(l => l.selecionado).length ?? 0} colaborador(es)`
                 : s.colaborador?.nome || s.dados_json?.nome || <span className="opacity-60">a admitir</span>
             },
             {

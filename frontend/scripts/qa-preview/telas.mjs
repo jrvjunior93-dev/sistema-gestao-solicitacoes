@@ -28,6 +28,12 @@
  */
 export const TELAS = [
   {
+    id: 'recargas-regularizacao',
+    arquivo: 'src/pages/RecargasRegularizacao.jsx',
+    rota: '/recargas-cartao/regularizacao',
+    tipo: 'mista'
+  },
+  {
     id: 'usuarios',
     arquivo: 'src/pages/Usuarios.jsx',
     rota: '/usuarios',

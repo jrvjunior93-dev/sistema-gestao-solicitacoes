@@ -108,11 +108,15 @@ async function avisosAnteriores(dados, transaction, user) {
 async function mostrar(req, id) {
   const s = await buscar(req, id);
   const dados = await cadastroAtual(s, dadosDe(s));
+  const podeGerenciar = await ehDp(req.user) && (!dados.titulos.length
+    || (await auth.canExecuteRhDpFechamento(req.user)
+      && await auth.userHasNominalAreaPermission(req.user, ['financeiro.fila_pagamentos.preparar'])));
   return { solicitacao: { ...plain(s), dados_json: dados, situacao: situacaoPagamento(dados, s.situacao) }, responsaveis: (await responsaveis(s.obra_id)).map(plain),
     pagamentos_financeiros: dados.titulos.length ? (await TituloFinanceiro.findAll({
       where: { id: { [Op.in]: dados.titulos.map(t => t.id) } },
       attributes: ['id', 'status', 'valor_baixado', 'status_interno_pagar'] })).map(plain) : [],
     avisos: (await avisosAnteriores(dadosDe(s), undefined, req.user)).map(plain), pode_conferir: await ehDp(req.user),
+    pode_gerenciar_solicitacao: podeGerenciar && ['RASCUNHO', 'ABERTA', 'APROVADA', 'ENVIO_PARCIAL', 'EM_REVISAO'].includes(s.situacao),
     pode_excluir_rascunho: s.situacao === 'RASCUNHO' && Number(s.criada_por) === Number(req.user.id)
       && !dados.titulos.length && await auth.userHasAreaPermission(req.user, ['rh_dp.solicitacoes.abrir']),
     pode_enviar_fila: await ehDp(req.user) && await auth.canExecuteRhDpFechamento(req.user)
@@ -461,4 +465,58 @@ async function revisar(req, id, payload) {
   return mostrar(req, id);
 }
 
-module.exports = { iniciar, preparar, salvarNovo, excluirRascunho, mostrar, salvar, enviar, revisar, ehDp };
+// Acao propria, nao um PATCH livre de situacao: nenhum status pode forcar aprovacao/baixa.
+async function alterarComposicao(req, id, payload, cancelarTudo) {
+  if (!await ehDp(req.user)) throw new ValidationError('Somente o DP autorizado pode remover colaboradores ou cancelar a solicitacao.', 403);
+  await sequelize.transaction(async transaction => {
+    const s = await buscar(req, id, transaction, true);
+    const d = dadosDe(s);
+    if (d.titulos.length && (!await auth.canExecuteRhDpFechamento(req.user)
+      || !await auth.userHasNominalAreaPermission(req.user, ['financeiro.fila_pagamentos.preparar']))) {
+      throw new ValidationError('Permissoes de geracao de titulos e fila obrigatorias para cancelar pagamentos.', 403);
+    }
+    const motivo = texto(payload.motivo, 500);
+    if (!motivo) throw new ValidationError('Informe o motivo.');
+    const linha = cancelarTudo ? null : d.linhas.find(l => Number(l.colaborador_id) === Number(payload.colaborador_id));
+    if (!cancelarTudo && !linha) throw new ValidationError('Colaborador nao pertence a solicitacao.', 404);
+    if (cancelarTudo ? Boolean(d.cancelamento_dp) : Boolean(linha.removido_em)) return;
+    if (!['RASCUNHO', 'ABERTA', 'APROVADA', 'ENVIO_PARCIAL', 'EM_REVISAO', 'CANCELADA'].includes(s.situacao)
+      || (!cancelarTudo && s.situacao === 'CANCELADA')) throw new ValidationError('Esta solicitacao nao permite esta acao.', 409);
+    if (Number(payload.revisao) !== Number(d.revisao)) throw new ValidationError('A solicitacao foi atualizada. Reabra antes de continuar.', 409);
+    const ids = cancelarTudo ? d.linhas.map(l => Number(l.colaborador_id)) : [Number(linha.colaborador_id)];
+    if (d.linhas.some(l => ids.includes(Number(l.colaborador_id)) && ['ENVIADO', 'EM_EDICAO'].includes(l.pagamento_estado)
+      && !d.titulos.some(t => !t.cancelado && t.tipo === 'SALARIO' && Number(t.colaborador_id) === Number(l.colaborador_id)))) {
+      throw new ValidationError('Titulo do pagamento enviado nao encontrado. Confira o financeiro antes de cancelar.', 409);
+    }
+    const service = require('./rhPagamentoSolicitacaoRevisaoService');
+    // Toda a validacao ocorre antes de cancelar qualquer titulo. Baixa concorrente
+    // serializa nos locks canonicos titulo->fila; estornos concluidos ficam intactos.
+    const registros = await service.travar(s, d, ids, transaction, { permitirEstornoConcluido: true });
+    if (cancelarTudo) {
+      const ativos = d.titulos.filter(t => !t.cancelado);
+      if (registros.length !== ativos.length) throw new ValidationError('Existem titulos sem vinculo seguro com os colaboradores. Confira antes de cancelar.', 409);
+      for (const r of registros) {
+        r.ref.cancelado = true;
+        await service.sincronizarFila(r, req, transaction, { cancelar: true });
+      }
+    } else await service.cancelar(registros, { ...d, codigo: s.codigo }, linha.colaborador_id, req, transaction);
+    const evento = { usuario_id: req.user.id, em: new Date().toISOString(), motivo };
+    const anteriores = s.situacao;
+    d.linhas = d.linhas.map(l => ids.includes(Number(l.colaborador_id)) ? { ...l,
+      pagamento_estado: 'CANCELADO', selecionado: false, conferido_dp: false, conferido_obra: false,
+      cancelado_por: req.user.id, cancelado_em: evento.em, motivo_cancelamento: motivo,
+      ...(!cancelarTudo ? { removido_em: evento.em, removido_por: req.user.id, motivo_remocao: motivo } : {}) } : l);
+    d.revisao = Number(d.revisao) + 1;
+    if (cancelarTudo) d.cancelamento_dp = evento;
+    await service.auditar(registros, s, req, transaction, cancelarTudo ? 'REQUEST_CANCELLED' : 'EMPLOYEE_REMOVED', motivo);
+    await s.update({ situacao: cancelarTudo || d.linhas.every(l => l.pagamento_estado === 'CANCELADO')
+      ? 'CANCELADA' : situacaoPagamento(d, s.situacao), dados_json: d }, { transaction });
+    await historico(s, req, cancelarTudo ? 'SOLICITACAO_PAGAMENTO_CANCELADA' : 'COLABORADOR_REMOVIDO',
+      `${cancelarTudo ? 'Solicitacao inteira cancelada' : `Colaborador removido: ${linha.nome} (#${linha.colaborador_id})`}. Motivo: ${motivo}. Titulos afetados: ${registros.map(r => r.titulo.codigo || r.titulo.id).join(', ') || 'nenhum'}.`, anteriores, transaction);
+  });
+  return mostrar(req, id);
+}
+const removerColaborador = (req, id, payload) => alterarComposicao(req, id, payload, false);
+const cancelarSolicitacaoPagamento = (req, id, payload) => alterarComposicao(req, id, payload, true);
+module.exports = { iniciar, preparar, salvarNovo, excluirRascunho, mostrar, salvar, enviar, revisar, ehDp,
+  removerColaborador, cancelarSolicitacaoPagamento };

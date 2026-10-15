@@ -69,7 +69,7 @@ export default function CompraDiretaFreteForm({ compra, itens, ocupado, onOcupad
     finally { trava.current = false; onOcupado(false); }
   }
   return <form onSubmit={salvar} className="min-w-0 flex-1 space-y-3" aria-label="Frete da compra direta">
-    <p className="text-sm text-[var(--c-muted)]">O total da compra será recalculado. Nenhum título ou pagamento existente será alterado. Frete a terceiro permanece disponível para geração separada no Financeiro.</p>
+    <p className="text-sm text-[var(--c-muted)]">O frete embutido atualiza os títulos em aberto sem baixa; se houver pagamento, gera um complemento. Frete a terceiro gera título separado, sem duplicar. Pagamentos anteriores são preservados. Novos títulos não são enviados automaticamente para pagamento.</p>
     {erro && <p role="alert" className="text-sm text-[var(--sem-danger)]">{erro}</p>}
     <fieldset disabled={ocupado} className="space-y-3">
       <FormSecao colunas={2}>

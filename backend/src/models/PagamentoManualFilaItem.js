@@ -86,8 +86,7 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
     },
     comprovante_hash: {
       type: DataTypes.STRING(64),
-      allowNull: true,
-      unique: true
+      allowNull: true
     },
     comprovante_banco: {
       type: DataTypes.STRING(40),

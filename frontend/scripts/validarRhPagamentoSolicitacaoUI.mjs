@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { createServer, transformWithEsbuild } from 'vite';
 import react from '@vitejs/plugin-react';
 import { chromium } from 'playwright';
+import { validarGestaoDp } from './rhPagamentoGestaoQA.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const output = path.join(root, '../outputs/rh-pagamento-solicitacao');
 mkdirSync(output, { recursive: true });
@@ -570,6 +571,7 @@ try {
     await page.getByText('Acesso negado',{exact:true}).waitFor();assert.equal(await obs.count(),0);
     console.log('Workspace pagamento '+width+'px: GET do ID existente, ultima edicao/editor, sem POST/PUT por retorno, revisao/salario atual e negativa OK.');
   }
+  await validarGestaoDp(page, base, modal, output);
   assert.deepEqual(errors,[]);
   console.log('Modal real: moeda durante digitacao, limpar/legado vazio como zero, numeros no payload, persistencia/foco/mobile; reembolso somente no clique, desconto comum, dias informativos, diaria, autosave, 100%, vales agrupados, contas, conferencia e Obra/DP OK.');
 } catch (error) {

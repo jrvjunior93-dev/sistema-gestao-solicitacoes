@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { HiOutlineArrowUturnLeft, HiOutlineClock, HiOutlinePencilSquare } from 'react-icons/hi2';
 import DateInputBR from '../DateInputBR';
 import PrestacaoRecargaCartao from './PrestacaoRecargaCartao';
+import SaldoCartaoRecarga from './SaldoCartaoRecarga';
 import { editarRecargaPendente, listarMeusCartoesRecarga, obterContextoCartaoRecarga } from '../../services/recargasCartao';
 import { solicitarRetornoSolicitacao } from '../../services/solicitacoes';
 
@@ -36,6 +37,7 @@ export default function RecargaCartaoFields({ ativo, obraId, fixarCartao = false
   const [cartoes, setCartoes] = useState([]);
   const [contexto, setContexto] = useState(null);
   const [carregando, setCarregando] = useState(false);
+  const [consultandoContexto, setConsultandoContexto] = useState(false);
   const [erro, setErro] = useState('');
   const [retorno, setRetorno] = useState({ aberto: false, motivo: '', processando: false, erro: '' });
   const [edicao, setEdicao] = useState({ aberto: false, valor: '', data_vencimento: '', processando: false, erro: '' });
@@ -66,11 +68,14 @@ export default function RecargaCartaoFields({ ativo, obraId, fixarCartao = false
     setEdicao({ aberto: false, valor: '', data_vencimento: '', processando: false, erro: '' });
     if (!cartaoId) {
       setContexto(null);
+      setConsultandoContexto(false);
       onContextChange?.(null);
       return;
     }
-    setCarregando(true);
+    setConsultandoContexto(true);
     setErro('');
+    setContexto(null);
+    onContextChange?.({ carregando: true, bloqueado: true, motivo_bloqueio: 'Aguarde a conferência do cartão.' });
     try {
       const dados = await obterContextoCartaoRecarga(cartaoId, obraId);
       if (geracao !== geracaoContexto.current) return;
@@ -79,10 +84,10 @@ export default function RecargaCartaoFields({ ativo, obraId, fixarCartao = false
     } catch (error) {
       if (geracao !== geracaoContexto.current) return;
       setContexto(null);
-      onContextChange?.(null);
+      onContextChange?.({ erro_consulta: true, bloqueado: true, motivo_bloqueio: 'Não foi possível conferir o cartão. Use “Tentar novamente” antes de criar a solicitação.' });
       setErro(error.message);
     } finally {
-      if (geracao === geracaoContexto.current) setCarregando(false);
+      if (geracao === geracaoContexto.current) setConsultandoContexto(false);
     }
   }
 
@@ -110,9 +115,14 @@ export default function RecargaCartaoFields({ ativo, obraId, fixarCartao = false
     && contextoInteracao?.pode_interagir === true
     && ['PENDENTE', 'REJEITADA'].includes(statusPrestacao);
   const rotuloSituacao = useMemo(() => {
+    if (erro) return 'Não foi possível consultar';
+    if (consultandoContexto && !contexto) return 'Consultando cartão...';
+    if (!contexto) return 'Histórico não consultado';
+    if (contexto.recarga_anterior_indisponivel) return 'Recarga anterior indisponível';
+    if (contexto.historico_restrito) return 'Histórico restrito';
     if (!ultima) return 'Sem recarga anterior';
     return ultima.prestacao?.status || ultima.status_ciclo || ultima.titulo?.status || '-';
-  }, [ultima]);
+  }, [ultima, erro, consultandoContexto, contexto]);
 
   useEffect(() => {
     if (!ativo || !value || !contexto?.bloqueado || podePrestarNestaTela) return undefined;
@@ -204,7 +214,7 @@ export default function RecargaCartaoFields({ ativo, obraId, fixarCartao = false
 
   if (!ativo) return null;
   // A linha de selecao ja identifica o cartao; repetir o formulario sem historico nao agrega informacao.
-  if (fixarCartao && !ultima && !erro && !contexto?.bloqueado) return null;
+  if (fixarCartao && contexto && !ultima && !erro && !contexto.bloqueado && !contexto.saldo_cartao) return null;
 
   return (
     <section className="min-w-0 space-y-3 border-y border-[var(--c-border)] py-3 lg:col-span-12" aria-label="Contexto do cartão">
@@ -236,7 +246,12 @@ export default function RecargaCartaoFields({ ativo, obraId, fixarCartao = false
         </div>
       </div>
 
-      {contexto?.bloqueado ? (
+      <SaldoCartaoRecarga contexto={contexto} />
+      {contexto?.recarga_anterior_indisponivel && <div className="app-alert app-alert--warning" role="status">
+        {contexto.motivo_bloqueio}
+        {contexto.pode_regularizar_recarga && <a className="btn btn-outline btn-sm" href="/recargas-cartao/regularizacao">Abrir regularização de recargas</a>}
+      </div>}
+      {contexto?.bloqueado && !contexto?.recarga_anterior_indisponivel ? (
         <div className="space-y-3 border-y border-amber-300 bg-amber-50/70 px-3 py-3 text-amber-950" role="status">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0 space-y-1">
@@ -247,7 +262,7 @@ export default function RecargaCartaoFields({ ativo, obraId, fixarCartao = false
                 {aguardandoBaixa
                   ? 'Esta recarga ainda não possui valor efetivamente baixado. Assim que o Financeiro registrar uma baixa, a solicitação voltará automaticamente para a Obra e o card de prestação aparecerá aqui, sem atualizar o navegador.'
                   : podePrestarNestaTela
-                  ? 'A solicitação já está no seu setor. Preencha a prestação abaixo; quando os rateios fecharem o valor efetivamente recarregado, o próximo pedido será liberado e esta solicitação seguirá para conferência da Gerência de Processos.'
+                  ? 'A solicitação já está no seu setor. Informe os gastos reais abaixo. A sobra continuará no cartão; o próximo pedido será liberado após enviar a prestação para conferência do GEO.'
                   : podeEditarRecargaAnterior
                   ? 'A solicitação já voltou ao seu setor. Corrija o valor e a data prevista abaixo para reenviar o mesmo pedido à Gerência de Processos.'
                   : contextoInteracao?.pode_interagir
@@ -386,7 +401,10 @@ export default function RecargaCartaoFields({ ativo, obraId, fixarCartao = false
           {retorno.erro ? <div className="app-alert app-alert--error" role="alert">{retorno.erro}</div> : null}
         </div>
       ) : null}
-      {erro ? <div className="app-alert app-alert--error" role="alert">{erro}</div> : null}
+      {erro ? <div className="app-alert app-alert--error" role="alert">
+        <span>Não foi possível conferir o cartão: {erro}</span>
+        <button type="button" className="btn btn-outline btn-sm" onClick={() => carregarContexto(value)} disabled={consultandoContexto || carregando || !value}>Tentar novamente</button>
+      </div> : null}
 
       {podePrestarNestaTela && solicitacaoAnterior?.id ? (
         <PrestacaoRecargaCartao

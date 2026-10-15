@@ -513,9 +513,11 @@ function createRateio(valor = '') {
   };
 }
 
-export function buildDefaultForm(solicitacao) {
+export function buildDefaultForm(solicitacao, titulosExistentes = []) {
   const valorSolicitacao = solicitacao?.valor ? formatCurrencyInput(solicitacao.valor) : '';
   const freteTerceiro = getFreteTerceiroCompraDireta(solicitacao);
+  const freteJaGerado = Boolean(freteTerceiro && titulosExistentes.some(t =>
+    t.origem_titulo === 'COMPRA_DIRETA_FRETE' && !['CANCELADO', 'ESTORNADO'].includes(t.status)));
   const valorItens = freteTerceiro
     ? formatCurrencyInput(solicitacao?.compra_direta?.valor_fechado || 0)
     : valorSolicitacao;
@@ -550,7 +552,7 @@ export function buildDefaultForm(solicitacao) {
           ? `Dados para pagamento: ${solicitacao.dados_pagamento}`
           : ''
       })];
-  const pagamentos = freteTerceiro
+  const pagamentos = freteTerceiro && !freteJaGerado
     ? [
         ...pagamentosCompra,
         createPagamento(solicitacao, formatCurrencyInput(freteTerceiro.frete_valor), '', {
@@ -574,7 +576,7 @@ export function buildDefaultForm(solicitacao) {
     empresa_id: solicitacao?.obra?.empresa_grupo_id ? String(solicitacao.obra.empresa_grupo_id) : '',
     parceiro_id: solicitacao?.parceiro?.id ? String(solicitacao.parceiro.id) : solicitacao?.tipoSubSolicitacao?.usa_fluxo_adiantamento === true && solicitacao?.favorecido?.id ? String(solicitacao.favorecido.id) : '',
     categoria_financeira_id: '',
-    valor: valorSolicitacao,
+    valor: freteJaGerado ? valorItens : valorSolicitacao,
     data_vencimento: solicitacao?.data_vencimento || today(),
     forma_pagamento_id: '',
     cartao_id: '',
@@ -1202,16 +1204,19 @@ export default function FinanceiroCard({
   const compraDiretaSolicitacao = tipoSolicitacao.includes('compra direta');
   const usaTituloAutomaticoRecarga = tipoSolicitacao.includes('recarga de cartao');
   const adiantamentoComTitulo = solicitacao?.tipoSubSolicitacao?.usa_fluxo_adiantamento === true && titulos.length > 0;
+  const compraDiretaComTitulo = compraDiretaSolicitacao && titulos.some(t =>
+    t.origem_titulo !== 'COMPRA_DIRETA_FRETE' && !['CANCELADO', 'ESTORNADO'].includes(t.status));
   const geracaoManualDesabilitada = usaTabelaParcelasFluxoNovo
     || usaTituloAutomaticoRecarga
     || adiantamentoComTitulo
+    || compraDiretaComTitulo
     || classificandoContrato;
-  const motivoGeracaoManualDesabilitada = adiantamentoComTitulo ? 'O adiantamento ja possui titulo financeiro.' : usaTituloAutomaticoRecarga
+  const motivoGeracaoManualDesabilitada = compraDiretaComTitulo ? 'A compra já possui títulos. Ajustes de frete são sincronizados pela gestão da compra.' : adiantamentoComTitulo ? 'O adiantamento ja possui titulo financeiro.' : usaTituloAutomaticoRecarga
     ? 'A conta da Recarga de Cartao e criada automaticamente pela solicitacao.'
     : 'Os titulos do contrato do fluxo novo sao criados automaticamente pelo cronograma.';
 
   function resetModalState(baseSolicitacao = solicitacao) {
-    setForm(buildDefaultForm(baseSolicitacao));
+    setForm(buildDefaultForm(baseSolicitacao, titulos));
     setGeracaoMultiplaTitulos(exigeTitulosSeparadosCompraDireta(baseSolicitacao));
     setSelectedPartner(baseSolicitacao?.parceiro || null);
     setSelectedCategory(null);
@@ -1289,7 +1294,8 @@ export default function FinanceiroCard({
 
   useEffect(() => {
     carregarTitulos();
-  }, [solicitacao.id, podeVisualizarTitulos]);
+  }, [solicitacao.id, podeVisualizarTitulos, solicitacao.compra_direta?.updatedAt,
+    solicitacao.compra_direta?.frete_tipo, solicitacao.compra_direta?.frete_valor]);
 
   function ultimoItemFila(titulo) {
     return [...(titulo.filaPagamentosManuais || [])]
@@ -2036,7 +2042,7 @@ export default function FinanceiroCard({
   }
 
   function validarGeracaoConta() {
-    if (roundCurrency(currencyToNumber(form.valor)) !== roundCurrency(Number(solicitacao?.valor || 0))) {
+    if (roundCurrency(currencyToNumber(form.valor)) !== roundCurrency(currencyToNumber(buildDefaultForm(solicitacao, titulos).valor))) {
       return 'O valor da solicitacao mudou durante o preenchimento. Feche e reabra o formulario para conferir os dados atualizados antes de criar o titulo.';
     }
     if (!form.empresa_id) {
@@ -2271,6 +2277,7 @@ export default function FinanceiroCard({
           const usaDetalhe = formaUsaParcelasDetalhadas(forma);
           return {
             parceiro_id: pagamento.parceiro_id || undefined,
+            origem_frete: Boolean(pagamento.origem_frete),
             favorecido_pagamento_id: pagamento.favorecido_pagamento_id || undefined,
             categoria_financeira_id: pagamento.categoria_financeira_id || undefined,
             payment_beneficiary_id: beneficiaryIds.get(pagamento.id) || undefined,
