@@ -1,5 +1,17 @@
 # Ownership Ativo
 
+## Promocao main Compra Direta e admissao - 2026-10-15
+
+- Usuario homologou d72a9c93 em dev e autorizou promocao para main/comandos EC2
+  producao. Backup cifrado recente/timer ativo confirmados nesta janela.
+- Preflight real do operador: producao 1341e1a352be4f6882278f60867e4f9c2408d372,
+  UUID 5ed4b970-009f-11f1-809c-0ad0e0c90c53, sem migration pendente.
+- Reserva exclusiva de integracao dos 28 arquivos do commit homologado,
+  registros workspace, novo handoff de promocao e script/teste de deploy prod.
+- Branch codex/promocao-compra-direta-admissao-main-20261015 a partir de main;
+  preservar historicos/hotfixes, outputs/ e demais checkouts. Sem delegacao.
+- Sem banco real, migration, mudanca de flags, EC2 ou restart pelo agente.
+
 ## Promocao main cadastro no pagamento RH - 2026-10-15
 
 - Sessao codex-promocao-rh-cadastro-main-20261015, sem delegacao. Usuario
