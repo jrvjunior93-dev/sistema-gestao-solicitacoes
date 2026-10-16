@@ -954,6 +954,15 @@ export async function atualizarTituloFinanceiro(id, data) {
   return parseJson(response, 'Erro ao editar titulo financeiro');
 }
 
+export async function desvincularFaturaTituloFinanceiro(id, data) {
+  const response = await fetch(`${API_URL}/financeiro/titulos/${id}/desvincular-fatura`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  return parseJson(response, 'Não foi possível desvincular a previsão de cartão');
+}
+
 export async function importarCodigosBarrasTitulos(data) {
   const response = await fetch(`${API_URL}/financeiro/titulos/importar-codigos-barras`, {
     method: 'POST',

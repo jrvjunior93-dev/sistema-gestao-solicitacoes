@@ -6,12 +6,14 @@ import {fileURLToPath} from 'node:url';
 import {createServer,transformWithEsbuild} from 'vite';
 import react from '@vitejs/plugin-react';
 import {chromium} from 'playwright';
+import { validarTituloDesvincularFatura } from './tituloDesvincularFaturaQA.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const output=path.join(root,'../outputs/titulo-detalhe-workspace');mkdirSync(output,{recursive:true});
 const names=[...readFileSync(path.join(root,'src/services/financeiro.js'),'utf8').matchAll(/export (?:async )?function (\w+)/g)].map(m=>m[1]);
 const methods={
   getTituloFinanceiroById:`async()=>{await wait();if(window.denied)throw new Error('Título QA negado');return copy(window.titulo)}`,
   getContasBancarias:`async()=>[{id:1,nome:'Conta QA',empresa_id:1,ativo:true}]`,
+  desvincularFaturaTituloFinanceiro:`async(id,data)=>{window.writes.push({kind:'desvincular',id,data});await wait();if(window.forceUnlinkError)throw new Error('A fatura prevista não está aberta e sem pagamento.');window.titulo.fatura_cartao_id=null;window.titulo.cartao_id=null;return{titulo_id:id}}`,
   baixarTituloFinanceiro:`async(id,data)=>{window.writes.push({kind:'baixar',id,data});await wait();window.titulo.status='QUITADO';window.titulo.valor_saldo=0;return copy(window.titulo)}`,
   atualizarCobrancaTituloFinanceiro:`async(id,data)=>{window.writes.push({kind:'cobrar',id,data});await wait();Object.assign(window.titulo,data);return copy(window.titulo)}`,
   estornarMovimentoFinanceiro:`async(id,m,data)=>{window.writes.push({kind:'estornar',id,m,data});await wait();window.titulo.status='ABERTO';window.titulo.valor_saldo=100;window.titulo.valor_baixado=0;window.titulo.movimentos[0].status='ESTORNADO';return copy(window.titulo)}`
@@ -24,6 +26,8 @@ window.writes=[];window.denied=false;window.readonly=false;
 const query=new URLSearchParams(location.search);const correction=query.has('correcao');
 window.titulo={id:1,codigo:'TIT-QA',tipo:query.has('receber')?'RECEBER':'PAGAR',status:correction?'PARCIAL':'ABERTO',valor_original:100,
 valor_saldo:correction?60:100,valor_baixado:correction?40:0,empresa_id:1,parceiro:{nome:'Credor QA'},movimentos:correction?[{id:5,status:'ATIVO',valor:40,forma_recebimento:'PIX',data_movimento:'2026-10-12',conta_bancaria_id:1,empresa_id:1}]:[],paymentIntents:[]};
+if(query.has('desvincular')){window.titulo.fatura_cartao_id=79;window.titulo.cartao_id=40;window.titulo.forma_pagamento_id=1;window.titulo.total_parcelas=2;}
+window.readonly=query.has('readonly');window.forceUnlinkError=query.has('recusa');
 function App(){const[active,A]=useState(true);const memory=useMemo(()=>createWorkspaceMemory(),[]);window.qaTab=A;window.qaMemory=memory;
 return <WorkspacePageContext.Provider value={{key:'titulo-qa',memory,snapshot:true,active:true}}>{active?<Page/>:<p>Consulta auxiliar</p>}</WorkspacePageContext.Provider>}
 createRoot(document.getElementById('root')).render(<BrowserRouter><ThemeContext.Provider value={{tema:TEMA_PADRAO}}><Routes><Route path='*' element={<main className='layout-main'><App/></main>}/></Routes></ThemeContext.Provider></BrowserRouter>);`;
@@ -44,7 +48,8 @@ try{
   const css=readFileSync(path.join(root,'dist/index.html'),'utf8').match(/href="\/assets\/([^\"]+\.css)"/)[1];
   const goto=async(search='')=>{await page.goto(base+search);await page.addStyleTag({path:path.join(root,'dist/assets',css)})};
   const alternate=async()=>{await page.evaluate(()=>window.qaTab(false));await page.getByText('Consulta auxiliar',{exact:true}).waitFor();await page.evaluate(()=>window.qaTab(true))};
-  for(const width of [1366,390]){
+  await validarTituloDesvincularFatura(page, goto, alternate, output);
+  if(!process.argv.includes('--desvincular-fatura')) for(const width of [1366,390]){
     await page.setViewportSize({width,height:900});await goto();
     await page.getByRole('button',{name:'Registrar baixa',exact:true}).click();
     const modal=page.getByRole('dialog',{name:'Registrar baixa',exact:true});

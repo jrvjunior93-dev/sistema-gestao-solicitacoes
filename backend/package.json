@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
+    "test:titulo-desvincular-fatura": "node scripts/validarTituloDesvincularFatura.js",
+    "test:fila-previsao-cartao": "node scripts/validarFilaPrevisaoCartao.js",
     "test:sessao-12h": "node scripts/validarDuracaoSessao.js",
     "test:rh-movimentacoes-documentais": "node scripts/validarRhMovimentacoesDocumentais.js",
     "test:titulos-compartilhados": "node scripts/validarTitulosCompartilhados.js && node scripts/validarTitulosCompartilhadosMigration.js && node scripts/validarTitulosCompartilhadosSincronizacao.js",

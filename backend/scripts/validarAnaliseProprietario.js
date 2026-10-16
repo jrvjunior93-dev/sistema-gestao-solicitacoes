@@ -92,6 +92,7 @@ const stubs = {
   './tituloFinanceiroService': {}, './tituloBloqueioRetornoObraService': { assertTituloDisponivelParaBaixa(title) {
     if (title.bloqueio_retorno_obra) throw Object.assign(new Error('Retorno pendente'), { statusCode: 409 });
   } }, './s3': {}, './fileAccessService': {},
+  './faturaCartaoFinanceiroService': {},
   './securityLogService': { registrarEventoSeguranca: async () => {}, getRequestIp: () => req.ip },
   './webauthnChallengeStore': {
     saveChallenge: async (_, value) => { challenge = value; },
@@ -559,6 +560,8 @@ async function testarMedicoesIndependentes() {
   reset(); state.TituloFinanceiro[0].formaPagamento = { exige_cartao: true, gera_fatura: true };
   await send(); assert.equal(state.PagamentoManualFilaItem.length, 2);
   reset(); state.TituloFinanceiro[0].fatura_cartao_id = 9;
-  await assert.rejects(send(), /fluxo da fatura/); assert.equal(state.PagamentoManualFilaItem.length, 0);
+  // Fatura inexistente nao pode ser tratada como previsao corrigivel.
+  models.FaturaCartaoFinanceiro = { findByPk: async () => null };
+  await assert.rejects(send(), /fatura prevista nao esta aberta/); assert.equal(state.PagamentoManualFilaItem.length, 0);
   console.log('OK: analise, convergencia direta/digital, mistos, replay, lote parcial/concluido, escopo, auditoria atomica, decisao obsoleta e locks. Models/biometria simulados; sem banco ou rede.');
 })().catch((error) => { console.error(error); process.exitCode = 1; });

@@ -94,7 +94,10 @@ export default function InstrumentoPagamentoFila({ row, draft = {}, instrumentos
     {draft.parcelas_cheque?.length ? ` · ${draft.parcelas_cheque.length} cheque(s)` : ''}</span>;
   const compativeis = cartoesCompativeisFila(forma, cartoes);
   return <div className="min-w-64 space-y-2">
-    <label className="block text-xs">Forma de pagamento
+    {row.titulo?.fatura_cartao_id && <p className="text-xs text-muted">
+      Previsão de cartão. O vínculo com a fatura será revalidado na baixa.
+    </p>}
+    <label className="block text-xs">Forma efetiva de pagamento
       <select className="input input-sm w-full" aria-label={`Forma de pagamento de ${label}`}
         value={draft.forma_pagamento_id || ''} onChange={event => {
           onChange({ forma_pagamento_id: event.target.value, conta_bancaria_id: '',

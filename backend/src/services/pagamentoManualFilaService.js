@@ -319,7 +319,10 @@ async function listarInstrumentosFila() {
 }
 
 async function resolverInstrumentoFila(titulo, payload, transaction, rateioInterno = false) {
-  if (titulo.fatura_cartao_id) throw createHttpError(409, 'Titulo ja vinculado a fatura: use o pagamento da fatura.');
+  if (titulo.fatura_cartao_id) {
+    await require('./pagamentoFilaPrevisaoCartaoService').validarPrevisaoCartaoFila(titulo, transaction);
+    if (!payload.forma_pagamento_id) throw createHttpError(400, 'Informe a forma efetiva de pagamento na fila.');
+  }
   const instrumento = instrumentoPayload(payload);
   instrumento.forma_pagamento_id = payload.forma_pagamento_id || titulo.forma_pagamento_id || undefined;
   const forma = instrumento.forma_pagamento_id
@@ -488,7 +491,7 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
         throw createHttpError(400, `O titulo ${titulo.codigo || titulo.id} nao possui saldo disponivel para pagamento.`);
       }
       if (titulo.fatura_cartao_id) {
-        throw createHttpError(400, `O titulo ${titulo.codigo || titulo.id} usa cartao e deve ser baixado pelo fluxo da fatura do cartao.`);
+        await require('./pagamentoFilaPrevisaoCartaoService').validarPrevisaoCartaoFila(titulo, transaction);
       }
       assertTituloDisponivelParaBaixa(titulo);
     }
@@ -803,6 +806,12 @@ async function processarItemFila(req, itemPayload, requestKey, transaction, liqu
     return { filaItem, titulo, baixaRegistrada: false, divergente: true };
   }
 
+  if (titulo.fatura_cartao_id) {
+    const previsaoAnterior = await require('./pagamentoFilaPrevisaoCartaoService')
+      .corrigirPrevisaoCartaoNaBaixa(req, titulo, filaItem.id, instrumento, transaction);
+    commonUpdate.instrumento_pagamento_json.previsao_cartao_anterior = previsaoAnterior;
+  }
+
   const payloadBaixa = {
     empresa_id: empresaPagadoraId,
     conta_bancaria_id: conta?.id || null,
@@ -981,6 +990,12 @@ async function aprovarDivergenciasFila(req, payload = {}) {
         const instrumento = await resolverInstrumentoFila(titulo, { ...(current.instrumento_pagamento_json || {}),
           conta_bancaria_id: conta.id, valor_pago: valorPago, juros: current.juros, multa: current.multa,
           desconto: valores.desconto }, transaction);
+        if (titulo.fatura_cartao_id) {
+          const previsaoAnterior = await require('./pagamentoFilaPrevisaoCartaoService')
+            .corrigirPrevisaoCartaoNaBaixa(req, titulo, current.id, instrumento, transaction);
+          await current.update({ instrumento_pagamento_json: { ...current.instrumento_pagamento_json,
+            previsao_cartao_anterior: previsaoAnterior } }, { transaction });
+        }
         const baixa = await baixarInstrumentosFila(req, titulo.id, instrumento, valorPago, valores, {
           empresa_id: conta.empresa_id,
           conta_bancaria_id: conta.id,

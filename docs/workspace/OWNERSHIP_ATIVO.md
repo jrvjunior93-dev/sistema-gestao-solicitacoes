@@ -1,5 +1,66 @@
 # Ownership Ativo
 
+## Publicacao das correcoes de cartao na fila - 2026-10-16
+
+- Usuario autorizou commit e push dos dois deltas na refactor/frontend e entrega
+  dos comandos EC2 DEV. Reserva temporaria do agente unico: arquivos dos dois
+  escopos abaixo, seus testes, README financeiro e handoffs correspondentes.
+- Sem delegacao, main, producao, dados reais, .env, PM2 ou execucao EC2 pelo agente.
+  Outputs QA ficam fora do commit. Nenhuma migration nova neste delta.
+- Deploy orientado com identidade DEV/schema/sessao conferidos em leitura pelo
+  guard existente configurarSessao12hDev.js --verificar antes/depois do restart
+  exclusivo backend-dev; se houver pendencias, parar sem aplicar migrations.
+- Revisao de publicacao concluida: backend, negativas de permissao, replay/
+  rollback, UI completa de detalhe/fila, previsao para PIX desktop/mobile,
+  650 titulos/13 paginas/8 recortes, build, sintaxe, docs e diff aprovados.
+  Reserva encerrada para o commit/push autorizado. Homologacao real DEV pendente.
+
+## Desvincular previsao de cartao antes da edicao - 2026-10-16
+
+- Agente unico desta conversa, sem delegacao; implementacao concluida e reserva liberada.
+- Usuario autorizou implementar acao segura antes da baixa, sem producao.
+- Reservados: pagamentoFilaPrevisaoCartaoService.js, novo
+  tituloDesvincularFaturaService.js/controller/validator/testes isolados,
+  routes.js, financeiroRotaPermissoesService.js, financeiro.js do frontend,
+  novo DesvincularFaturaTitulo.jsx, FinanceiroTituloDetalhe.jsx,
+  FinanceiroTituloEditar.jsx, scripts de teste pertinentes e docs/handoff.
+- Preservar delta anterior de forma efetiva na fila e outputs/. Sem commit,
+  push, migration, EC2, .env, PM2 ou dados reais. Valores/parcelas nao mudam ao
+  desvincular; substituicao de parcelas usa geracao existente apos retirada.
+- Reserva adicional: fixtures/testes validarFilaPrevisaoCartao.js,
+  validarTituloDesvincularFatura.js, validarTituloDetalheWorkspace.mjs,
+  tituloDesvincularFaturaQA.mjs e scripts npm backend/frontend.
+- Reserva adicional: tituloDesvincularFaturaAuditoriaService.js e
+  tituloFinanceiroService.js (somente leitura da auditoria). Recibo duravel em
+  LogExclusao, entidade propria e sem solicitacao_id; nao usar apenas logs de
+  seguranca com retencao de 90 dias nem criar autoria que amplie visibilidade.
+- Testes novos, regressoes financeiras/permissoes/performance, UI real desktop/
+  mobile, build, sintaxe, docs e diff aprovados. Handoff:
+  docs/handoffs/2026-10-16-titulo-desvincular-fatura.md.
+- Homologacao real em DEV pendente. Sem publicacao ou alteracao de producao;
+  SOL-6104 intacta. Troca de parcelas usa substituicao existente, nao edicao
+  silenciosa da quantidade de parcelas ao desvincular.
+
+## Forma efetiva na fila e previsao de cartao - 2026-10-16
+
+- Agente unico desta conversa, sem delegacao; implementacao concluida e reserva liberada.
+- Reservados: novo pagamentoFilaPrevisaoCartaoService.js, pagamentoManualFilaService.js,
+  testes isolados da fila/previsao, InstrumentoPagamentoFila.jsx,
+  FinanceiroFilaPagamentos.jsx, filaWorkspaceDraft.js e documentacao/handoff.
+- Usuario confirmou corrigir vinculos somente sem baixa do titulo nem pagamento
+  da fatura, com auditoria e recalculo. Preservar permissoes, escopo, autorizacao
+  do proprietario e idempotencia. Valores/parcelas da SOL-6104 nao serao alterados.
+- Sem producao, EC2, dados reais, migration, commit ou push nesta etapa.
+- Reserva adicional de testes: validarFilaPrevisaoCartao.js, validarAnaliseProprietario.js,
+  validarCartaoOpcionalSolicitacao.js, validarFilaPagamentosManuais.js,
+  validarFilaInstrumentosUI.mjs e backend/package.json. Fixtures antigas sao
+  atualizadas para o contrato de previsao corrigivel, sem dispensar as protecoes.
+- Testes novos/regressoes backend, UI desktop/mobile completa, paginacao,
+  build, sintaxe, documentacao e diff aprovados. Handoff:
+  docs/handoffs/2026-10-16-fila-forma-efetiva-previsao-cartao.md.
+- Homologacao com MySQL real em DEV pendente. SOL-6104 nao foi alterada;
+  valores/parcelas incorretos exigem correcao especifica antes da baixa.
+
 ## Duracao da sessao de login: 12 horas - 2026-10-16
 
 - Publicacao conjunta RH + sessao autorizada: reservar delta, scripts/testes de

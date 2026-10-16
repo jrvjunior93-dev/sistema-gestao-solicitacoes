@@ -666,6 +666,85 @@ Detalhes tecnicos e cenarios de aceite estao em [`PLANO_IMPORTACAO_TITULOS_PAGAR
 
 ## Fila manual de pagamentos
 
+### Desvincular previsao antes de corrigir o titulo (2026-10-16)
+
+No detalhe do titulo, **Desvincular previsao de cartao** exige a mesma permissao
+`financeiro.titulos.editar` e a ACL de edicao/leitura do titulo. O motivo e
+obrigatorio. A API `POST /financeiro/titulos/:id/desvincular-fatura` exige a
+fatura esperada e uma chave de idempotencia; o titulo e travado antes da
+revalidacao e inclusive antes de qualquer replay.
+
+Somente PAGAR/ABERTO, com saldo e sem baixa, fatura ABERTA e vinculo consistente
+podem ser desvinculados. Fila ativa (inclusive NAO_PAGO/DIVERGENTE/EM_EDICAO),
+autorizacao pendente/autorizada e pagamento bancario ativo impedem a operacao.
+Titulos compartilhados, renegociados, RH/DP, recargas e adiantamentos permanecem nos seus
+fluxos especializados. Bloqueio de retorno da Obra tambem e respeitado.
+
+A mesma transacao remove apenas o vinculo previsto desse titulo, limpa
+cartao/fatura, recalcula a fatura e grava o motivo/estado anterior/autor.
+Nao modifica valor, vencimento, quantidade de parcelas, status ou saldo, nao
+gera baixa nem apaga faturas, anexos, movimentos ou historicos existentes.
+Fatura paga, fechada, parcial, conciliada ou com PAGAMENTO_FATURA ativo bloqueia
+a acao. Outros titulos da fatura sao preservados; fatura zerada nao e apagada.
+
+A trilha duravel utiliza `LogExclusao`, entidade propria
+`TITULO_DESVINCULACAO_FATURA`, sem `solicitacao_id`. O evento financeiro
+`FINANCIAL_TITLE_CARD_FORECAST_UNLINKED` aparece uma unica vez na auditoria
+existente do titulo, respeitando `financeiro.titulos.auditoria.visualizar`.
+Mesmo apos a retencao dos logs de seguranca, o recibo duravel conserva motivo,
+estado anterior e replay. Nao se cria Historico/autoria/interacao da solicitacao,
+pois isso poderia ampliar visibilidade. Retorno e auditoria nao expoem valores
+de outros titulos da fatura.
+
+Depois de desvincular, o usuario pode **Editar titulo** para corrigir valor e
+vencimento. Para trocar a quantidade de parcelas, deve desvincular todos os
+titulos incorretos, exclui-los logicamente pelo fluxo existente (permissao
+`financeiro.titulos.excluir`) e gerar a distribuicao correta na solicitacao
+(permissao de criar titulos). Conferir o total antes de pagar. Nao existe
+reparcelamento silencioso de um titulo nem reparo automatico da SOL-6104.
+
+UI preserva motivo/chave ao alternar abas e em erro, bloqueia duplo envio e
+so atualiza apos resposta da API. Validacoes: `test:titulo-desvincular-fatura`
+no backend e `test:titulo-desvincular-fatura-ui` no frontend. Nenhuma migration
+nova; homologacao real em DEV deve anteceder publicacao em producao.
+
+### Forma prevista e forma efetiva (2026-10-16)
+
+A forma cadastrada no titulo permanece como previsao. Na fila, o usuario com a
+permissao de baixa informa a forma efetiva (cartao, Pix, transferencia, dinheiro
+ou outra forma ativa), conta, data e instrumento exigido. O movimento e o
+snapshot da fila registram essa escolha, sem reescrever a forma prevista.
+
+Titulos legados ABERTO vinculados a fatura podem entrar na fila somente se o
+titulo nao tiver baixa/movimento ativo e a fatura existir, estiver ABERTA, sem
+pagamento, conciliacao ou movimento ativo de PAGAMENTO_FATURA. Cartao, campo de
+fatura e tabela de vinculos devem concordar. A verificacao e repetida na baixa.
+Enviar para a fila nao desfaz vinculos nem registra pagamentos.
+
+Na baixa efetiva, a mesma transacao remove apenas o vinculo previsto desse
+titulo, limpa seu cartao/fatura e recalcula a fatura antiga. A baixa canonica
+registra o instrumento efetivo; se for credito, associa a compra a uma fatura
+aberta do cartao escolhido. Outros titulos da fatura antiga sao preservados;
+uma fatura que ficar zerada nao e apagada. A compra pode quitar o fornecedor
+sem quitar a fatura. Os pagamentos da fatura continuam em seu proprio fluxo.
+
+Auditoria transacional `MANUAL_PAYMENT_CARD_FORECAST_CORRECTED` preserva ator,
+fila, previsao anterior e instrumento efetivo. A fila tambem guarda a previsao
+em `instrumento_pagamento_json.previsao_cartao_anterior`. Falha na baixa,
+recalculo ou auditoria reverte tudo. Divergencia acima do saldo so corrige o
+vinculo quando a baixa for realmente autorizada. Replay nao duplica correcao.
+
+Permissoes, visibilidade, governanca do proprietario, encargos e estornos nao
+foram ampliados. Titulos quitados, com baixa anterior ou fatura fechada/parcial/
+paga nao sao liberados por esta correcao. A criacao que ja registra uma compra
+efetiva no cartao mantem sua baixa automatica existente; nao volta para a fila.
+Valores e parcelamentos incorretos (inclusive SOL-6104) nao sao reparados
+automaticamente por enviar/baixar. Nenhuma migration nova e necessaria.
+
+Validacao isolada: `npm run test:fila-previsao-cartao` no backend e
+`node scripts/validarFilaInstrumentosUI.mjs --previsao-cartao` no frontend.
+Homologar banco/transacoes reais somente em DEV antes de promover.
+
 A Fila de Pagamentos separa a preparacao da carteira da execucao no banco. Em Contas a Pagar, quem possui `financeiro.fila_pagamentos.preparar` seleciona titulos abertos e os encaminha para a fila; o operador pode ter acesso somente a essa tela pelas permissoes do grupo `financeiro.fila_pagamentos`.
 
 - a tela operacional e uma tabela responsiva com rolagem horizontal, sem modal de baixa;
@@ -674,7 +753,7 @@ A Fila de Pagamentos separa a preparacao da carteira da execucao no banco. Em Co
 - valor exato registra baixa total, valor menor registra baixa parcial e cria alerta de divergencia, valor maior nao baixa e permanece divergente;
 - `NAO_PAGO` mantem o titulo aberto e exige motivo;
 - a grade de Contas a Pagar mostra na propria linha os estados `Em fila de pagamento`, `Pagamento nao realizado` e `Pagamento divergente`;
-- previsao de pagamento por cartao sem vinculo a fatura pode entrar na fila: o cartao e informado ao registrar a baixa. Credito quita o titulo e vincula a compra a uma fatura aberta; debito usa a conta vinculada. Titulos ja vinculados a fatura continuam no fluxo da fatura, sem segunda baixa;
+- previsao de pagamento por cartao pode entrar na fila: o instrumento efetivo e informado ao registrar a baixa. Credito quita o titulo e vincula a compra a uma fatura aberta; debito usa a conta vinculada. Um vinculo anterior so pode ser corrigido nas condicoes de seguranca abaixo, sem segunda baixa;
 - credito exige quitacao integral sem baixa anterior, pois a fatura soma o valor integral do titulo. Cartao, conta e forma devem ser compativeis;
 - cheque proprio registra numero, emitente e demais dados do documento. Cheque de terceiro consome um cheque disponivel da carteira, com valor exato e empresa compativel, sem duplicar saida bancaria;
 - rejeicoes atuais do proprietario aparecem em Nao pagos com motivo, somente para consulta; nao viram pagamentos executaveis nem permitem reabrir pela fila;

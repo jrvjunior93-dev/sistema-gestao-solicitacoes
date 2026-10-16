@@ -6,6 +6,7 @@ import useWorkspaceOpenRecord from '../navigation/useWorkspaceOpenRecord';
 import TituloNegociacaoHistorico from '../components/financeiro/TituloNegociacaoHistorico';
 import ParticipacoesTitulo from '../components/financeiro/ParticipacoesTitulo';
 import CancelarLoteCompartilhado from '../components/financeiro/CancelarLoteCompartilhado';
+import DesvincularFaturaTitulo from '../components/financeiro/DesvincularFaturaTitulo';
 import { Link, useParams } from 'react-router-dom';
 import {
   atualizarCobrancaTituloFinanceiro,
@@ -848,6 +849,9 @@ export default function FinanceiroTituloDetalhe() {
           cor="var(--module-financeiro)"
         >
           <ParticipacoesTitulo titulo={titulo} />
+          <DesvincularFaturaTitulo key={`${titulo.id}:${titulo.fatura_cartao_id || 0}`}
+            titulo={titulo} permitido={podeEditarDadosTitulo && podeEditarTitulo}
+            onDesvinculado={async () => { avisar.sucesso('Previsão desvinculada. Confira os dados antes de editar ou substituir os títulos.'); await carregar(); }} />
           <CancelarLoteCompartilhado key={titulo.compartilhamento_id || titulo.id} titulo={titulo} permitido={hasPermissao(user, 'financeiro.titulos.excluir')} onCanceled={carregar} />
           <CamposComVazios
             colunas={4}

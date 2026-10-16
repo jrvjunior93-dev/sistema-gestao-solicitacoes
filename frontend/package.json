@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:titulo-desvincular-fatura-ui": "node scripts/validarTituloDetalheWorkspace.mjs --desvincular-fatura",
     "test:rh-movimentacoes-documentais": "node scripts/validarRhPessoalPorLocal.mjs --movimentacoes",
     "test:titulos-compartilhados": "node scripts/validarTitulosCompartilhadosModal.mjs",
     "test:polling-seguro": "node scripts/validarPollingSeguro.mjs",

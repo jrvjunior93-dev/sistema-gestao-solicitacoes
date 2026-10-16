@@ -67,6 +67,9 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
         row.somente_consulta=onlyConsult;
         row.titulo.numero_documento=new URLSearchParams(location.search).has('documento')?'DOC-QA':null;
         row.titulo.formaPagamento=${JSON.stringify(forms[0])};
+        if(new URLSearchParams(location.search).has('previsao-cartao')) {
+          row.titulo.fatura_cartao_id=79; row.titulo.cartao_id=40;
+        }
         if(new URLSearchParams(location.search).has('dados')) row.titulo.observacoes=window.__paymentText || ('PIX: 000201ABC/Pix@EXEMPLO.COM +'+'aB:0123456789/'.repeat(500));
         if(new URLSearchParams(location.search).has('compartilhado')) {
           const items=[{...row,comprovante_hash:null,comprovante_url:null,pendente_comprovante:false},
@@ -117,7 +120,25 @@ try {
     if (new URL(route.request().url()).origin === 'http://127.0.0.1:5308') return route.continue();
     unexpected.push(route.request().url()); return route.abort();
   });
-  if (process.argv.includes('--paginacao')) {
+  if (process.argv.includes('--previsao-cartao')) {
+    for (const width of [1366, 390]) {
+      await page.setViewportSize({width,height:900});
+      await page.goto('http://127.0.0.1:5308/qa-fila?previsao-cartao=1');
+      await page.getByText('Previsão de cartão. O vínculo com a fatura será revalidado na baixa.',{exact:true}).waitFor();
+      await page.getByLabel('Forma de pagamento de TIT-QA',{exact:true}).selectOption('3');
+      await page.getByLabel('Conta pagadora de TIT-QA',{exact:true}).selectOption('5');
+      assert.equal(await page.getByLabel('Cartão de TIT-QA',{exact:true}).count(),0);
+      await page.getByLabel('Forma de pagamento de TIT-QA',{exact:true}).scrollIntoViewIfNeeded();
+      await page.screenshot({path:path.join(root,`../outputs/fila-previsao-cartao-${width}.png`),fullPage:true});
+      await page.getByRole('button',{name:'Registrar baixa',exact:true}).click();
+      await page.waitForFunction(()=>window.__settles.length===1);
+      const item=await page.evaluate(()=>window.__settles[0].itens[0]);
+      assert.equal(item.forma_pagamento_id,3); assert.equal(item.conta_bancaria_id,5);
+      assert(!item.cartao_id&&!item.fatura_cartao_id,'Nao reenviar o vinculo previsto como pagamento efetivo');
+    }
+    assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
+    console.log('OK: previsao de cartao -> PIX na fila real desktop/mobile, conta e instrumento efetivos, sem vinculo antigo no payload. APIs isoladas.');
+  } else if (process.argv.includes('--paginacao')) {
     await validarPaginacaoFila(page);
     assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
   } else {

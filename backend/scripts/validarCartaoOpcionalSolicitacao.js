@@ -96,6 +96,11 @@ dependencies['./comercialService'].sincronizarContratoComercialPorTituloEditado 
 dependencies['./solicitacaoFavorecidosService'] = { listarFavorecidos: async () => [] };
 dependencies['./adiantamentoService'] = { ehAdiantamento: async () => false };
 dependencies['./instrucaoFinanceiraFavorecidoService'] = { anexarInstrucoes: async () => {} };
+// A leitura canonica passou a anexar participacoes mesmo em titulos simples.
+// Esta fixture nao simula compartilhamento; rejeitar em vez de dispensar ACL.
+dependencies['./tituloCompartilhadoLeitura'] = { anexarParticipacoes: async titulos => {
+  assert(titulos.every(titulo => !titulo.compartilhamento_id));
+} };
 dependencies['./pagamentoFilaValoresDomain'] = require('../src/services/pagamentoFilaValoresDomain');
 // Pontos substituiveis pela suite de rateio: servico de titulo permanece real.
 const faturaMocks = dependencies['./faturaCartaoFinanceiroService'];

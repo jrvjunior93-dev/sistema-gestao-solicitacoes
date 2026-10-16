@@ -1263,7 +1263,7 @@ export default function FinanceiroFilaPagamentos() {
         titulo={status === 'PENDENTE_COMPROVANTE' ? 'Pagamentos pendentes de comprovante' : 'Pagamentos preparados'}
         variante="primario"
         cor="var(--module-financeiro)"
-        descricao="Empresa do título é a empresa do colaborador no DP. Empresa pagadora vem da conta, cartão ou carteira usados na baixa."
+        descricao="Informe a forma efetiva na baixa; ela pode diferir da prevista no título. Empresa do título é a empresa do colaborador no DP. Empresa pagadora vem da conta, cartão ou carteira usados na baixa."
         controles={(
           <div className="flex flex-wrap items-end gap-2">
             {colunasConfiguradas.painel}
