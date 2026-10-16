@@ -76,7 +76,10 @@ const SUBTIPOS_MOVIMENTACAO = new Set([
   'RETORNO_AFASTAMENTO',
   'ALTERACAO_SALARIAL',
   'ALTERACAO_CARGO',
-  'TRANSFERENCIA_OBRA'
+  'TRANSFERENCIA_OBRA',
+  'CONTRA_CHEQUE',
+  'FOLHA_PONTO',
+  'ACIDENTE_TRABALHO_CAT'
 ]);
 
 /**
@@ -253,7 +256,8 @@ function validarPedido(tipo, dados = {}, colaboradorId, subtipo = null) {
     if (!SUBTIPOS_MOVIMENTACAO.has(subtipoNormalizado)) {
       throw new ValidationError(
         'Informe o tipo da movimentacao: atestado, ferias, retorno de afastamento, alteracao '
-        + 'salarial, alteracao de cargo ou transferencia de obra.'
+        + 'salarial, alteracao de cargo, transferencia de obra, contra-cheque, folha de ponto '
+        + 'ou acidente de trabalho - CAT.'
       );
     }
     if (!dados.obra_id && !dados.obra_destino_id) {
@@ -447,7 +451,8 @@ async function abrirSolicitacao(payload = {}, contexto = {}) {
     await validarEnderecosDaAdmissao(tipo, dados, contexto);
 
     if (colaboradorId) {
-      const colaborador = await RhColaborador.findByPk(colaboradorId, { transaction });
+      // Serializa aberturas para o mesmo colaborador antes de procurar duplicatas.
+      const colaborador = await RhColaborador.findByPk(colaboradorId, { transaction, lock: transaction.LOCK.UPDATE });
       if (!colaborador) throw new ValidationError('Colaborador nao encontrado.', 404);
       if (require('./rhPessoalDomain').ehTransferencia({ tipo, subtipo, obra_id: colaborador.obra_id })) {
         throw new ValidationError('Use o fluxo de transferencia entre os responsaveis das obras.');
@@ -1068,6 +1073,11 @@ async function aplicarEfeito(solicitacao, contexto, transaction) {
       statusAnterior,
       statusNovo: 'ATIVO'
     };
+  }
+
+  if (['MOVIMENTACAO_CONTRA_CHEQUE', 'MOVIMENTACAO_FOLHA_PONTO', 'MOVIMENTACAO_ACIDENTE_TRABALHO_CAT'].includes(efeito)) {
+    // Ciencia/documentacao: nao afasta, transfere, altera salario ou gera titulos.
+    return { subtipo: solicitacao.subtipo, registroDocumental: true };
   }
 
   if (efeito.startsWith('MOVIMENTACAO_')) {

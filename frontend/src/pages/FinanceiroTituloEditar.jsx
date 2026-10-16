@@ -1,7 +1,7 @@
 import DateInputBR from '../components/DateInputBR';
 import { PIX_TIPOS_CHAVE, pixTipoLabel } from '../utils/pix';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useWorkspaceState, useWorkspaceWork, useWorkspaceTitle, useWorkspaceClearPage } from '../navigation/WorkspaceContext';
 import useWorkspaceRecordDraft from '../navigation/useWorkspaceRecordDraft';
 import { useFecharAoSair } from '../hooks/useFecharAoSair';
@@ -192,6 +192,7 @@ function getParceiroPixPrincipal(parceiro) {
 }
 
 function getTituloBloqueado(titulo) {
+  if (titulo?.compartilhamento_id) return 'Título compartilhado: preserve as participações. Para desfazer uma geração sem pagamentos, cancele o lote completo pelo detalhe.';
   const status = String(titulo?.status || '').toUpperCase();
   const valorBaixado = Number(titulo?.valor_baixado || 0);
   const movimentosAtivos = Array.isArray(titulo?.movimentos)
@@ -951,6 +952,11 @@ export default function FinanceiroTituloEditar() {
           dispensável. Os `Avisos` abaixo são EVENTO (falhou ao carregar,
           falhou ao salvar, validação recusou o envio). */}
       {bloqueio && <div className="app-alert">{bloqueio}</div>}
+      {titulo.fatura_cartao_id && <div className="app-alert app-alert--warning">
+        Este título tem previsão vinculada a uma fatura. Antes de corrigir o valor,
+        use “Desvincular previsão de cartão” no detalhe do título, se ainda não houver pagamento.
+        {' '}<Link className="underline" to={`/financeiro/titulos/${id}`}>Voltar ao detalhe do título</Link>
+      </div>}
 
       <Avisos avisos={avisos} aoFechar={fechar} />
 

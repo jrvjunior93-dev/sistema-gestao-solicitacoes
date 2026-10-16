@@ -57,6 +57,7 @@ import OverlayModal from '../components/ui/OverlayModal';
 import ApropriacaoAutocomplete from '../components/ui/ApropriacaoAutocomplete';
 import Badge from '../components/ui/Badge';
 import ContratoDetalheOperacional from '../components/contratos/ContratoDetalheOperacional';
+import ContratoMedicaoMarcacao from '../components/contratos/ContratoMedicaoMarcacao';
 import { useFecharAoSair } from '../hooks/useFecharAoSair';
 
 const DESCRICAO_GESTAO = 'Cadastro, importacao e acompanhamento dos contratos por obra.';
@@ -88,6 +89,7 @@ export default function GestaoContratos() {
   const { user } = useAuth();
   const [contratos, setContratos] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [revisaoMarcacao, setRevisaoMarcacao] = useState(0);
   const [obras, setObras] = useState([]);
   // ?obra_id= / ?codigo= / ?ref= / ?q= chegam da busca universal (Ctrl+K)
   // e das ações rápidas de obra: a lista abre já filtrada. Um ?q= com
@@ -265,7 +267,7 @@ export default function GestaoContratos() {
       texto: contrato?.status_operacional || 'Sem status',
       variante: 'muted'
     };
-    return <Badge variant={item.variante} size="sm">{item.texto}</Badge>;
+    return <Badge variant={item.variante} size="sm">{item.texto}{contrato?.medicao_finalizada_manualmente ? ' · marcação GEO' : ''}</Badge>;
   };
   // ORDEM INICIAL da lista: código A→Z. Do primeiro clique num título em
   // diante quem ordena é a TabelaPadrao (asc → desc → volta a esta ordem),
@@ -330,7 +332,7 @@ export default function GestaoContratos() {
       .finally(() => { if (ativo) setCarregandoDetalhe(false); });
 
     return () => { ativo = false; };
-  }, [contratoSelecionadoId]);
+  }, [contratoSelecionadoId, revisaoMarcacao]);
 
   async function carregar(overrideFiltros) {
     try {
@@ -1980,6 +1982,9 @@ export default function GestaoContratos() {
           </button>
         </div>
       )}
+
+      {contratoSelecionado && <ContratoMedicaoMarcacao key={contratoSelecionado.id} contratoId={contratoSelecionado.id}
+        onMudou={async () => { await carregar(); setRevisaoMarcacao(v => v + 1); }} />}
 
       {contratoEmEdicao && (
         <div className="contratos-edit-modal fixed inset-0 z-modal flex items-center justify-center bg-black/45 px-4 py-6">

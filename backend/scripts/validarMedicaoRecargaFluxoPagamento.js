@@ -9,13 +9,14 @@ const root = path.resolve(__dirname, '../src/services');
 const { resumoTituloEnvioMedicao } = require('../src/services/tituloMedicaoEnvioDomain');
 const tituloResumo = { id: 9, tipo: 'PAGAR', status: 'ABERTO', valor_saldo: '1000.00' };
 assert.deepEqual(resumoTituloEnvioMedicao(tituloResumo, [{ id: 7, status: 'PENDENTE', segredo: 'omitido' }]),
-  { id: 9, tipo: 'PAGAR', status: 'ABERTO', status_interno_pagar: null, valor_saldo: 1000, filaPagamentosManuais: [{ id: 7, status: 'PENDENTE' }] });
+  { id: 9, tipo: 'PAGAR', status: 'ABERTO', status_interno_pagar: null, valor_saldo: 1000, valor_original: 0,
+    medicao_pagamento_origem_id: null, filaPagamentosManuais: [{ id: 7, status: 'PENDENTE' }] });
 assert.equal(resumoTituloEnvioMedicao(null), null);
 assert.equal(resumoTituloEnvioMedicao({ ...tituloResumo, renegociado_por_id: 30 }).status, 'RENEGOCIADO');
 assert.equal(resumoTituloEnvioMedicao({ ...tituloResumo, valor_saldo: '0.00', status: 'QUITADO' }).valor_saldo, 0);
 const fonteParcelasEnvio = fs.readFileSync(path.join(root, 'contratoFluxoNovoService.js'), 'utf8');
-assert.match(fonteParcelasEnvio, /titulo_pagamento: resumoTituloEnvioMedicao\(p\.titulo,/);
-assert.match(fonteParcelasEnvio, /attributes: \['id', 'tipo', 'status', 'status_interno_pagar', 'valor_original', 'valor_baixado', 'valor_saldo', 'renegociado_por_id'\]/);
+assert.match(fonteParcelasEnvio, /titulo_pagamento: resumoTituloEnvioMedicao\(p\.medicao_pagamento_resumo/);
+assert.match(fonteParcelasEnvio, /attributes: \['id', 'tipo', 'status', 'status_interno_pagar', 'valor_original', 'valor_baixado', 'valor_saldo', 'renegociado_por_id', 'medicao_pagamento', 'medicao_pagamento_origem_id'\]/);
 function load(name, dependencies, extra = {}) {
   const module = { exports: {} };
   vm.runInNewContext(fs.readFileSync(path.join(root, name), 'utf8'), {
@@ -306,6 +307,8 @@ async function medicaoMaisRecente() {
   assert.equal(state.Solicitacao[0].status_global, analise.STATUS_ANALISE_PROPRIETARIO);
 
   const financeiro = load('solicitacaoFinanceiroStatusService.js', {
+    './tituloCompartilhadoLeitura': { whereOrigem: w => w },
+    './tituloCompartilhadoConsulta': { porSolicitacao: async (req, titulos) => titulos },
     sequelize: { Op }, '../models': models, './medicaoContratoService': service,
     './medicaoAtualContratoService': medicaoAtual,
     './setorCapabilityService': { findSetorByCapability: async () => ({ codigo: 'FINANCEIRO' }),
@@ -340,7 +343,7 @@ async function medicaoMaisRecente() {
 async function relatorio() {
   const titulos = [
     { id: 1, obra_id: 10, origem_titulo: 'RECARGA_CARTAO', tipo: 'PAGAR', status: 'QUITADO', renegociacao_id: null, valor_original: 100, valor_baixado: 100, valor_saldo: 0, considera_dre: false },
-    { id: 2, obra_id: 10, origem_titulo: null, tipo: 'PAGAR', status: 'QUITADO', renegociacao_id: null, valor_original: 50, valor_baixado: 50, valor_saldo: 0 }
+    { id: 2, obra_id: 10, origem_titulo: null, tipo: 'PAGAR', status: 'QUITADO', renegociacao_id: null, compartilhamento_id: null, valor_original: 50, valor_baixado: 50, valor_saldo: 0 }
   ];
   const modelReport = {
     Obra: { findAll: async () => [{ id: 10, ativo: true, nome: 'Obra QA', classificacao: 'PRIVADA' }] },

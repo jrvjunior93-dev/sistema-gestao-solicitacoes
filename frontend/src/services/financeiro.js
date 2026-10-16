@@ -80,7 +80,8 @@ export async function getFilaPagamentos(params = {}) {
     headers: authHeaders(),
     cache: 'no-store'
   });
-  return parseJson(response, 'Erro ao carregar a fila de pagamentos');
+  try { return await parseJson(response, 'Erro ao carregar a fila de pagamentos'); }
+  catch (error) { error.status = response.status; throw error; }
 }
 
 export async function getInstrumentosFilaPagamentos() {
@@ -952,6 +953,15 @@ export async function atualizarTituloFinanceiro(id, data) {
   });
 
   return parseJson(response, 'Erro ao editar titulo financeiro');
+}
+
+export async function desvincularFaturaTituloFinanceiro(id, data) {
+  const response = await fetch(`${API_URL}/financeiro/titulos/${id}/desvincular-fatura`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  return parseJson(response, 'Não foi possível desvincular a previsão de cartão');
 }
 
 export async function importarCodigosBarrasTitulos(data) {

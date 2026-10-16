@@ -2255,7 +2255,7 @@ async function listarParcelasDoContrato(contratoId, { usuario = null } = {}) {
     // decide por eles — a aprovacao exige a categoria, e o bloco so aparece na solicitacao dona.
     attributes: ['id', 'codigo', 'obra_id', 'valor_total', 'valor_aditivos', 'fluxo_novo',
       'status_contrato', 'ativo', 'categoria_financeira_id', 'solicitacao_id', 'motivo_rejeicao',
-      'link_assinatura',
+      'link_assinatura', 'medicao_encerramento',
       // `favorecido_id` faltava aqui, e sem ele a busca do favorecido nem acontecia — o cabecalho
       // ficava sem "Favorecido" e sem "Chave PIX", em silencio. Lista de atributos e armadilha:
       // o campo existe no banco e no model, mas some se nao for pedido.
@@ -2276,7 +2276,7 @@ async function listarParcelasDoContrato(contratoId, { usuario = null } = {}) {
     include: [{
       model: TituloFinanceiro,
       as: 'titulo',
-      attributes: ['id', 'tipo', 'status', 'status_interno_pagar', 'valor_original', 'valor_baixado', 'valor_saldo', 'renegociado_por_id'],
+      attributes: ['id', 'tipo', 'status', 'status_interno_pagar', 'valor_original', 'valor_baixado', 'valor_saldo', 'renegociado_por_id', 'medicao_pagamento', 'medicao_pagamento_origem_id'],
       required: false
     }],
     order: [['numero', 'ASC']]
@@ -2546,9 +2546,10 @@ async function listarParcelasDoContrato(contratoId, { usuario = null } = {}) {
       // Mesma regra da guarda em SolicitacaoController: contrato do fluxo novo so e medivel
       // depois de APROVADO. Se esta linha divergir da guarda, a tela oferece o que a API
       // recusa (ou esconde o que ela aceita).
-      medivel: ehFluxoNovo
+      medicao_encerramento: contrato.medicao_encerramento || null,
+      medivel: contrato.medicao_encerramento?.finalizado !== true && (ehFluxoNovo
         ? Boolean(contrato.ativo) && contrato.status_contrato === STATUS_CONTRATO.ATIVO
-        : Boolean(contrato.ativo),
+        : Boolean(contrato.ativo)),
       // O que quem esta pedindo pode fazer aqui. A tela usa isto para nao oferecer o que a rota
       // vai recusar — ver `permissoesDoUsuarioNoContrato`.
       permissoes: await permissoesDoUsuarioNoContrato(contrato, usuario)
@@ -2600,16 +2601,20 @@ async function listarParcelasDoContrato(contratoId, { usuario = null } = {}) {
         // verdadeiro nela — e era por isso que o checkbox da Nova Solicitacao continuava liberado
         // depois de medir. Os dois campos nao podem virar um so: a EDICAO de uma medicao precisa,
         // justamente, alterar uma parcela ja medida.
-        medivel: efetivo.editavel && !medicaoPorParcela.has(Number(p.id)),
+        medivel: contrato.medicao_encerramento?.finalizado !== true && efetivo.editavel && !medicaoPorParcela.has(Number(p.id)),
         status_parcela: p.status,
         travada: Boolean(p.travada),
         titulo_financeiro_id: p.titulo_financeiro_id,
         pagamentos_favorecidos: divisoesFavorecidos.get(Number(p.id))?.pagamentos || [],
         titulos_pagamento: (p.divisao_favorecidos?.titulos_leitura || []).map(t =>
           resumoTituloEnvioMedicao(t, filasPorTituloEnvio.get(Number(t.id)) || [])),
-        titulo_pagamento: resumoTituloEnvioMedicao(p.titulo, filasPorTituloEnvio.get(Number(p.titulo?.id)) || []),
+        titulo_pagamento: resumoTituloEnvioMedicao(p.medicao_pagamento_resumo
+          ? (p.divisao_favorecidos?.titulos_leitura || []).find(t => Number(t.id) === Number(p.titulo_financeiro_id)) || null
+          : p.titulo, filasPorTituloEnvio.get(Number(p.titulo_financeiro_id)) || []),
         titulo_valor_baixado: p.titulo ? Number(p.titulo.valor_baixado || 0) : null,
         titulo_valor_saldo: p.titulo ? Number(p.titulo.valor_saldo || 0) : null,
+        titulo_valor_original: p.titulo ? Number(p.titulo.valor_original || 0) : null,
+        medicao_pagamento_resumo: p.medicao_pagamento_resumo || null,
         renegociado_por_id: p.titulo?.renegociado_por_id || null,
         renegociacao_titulos: p.titulo?.renegociacao_titulos || [],
         parceiro_id: p.parceiro_id,

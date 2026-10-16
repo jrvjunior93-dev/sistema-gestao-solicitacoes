@@ -1,5 +1,25 @@
 # Ownership Ativo
 
+## Promocao de todas as pendencias homologadas para main - 2026-10-16
+
+- Usuario aprovou todos os ajustes publicados em DEV e solicitou promocao
+  integral; backup de producao no Drive cifrado conferido e timer ativo
+  confirmados nesta janela. Agente unico, sem delegacao.
+- Reservados integracao main 7e1015ab + refactor/frontend fb9a0e89, helper/testes
+  e script de deploy PROD, docs/handoff/ownership. Preservar correcoes e arquivos
+  exclusivos da main, em especial preservacao de PILOT e protecoes de producao.
+- Tres migrations novas de estrutura: contrato medicao encerramento,
+  titulos compartilhados e medicao pagamento autorizado. Nao executar banco,
+  .env, PM2 ou EC2 pelo agente. Entregar comandos protegidos ao operador;
+  somente backend-solicitacoes/8000, sem tocar DEV. Sessao12h conforme homologado,
+  sem alterar inatividade, autorizacao do proprietario ou demais flags.
+- Integracao e validacoes concluidas; reserva liberada para publicacao/merge
+  autorizado. Runtime, migrations e lockfiles iguais a DEV homologada; 27
+  arquivos exclusivos de main preservados. Testes backend/UI/650 titulos,
+  release/PILOT/12h/schema, build, docs e Bash aprovados. Backup remoto de codigo:
+  backup/main-pre-pendencias-20261016-7e1015ab. Sem operacao na EC2/banco.
+  Handoff: docs/handoffs/2026-10-16-promocao-todas-pendencias-main.md.
+
 ## Correcao do deploy PROD com PILOT existente - 2026-10-15
 
 - Reserva do agente unico: script atualizar-prod-fila-dp-20261015.sh, seu teste
@@ -230,6 +250,261 @@
 - Testes backend/visibilidade, UI desktop/mobile com APIs simuladas, build,
   sintaxe e documentacao aprovados. Handoff:
   docs/handoffs/2026-10-09-promocao-isolada-medicao-recarga-main.md.
+## Publicacao boletos e valor autorizado de medicao - 2026-10-16
+
+- Usuario autorizou commit/push para refactor/frontend e comandos de EC2 DEV
+  incluindo migration. Agente unico, sem delegacao; preservar outputs e outros
+  checkouts. Reservados deltas de boletos/medicao abaixo, helper/teste de migration
+  DEV, scripts npm, README/handoffs e ownership. Nenhuma escrita em banco real,
+  .env, EC2, PM2, main ou producao sera executada pelo agente.
+- Migration permitida neste deploy: 202610160002_medicao_pagamento_autorizado.js.
+  Outras pendencias devem interromper; backup DEV deve ser conferido pelo operador.
+- Revisao e helper DEV concluidos; testes de deploy/medicao/boletos/performance
+  aprovados. Publicacao via integracao GitHub autenticada, pois Git HTTPS local
+  exige login interativo indisponivel; validar tree e ref remotos antes de concluir.
+
+## Medicao x valor autorizado para pagamento - 2026-10-16
+
+- Agente unico, sem delegacao. Usuario autorizou implementar em base
+  refactor/frontend os destinos FUTURO e DEFINITIVO, sem producao.
+- Preservar delta local de boletos e outputs. Reservar novos domain/service/
+  leitura/controller/validator/UI/testes, model TituloFinanceiro, migration
+  202610160002, routes, medicaoContratoService, contratoFluxoNovoService,
+  solicitacaoFavorecidosService, medicaoAtualContratoService, tituloFinanceiroService,
+  envio/autorizacao/fila e bloqueios de mutacoes genericas afetados; FinanceiroCard,
+  ModalMedicao/PrevisoesContrato, services frontend, scripts npm e docs/handoff.
+- Valor medido nao muda. Diferenca futura vira titulo PREVISAO vinculado,
+  bloqueado ate liberacao explicita e novo ciclo de autorizacao. Definitivo
+  vira abatimento auditado. Mudanca encerra fila nao paga e invalida dossie antigo
+  sem fabricar decisao digital. Sem banco real, .env, PM2, migration aplicada ou deploy.
+- Implementacao local concluida e reserva liberada. Suites novas backend/UI,
+  ORM/migration simulada, regressoes financeiras/permissoes/boletos,
+  fila 650 titulos/8 recortes, build e docs aprovados. Sem commit/push.
+  Handoff: docs/handoffs/2026-10-16-medicao-valor-autorizado.md.
+  Migration nova ainda nao aplicada; exige publicacao e homologacao DEV.
+
+## Boletos de pedidos na fila e historico - 2026-10-16
+
+- Agente unico, sem delegacao. Usuario pediu listar boletos dos titulos de
+  Compras na fila de pagamento e no historico da solicitacao. Base DEV 2cee6b9f,
+  branch codex/boletos-pedido-fila-historico-20261016 neste worktree.
+- Reservados: pedidoCompraFinanceiroService.js, pagamentoManualFilaService.js,
+  solicitacaoFilaPagamentoAcessoService.js, ArquivosSolicitacaoFilaModal.jsx,
+  FinanceiroFilaPagamentos.jsx, Timeline.jsx, novos helper/componentes/testes
+  de boletos e ajustes de fixtures pertinentes, README Compras/Financeiro e handoff.
+- Reserva adicional: scripts npm de testes em backend/frontend/package.json.
+- Preservar ACL, escopo, exclusoes, financeiro e idempotencia. Boletos antigos
+  consultados sem backfill; sem banco real, migration, EC2, producao ou publicacao.
+- Implementacao local concluida e ownership liberado. Suites especificas,
+  regressoes de anexos/ACL/financeiro/performance, UI real desktop/mobile,
+  fila completa e rolagem (650 titulos/8 recortes), build, docs e diff aprovados.
+  Handoff: docs/handoffs/2026-10-16-boletos-pedido-fila-historico.md.
+  Sem commit/push; aguarda publicacao solicitada e homologacao real DEV.
+
+## Publicacao da fila com rolagem - 2026-10-16
+
+- Usuario autorizou commit/push dos ajustes pendentes para refactor/frontend
+  e entrega de comandos para EC2 DEV. Reserva temporaria do agente unico:
+  os arquivos de rolagem listados abaixo, README financeiro e handoff.
+- Preservar outputs/ fora do commit. Nenhuma alteracao na main, banco real,
+  .env, PM2 ou EC2 sera executada pelo agente. Delta sem migration nova.
+- Revisao de publicacao concluida e reserva liberada: QA de rolagem repetida
+  com 650 titulos/8 recortes/desktop/mobile, preferencia, selecao/rascunho,
+  anexo, retry/403 e concorrencia; build, regressoes backend, docs e diff OK.
+  Seguir somente com commit/push solicitado e homologacao DEV pelo usuario.
+
+## Fila: alternar paginas e rolagem progressiva - 2026-10-16
+
+- Agente unico, sem delegacao. Usuario autorizou navegacao por rolagem em todos
+  os cards, com alternativa por paginas igual a Solicitacoes.
+- Reservados: FinanceiroFilaPagamentos.jsx, novos helper de janela/componentes
+  de navegacao e testes isolados, validarFilaInstrumentosUI.mjs,
+  filaPaginacaoQA.mjs, package.json frontend, README financeiro e handoff.
+- Reserva adicional: frontend/src/services/financeiro.js, somente metadado HTTP
+  de erro da consulta da fila para diferenciar falha transitoria de 401/403.
+- Preservar endpoints, ACL, filtros, selecao entre paginas, rascunhos, limites
+  por operacao e revalidacao antes de escrita. Sem backend, migrations, dados
+  reais, producao, deploy, commit ou push autorizados nesta etapa.
+- Implementacao concluida e reserva liberada: testes da janela/servico, UI
+  real rolagem e regressao completa (650 titulos, 8 recortes, desktop/mobile),
+  backend financeiro/performance, build, sintaxe, docs e diff aprovados.
+  Handoff: docs/handoffs/2026-10-16-fila-rolagem-progressiva.md.
+  Homologacao DEV e publicacao pendentes de pedido; outputs/ preservado.
+
+## Publicacao das correcoes de cartao na fila - 2026-10-16
+
+- Usuario autorizou commit e push dos dois deltas na refactor/frontend e entrega
+  dos comandos EC2 DEV. Reserva temporaria do agente unico: arquivos dos dois
+  escopos abaixo, seus testes, README financeiro e handoffs correspondentes.
+- Sem delegacao, main, producao, dados reais, .env, PM2 ou execucao EC2 pelo agente.
+  Outputs QA ficam fora do commit. Nenhuma migration nova neste delta.
+- Deploy orientado com identidade DEV/schema/sessao conferidos em leitura pelo
+  guard existente configurarSessao12hDev.js --verificar antes/depois do restart
+  exclusivo backend-dev; se houver pendencias, parar sem aplicar migrations.
+- Revisao de publicacao concluida: backend, negativas de permissao, replay/
+  rollback, UI completa de detalhe/fila, previsao para PIX desktop/mobile,
+  650 titulos/13 paginas/8 recortes, build, sintaxe, docs e diff aprovados.
+  Reserva encerrada para o commit/push autorizado. Homologacao real DEV pendente.
+
+## Desvincular previsao de cartao antes da edicao - 2026-10-16
+
+- Agente unico desta conversa, sem delegacao; implementacao concluida e reserva liberada.
+- Usuario autorizou implementar acao segura antes da baixa, sem producao.
+- Reservados: pagamentoFilaPrevisaoCartaoService.js, novo
+  tituloDesvincularFaturaService.js/controller/validator/testes isolados,
+  routes.js, financeiroRotaPermissoesService.js, financeiro.js do frontend,
+  novo DesvincularFaturaTitulo.jsx, FinanceiroTituloDetalhe.jsx,
+  FinanceiroTituloEditar.jsx, scripts de teste pertinentes e docs/handoff.
+- Preservar delta anterior de forma efetiva na fila e outputs/. Sem commit,
+  push, migration, EC2, .env, PM2 ou dados reais. Valores/parcelas nao mudam ao
+  desvincular; substituicao de parcelas usa geracao existente apos retirada.
+- Reserva adicional: fixtures/testes validarFilaPrevisaoCartao.js,
+  validarTituloDesvincularFatura.js, validarTituloDetalheWorkspace.mjs,
+  tituloDesvincularFaturaQA.mjs e scripts npm backend/frontend.
+- Reserva adicional: tituloDesvincularFaturaAuditoriaService.js e
+  tituloFinanceiroService.js (somente leitura da auditoria). Recibo duravel em
+  LogExclusao, entidade propria e sem solicitacao_id; nao usar apenas logs de
+  seguranca com retencao de 90 dias nem criar autoria que amplie visibilidade.
+- Testes novos, regressoes financeiras/permissoes/performance, UI real desktop/
+  mobile, build, sintaxe, docs e diff aprovados. Handoff:
+  docs/handoffs/2026-10-16-titulo-desvincular-fatura.md.
+- Homologacao real em DEV pendente. Sem publicacao ou alteracao de producao;
+  SOL-6104 intacta. Troca de parcelas usa substituicao existente, nao edicao
+  silenciosa da quantidade de parcelas ao desvincular.
+
+## Forma efetiva na fila e previsao de cartao - 2026-10-16
+
+- Agente unico desta conversa, sem delegacao; implementacao concluida e reserva liberada.
+- Reservados: novo pagamentoFilaPrevisaoCartaoService.js, pagamentoManualFilaService.js,
+  testes isolados da fila/previsao, InstrumentoPagamentoFila.jsx,
+  FinanceiroFilaPagamentos.jsx, filaWorkspaceDraft.js e documentacao/handoff.
+- Usuario confirmou corrigir vinculos somente sem baixa do titulo nem pagamento
+  da fatura, com auditoria e recalculo. Preservar permissoes, escopo, autorizacao
+  do proprietario e idempotencia. Valores/parcelas da SOL-6104 nao serao alterados.
+- Sem producao, EC2, dados reais, migration, commit ou push nesta etapa.
+- Reserva adicional de testes: validarFilaPrevisaoCartao.js, validarAnaliseProprietario.js,
+  validarCartaoOpcionalSolicitacao.js, validarFilaPagamentosManuais.js,
+  validarFilaInstrumentosUI.mjs e backend/package.json. Fixtures antigas sao
+  atualizadas para o contrato de previsao corrigivel, sem dispensar as protecoes.
+- Testes novos/regressoes backend, UI desktop/mobile completa, paginacao,
+  build, sintaxe, documentacao e diff aprovados. Handoff:
+  docs/handoffs/2026-10-16-fila-forma-efetiva-previsao-cartao.md.
+- Homologacao com MySQL real em DEV pendente. SOL-6104 nao foi alterada;
+  valores/parcelas incorretos exigem correcao especifica antes da baixa.
+
+## Duracao da sessao de login: 12 horas - 2026-10-16
+
+- Publicacao conjunta RH + sessao autorizada: reservar delta, scripts/testes de
+  deploy e handoffs para commit/push refactor/frontend. Entregar configuracao
+  DEV JWT_EXPIRES_IN=12h com backup restrito do .env; agente nao executa EC2.
+- Script/testes de deploy e regressoes RH/auth/UI, build, navegacao, docs e
+  sintaxe/bash aprovados; reserva de publicacao encerrada e ownership liberado.
+  Somente delta RH/sessao segue para DEV. Sem migration nova ou operacao real
+  de .env/PM2/EC2/producao executada pelo agente; outputs/ preservado.
+- Reserva do agente unico desta conversa, sem delegacao: backend/src/config/env.js,
+  backend/.env.example, novo validador de prazo JWT/cookies, package.json backend,
+  docs de seguranca e handoff. Preservar delta RH pendente no mesmo worktree.
+- Usuario autorizou aumentar o prazo absoluto de login de 8h para 12h. Sem alterar
+  logout por inatividade, MFA, CSRF, revogacao, permissoes ou flags de pagamento.
+- Nao editar .env real, PM2, banco ou producao; publicacao depende de pedido.
+- Implementacao local e testes de JWT/cookies, MFA/CSRF, revogacao e escopo
+  aprovados. Ownership liberado; handoff docs/handoffs/2026-10-16-sessao-login-12h.md.
+  Novo prazo requer novo login e JWT_EXPIRES_IN=12h efetivo no deploy autorizado.
+
+## Movimentacoes RH: contra-cheque, folha de ponto e CAT - 2026-10-16
+
+- Reserva do agente unico, sem delegacao. Base DEV c6b91b4e, branch
+  codex/rhdp-movimentacoes-documentos-cat-20261016 no worktree atual.
+- Escopo: tres subtipos de MOVIMENTACAO, anexos no fluxo atual e identificacao
+  legivel na lista/detalhe. Sem mudar ACL, salario, lotacao, apuracao ou financeiro.
+- Reservados: rhSolicitacaoService, RhDpPessoal/RhDpPessoalSolicitacoes,
+  novo helper de subtipos, testes backend/UI, package.json, README RH e handoff.
+- Nao executar banco real, migration, deploy ou producao. Commit/push dependem
+  de pedido desta entrega. CAT e comunicacao interna, sem integracao externa.
+- Implementacao e validacoes locais concluidas; ownership de edicao liberado.
+  Handoff: docs/handoffs/2026-10-16-rhdp-movimentacoes-documentos-cat.md. Testes
+  especificos backend/UI, escopo, primeira lotacao, pessoal por solicitacao,
+  consulta salario, build/navegacao/docs aprovados. Limitacao de fixture legada
+  da jornada registrada no handoff. Sem commit/push, migration ou producao.
+
+## Titulos compartilhados entre solicitacoes e empresas - 2026-10-16
+
+- Publicacao DEV autorizada agora: reserva temporaria do delta, script/teste de
+  deploy DEV e handoff para commit/push em refactor/frontend. Sem executar EC2,
+  migration real ou producao. Incluir somente migration 202610160001.
+- Script e negativas de deploy, backend/UI, performance/fila/DP, docs e build
+  revalidados. Reserva de publicacao encerrada e ownership liberado; apenas
+  este delta segue para refactor/frontend, sem outputs/ ou outro checkout.
+- Reserva do agente unico desta conversa, sem delegacao. Base DEV bed984fa.
+- Usuario autorizou implementar: uma parcela/titulo canonico, com participacao
+  por origem e empresa, inclusive obras e CNPJs distintos. Nao executar banco
+  real, migrations, reinicio, deploy ou alteracoes em producao.
+- Reservados: novos modelos/migration/domain/services/controller e UI de lote
+  compartilhado; integracoes de titulos, pedidos, fila, rateio/relatorios,
+  permissoes/rotas correspondentes, testes isolados, docs e handoff.
+- Migration reservada: 202610160001_titulos_compartilhados.js (schema apenas).
+- Preservar visibilidade de cada origem, trilha financeira, centavos exatos,
+  idempotencia, baixas/estornos e impedir cancelamento por uma origem isolada.
+- Worktree performance-fila-dp-20261015, branch
+  codex/titulos-compartilhados-20261016. Outros checkouts preservados.
+- Implementacao/QA local concluidos; reserva encerrada, ownership liberado.
+  Handoff: docs/handoffs/2026-10-16-titulos-compartilhados.md. Sem commit/push,
+  migration aplicada ou producao. Publicacao/homologacao DEV dependem do pedido.
+  Escopo: fila manual; envio bancario automatico multiempresa nao ampliado.
+
+## Performance da fila e RH/DP - 2026-10-15
+
+- Reserva ativa do agente unico desta conversa, sem delegacao. Base DEV da9cf569.
+- Usuario autorizou implementar/publicar em refactor/frontend e preparar comandos
+  EC2 DEV. Proibido alterar main, producao, dados de negocio ou flags.
+- Reservados: services de filtros/fila/relatorio e listagem RH, controller de
+  solicitacoes/notificacoes, polling e servicos frontend dessas telas,
+  componentes auxiliares de paginacao, testes isolados, scripts de deploy DEV,
+  package.json, documentacao e handoff desta tarefa.
+- Preservar escopo/permissoes, snapshots, duplicidades entre paginas, estados
+  legados/normalizados, selecao e regras financeiras. Sem aumentar pool.
+- Worktree isolado: performance-fila-dp-20261015; mudancas de contratos de outro
+  checkout permanecem intocadas e nao serao publicadas junto.
+- Usuario ampliou para paginacao de TODOS os cards/status da fila e selecao entre
+  paginas, com revalidacao antes de operacoes. Implementacao/QA concluidos:
+  650 titulos na UI, 533 pedidos/613 titulos no backend, regressoes financeiras,
+  ACL, polling, build/navegacao/docs. Reserva encerrada; ownership liberado.
+  Handoff: docs/handoffs/2026-10-15-performance-fila-dp.md. Publicacao so DEV;
+  sem migration nova, sem EC2/banco/producao executados pelo agente.
+## Publicacao de contratos para homologacao - 2026-10-16
+
+- Usuario confirmou incluir contratos no pacote, somente apos publicar/testar
+  em DEV. Agente unico retoma os arquivos do escopo abaixo, revisao/testes e
+  integracao com refactor/frontend 67c985e6. Sem delegacao ou producao.
+- Reservar servico/auditoria/testes do marcador, docs, scripts de deploy DEV
+  e eventuais resolucoes de integracao. Preservar outputs/ e outros checkouts.
+- Integracao em codex/contratos-totalmente-medidos-dev-20261016 sobre 67c985e6;
+  unico conflito documental de ownership resolvido preservando os dois lados.
+  Reservados tambem aplicarMigrationContratoMedicaoDev.js,
+  validarDeployContratoMedicaoDev.js e atualizar-dev-contratos-medicao-20261016.sh.
+- Promocao para main aguarda homologacao do contrato e preflight real de
+  producao. Backup de producao confirmado pelo usuario, timer ativo.
+- Implementacao/publicacao DEV validada: marcador, ACL/replay/rollback,
+  auditoria duravel sem autoria de solicitacao, regressoes, UI desktop/mobile,
+  build/navegacao, guard exclusivo da migration 202610150003, Bash/docs/diff OK.
+  Ownership liberado para commit/push na refactor/frontend. Homologacao real
+  ainda depende do usuario; main permanece inalterada.
+
+## Contrato totalmente medido manual - 2026-10-15
+
+- Agente unico, sem delegacao. Usuario confirmou: GEO marca e desfaz com motivo
+  e auditoria; retira das opcoes da Obra e bloqueia novas medicoes, mesmo com
+  saldo. Preservar integralmente parcelas/titulos/pagamentos/medicoes existentes.
+- Reserva: model/migration estrutural do marcador, service/controller/rotas,
+  consultas/guards de medicao novo/legado/reprogramacao, resumo operacional,
+  componentes de gestao/detalhe e testes/docs correspondentes.
+- Branch codex/contrato-totalmente-medido-20261015 a partir da refactor homologada.
+  Sem commit/push/deploy, banco real ou migration aplicada. Outputs/ e outros
+  checkouts preservados. Handoff 2026-10-15-contrato-totalmente-medido-manual.md.
+- Implementacao e testes novos/regressoes principais/UI desktop-mobile/build/
+  navegacao/docs aprovados. Checagem textual legada Pix ja falha na base, sem
+  mudanca fora de escopo. Ownership liberado; migration somente criada, nao aplicada.
+
 ## Filtros/recebimento da fila e relatorio DP - 2026-10-15
 
 - Publicacao DEV agora autorizada pelo usuario: reserva temporaria do delta,

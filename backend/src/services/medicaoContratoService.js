@@ -317,6 +317,12 @@ function redistribuirNasUltimas(trabalho, diferencaCent, { excluir = new Set(), 
  * e a diferenca vai para a ultima parcela editavel — nunca para a propria parcela medida.
  */
 async function aplicarMedicaoNasParcelas({ contratoId, solicitacaoId, medicaoId = null, itens, usuarioId, apenasValidar = false }, transaction) {
+  // Mesmo ordenamento de locks da criacao: contrato antes das parcelas.
+  if (apenasValidar) {
+    const atual = await Contrato.findByPk(contratoId, { attributes: ['id', 'medicao_encerramento'], transaction,
+      ...(transaction ? { lock: transaction.LOCK.UPDATE } : {}) });
+    if (atual?.medicao_encerramento?.finalizado === true) require('./contratoMedicaoEncerramentoDomain').assertNovaMedicao(atual);
+  }
   const lista = Array.isArray(itens) ? itens : [];
   if (lista.length === 0) throw erro('Selecione ao menos uma parcela do contrato para medir.');
 
@@ -749,6 +755,7 @@ async function registrarMedicaoDoContrato({ contratoId, itens, periodoInicio, pe
       transaction
     });
     if (!contrato) throw erro('Contrato nao encontrado.', 404);
+    if (contrato.medicao_encerramento?.finalizado === true) require('./contratoMedicaoEncerramentoDomain').assertNovaMedicao(contrato);
     if (!contrato.fluxo_novo) {
       throw erro('Medicao como evento da solicitacao so vale para contrato do fluxo novo.');
     }
@@ -886,7 +893,7 @@ async function calcularStatusDaSolicitacaoDoContrato(contratoId, transaction) {
     include: [{
       model: TituloFinanceiro,
       as: 'titulo',
-      attributes: ['id', 'status', 'valor_saldo', 'valor_baixado', 'status_interno_pagar'],
+      attributes: ['id', 'status', 'valor_original', 'valor_saldo', 'valor_baixado', 'status_interno_pagar', 'medicao_pagamento', 'medicao_pagamento_origem_id'],
       required: false
     }],
     transaction,
@@ -1021,7 +1028,7 @@ async function reconciliarParcelasComOPago(contratoId, { usuarioId = null, setor
     include: [{
       model: TituloFinanceiro,
       as: 'titulo',
-      attributes: ['id', 'status', 'valor_original', 'valor_baixado', 'valor_saldo', 'possui_rateio'],
+      attributes: ['id', 'status', 'valor_original', 'valor_baixado', 'valor_saldo', 'possui_rateio', 'medicao_pagamento', 'medicao_pagamento_origem_id'],
       required: false
     }],
     order: [['numero', 'ASC']],
@@ -1063,6 +1070,7 @@ async function reconciliarParcelasComOPago(contratoId, { usuarioId = null, setor
   // dois iguais desde a criacao.
   const origens = trabalho
     .map((t) => {
+      if (t.parcela.medicao_pagamento_resumo) return null; // Autorizado/abatimento nao redefine o que foi medido.
       const titulo = t.parcela.titulo;
       if (!titulo || titulo.status === 'RENEGOCIADO') return null;
       const baixadoCent = paraCentavos(titulo.valor_baixado || 0);
@@ -1094,6 +1102,7 @@ async function reconciliarParcelasComOPago(contratoId, { usuarioId = null, setor
   // Mesmo quando diferencas de duas partes se compensam, a parte paga a menor
   // deve fechar. Nunca fecha a parte ainda sem baixa.
   for (const t of trabalho) {
+    if (t.parcela.medicao_pagamento_resumo) continue; // Pagamento parcial conserva o saldo financeiro deste novo fluxo.
     for (const titulo of t.parcela.divisao_favorecidos?.titulos || []) {
       if (titulo.renegociado_por_id || ['RENEGOCIADO', 'EXCLUIDO'].includes(titulo.status)) continue;
       if (paraCentavos(titulo.valor_baixado || 0) > 0 && paraCentavos(titulo.valor_saldo || 0) > 0) {

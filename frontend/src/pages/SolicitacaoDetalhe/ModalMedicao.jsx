@@ -16,6 +16,7 @@ import {
 } from '../../components/padrao';
 import PreviewAnexoModal from './PreviewAnexoModal';
 import AcoesEnvioTitulosPagamento from '../../components/AcoesEnvioTitulosPagamento';
+import MedicaoValorPagamento from '../../components/contratos/MedicaoValorPagamento';
 import { tituloElegivelParaEnvioPagamento, rotuloOperacionalPagamento } from '../../utils/envioTitulosPagamento';
 
 /**
@@ -81,6 +82,8 @@ export default function ModalMedicao({
   historicos = [],
   parcelas = [],
   solicitacaoId = null,
+  contratoId = null,
+  consultarValorPagamento = false,
   podeEditar = false,
   podeAprovar = false,
   podeAnexar = false,
@@ -572,6 +575,8 @@ export default function ModalMedicao({
                   Alterar uma medição exige permissão especifica.
                 </p>
               )}
+              {medicaoAprovada && contratoId && consultarValorPagamento && <MedicaoValorPagamento
+                key={`${contratoId}-${medicao.id}`} contratoId={contratoId} medicaoId={medicao.id} onMudou={onSalvo} />}
             </section>
           )}
 

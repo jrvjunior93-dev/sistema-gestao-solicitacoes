@@ -1,8 +1,10 @@
 const assert = require('node:assert/strict');
-const { MovimentoFinanceiro, ObraCustoHistorico, PedidoCompraFrete } = require('../src/models');
+const { MovimentoFinanceiro, ObraCustoHistorico, PedidoCompraFrete, TituloFinanceiroRateio, sequelize } = require('../src/models');
 const { gerarRelatorioFinanceiroObras } = require('../src/services/relatorioFinanceiroService');
 
-const originals = [MovimentoFinanceiro.findAll, ObraCustoHistorico.findAll, PedidoCompraFrete.findAll];
+const originals = [MovimentoFinanceiro.findAll, ObraCustoHistorico.findAll, PedidoCompraFrete.findAll, TituloFinanceiroRateio.findAll];
+const getConnectionOriginal = sequelize.connectionManager.getConnection;
+sequelize.connectionManager.getConnection = async () => { throw new Error('Este teste exige isolamento: conexoes de rede proibidas.'); };
 const linhas = Array.from({ length: 3201 }, (_, index) => ({
   id: index + 1,
   obra_id: 1,
@@ -13,6 +15,7 @@ const linhas = Array.from({ length: 3201 }, (_, index) => ({
 }));
 
 async function verificar() {
+  TituloFinanceiroRateio.findAll = async () => [];
   MovimentoFinanceiro.findAll = async (options) => {
     assert.equal(options.limit, undefined);
     return [];
@@ -43,5 +46,6 @@ verificar().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 }).finally(() => {
-  [MovimentoFinanceiro.findAll, ObraCustoHistorico.findAll, PedidoCompraFrete.findAll] = originals;
+  [MovimentoFinanceiro.findAll, ObraCustoHistorico.findAll, PedidoCompraFrete.findAll, TituloFinanceiroRateio.findAll] = originals;
+  sequelize.connectionManager.getConnection = getConnectionOriginal;
 });

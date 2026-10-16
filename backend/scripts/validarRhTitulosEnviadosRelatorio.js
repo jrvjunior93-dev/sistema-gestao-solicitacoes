@@ -11,13 +11,43 @@ const titulos = [t(1), t(2), t(3, { descricao: 'RH-000003 - Salario 60% - Ana', 
   t(4, { status: 'CANCELADO' }), t(5, { empresa_id: 4 }), t(6, { numero_documento: 'RHDP-2026-10-SOL-6-RESP-77-EMP-3-REEMBOLSO' }), t(7),
   t(8, { origem_titulo: 'RH_DP_TICKET', numero_documento: 'TICKET-2026-10-3', descricao: 'Ticket', recebimento_dp: 'NAO_INFORMADO' })];
 const filas = [f(1, 1, 'CANCELADO'), f(2, 1), f(3, 2), f(4, 3), f(5, 4), f(6, 5), f(7, 6), f(8, 8)];
+// Avalia os predicados do ORM em memoria. O SQL MySQL gerado pelos mesmos
+// predicados e verificado separadamente em validarFilaFiltrosDp.js.
+function corresponde(titulo, where) {
+  if (where?.val) {
+    if (where.val.startsWith('EXISTS')) return filas.some(f => f.titulo_financeiro_id === titulo.id);
+    if (where.val.includes(' LIKE ')) {
+      const termo = where.val.match(/ LIKE '(.*)'$/)[1].slice(1, -1).replace(/\\([\\%_])/g, '$1');
+      return [titulo.codigo, titulo.descricao, titulo.parceiro?.nome, titulo.empresa?.nome, titulo.obra?.nome]
+        .some(v => String(v || '').toLocaleLowerCase('pt-BR').includes(termo));
+    }
+    throw Error('Literal inesperado: ' + where.val);
+  }
+  if (where?.attribute) {
+    const sql = where.attribute.val;
+    const atual = sql.includes('JSON_TABLE') ? titulo.recebimento_dp : sql.includes('DATE_FORMAT')
+      ? titulo.competencia_data?.slice(0, 7)
+      : filas.filter(f => f.titulo_financeiro_id === titulo.id).sort((a,b) => b.id-a.id)[0]?.status;
+    return atual === where.logic;
+  }
+  return Reflect.ownKeys(where || {}).every(k => k === Op.and ? (Array.isArray(where[k]) ? where[k] : [where[k]]).every(w => corresponde(titulo, w))
+    : k === Op.or ? where[k].some(w => corresponde(titulo, w))
+      : where[k]?.[Op.in] ? where[k][Op.in].includes(titulo[k]) : titulo[k] === where[k]);
+}
+const elegiveis = where => titulos.filter(t => corresponde(t, where));
 const modulo = { exports: {} };
 vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/rhTitulosEnviadosRelatorioService.js'), 'utf8'), {
   module: modulo, console, require(id) {
     if (id === '../models') return {
-      TituloFinanceiro: { findAll: async o => { consultas.push(o); return titulos.filter(t => scope === null || scope.includes(t.obra_id)); } },
-      PagamentoManualFilaItem: { findAll: async o => { assert(o.where.titulo_financeiro_id[Op.in].every(id => titulos.some(t => t.id === id))); return filas; } }
+      sequelize: { escape: s => "'" + s.replaceAll("'", "\\'") + "'" },
+      TituloFinanceiro: { count: async o => elegiveis(o.where).length, findAll: async o => {
+        consultas.push(o);
+        const rows = elegiveis(o.where);
+        return structuredClone(o.limit ? rows.sort((a,b) => b.id-a.id).slice(o.offset, o.offset+o.limit) : rows);
+      } },
+      PagamentoManualFilaItem: { findAll: async o => { assert(o.where.titulo_financeiro_id[Op.in].every(id => titulos.some(t => t.id === id))); return filas.filter(f => o.where.titulo_financeiro_id[Op.in].includes(f.titulo_financeiro_id)); } }
     };
+    if (id === './recebimentoDpConsultaService') return { anexarRecebimentosDp: async () => {} };
     if (id === './authorizationService') return { canViewRhDpDashboard: async () => permitir,
       userHasAreaPermission: async () => granular, getRhDpObraScopeIds: async () => scope };
     if (id === 'sequelize') return require('sequelize');
@@ -51,5 +81,26 @@ const service = modulo.exports;
   assert.equal(consultas.length, n, 'Obra fora do escopo nao consulta titulos');
   assert.equal(JSON.stringify([titulos, filas]), antes, 'GET/relatorio nao escreve, baixa nem cancela');
   assert(!JSON.stringify(r).includes('instrumento_pagamento_json'), 'Nao retorna dados bancarios da baixa');
+  scope = null;
+  for (let id = 10; id < 615; id++) {
+    titulos.push(t(id, { numero_documento: `RHDP-2026-10-COL-${1000+id}-SOL-${id}-SALARIO` }));
+    filas.push(f(1000+id, id));
+  }
+  titulos.push(t(615)); filas.push(f(1615, 615));
+  const p1 = await service.consultar({ user: { id: 1 } }, { pagina: 1, limite: 50 });
+  const ultima = await service.consultar({ user: { id: 1 } }, { pagina: 13, limite: 50 });
+  assert.equal(p1.total, 613); assert.equal(p1.data.length, 50); assert.equal(ultima.data.length, 13);
+  assert.equal(p1.suspeitos, 3); assert.equal(ultima.total_paginas, 13);
+  assert(p1.data.find(t => t.id === 615).possiveis_duplicados.includes(1), 'Duplicidade fora da pagina permanece visivel');
+  assert(ultima.data.find(t => t.id === 1).possiveis_duplicados.includes(615));
+  assert(!p1.data.some(t => ultima.data.some(o => o.id === t.id)), 'Paginas sem sobreposicao');
+  const todas = [];
+  for (let pagina=1; pagina<=13; pagina++) todas.push(...(await service.consultar({ user: { id: 1 } }, { pagina })).data);
+  const oracle = service.projetar(titulos, filas, {});
+  assert.deepEqual(todas.map(t => t.id).sort((a,b) => a-b), Array.from(oracle.data, t => t.id).sort((a,b) => a-b));
+  assert.equal((await service.consultar({ user: { id: 1 } }, { pagina: 999 })).pagina, 13);
+  for (const q of [{ pagina: -1 }, { limite: 201 }, { limite: '50 OR 1=1' }]) assert.throws(() => service.validarConsulta(q));
+  const paginas = consultas.filter(o => o.limit);
+  assert(paginas.every(o => o.limit <= 100 && o.offset >= 0));
   console.log('Relatorio DP: todos os titulos efetivamente enviados, status/historico, duplicidades distintas/40-60/empresa/cancelados/vales, filtros, granular/escopo e somente leitura aprovados. Sem banco/rede.');
 })().catch(e => { console.error(e); process.exitCode = 1; });

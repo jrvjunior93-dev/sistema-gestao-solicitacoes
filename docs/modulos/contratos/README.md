@@ -1,5 +1,45 @@
 # Modulo CONTRATOS
 
+## Valor medido e valor autorizado para pagamento - 2026-10-16
+
+No Financeiro da solicitacao, abrir uma medicao estruturada aprovada e usar
+`Ajustar valor para pagamento`. Exige GEO com permissoes nominais
+`contratos.medicao.editar_valor` e `financeiro.titulos.editar`, ou SUPERADMIN;
+escopos de Contratos/Financeiro e acesso ao titulo sao revalidados no backend.
+Nao cria permissao ou amplia visibilidade. A leitura requer acesso financeiro.
+
+- Informar valor positivo menor que o titulo, motivo e destino obrigatorio:
+  `Pagamento futuro` cria titulo PREVISAO da diferenca, vinculado a origem;
+  `Abatimento definitivo` registra a reducao sem criar divida futura.
+- Medicao, parcela medida e saldo contratual para novas medicoes nao mudam.
+  O financeiro mostra Medido, Valor dos titulos, Diferenca futura e Abatimento.
+  Abatimento reduz o saldo financeiro, mas nunca aparece como valor pago.
+- Dossie anterior fica INVALIDADO com eventos e snapshots preservados; entrada
+  nao processada da fila e encerrada sem baixa. Reenviar explicitamente pelo
+  ciclo atual de autorizacao/fila; aprovacao informal nao vira decisao digital.
+- A diferenca futura exige `Liberar diferenca futura` e motivo, depois novo
+  envio normal. Pode ser liberada apos quitar o titulo original sem altera-lo.
+- Baixados/parciais, movimento ativo ou pagamento bancario em andamento sao
+  protegidos. Titulos compartilhados/negociados, de outro fluxo, com encargos,
+  retencoes ou cobranca bancaria emitida exigem regularizacao especifica.
+  Fatura de cartao exige consentimento expresso e nao pode estar paga.
+- Conferir/reemitir boleto apos reduzir o principal. Documentos e comprovantes
+  antigos nao sao apagados nem convertidos para o novo valor automaticamente.
+- Operacao transacional, revisao otimista, lock de titulo, chave idempotente e
+  recibo permanente. Edicao generica/renegociacao nao substitui esse fluxo.
+
+Pacote de homologacao DEV. Migration estrutural aditiva
+`202610160002_medicao_pagamento_autorizado.js` (JSON nullable e FK indexada)
+precisa ser aplicada no DEV antes do backend novo; sem backfill ou escrita em
+dados existentes. Nao aplicar em producao nesta etapa. Testes isolados:
+`npm run test:medicao-valor-pagamento` em backend e frontend. O helper
+`node scripts/aplicarMigrationMedicaoPagamentoDev.js --verificar` permite
+preflight somente leitura com a migration pendente; `--aplicar` exige
+`CONFIRM_DEV_BACKUP=SIM`, banco/checkout/processo DEV corretos e nenhuma outra
+pendencia. Nao persiste flags. Teste: `npm run test:deploy-medicao-pagamento-dev`.
+Handoff:
+`docs/handoffs/2026-10-16-medicao-valor-autorizado.md`.
+
 ## Papel
 
 Contratos mantem o contexto contratual operacional, seus vinculos, referencias e arquivos. Contrato operacional nao e titulo financeiro e nao se confunde com contrato de venda do modulo Comercial.
@@ -75,6 +115,35 @@ A listagem usa `Contratado`, `Saldo` e `Aditivos`. O status e calculado em consu
 
 O detalhe reune medicoes, solicitacoes, titulos, valores movimentados, saldo contratual
 e saldo financeiro.
+
+## Marcacao manual de totalmente medido
+
+GEO com a permissao existente de editar contratos e SUPERADMIN podem marcar ou
+desfazer **Totalmente medido**, tanto no contrato novo quanto no legado, na gestao
+ou na solicitacao vinculada. Motivo obrigatorio, autor/data/revisao e auditoria
+atomica em ambos os fluxos. Recibo duravel em LogExclusao, entidade propria e
+solicitacao_id nulo, complementado por SecurityEventLog. Nao cria autoria ou
+interacao na solicitacao-mae, preservando suas regras de visibilidade.
+
+Esta e uma marcacao administrativa distinta da rescisao: mesmo com saldo positivo,
+retira o contrato das listas operacionais da Obra e das opcoes de nova solicitacao.
+Impede novas medicoes e reprogramacao; chamadas diretas/formularios antigos tambem
+sao validados sob lock. Medicoes anteriores seguem consultaveis/processaveis.
+Nao altera `ativo`, `status_contrato`, valores medidos, saldos, parcelas, titulos,
+baixas ou pagamentos. O resumo mostra Totalmente medido por marcacao e conserva
+tambem o status calculado e os valores reais, sem fabricar medicao ou despesa.
+
+GEO mantem acesso para consulta/reversao; desfazer nao reabre contrato rescindido
+nem dispensa as demais regras de saldo, prazo e aprovacao. A UI mostra os 50
+eventos mais recentes; a trilha completa permanece na auditoria. Controle de
+revisao e mutex impedem repeticao/concorrencia; replay anterior a reversao nao
+pode remarcar o contrato. Sem ampliar escopo ou conceder permissoes.
+
+GET/POST `/contratos/:id/medicao-encerramento`, com sessao/modulo/escopo e validacao
+de ator no backend. Migration estrutural nullable
+`202610150003_contrato_medicao_encerramento.js`, sem seed/backfill. Necessita
+aplicacao explicita antes de usar o novo backend; nao executada pelo agente.
+Testes isolados: `npm run test:contrato-medicao-marcacao` em backend e frontend.
 
 ## Rescisao
 

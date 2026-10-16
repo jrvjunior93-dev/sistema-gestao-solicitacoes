@@ -50,7 +50,7 @@ async function contexto(id, usuario, transaction, escrita = false) {
   const usadas = new Set(medidas.map(m => Number(m.contrato_parcela_id)));
   const cent = calcularDisponivel(saldo.saldo_cent, parcelas, usadas);
   const ativo = Boolean(contrato.fluxo_novo) && Boolean(contrato.ativo)
-    && contrato.status_contrato === 'ATIVO';
+    && contrato.status_contrato === 'ATIVO' && contrato.medicao_encerramento?.finalizado !== true;
   const referencia = hash([contrato.id, saldo.total_cent, saldo.comprometido_cent,
     contrato.status_contrato, parcelas.map(p => [p.id, p.numero, String(p.valor), p.status]),
     [...usadas].sort((a, b) => a - b)]);

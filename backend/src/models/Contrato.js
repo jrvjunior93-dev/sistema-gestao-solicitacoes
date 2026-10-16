@@ -160,6 +160,8 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.TEXT,
         allowNull: true
       },
+      // Marcador administrativo reversivel; nao altera status_contrato nem valores financeiros.
+      medicao_encerramento: { type: DataTypes.JSON, allowNull: true },
       // A classificacao operacional continua calculada em tempo real. Estes campos registram
       // somente o ato explicito de rescisao e o saldo cancelado naquele instante.
       rescindido_em: {

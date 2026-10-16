@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { createServer, transformWithEsbuild } from 'vite';
 import react from '@vitejs/plugin-react';
 import { chromium } from 'playwright';
+import { SUBTIPOS_MOVIMENTACAO } from '../src/utils/rhMovimentacoes.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const output = path.join(root, '../outputs/rh-pessoal-locais');
@@ -38,14 +39,15 @@ const apuracao = { id: 12, competencia: '2026-09', importacao_id: 19, obra_id: 7
     ajuste_credito_manual: 0, ajuste_debito_manual: 0, revisao_conferencia: 'qa-' + index,
     detalhes_json: { importacao_ids: [19] } })) };
 const overrides = {
-  abrirRhSolicitacao: `async p=>{window.chamadas.push(['criar-rascunho',p]);return {id:88,situacao:'RASCUNHO'};}`,
+  abrirRhSolicitacao: `async p=>{window.chamadas.push(['criar-rascunho',p]);await new Promise(ok=>setTimeout(ok,150));return {id:88,situacao:'RASCUNHO'};}`,
+  anexarNaRhSolicitacao: `async(id,p,arquivo)=>{window.chamadas.push(['anexar-movimentacao',id,p,arquivo?.name]);return {id:1};}`,
   getRhColaborador: `async id=>{window.chamadas.push(['cadastro',id]);return {...window.pessoas.find(p=>p.id===Number(id)),cpf:'52998224725',empresa_grupo_id:3};}`,
   atualizarRhColaborador: `async(id,p)=>{window.chamadas.push(['salvar-cadastro',id,p]);await new Promise(ok=>setTimeout(ok,150));Object.assign(window.pessoas.find(i=>i.id===id),p);return {...window.pessoas.find(i=>i.id===id),cpf:'52998224725'};}`,
   getRhDocumentos: `async p=>{window.chamadas.push(['documentos',p]);const data=window.pessoas.filter(i=>(!p.obra_id||i.obra_id===Number(p.obra_id))&&(!p.colaborador_id||i.id===Number(p.colaborador_id))).map(i=>({id:i.id,colaborador_id:i.id,colaborador:i,nome_original:'Documento '+i.nome,status:'ENVIADO',ativo:true}));return {data,meta:{page:1,total_pages:1,total:data.length}};}`,
   getRhRelatorioOperacional: `async p=>{window.chamadas.push(['relatorio',p]);const analitico=window.pessoas.filter(i=>!p.obra_id||i.obra_id===Number(p.obra_id));return {resumo:{colaboradores_ativos:analitico.length},colaboradores:{analitico}};}`,
   listarEventosRecorrentesRh: `async p=>{window.chamadas.push(['eventos',p]);return [];}`,
   pagamentoRhSolicitacao: `async(path,options={})=>{
-    if(!path){const ids=options.data.colaborador_ids||(options.data.colaborador_id?[options.data.colaborador_id]:null);window.pagamento={id:99,codigo:'RH-QA-99',obra_id:options.data.obra_id,situacao:'RASCUNHO',dados_json:{revisao:0,competencia:'2026-10',data_vencimento:'2026-10-15',linhas:window.pessoas.filter(p=>p.obra_id===options.data.obra_id&&(!ids||ids.includes(p.id))).map(p=>({...p,selecionado:Boolean(ids),dias:30,faltas:0,acrescimos:0,descontos:0,parcela_40:false,parcela_60:false,conferido_obra:false,conferido_dp:false}))}};}
+    if(!path||path==='/preparar'){const ids=options.data.colaborador_ids||(options.data.colaborador_id?[options.data.colaborador_id]:null);window.pagamento={id:99,codigo:'RH-QA-99',obra_id:options.data.obra_id,situacao:'RASCUNHO',dados_json:{revisao:0,competencia:'2026-10',data_vencimento:'2026-10-15',linhas:window.pessoas.filter(p=>p.obra_id===options.data.obra_id&&(!ids||ids.includes(p.id))).map(p=>({...p,selecionado:Boolean(ids),dias:30,faltas:0,acrescimos:0,descontos:0,parcela_40:false,parcela_60:false,conferido_obra:false,conferido_dp:false}))}};}
     if(options.method==='PUT')window.pagamento.dados_json={...options.data,revisao:options.data.revisao+1};
     if(path.endsWith('/enviar')){window.envios.push({...window.pagamento.dados_json,obra_id:window.pagamento.obra_id});window.pagamento.situacao='ABERTA';}
     return structuredClone({solicitacao:window.pagamento,pode_conferir:false,pode_enviar_fila:false,responsaveis:[],avisos:[]});
@@ -134,6 +136,55 @@ try {
   if (process.argv.includes('--admissao')) {
     assert.deepEqual(errors, []);
     console.log('Admissao OBRA sem gestao de empresas: catalogo completo, selecao e fechamento sem criar rascunho aprovados.');
+  } else if (process.argv.includes('--movimentacoes')) {
+    const novos = SUBTIPOS_MOVIMENTACAO.slice(-3);
+    for (const largura of [1366, 390]) {
+      const movimento = await abrir('?local_id=7&aba=colaboradores', largura);
+      for (const sub of novos) {
+        await movimento.getByRole('button', { name: 'Movimentacoes: Ana QA', exact: true }).click();
+        const dialog = movimento.getByRole('dialog').last();
+        await dialog.getByLabel(/Tipo da movimentacao/).selectOption(sub.valor);
+        assert.equal(await dialog.getByRole('option', { name: sub.rotulo, exact: true }).count(), 1);
+        await dialog.getByText(sub.orientacao, { exact: true }).waitFor();
+        if (sub.valor === 'ACIDENTE_TRABALHO_CAT') await dialog.getByLabel('Relato do acidente', { exact: true }).fill('Relato interno QA do acidente na obra.');
+        const arquivo = indice => ({ name: `${sub.valor}-assinado-${indice}.pdf`, mimeType: 'application/pdf', buffer: Buffer.from('%PDF-fixture') });
+        await dialog.getByLabel('Arquivo', { exact: true }).first().setInputFiles(arquivo(1));
+        await dialog.getByRole('button', { name: 'Acrescentar arquivo', exact: true }).click();
+        await dialog.getByLabel('Arquivo', { exact: true }).nth(1).setInputFiles(arquivo(2));
+        if (sub.valor === 'ACIDENTE_TRABALHO_CAT') await dialog.screenshot({ path: path.join(output, `movimentacao-cat-${largura}.png`) });
+        const antes = await movimento.evaluate(() => window.chamadas.filter(c => c[0] === 'criar-rascunho').length);
+        await dialog.getByRole('button', { name: 'Criar rascunho', exact: true }).evaluate(el => { el.click(); el.click(); });
+        await dialog.waitFor({ state: 'hidden' });
+        const chamadas = await movimento.evaluate(() => window.chamadas);
+        const criacoes = chamadas.filter(c => c[0] === 'criar-rascunho');
+        assert.equal(criacoes.length, antes + 1, 'Duplo clique cria somente um pedido');
+        const dados = criacoes.at(-1)[1];
+        assert.equal(dados.tipo, 'MOVIMENTACAO'); assert.equal(dados.subtipo, sub.valor); assert.equal(dados.colaborador_id, 11); assert.equal(dados.obra_id, 7);
+        if (sub.valor === 'ACIDENTE_TRABALHO_CAT') assert.equal(dados.justificativa, 'Relato interno QA do acidente na obra.');
+        const arquivos = chamadas.filter(c => c[0] === 'anexar-movimentacao').slice(-2);
+        assert.equal(arquivos.length, 2); assert(arquivos.every(c => c[1] === 88 && c[3].startsWith(sub.valor)));
+      }
+      await movimento.evaluate(novos => {
+        window.pedidos = novos.map((sub, i) => ({ id: 101 + i, codigo: `RH-${101 + i}`, tipo: 'MOVIMENTACAO', subtipo: sub.valor,
+          obra_id: 7, obra: window.locais[0], colaborador_id: 11, colaborador: window.pessoas[0], situacao: 'ABERTA',
+          justificativa: 'Relato interno QA do acidente na obra.', dados_json: {}, historicos: [] }));
+      }, novos);
+      await movimento.getByRole('tab', { name: 'Solicitações', exact: true }).click();
+      for (const [indice, sub] of novos.entries()) {
+        await movimento.getByText(sub.rotulo, { exact: true }).waitFor();
+        await movimento.evaluate(id => { window.pedido = window.pedidos.find(p => p.id === id); }, 101 + indice);
+        await movimento.getByRole('button', { name: `Abrir: solicitação #${101 + indice}`, exact: true }).click();
+        const detalhe = movimento.getByRole('dialog').last();
+        await detalhe.getByText(`Movimentacao · ${sub.rotulo}`, { exact: true }).waitFor();
+        if (sub.valor === 'ACIDENTE_TRABALHO_CAT') await detalhe.getByText('Relato do acidente', { exact: true }).waitFor();
+        await detalhe.getByRole('button', { name: 'Fechar', exact: true }).first().click();
+      }
+      const consulta = await abrir('?readonly=1&local_id=7&aba=colaboradores', largura);
+      await consulta.getByText('Ana QA', { exact: true }).waitFor();
+      assert.equal(await consulta.getByRole('button', { name: 'Movimentacoes: Ana QA', exact: true }).count(), 0);
+    }
+    assert.deepEqual(errors, []);
+    console.log('Movimentacoes RH desktop/mobile: tres tipos, orientacoes/relato CAT, dois PDFs por pedido, payload/obra/colaborador, duplo clique e somente leitura aprovados. Fixtures locais.');
   } else {
   await page.getByRole('button', { name: 'Solicitar pagamento: Ana QA', exact: true }).waitFor();
   assert.deepEqual(await page.getByRole('tab').allTextContents(), ['Colaboradores', 'Solicitações', 'Transferências entre obras']);

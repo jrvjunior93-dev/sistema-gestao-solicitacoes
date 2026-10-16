@@ -43,6 +43,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useFecharAoSair } from '../../hooks/useFecharAoSair';
 import { canManagePaymentBeneficiaries, canPrepareFilaPagamentos, hasPermissao } from '../../utils/acessoProduto';
 import ComprovantesTituloSolicitacao from '../../components/financeiro/ComprovantesTituloSolicitacao';
+import TitulosCompartilhadosModal from '../../components/financeiro/TitulosCompartilhadosModal';
 import {
   atualizarPaymentBeneficiary,
   criarPaymentBeneficiary,
@@ -1089,6 +1090,7 @@ export default function FinanceiroCard({
   const podeExecutarAcoesFinanceiras = podeOperarAbaFinanceiro && !somenteLeitura;
   const podeConsultarTitulo = podeAcessarModuloFinanceiro && hasPermissao(user, 'financeiro.titulos.visualizar');
   const podeCriarTitulo = podeExecutarAcoesFinanceiras && hasPermissao(user, 'financeiro.titulos.criar');
+  const [loteCompartilhadoAberto, setLoteCompartilhadoAberto] = useState(false);
   // Preparar a fila tem permissao propria e independe do setor atual da solicitacao.
   const podeEnviarParaFila = podeExecutarAcoesFinanceiras && podeVisualizarTitulos && canPrepareFilaPagamentos(user);
   const podeEnviarParaAutorizacao = podeExecutarAcoesFinanceiras && podeVisualizarTitulos
@@ -2488,6 +2490,8 @@ export default function FinanceiroCard({
         historicos={solicitacao?.historicos || []}
         parcelas={dadosContrato?.parcelas || []}
         solicitacaoId={solicitacao?.id}
+        contratoId={dadosContrato?.contrato?.id}
+        consultarValorPagamento={!somenteLeitura && podeConsultarTitulo}
         podeEditar={!somenteLeitura && dadosContrato?.contrato?.permissoes?.editar_medicao === true}
         podeAprovar={!somenteLeitura && dadosContrato?.contrato?.permissoes?.aprovar === true}
         podeAnexar={somenteLeitura}
@@ -2555,6 +2559,7 @@ export default function FinanceiroCard({
             >
               Editar credor
             </button>
+            {podeCriarTitulo && !geracaoManualDesabilitada && <button type="button" className="btn btn-outline btn-sm" onClick={() => setLoteCompartilhadoAberto(true)}>Gerar títulos compartilhados</button>}
             {podeCriarTitulo && <span title={geracaoManualDesabilitada ? motivoGeracaoManualDesabilitada : undefined}>
               <button
                 type="button"
@@ -2576,6 +2581,8 @@ export default function FinanceiroCard({
         ) : null}
       >
         {!algumModalAberto && <Avisos avisos={avisos} aoFechar={fecharAviso} />}
+        {loteCompartilhadoAberto && <TitulosCompartilhadosModal key={solicitacao.id} solicitacaoId={solicitacao.id}
+          credorInicial={solicitacao.parceiro} onClose={() => setLoteCompartilhadoAberto(false)} onCreated={() => carregarTitulos()} />}
 
         {/* PI-16: as previsoes de parcela do contrato, aqui no card do Financeiro — pedido do
             cliente. Antes da aprovacao nao existe titulo nenhum, entao esta e a unica leitura do

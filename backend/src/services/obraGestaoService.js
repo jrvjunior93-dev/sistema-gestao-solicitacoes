@@ -506,7 +506,7 @@ async function carregarDadosObra(obraId) {
       where: { obra_id: obraId },
       order: [['createdAt', 'DESC']]
     }),
-    TituloFinanceiro.findAll({
+    require('./tituloCompartilhadoLeitura').buscarGestao({
       where: {
         [Op.or]: [
           { obra_id: obraId },
@@ -530,7 +530,7 @@ async function carregarDadosObra(obraId) {
         }
       ],
       order: [['data_vencimento', 'ASC'], ['createdAt', 'DESC']]
-    }),
+    }, [Number(obraId)]),
     ObraCustoHistorico.findAll({
       where: {
         obra_id: obraId,
@@ -722,7 +722,7 @@ async function listarObrasGestao() {
     }
   });
 
-  const titulos = await TituloFinanceiro.findAll({
+  const titulos = await require('./tituloCompartilhadoLeitura').buscarGestao({
     where: {
       [Op.or]: [
         { obra_id: { [Op.in]: obras.map((obra) => obra.id) } },
@@ -746,7 +746,7 @@ async function listarObrasGestao() {
         attributes: ['id', 'obra_id', 'apropriacao_id', 'tipo_rateio', 'percentual', 'valor_rateio']
       }
     ]
-  });
+  }, obras.map(obra => Number(obra.id)));
   const custosHistoricos = await ObraCustoHistorico.findAll({
     where: {
       obra_id: { [Op.in]: obras.map((obra) => obra.id) },

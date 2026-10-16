@@ -47,7 +47,7 @@ const models = new Proxy({ PagamentoManualFilaItem: queueModel,
   PagamentoManualFilaComprovante: { async findOne({ where }) { return proofs.find(row => matches(row, where)) || null; },
     async findAll({ where }) { return proofs.filter(row => matches(row, where)); },
     async create(data) { proofs.push(record({ id: proofs.length + 1, ...data })); } },
-  TituloFinanceiro: { findByPk: async id => rows.find(row => row.titulo_financeiro_id === Number(id))?.titulo,
+  TituloFinanceiro: { unscoped() { return this; }, findByPk: async id => rows.find(row => row.titulo_financeiro_id === Number(id))?.titulo,
     findAll: async () => rows.map(row => row.titulo) },
   Anexo: { findOne: async ({ where }) => attachments.find(row => matches(row, where)),
     findAll: async ({ where }) => attachments.filter(row => matches(row, where)),
@@ -69,7 +69,7 @@ const models = new Proxy({ PagamentoManualFilaItem: queueModel,
       histories = snapshotHistories.map(record); attachments = snapshotAttachments.map(record); settlements = snapshotSettlements; audits = snapshotAudits; throw error; }
     finally { release(); }
   } }
-}, { get(target, key) { return target[key] || { findAll: async () => [] }; } });
+}, { get(target, key) { return target[key] || { findAll: async () => [], count: async () => 0 }; } });
 const receiptText = `SISBB - SISTEMA DE INFORMACOES BANCO DO BRASIL
 Comprovante Pix
 AGENCIA: 1234 CONTA: 99.999-0
@@ -79,7 +79,7 @@ DESCRICAO:SOL-5296
 PAGO PARA: FORNECEDOR TESTE
 CNPJ: 22.222.222/0001-22`;
 const deps = {
-  crypto, sequelize: { Op }, '../models': models,
+  crypto, sequelize: require('sequelize'), '../models': models,
   'pdf-parse': { PDFParse: class { async getText() { return { text: receiptText }; } async destroy() {} } },
   './s3': { async uploadToS3() { uploads++; if (changeDuringUpload) rows[0].status = 'NAO_PAGO'; return `isolado://comprovante-${uploads}`; } },
   './securityLogService': { registrarEventoSeguranca: async () => {} },
@@ -89,6 +89,7 @@ const deps = {
   './pagamentoFilaFiltrosDomain': require('../src/services/pagamentoFilaFiltrosDomain'),
   './pagamentoAutorizacaoEventosService': {},
   './instrucaoFinanceiraFavorecidoService': { anexarInstrucoes: async () => {} },
+  './recebimentoDpConsultaService': { anexarRecebimentosDp: async () => {} },
   './pagamentoFilaValoresDomain': require('../src/services/pagamentoFilaValoresDomain'),
   './tituloFinanceiroService': { baixarTitulo: async (_, id, payload, options) => {
     if (!allowSettlement) throw new Error('Anexo nao pode baixar titulo'); assert(options.transaction); settlements++;
@@ -98,7 +99,8 @@ const deps = {
   } },
   '../utils/fileName': require('../src/utils/fileName'),
   './tituloBloqueioRetornoObraService': { assertTituloDisponivelParaBaixa: () => {} }, './analiseProprietarioService': {},
-  './pagamentoAutorizacaoFilaService': {}, './fileAccessService': {}, './authorizationService': { canBaixarFilaPagamentos: async () => canAttach },
+  './pagamentoAutorizacaoFilaService': {}, './fileAccessService': {}, './authorizationService': { canBaixarFilaPagamentos: async () => canAttach, getFinanceiroObraScopeIds: async () => null },
+  './tituloCompartilhadoLeitura': { anexarParticipacoes: async () => {}, assertEscopo: async () => { throw Object.assign(Error('Origem fora do escopo compartilhado'), { statusCode: 403 }); } },
   './solicitacaoFinanceiroStatusService': {}, '../config/env': { env: {} }, './paymentOwnerApprovalPolicy': {}
 };
 function load(name) {
@@ -127,6 +129,9 @@ function reset(status = 'BAIXADO', movimento = 10) {
 }
 const financial = row => JSON.stringify([row.status, row.movimento_financeiro_id, row.valor_informado, row.data_baixa, row.conta_bancaria_id, row.titulo]);
 async function main() {
+  reset('PENDENTE', null); rows[0].titulo.compartilhamento_id = 1;
+  await assert.rejects(fila.anexarComprovanteFila(req, 1, file('fora-do-escopo.pdf')), /escopo compartilhado/);
+  assert.equal(uploads, 0, 'Negativa de escopo compartilhado acontece antes do S3');
   // Encargos atuais do titulo valem para filas antigas ainda nao baixadas.
   reset('PENDENTE', null);
   rows[0].valor_informado = null; rows[0].juros = 0; rows[0].multa = 0;

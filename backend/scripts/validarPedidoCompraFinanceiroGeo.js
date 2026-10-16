@@ -33,6 +33,10 @@ assert.strictEqual(
   STATUS_FLUXO.CONCLUIDO,
   'Todos os titulos quitados encerram o financeiro do pedido.'
 );
+assert.strictEqual(derivarStatusFinanceiro({ status: 'FECHADO_FORNECEDOR', financeiro_fluxo_versao: 1, status_financeiro: 'CONCLUIDO' }, [
+  { origem: 'COMPARTILHADO', titulo: { status: 'CANCELADO', compartilhamento_id: 1 } },
+  { origem: 'FRETE_TERCEIRO', titulo: { status: 'QUITADO' } }
+]), STATUS_FLUXO.AGUARDANDO_PREVISAO, 'Cancelar fornecedor compartilhado não considera materiais pagos só porque o frete foi quitado.');
 
 const migration = fs.readFileSync(
   path.join(__dirname, '..', 'migrations', '202609070050_pedido_compra_gestao_financeira_geo.js'),

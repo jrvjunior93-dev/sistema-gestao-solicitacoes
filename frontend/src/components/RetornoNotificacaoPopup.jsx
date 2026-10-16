@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getNotificacoes } from '../services/notificacoes';
 import Alert from './ui/Alert';
+import { iniciarPollingSeguro } from '../hooks/usePollingSeguro';
 
 // Aviso informativo, nao uma aprovacao automatica. O servidor revalida pedido,
 // setor, visibilidade e permissao de decidir a cada consulta.
@@ -44,19 +45,13 @@ export default function RetornoNotificacaoPopup({ sinoRef, onAbrir }) {
             && !vistosRef.current.has(notificacao.destinatario_id));
           return { usuarioId, itens: [...existentes.map(notificacao => mapa.get(notificacao.destinatario_id)), ...novos] };
         });
-      } catch { /* Erro do canal de aviso nao bloqueia o sino nem a pagina. */ }
+        return true;
+      } catch { return false; /* Erro do canal de aviso nao bloqueia o sino nem a pagina. */ }
     }
-    atualizar();
-    const timer = setInterval(atualizar, 30000);
-    window.addEventListener('focus', atualizar);
-    window.addEventListener('notificacoes:atualizar', atualizar);
-    document.addEventListener('visibilitychange', atualizar);
+    const encerrarPolling = iniciarPollingSeguro(atualizar, { eventos: ['notificacoes:atualizar'] });
     return () => {
       ativo = false;
-      clearInterval(timer);
-      window.removeEventListener('focus', atualizar);
-      window.removeEventListener('notificacoes:atualizar', atualizar);
-      document.removeEventListener('visibilitychange', atualizar);
+      encerrarPolling();
     };
   }, [usuarioId]);
 

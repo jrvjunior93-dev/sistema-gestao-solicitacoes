@@ -1,5 +1,135 @@
 # Modulo FINANCEIRO
 
+## Medicao x valor efetivamente autorizado - 2026-10-16
+
+O ajuste de pagamento de medicao preserva o medido e permite reduzir titulo
+aberto sem baixa, destinando a diferenca a previsao futura ou abatimento
+definitivo auditado. Os valores aparecem separados no Financeiro da solicitacao.
+Invalida o dossie anterior e encerra fila nao processada sem pagamento, exigindo
+novo envio pelas permissoes/gate atuais. Titulos pagos/parciais nao mudam.
+Nao baixar a diferenca PREVISAO antes da liberacao explicita. Regras, limites e
+migration aditiva DEV em [Contratos](../contratos/README.md#valor-medido-e-valor-autorizado-para-pagamento---2026-10-16).
+
+## Boletos da solicitacao e dos pedidos na fila - 2026-10-16
+
+- Todos os recortes/cards usam a mesma consulta paginada de boletos ativos:
+  `BOLETO`, `BOLETO_COMPRA` e `BOLETO_FRETE`. Uma consulta em lote para as
+  solicitacoes da janela atual, sem N+1, sem presign em massa e sem mudar pool.
+- A coluna Titulo/Documento oferece `Boletos da solicitacao (N)`, com nomes e
+  acesso ao modal ja existente de Visualizar/Baixar. O modal identifica boleto
+  da compra, do frete ou da solicitacao e nao mistura comprovantes/anexos gerais.
+- Nao pressupor que todos os boletos da solicitacao pertencem a uma unica
+  parcela: conferir fornecedor, documento, valor e vencimento antes da baixa.
+- Leitura/listagem/presign mantem as autorizacoes atuais. Nao altera selecao,
+  rascunhos, parcelas, contas, instrumentos, autorizacoes ou pagamentos.
+- Historico de novos uploads e leitura de boletos antigos documentados no
+  [README Compras](../compras/README.md#boletos-dos-titulos-de-pedido-na-fila-e-historico---2026-10-16).
+  Ajuste de boletos sem migration propria; aguarda homologacao DEV.
+
+## Titulos compartilhados entre origens e CNPJs - 2026-10-16
+
+- A acao `Gerar titulos compartilhados`, no financeiro da solicitacao ou do
+  pedido fechado, busca SOL/PC/pedido/descricao/obra dentro da visibilidade atual.
+  Reune de 2 a 100 origens do mesmo credor e gera de 1 a 120 parcelas A PAGAR.
+  Obras e empresas devedoras diferentes sao permitidas: existe **um titulo por
+  parcela**, nao uma copia por solicitacao ou CNPJ.
+- Cada origem participa pelo valor integral registrado; pedido usa total fechado
+  do fornecedor com frete embutido. A previa discrimina empresa/CNPJ, origem,
+  participacao e vencimento. Soma das origens e parcelas fecha em centavos. Mudanca
+  invalida a previa; confirmacao revalida acesso, valores e disponibilidade com
+  locks, transacao e chave idempotente por usuario. Nao reutilizar a chave para
+  outro lote. Origens ja tituladas nao podem gerar outra divida ativa.
+- Nao cria permissoes: pedidos exigem as mesmas autorizacoes de gerar titulos em
+  Compras e escopo da compra; demais solicitacoes exigem criacao financeira e
+  acesso operacional atuais. Modulos devem estar habilitados. Contratos,
+  medicoes, DP, compra direta, adiantamentos e recargas preservam fluxos proprios.
+- Empresa/obra do titulo fica nula quando houver varios devedores/destinos;
+  identidade economica permanece nas participacoes imutaveis. A conta identifica
+  quem pagou, nao substitui o devedor. Baixa parcial e estorno redistribuem
+  principal/encargos/desconto/saldo sem duplicar valores por obra ou empresa nos
+  relatorios adaptados de titulos, fluxo/DRE e resultado/gestao de obras.
+- Fila manual mantem uma linha por titulo, com participacoes para conferencia.
+  Baixa direta/em massa normal e comprovantes usam o titulo inteiro; entre
+  empresas, natureza operacional a terceiro, sem transferencia interna ficticia.
+  Paginar/selecionar titulos conserva as regras existentes. Autorizacao do
+  proprietario congela tambem as participacoes; nenhuma flag de ativacao muda.
+- Na aba da solicitacao, a leitura expõe somente sua participacao e nao permite
+  enfileirar esse valor parcial. Detalhe, fila, comprovantes e operacoes do titulo
+  canonico exigem todas as obras no escopo financeiro. Pedido recebe valores
+  proporcionais; historico da origem nao replica nomes/codigos de outras origens.
+  Retorno pendente de qualquer origem conserva o bloqueio de baixa do conjunto.
+- Edicao estrutural, renegociacao, exclusao isolada e baixa agrupada que cria
+  novos titulos sao bloqueadas para preservar o rateio. `Cancelar lote
+  compartilhado`, no detalhe, exige a permissao existente de excluir titulos,
+  todas as obras e motivo. Cancela todo o lote somente sem baixas, cartoes, fila,
+  autorizacoes ou pagamentos ativos; nao apaga vinculos, documentos ou historico.
+- Frete de terceiro permanece separado; se ainda pendente de titulo, regularizar
+  no fluxo do pedido antes de consolidar o fornecedor. Cartao na criacao e envio
+  bancario automatico nao foram ampliados: homologacao deste recurso e pela fila
+  manual. Em especial, lote bancario atual exige empresa unica no titulo; nao
+  atribuir artificialmente o titulo multiempresa a um CNPJ para contornar isso.
+  Relatorio especializado Entre Empresas conserva seu modelo escalar; consultar
+  participacoes/relatorios economicos por empresa para divida multiempresa.
+- Schema: `202610160001_titulos_compartilhados.js`, estrutural/idempotente, cria
+  lotes e participacoes com indices/FKs RESTRICT, sem backfill de negocios.
+  Criada, mas nao aplicada pelo agente. Exige homologacao DEV antes de promocao
+  para main; nao executar automaticamente em producao.
+- Validacao local isolada: `npm run test:titulos-compartilhados` no backend e
+  frontend, regressao `npm run test:performance-fila-dp`, build/navegacao/docs.
+  Fixtures nao substituem homologacao em MySQL dev com migration aplicada.
+  Atualizacao DEV: `ops/deploy/atualizar-dev-titulos-compartilhados-20261016.sh`
+  confere identidade/PM2/porta/flags, aplica somente esta migration e reinicia
+  backend-dev. Interrompe com pendencias adicionais; nao altera producao.
+
+## Performance e paginacao da fila - 2026-10-15
+
+- Tela consulta 50 registros por pagina em TODOS os cards/status, inclusive
+  Baixados, Resolvidos e Pendentes de comprovante. API aceita pagina/limite
+  (maximo 100); consumidores legados sem paginacao conservam o contrato anterior.
+  Totais dos cards continuam representando o recorte estruturado completo.
+- Busca textual e filtros sao aplicados antes do LIMIT. Comprovantes 1:N sao
+  carregados separadamente para nao consumir vagas ou duplicar linhas da pagina.
+  Rejeicoes continuam virtuais, nao executaveis; somente ultima decisao por titulo.
+- Recebimento DP de exibicao e resolvido em lotes por solicitacao/snapshot,
+  vinculado ao ID exato do titulo. Filtro de recebimento conserva SQL e fallback
+  legado, sem reclassificar pelo cadastro atual. Nao ha backfill ou migration.
+- Selecao entre paginas conserva apenas dados em memoria da tela. Selecionar
+  todos/desmarcar todos afeta somente a pagina atual em modo Paginas e somente
+  os elegiveis ja carregados em modo Rolagem. Trocar filtro/status limpa
+  a selecao. Antes de baixar/autorizar/anexar, reler os IDs no mesmo recorte;
+  alteracao ou indisponibilidade bloqueia a operacao. Locks/ACLs/idempotencia
+  existentes continuam obrigatorios no backend.
+- Limites de operacao nao aumentaram: baixa ate 200 itens, comprovante
+  compartilhado ate 100. Paginar nao apaga titulos, comprovantes ou historico.
+- Testes isolados: npm run test:performance-fila-dp no backend e
+  node scripts/validarFilaInstrumentosUI.mjs --paginacao no frontend.
+  Cenarios com 650 titulos; nao constituem benchmark de RDS real.
+
+### Navegacao por paginas ou rolagem - 2026-10-16
+
+- Todos os cards/status compartilham o alternador **Rolagem / Paginas** na barra
+  da fila, no mesmo padrao operacional de Solicitacoes. Rolagem e o padrao para
+  quem nao tem preferencia; escolha usa PreferenciasContext, tipo visual,
+  por usuario/lista `financeiro-fila-pagamentos`, sem alterar colunas/larguras.
+- Rolagem consulta o proximo lote de 50 ao aproximar o fim da tabela, em serie,
+  sem aumentar limite SQL nem carregar o historico inteiro na abertura. Botao
+  Carregar mais pagamentos permite avancar tambem sem IntersectionObserver.
+  Status e filtros continuam enviados ao mesmo endpoint e ACLs nao mudam.
+- Trocar modo volta ao inicio da lista e conserva selecao/rascunhos em memoria.
+  Marcar todos nunca seleciona registros ainda nao carregados. Limpar selecao
+  remove a selecao de todas as paginas/lotes. Limites de baixa/anexo e revalidacao
+  integral dos IDs antes de escrita permanecem, inclusive fora da janela exibida.
+- Atualizar ou concluir uma operacao reconsulta a janela ja carregada em serie,
+  removendo linhas que sairam do recorte. Deduplicacao por ID, resposta atrasada
+  descartada por revisao, janela invalidada em troca de usuario/filtro/status.
+  Carga automatica pausada em aba oculta, modal aberto ou operacao em andamento.
+- Falha transitoria ao carregar mais conserva a janela e oferece tentativa manual;
+  nao dispara loop de retry. 401/403 e outras falhas de autorizacao/validacao
+  retiram dados/selecao da tela. Baixas permanecem bloqueadas durante a carga.
+- Testes: `npm run test:fila-rolagem` e regressao `npm run test:fila-instrumentos-ui`.
+  Fixtures isoladas; nao sao prova de capacidade ilimitada de memoria ou de RDS.
+  Nao ha migration, alteracao financeira ou escrita de dados de producao.
+
 ## Comprovante compartilhado na fila - 2026-10-15
 
 - Mesmo PDF pode ser vinculado a titulos diferentes no upload individual,
@@ -588,6 +718,85 @@ Detalhes tecnicos e cenarios de aceite estao em [`PLANO_IMPORTACAO_TITULOS_PAGAR
 
 ## Fila manual de pagamentos
 
+### Desvincular previsao antes de corrigir o titulo (2026-10-16)
+
+No detalhe do titulo, **Desvincular previsao de cartao** exige a mesma permissao
+`financeiro.titulos.editar` e a ACL de edicao/leitura do titulo. O motivo e
+obrigatorio. A API `POST /financeiro/titulos/:id/desvincular-fatura` exige a
+fatura esperada e uma chave de idempotencia; o titulo e travado antes da
+revalidacao e inclusive antes de qualquer replay.
+
+Somente PAGAR/ABERTO, com saldo e sem baixa, fatura ABERTA e vinculo consistente
+podem ser desvinculados. Fila ativa (inclusive NAO_PAGO/DIVERGENTE/EM_EDICAO),
+autorizacao pendente/autorizada e pagamento bancario ativo impedem a operacao.
+Titulos compartilhados, renegociados, RH/DP, recargas e adiantamentos permanecem nos seus
+fluxos especializados. Bloqueio de retorno da Obra tambem e respeitado.
+
+A mesma transacao remove apenas o vinculo previsto desse titulo, limpa
+cartao/fatura, recalcula a fatura e grava o motivo/estado anterior/autor.
+Nao modifica valor, vencimento, quantidade de parcelas, status ou saldo, nao
+gera baixa nem apaga faturas, anexos, movimentos ou historicos existentes.
+Fatura paga, fechada, parcial, conciliada ou com PAGAMENTO_FATURA ativo bloqueia
+a acao. Outros titulos da fatura sao preservados; fatura zerada nao e apagada.
+
+A trilha duravel utiliza `LogExclusao`, entidade propria
+`TITULO_DESVINCULACAO_FATURA`, sem `solicitacao_id`. O evento financeiro
+`FINANCIAL_TITLE_CARD_FORECAST_UNLINKED` aparece uma unica vez na auditoria
+existente do titulo, respeitando `financeiro.titulos.auditoria.visualizar`.
+Mesmo apos a retencao dos logs de seguranca, o recibo duravel conserva motivo,
+estado anterior e replay. Nao se cria Historico/autoria/interacao da solicitacao,
+pois isso poderia ampliar visibilidade. Retorno e auditoria nao expoem valores
+de outros titulos da fatura.
+
+Depois de desvincular, o usuario pode **Editar titulo** para corrigir valor e
+vencimento. Para trocar a quantidade de parcelas, deve desvincular todos os
+titulos incorretos, exclui-los logicamente pelo fluxo existente (permissao
+`financeiro.titulos.excluir`) e gerar a distribuicao correta na solicitacao
+(permissao de criar titulos). Conferir o total antes de pagar. Nao existe
+reparcelamento silencioso de um titulo nem reparo automatico da SOL-6104.
+
+UI preserva motivo/chave ao alternar abas e em erro, bloqueia duplo envio e
+so atualiza apos resposta da API. Validacoes: `test:titulo-desvincular-fatura`
+no backend e `test:titulo-desvincular-fatura-ui` no frontend. Nenhuma migration
+nova; homologacao real em DEV deve anteceder publicacao em producao.
+
+### Forma prevista e forma efetiva (2026-10-16)
+
+A forma cadastrada no titulo permanece como previsao. Na fila, o usuario com a
+permissao de baixa informa a forma efetiva (cartao, Pix, transferencia, dinheiro
+ou outra forma ativa), conta, data e instrumento exigido. O movimento e o
+snapshot da fila registram essa escolha, sem reescrever a forma prevista.
+
+Titulos legados ABERTO vinculados a fatura podem entrar na fila somente se o
+titulo nao tiver baixa/movimento ativo e a fatura existir, estiver ABERTA, sem
+pagamento, conciliacao ou movimento ativo de PAGAMENTO_FATURA. Cartao, campo de
+fatura e tabela de vinculos devem concordar. A verificacao e repetida na baixa.
+Enviar para a fila nao desfaz vinculos nem registra pagamentos.
+
+Na baixa efetiva, a mesma transacao remove apenas o vinculo previsto desse
+titulo, limpa seu cartao/fatura e recalcula a fatura antiga. A baixa canonica
+registra o instrumento efetivo; se for credito, associa a compra a uma fatura
+aberta do cartao escolhido. Outros titulos da fatura antiga sao preservados;
+uma fatura que ficar zerada nao e apagada. A compra pode quitar o fornecedor
+sem quitar a fatura. Os pagamentos da fatura continuam em seu proprio fluxo.
+
+Auditoria transacional `MANUAL_PAYMENT_CARD_FORECAST_CORRECTED` preserva ator,
+fila, previsao anterior e instrumento efetivo. A fila tambem guarda a previsao
+em `instrumento_pagamento_json.previsao_cartao_anterior`. Falha na baixa,
+recalculo ou auditoria reverte tudo. Divergencia acima do saldo so corrige o
+vinculo quando a baixa for realmente autorizada. Replay nao duplica correcao.
+
+Permissoes, visibilidade, governanca do proprietario, encargos e estornos nao
+foram ampliados. Titulos quitados, com baixa anterior ou fatura fechada/parcial/
+paga nao sao liberados por esta correcao. A criacao que ja registra uma compra
+efetiva no cartao mantem sua baixa automatica existente; nao volta para a fila.
+Valores e parcelamentos incorretos (inclusive SOL-6104) nao sao reparados
+automaticamente por enviar/baixar. Nenhuma migration nova e necessaria.
+
+Validacao isolada: `npm run test:fila-previsao-cartao` no backend e
+`node scripts/validarFilaInstrumentosUI.mjs --previsao-cartao` no frontend.
+Homologar banco/transacoes reais somente em DEV antes de promover.
+
 A Fila de Pagamentos separa a preparacao da carteira da execucao no banco. Em Contas a Pagar, quem possui `financeiro.fila_pagamentos.preparar` seleciona titulos abertos e os encaminha para a fila; o operador pode ter acesso somente a essa tela pelas permissoes do grupo `financeiro.fila_pagamentos`.
 
 - a tela operacional e uma tabela responsiva com rolagem horizontal, sem modal de baixa;
@@ -596,7 +805,7 @@ A Fila de Pagamentos separa a preparacao da carteira da execucao no banco. Em Co
 - valor exato registra baixa total, valor menor registra baixa parcial e cria alerta de divergencia, valor maior nao baixa e permanece divergente;
 - `NAO_PAGO` mantem o titulo aberto e exige motivo;
 - a grade de Contas a Pagar mostra na propria linha os estados `Em fila de pagamento`, `Pagamento nao realizado` e `Pagamento divergente`;
-- previsao de pagamento por cartao sem vinculo a fatura pode entrar na fila: o cartao e informado ao registrar a baixa. Credito quita o titulo e vincula a compra a uma fatura aberta; debito usa a conta vinculada. Titulos ja vinculados a fatura continuam no fluxo da fatura, sem segunda baixa;
+- previsao de pagamento por cartao pode entrar na fila: o instrumento efetivo e informado ao registrar a baixa. Credito quita o titulo e vincula a compra a uma fatura aberta; debito usa a conta vinculada. Um vinculo anterior so pode ser corrigido nas condicoes de seguranca abaixo, sem segunda baixa;
 - credito exige quitacao integral sem baixa anterior, pois a fatura soma o valor integral do titulo. Cartao, conta e forma devem ser compativeis;
 - cheque proprio registra numero, emitente e demais dados do documento. Cheque de terceiro consome um cheque disponivel da carteira, com valor exato e empresa compativel, sem duplicar saida bancaria;
 - rejeicoes atuais do proprietario aparecem em Nao pagos com motivo, somente para consulta; nao viram pagamentos executaveis nem permitem reabrir pela fila;

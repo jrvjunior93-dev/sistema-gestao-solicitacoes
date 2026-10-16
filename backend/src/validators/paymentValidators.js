@@ -219,8 +219,17 @@ function validateManualPaymentQueueCreateBody(payload = {}) {
 }
 
 function validateManualPaymentQueueQuery(payload = {}) {
-  ensureAllowedKeys(payload, ['status', 'q', 'origem', 'empresa_id', 'credor_id', 'recebimento_dp'], 'Consulta da fila de pagamentos');
+  ensureAllowedKeys(payload, ['status', 'q', 'origem', 'empresa_id', 'credor_id', 'recebimento_dp', 'pagina', 'limite', 'fila_ids'], 'Consulta da fila de pagamentos');
+  const pagina = parseInteger(payload.pagina, 'Pagina'), limite = parseInteger(payload.limite, 'Limite');
+  if (pagina > 100000 || limite > 100) throw new ValidationError('Paginacao invalida.');
+  let filaIds;
+  if (payload.fila_ids !== undefined) {
+    const partes = String(payload.fila_ids).split(',');
+    if (!partes.length || partes.length > 100 || partes.some(id => !/^\d+$/.test(id) || !Number.isSafeInteger(Number(id)) || Number(id) <= 0)) throw new ValidationError('Selecao de consulta invalida.');
+    filaIds = [...new Set(partes.map(Number))];
+  }
   return cleanUndefined({
+    pagina, limite, fila_ids: filaIds,
     status: parseEnum(payload.status, 'Status', ['PENDENTE', 'PENDENTE_COMPROVANTE', 'NAO_PAGO', 'DIVERGENTE', 'EM_EDICAO', 'BAIXADO', 'RESOLVIDO', 'TODOS']),
     q: parseOptionalText(payload.q, 'Busca', 120),
     origem: parseEnum(payload.origem, 'Origem', ['RH_DP', 'OUTROS']),

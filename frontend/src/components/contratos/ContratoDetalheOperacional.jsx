@@ -59,7 +59,7 @@ export default function ContratoDetalheOperacional({ data, loading, error, onClo
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <strong>{data.contrato?.codigo}</strong>
-            <Badge variant={statusInfo.variant} size="sm">{statusInfo.label}</Badge>
+            <Badge variant={statusInfo.variant} size="sm">{statusInfo.label}{data.medicao_finalizada_manualmente ? ' · marcação GEO' : ''}</Badge>
             <Badge variant="muted" size="sm">{data.fluxo === 'NOVO' ? 'Fluxo novo' : 'Legado'}</Badge>
           </div>
           <p className="app-note mt-1">
@@ -75,6 +75,7 @@ export default function ContratoDetalheOperacional({ data, loading, error, onClo
           ['Contratado', data.contratado],
           ['Medido', data.medido],
           ['Movimentado', data.movimentado],
+          ...(Number(data.abatimento_definitivo) > 0 ? [['Abatimento definitivo', data.abatimento_definitivo]] : []),
           ['Saldo contratual', data.saldo_contratual],
           ['Saldo financeiro', data.saldo_financeiro],
           ['Aditivos', data.valor_aditivos]

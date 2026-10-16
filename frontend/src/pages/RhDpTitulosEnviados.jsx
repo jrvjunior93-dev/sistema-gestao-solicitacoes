@@ -6,6 +6,7 @@ import { getRhTitulosEnviados } from '../services/rhDp';
 import { Pagina, PageHeader, BlocoConteudo, TabelaPadrao } from '../components/padrao';
 import StatusBadge from '../components/StatusBadge';
 import { RECEBIMENTOS_DP, rotuloRecebimentoDp } from '../utils/recebimentoDp';
+import PaginacaoConsulta from '../components/padrao/PaginacaoConsulta';
 
 const INICIAL = { competencia: '', empresa_id: '', obra_id: '', status_titulo: '', status_fila: '', recebimento_dp: '', q: '', somente_suspeitos: false };
 const moeda = n => Number(n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -19,17 +20,18 @@ export default function RhDpTitulosEnviados() {
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(false);
   const [recarregar, setRecarregar] = useState(0);
+  const [pagina, setPagina] = useWorkspaceState('rh-envios:pagina', 1);
   useEffect(() => {
     let ativo = true;
     setResultado(null); setErro('');
     if (!permitido) return () => { ativo = false; };
     setOcupado(true);
-    getRhTitulosEnviados(Object.fromEntries(Object.entries(aplicados).filter(([, v]) => v !== '' && v !== false)))
+    getRhTitulosEnviados({ ...Object.fromEntries(Object.entries(aplicados).filter(([, v]) => v !== '' && v !== false)), pagina, limite: 50 })
       .then(r => { if (ativo) setResultado(r); })
       .catch(e => { if (ativo) setErro(e.message || 'Não foi possível consultar os envios.'); })
       .finally(() => { if (ativo) setOcupado(false); });
     return () => { ativo = false; };
-  }, [aplicados, permitido, recarregar]);
+  }, [aplicados, permitido, recarregar, pagina]);
   if (!permitido) return <Pagina><PageHeader titulo="Títulos enviados pelo DP" /><p role="alert">Sem permissão para relatórios do DP.</p></Pagina>;
   const mudar = (key, value) => setFiltros(atual => ({ ...atual, [key]: value }));
   return <Pagina>
@@ -37,7 +39,7 @@ export default function RhDpTitulosEnviados() {
       descricao="Status financeiro, situação atual e registros da fila. Somente consulta."
       secundarias={[{ rotulo: 'Atualizar', onClick: () => setRecarregar(v => v + 1), desabilitada: ocupado }]} />
     <BlocoConteudo titulo="Filtros">
-      <form className="flex flex-wrap items-end gap-2" onSubmit={e => { e.preventDefault(); setAplicados({ ...filtros }); }}>
+      <form className="flex flex-wrap items-end gap-2" onSubmit={e => { e.preventDefault(); setPagina(1); setAplicados({ ...filtros }); }}>
         <label className="text-xs">Competência<input aria-label="Competência" className="input input-sm block" type="month" value={filtros.competencia} onChange={e => mudar('competencia', e.target.value)} /></label>
         <label className="text-xs">Empresa do colaborador<select aria-label="Empresa do colaborador" className="input input-sm block max-w-64" value={filtros.empresa_id} onChange={e => mudar('empresa_id', e.target.value)}>
           <option value="">Todas</option>{(resultado?.filtros?.empresas || []).map(o => <option key={o.id} value={o.id}>{o.nome}</option>)}
@@ -59,11 +61,12 @@ export default function RhDpTitulosEnviados() {
         <label className="text-xs">Título / colaborador<input aria-label="Título / colaborador" className="input input-sm block" value={filtros.q} onChange={e => mudar('q', e.target.value)} /></label>
         <label className="flex items-center gap-2 py-2 text-sm"><input type="checkbox" checked={filtros.somente_suspeitos} onChange={e => mudar('somente_suspeitos', e.target.checked)} />Somente possíveis duplicidades</label>
         <button type="submit" className="btn btn-outline btn-sm" disabled={ocupado}>Aplicar filtros</button>
-        <button type="button" className="btn btn-outline btn-sm" disabled={ocupado} onClick={() => { setFiltros(INICIAL); setAplicados(INICIAL); }}>Limpar</button>
+        <button type="button" className="btn btn-outline btn-sm" disabled={ocupado} onClick={() => { setPagina(1); setFiltros(INICIAL); setAplicados(INICIAL); }}>Limpar</button>
       </form>
     </BlocoConteudo>
     {erro && <p role="alert" className="text-[var(--sem-danger)]">{erro}</p>}
     <BlocoConteudo titulo="Envios à fila" descricao="Possível duplicidade: títulos de salário ativos distintos com mesmo colaborador, competência, empresa, percentual e valor. É um alerta para conferência, não confirmação de pagamento duplicado.">
+      <PaginacaoConsulta pagina={resultado?.pagina || pagina} paginas={resultado?.total_paginas || 1} total={resultado?.total || 0} ocupado={ocupado} aoMudar={setPagina} />
       <p role="status" className="mb-2 text-sm text-[var(--c-muted)]">{resultado?.suspeitos || 0} título(s) com alerta. Reenvios do mesmo título são histórico, não novos títulos.</p>
       <TabelaPadrao itens={resultado?.data || []} carregando={ocupado} storageKey="tabela:rh-dp-titulos-enviados" chaveWorkspace="rh-envios:tabela" consultaWorkspace={JSON.stringify(aplicados)}
         vazio={ocupado ? 'Consultando títulos enviados...' : 'Nenhum título enviado encontrado neste recorte.'} rotuloRolagem="Títulos enviados pelo DP"

@@ -83,7 +83,9 @@ async function registrarLiquidacaoFila(req, itens, config, key, transaction, { p
         let primeira;
         for (const parte of plano[index]) {
           const fonte = componentes[parte.componente];
-          const entreEmpresas = Boolean(titulo.empresa_id && Number(titulo.empresa_id) !== Number(fonte.empresa_id));
+          const entreEmpresas = titulo.compartilhamento_id
+            ? await require('./tituloCompartilhadoPagamento').entreEmpresas(titulo, fonte.empresa_id, transaction)
+            : Boolean(titulo.empresa_id && Number(titulo.empresa_id) !== Number(fonte.empresa_id));
           const baixa = await baixarTitulo(req, titulo.id, { ...payload, ...fonte, ...parte,
             data_movimento: item.data_baixa, intercompany: entreEmpresas,
             natureza_intercompany_baixa: entreEmpresas ? 'OPERACIONAL_TERCEIRO' : undefined,

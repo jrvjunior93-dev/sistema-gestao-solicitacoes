@@ -3417,6 +3417,9 @@ module.exports = {
       const tipoEhDeMedicao = Boolean(
         comportamentoTipo.mostrar_periodo_medicao || comportamentoTipo.exige_periodo_medicao
       );
+      const criacaoDeMedicao = tipoEhDeMedicao || Number(tipo_solicitacao_id) === 4
+        || [tipoSelecionado.nome, tipoSelecionado.codigo_interno].some(n => normalizarTokenComparacao(n) === 'MEDICAO')
+        || (Array.isArray(medicaoParcelas) && medicaoParcelas.length > 0);
       const nomesAnexosPendentes = Array.isArray(anexosPendentesNomes)
         ? anexosPendentesNomes.map((nome) => String(nome || '').trim()).filter(Boolean)
         : [];
@@ -3596,8 +3599,11 @@ module.exports = {
         contratoAlvo = await Contrato.findByPk(contrato_id, {
           // `solicitacao_id` entra aqui porque a PI-16 decide por ele: com solicitacao-mae, a
           // medicao vira evento dela em vez de criar solicitacao nova.
-          attributes: ['id', 'codigo', 'fluxo_novo', 'status_contrato', 'ativo', 'solicitacao_id']
+          attributes: ['id', 'codigo', 'fluxo_novo', 'status_contrato', 'ativo', 'solicitacao_id', 'medicao_encerramento']
         });
+        if (criacaoDeMedicao && contratoAlvo?.medicao_encerramento?.finalizado === true) {
+          return res.status(409).json({ error: 'Contrato marcado como totalmente medido pelo GEO. Solicite a reversao antes de criar outra medicao.', code: 'CONTRATO_TOTALMENTE_MEDIDO_MANUAL' });
+        }
         if (contratoAlvo && contratoAlvo.fluxo_novo && (!contratoAlvo.ativo || contratoAlvo.status_contrato !== 'ATIVO')) {
           const motivo = !contratoAlvo.ativo
             ? 'esta inativo'
@@ -4168,11 +4174,18 @@ module.exports = {
         status_global: 'PENDENTE'
       };
 
+      const validarMarcacaoNaCriacao = async (transaction) => {
+        if (!dadosSolicitacao.contrato_id || !criacaoDeMedicao) return;
+        const atual = await Contrato.findByPk(Number(dadosSolicitacao.contrato_id), { transaction, lock: transaction.LOCK.UPDATE });
+        if (!atual) throw Object.assign(new Error('Contrato nao encontrado.'), { statusCode: 404 });
+        if (atual.medicao_encerramento?.finalizado === true) require('../services/contratoMedicaoEncerramentoDomain').assertNovaMedicao(atual);
+      };
       const criarSolicitacaoComRateio = async () => {
-        if (rateioApropriacoesDetalhado.length === 0 && pagamentosFavorecidosValidados.length === 0) {
+        if (rateioApropriacoesDetalhado.length === 0 && pagamentosFavorecidosValidados.length === 0 && !(dadosSolicitacao.contrato_id && criacaoDeMedicao)) {
           return Solicitacao.create(dadosSolicitacao);
         }
         return sequelize.transaction(async (transaction) => {
+          await validarMarcacaoNaCriacao(transaction);
           const resultado = await Solicitacao.create(dadosSolicitacao, { transaction });
           if (rateioApropriacoesDetalhado.length > 0) await SolicitacaoApropriacao.bulkCreate(
             rateioApropriacoesDetalhado.map((item) => ({
@@ -4194,6 +4207,7 @@ module.exports = {
       };
 
       const criarSolicitacaoComDistribuicao = async () => sequelize.transaction(async (transaction) => {
+        await validarMarcacaoNaCriacao(transaction);
         const resultado = await Solicitacao.create(dadosSolicitacao, { transaction });
         if (pagamentosFavorecidosValidados.length) await require('../services/solicitacaoFavorecidosService').registrarFavorecidos(
           pagamentosFavorecidosValidados, { solicitacaoId: resultado.id, usuarioId, transaction }

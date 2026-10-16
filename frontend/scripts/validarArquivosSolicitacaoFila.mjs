@@ -30,7 +30,10 @@ const financeiroServices = `
       { id: 'anexo-1', nome_original: 'nota.pdf', tipo: 'BOLETO', caminho_arquivo: 'https://s3.test/nota.pdf', createdAt: '2026-09-18T10:00:00Z' },
       { id: 'anexo-2', nome_original: 'segundo.png', tipo: 'BOLETO', caminho_arquivo: '/uploads/segundo.png', createdAt: '2026-09-18T11:00:00Z' },
       { id: 'comprovante-3', nome_original: 'comprovante.png', tipo: 'Comprovante', caminho_arquivo: '/uploads/comprovante.png' },
-      { id: 'anexo-4', nome_original: 'boleto-informativo.pdf', tipo: 'SOLICITACAO', caminho_arquivo: '/uploads/boleto-informativo.pdf' }
+      { id: 'anexo-4', nome_original: 'boleto-informativo.pdf', tipo: 'SOLICITACAO', caminho_arquivo: '/uploads/boleto-informativo.pdf' },
+      { id: 'anexo-5', nome_original: 'compra.pdf', tipo: 'BOLETO_COMPRA', caminho_arquivo: 'https://s3.test/compra.pdf' },
+      { id: 'anexo-6', nome_original: 'frete.pdf', tipo: 'BOLETO_FRETE', caminho_arquivo: 'https://s3.test/frete.pdf' },
+      { id: 'anexo-7', nome_original: 'excluido.pdf', tipo: 'BOLETO_COMPRA', deleted_at:'2026-10-16', caminho_arquivo: 'https://s3.test/excluido.pdf' }
     ];
   }
 `;
@@ -84,7 +87,10 @@ try {
   await modal.getByText('segundo.png').waitFor();
   assert.equal(await modal.getByText('comprovante.png', {exact:true}).count(), 0);
   assert.equal(await modal.getByText('boleto-informativo.pdf', {exact:true}).count(), 0);
-  assert.equal(await modal.getByRole('listitem').count(), 2);
+  assert.equal(await modal.getByRole('listitem').count(), 4);
+  await modal.getByText('compra.pdf', { exact:true }).waitFor();
+  await modal.getByText('frete.pdf', { exact:true }).waitFor();
+  assert.equal(await modal.getByText('excluido.pdf', { exact:true }).count(), 0);
   assert.deepEqual(await page.evaluate(() => window.consultas), [42]);
   assert.equal(await page.evaluate(() => (window.links || []).length), 0, 'Link seguro so deve ser solicitado ao abrir');
   await modal.getByRole('button', { name: 'Visualizar' }).first().click();
@@ -98,7 +104,7 @@ try {
   await page.waitForFunction(() => (window.abertos || []).length === 1);
   assert.equal(await page.evaluate(() => window.abertos[0].download), 'nota.pdf');
   await page.goto(`${base}/fixture?empty=1`);
-  await page.getByRole('dialog', { name: 'Arquivos da solicitação SOL-43' }).getByText('Nenhum arquivo enviado pelo campo de boleto desta solicitação.').waitFor();
+  await page.getByRole('dialog', { name: 'Arquivos da solicitação SOL-43' }).getByText('Nenhum boleto anexado à solicitação ou aos seus pedidos de compra.').waitFor();
   assert.equal(await page.getByRole('button', {name:/Visualizar/}).count(), 0);
   assert.deepEqual(errors, []);
   console.log('OK: modal somente boletos (PDF/imagem), exclui comprovantes/anexos comuns mesmo em resposta antiga, presign sob demanda, preview/download e vazio.');

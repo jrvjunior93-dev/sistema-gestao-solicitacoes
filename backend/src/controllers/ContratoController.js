@@ -819,6 +819,7 @@ module.exports = {
       if (modoCriacao) {
         const contratosDisponiveis = [];
         for (const contrato of contratos) {
+          if (contrato.medicao_encerramento?.finalizado === true) continue;
           const contratoSerializado = contrato.toJSON ? contrato.toJSON() : { ...contrato };
           if (!contrato.fluxo_novo || !contrato.solicitacao_id) {
             contratosDisponiveis.push({
@@ -850,7 +851,7 @@ module.exports = {
         return res.json(contratosDisponiveis);
       }
 
-      return res.json(contratos);
+      return res.json(restringirPorObra ? contratos.filter(c => c.medicao_encerramento?.finalizado !== true) : contratos);
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: 'Erro ao buscar contratos' });
@@ -1657,7 +1658,7 @@ module.exports = {
         return { ...c.toJSON(), ...totais };
       });
 
-      return res.json(resultado);
+      return res.json(restringirPorObra ? resultado.filter(c => c.medicao_encerramento?.finalizado !== true) : resultado);
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: 'Erro ao gerar resumo de contratos' });

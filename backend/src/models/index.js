@@ -5,6 +5,8 @@ const db = {};
 
 db.Sequelize = Sequelize;
 db.sequelize = sequelize;
+db.TituloCompartilhadoLote = require('./TituloCompartilhadoLote')(sequelize, Sequelize);
+db.TituloCompartilhadoOrigem = require('./TituloCompartilhadoOrigem')(sequelize, Sequelize);
 
 /* =====================
    MODELS
@@ -5326,4 +5328,8 @@ db.TreinamentoLeituraUsuario.belongsTo(db.User, { foreignKey: 'usuario_id', as: 
 db.TreinamentoVideoProgresso.belongsTo(db.User, { foreignKey: 'usuario_id', as: 'usuario' });
 db.TreinamentoVideoProgresso.belongsTo(db.User, { foreignKey: 'ator_id', as: 'ator', constraints: false });
 
+db.TituloFinanceiro.hasMany(db.TituloCompartilhadoOrigem, { foreignKey: 'titulo_financeiro_id', as: 'participacoesCompartilhadas' });
+db.TituloCompartilhadoOrigem.belongsTo(db.TituloFinanceiro, { foreignKey: 'titulo_financeiro_id', as: 'titulo' });
+db.TituloCompartilhadoOrigem.belongsTo(db.EmpresaGrupo, { foreignKey: 'empresa_id', as: 'empresa' });
+db.TituloCompartilhadoOrigem.belongsTo(db.Obra, { foreignKey: 'obra_id', as: 'obra' });
 module.exports = db;

@@ -11,6 +11,8 @@ import { validarColunasFila } from './filaColunasQA.mjs';
 import { validarArquivosPreviewFila } from './filaArquivosPreviewQA.mjs';
 import { validarDadosPagamentoFila } from './filaDadosPagamentoQA.mjs';
 import { validarFiltrosDpFila } from './filaFiltrosDpQA.mjs';
+import { validarPaginacaoFila } from './filaPaginacaoQA.mjs';
+import { validarRolagemFila } from './filaRolagemQA.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const stub = '\0qa-fila-instrumentos-';
 const forms = [
@@ -31,18 +33,33 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
   },
   load(id) {
     if (id === stub + 'tema') return `export const useTheme=()=>({tema:{}});`;
-    if (id === stub + 'auth') return `export const useAuth=()=>({user:{id:Number(new URLSearchParams(location.search).get('usuario')||1)},authReady:true,isAuthenticated:true});`;
+    if (id === stub + 'auth') return `const qaQuery=new URLSearchParams(location.search);if(!qaQuery.has('persistir-modo')){if(qaQuery.has('rolagem'))localStorage.removeItem('financeiro-fila-pagamentos:modo-lista');else localStorage.setItem('financeiro-fila-pagamentos:modo-lista',JSON.stringify({numerada:true}));}export const useAuth=()=>({user:{id:Number(new URLSearchParams(location.search).get('usuario')||1)},authReady:true,isAuthenticated:true});`;
     if (id === stub + 'permissoes') return `const noResolve=new URLSearchParams(location.search).has('sem-resolver');export const canBaixarFilaPagamentos=()=>!window.__readOnly,hasPermissao=(_,key)=>!(key==='financeiro.titulos.estornar'&&(window.__noReverse||window.__readOnly)),canImportarComprovantesFilaPagamentos=()=>false,canReportarFilaPagamentos=()=>true,canResolverFilaPagamentos=()=>!window.__readOnly&&!noResolve;`;
     if (id === stub + 'padrao') return `export{default as Pagina}from'/src/components/padrao/Pagina.jsx';export{default as BlocoConteudo}from'/src/components/padrao/BlocoConteudo.jsx';export{default as PageHeader}from'/src/components/padrao/PageHeader.jsx';const avisar={erro:console.error,sucesso:()=>{},alerta:message=>window.__alerts.push(message)};const confirmar=async()=>({ok:true,texto:'Correção QA'});export const Avisos=()=>null;export const useAvisos=()=>({avisos:[],fechar:()=>{},limpar:()=>{},avisar});export const useConfirmacao=()=>({confirmar});`;
     if (id === stub + 'api') return `
       const onlyConsult=new URLSearchParams(location.search).has('somente-consulta');
       const filtrosDpScenario=new URLSearchParams(location.search).has('filtros-dp');
+      const volumeScenario=new URLSearchParams(location.search).has('volume');
       export const getFilaPagamentos=async(params)=>{
         const {status}=params;
         (window.__filterQueries ||= []).push(params);
         const paid=window.__paid,receipt=window.__receipt,saldo=window.__saldo||200;
         const row={id:1,status:paid?'BAIXADO':'PENDENTE',movimento_financeiro_id:paid?10:null,valor_informado:paid?200:null,valor_previsto:saldo,juros:window.__juros||0,multa:window.__multa||0,conta_bancaria_id:5,data_baixa:paid?'2026-10-08':null,pendente_comprovante:paid&&!receipt,comprovante_hash:receipt||!window.__receiptScenario?'qa':null,comprovante_url:receipt||!window.__receiptScenario?'qa':null,titulo:{id:1,codigo:'TIT-QA',status:paid?'QUITADO':'ABERTO',valor_saldo:paid?0:saldo,forma_pagamento_id:1,solicitacao_id:100,solicitacao:{id:100,codigo:'SOL-QA'}}};
         row.titulo.descricao='SOL-QA - MEDIÇÃO';
+        if(new URLSearchParams(location.search).has('arquivos'))row.titulo.solicitacao.boletos=[{id:1,nome:'boleto.PDF',tipo:'BOLETO_COMPRA'},{id:2,nome:'foto.jpeg',tipo:'BOLETO_FRETE'}];
+        if(volumeScenario) {
+          if(window.__volumeDelay && params.pagina>1) await new Promise(resolve=>setTimeout(resolve,window.__volumeDelay));
+          if(window.__volumeFail && params.pagina>1) throw Object.assign(Error('Falha QA na consulta'),{status:window.__volumeFail});
+          const pago=['BAIXADO','RESOLVIDO','PENDENTE_COMPROVANTE'].includes(status),estado=status==='PENDENTE_COMPROVANTE'?'BAIXADO':status==='TODOS'?'PENDENTE':status;
+          let data=Array.from({length:650},(_,i)=>({...structuredClone(row),id:i+1,status:i===0&&window.__volumeChanged?'EM_EDICAO':estado,
+            movimento_financeiro_id:pago?1000+i:null,pendente_comprovante:status==='PENDENTE_COMPROVANTE',
+            titulo:{...structuredClone(row.titulo),id:i+1,codigo:'TIT-VOL-'+(i+1),forma_pagamento_id:3,status:pago?'QUITADO':'ABERTO',valor_saldo:pago?0:200}}));
+          if(params.fila_ids){const ids=params.fila_ids.split(',').map(Number);data=data.filter(r=>ids.includes(r.id));}
+          if(params.q)data=data.filter(r=>r.titulo.codigo.includes(params.q));
+          const total=data.length,total_paginas=Math.max(1,Math.ceil(total/params.limite)),pagina=Math.min(params.pagina,total_paginas);
+          return {data:data.slice((pagina-1)*params.limite,pagina*params.limite),total,pagina,total_paginas,limite:params.limite,
+            resumo:Object.fromEntries(['PENDENTE','PENDENTE_COMPROVANTE','NAO_PAGO','DIVERGENTE','EM_EDICAO','BAIXADO','RESOLVIDO','TODOS'].map(s=>[s,650]))};
+        }
         if(filtrosDpScenario) {
           const dp=(id,codigo,empresa,credor,modo,origem='RH_DP')=>({...structuredClone(row),id,titulo:{...structuredClone(row.titulo),id,codigo,origem_titulo:origem,
             empresa_id:empresa,empresa:{id:empresa,nome:empresa===3?'Empresa colaborador QA':'Outra empresa QA'},parceiro_id:credor,parceiro:{id:credor,nome:'Credor '+credor},recebimento_dp:modo}});
@@ -55,6 +72,9 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
         row.somente_consulta=onlyConsult;
         row.titulo.numero_documento=new URLSearchParams(location.search).has('documento')?'DOC-QA':null;
         row.titulo.formaPagamento=${JSON.stringify(forms[0])};
+        if(new URLSearchParams(location.search).has('previsao-cartao')) {
+          row.titulo.fatura_cartao_id=79; row.titulo.cartao_id=40;
+        }
         if(new URLSearchParams(location.search).has('dados')) row.titulo.observacoes=window.__paymentText || ('PIX: 000201ABC/Pix@EXEMPLO.COM +'+'aB:0123456789/'.repeat(500));
         if(new URLSearchParams(location.search).has('compartilhado')) {
           const items=[{...row,comprovante_hash:null,comprovante_url:null,pendente_comprovante:false},
@@ -82,7 +102,7 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
       export const anexarComprovanteFilaPagamento=async()=>{window.__uploads++;window.__receipt=true};
       export const anexarComprovanteFilaPagamentoLote=async(ids,file)=>{window.__sharedCalls=(window.__sharedCalls||0)+1;await new Promise(r=>setTimeout(r,150));window.__shared={ids,name:file.name};return {quantidade:ids.length,criados:ids.length}};
       export const getArquivosSolicitacaoFila=async()=>new URLSearchParams(location.search).has('arquivos')
-        ? ['boleto.PDF','foto.jpeg','planta.png','animacao.gif','foto.webp','arquivo.docx','arquivo.svg'].map((nome,i)=>({id:'qa-'+i,nome_original:nome,caminho_arquivo:'https://bucket.example.test/qa/'+nome,tipo:'BOLETO',createdAt:'2026-10-08T12:00:00Z'})) : [];
+        ? ['boleto.PDF','foto.jpeg','planta.png','animacao.gif','foto.webp','arquivo.docx','arquivo.svg'].map((nome,i)=>({id:'qa-'+i,nome_original:nome,caminho_arquivo:'https://bucket.example.test/qa/'+nome,tipo:i===0?'BOLETO_COMPRA':i===1?'BOLETO_FRETE':'BOLETO',createdAt:'2026-10-08T12:00:00Z'})) : [];
       export const estornarBaixaFilaPagamento=async(id,motivo,key)=>{window.__reverseCalls=(window.__reverseCalls||0)+1;window.__reversed={id,motivo,key};};
       export const resolverFilaPagamento=async(id,action,motivo)=>{window.__returned={id,action,motivo};};
       export const aprovarDivergenciasFilaPagamentos=async()=>{},getComprovanteFilaPagamento=async()=>{},informarNaoPagamentoFila=async()=>{},previewComprovantesFilaPagamentos=async()=>{},vincularComprovantesFilaPagamentos=async()=>{};`;
@@ -102,9 +122,56 @@ try {
   page.on('pageerror', e => { errors.push(e.message); console.error('Erro da tela QA:', e.message); });
   page.on('console', message => { if (message.type() === 'error') console.error(message.text()); });
   await page.route('**/*', route => {
+    if (new URL(route.request().url()).pathname.endsWith('/listas/financeiro-fila-pagamentos/preferencias/visual')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
+    }
     if (new URL(route.request().url()).origin === 'http://127.0.0.1:5308') return route.continue();
     unexpected.push(route.request().url()); return route.abort();
   });
+  if (process.argv.includes('--boletos-pedido')) {
+    for (const width of [1366,390]) {
+      await page.setViewportSize({width,height:900});
+      await page.goto('http://127.0.0.1:5308/qa-fila?arquivos=1');
+      await page.getByText('Boletos da solicitação (2)',{exact:true}).click();
+      const lista=page.getByRole('list',{name:'Boletos de SOL-QA',exact:true});
+      await lista.getByText('boleto.PDF',{exact:true}).waitFor();
+      await lista.getByText('foto.jpeg',{exact:true}).waitFor();
+      await page.getByRole('button',{name:'Visualizar / baixar boletos',exact:true}).click();
+      const modal=page.getByRole('dialog',{name:'Arquivos da solicitação SOL-QA',exact:true});
+      await modal.getByText(/Boleto da compra ·/).waitFor();
+      await modal.getByText(/Boleto do frete ·/).waitFor();
+      assert.equal(await modal.getByRole('listitem').count(),7);
+      await page.screenshot({path:path.join(root,`../outputs/boletos-pedido/fila-${width}.png`),fullPage:true});
+      await modal.getByRole('button',{name:'Fechar',exact:true}).click();
+      assert.equal(await page.evaluate(()=>window.__settles.length),0,'Listar boletos nao altera titulo nem baixa');
+    }
+    assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
+    console.log('OK: fila real desktop/mobile lista nomes dos boletos e abre compra/frete no modal existente, sem baixa.');
+  } else if (process.argv.includes('--rolagem') || process.argv.includes('--concorrencia')) {
+    await validarRolagemFila(page);
+    assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
+  } else if (process.argv.includes('--previsao-cartao')) {
+    for (const width of [1366, 390]) {
+      await page.setViewportSize({width,height:900});
+      await page.goto('http://127.0.0.1:5308/qa-fila?previsao-cartao=1');
+      await page.getByText('Previsão de cartão. O vínculo com a fatura será revalidado na baixa.',{exact:true}).waitFor();
+      await page.getByLabel('Forma de pagamento de TIT-QA',{exact:true}).selectOption('3');
+      await page.getByLabel('Conta pagadora de TIT-QA',{exact:true}).selectOption('5');
+      assert.equal(await page.getByLabel('Cartão de TIT-QA',{exact:true}).count(),0);
+      await page.getByLabel('Forma de pagamento de TIT-QA',{exact:true}).scrollIntoViewIfNeeded();
+      await page.screenshot({path:path.join(root,`../outputs/fila-previsao-cartao-${width}.png`),fullPage:true});
+      await page.getByRole('button',{name:'Registrar baixa',exact:true}).click();
+      await page.waitForFunction(()=>window.__settles.length===1);
+      const item=await page.evaluate(()=>window.__settles[0].itens[0]);
+      assert.equal(item.forma_pagamento_id,3); assert.equal(item.conta_bancaria_id,5);
+      assert(!item.cartao_id&&!item.fatura_cartao_id,'Nao reenviar o vinculo previsto como pagamento efetivo');
+    }
+    assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
+    console.log('OK: previsao de cartao -> PIX na fila real desktop/mobile, conta e instrumento efetivos, sem vinculo antigo no payload. APIs isoladas.');
+  } else if (process.argv.includes('--paginacao')) {
+    await validarPaginacaoFila(page);
+    assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
+  } else {
   if (process.argv.includes('--filtros-dp')) await validarFiltrosDpFila(page);
   await page.goto('http://127.0.0.1:5308/qa-fila');
   const forma = page.getByLabel('Forma de pagamento de TIT-QA', { exact: true });
@@ -307,7 +374,7 @@ try {
   for(const width of [1366,390]) {
     await page.setViewportSize({width,height:900});
     await page.goto('http://127.0.0.1:5308/qa-fila?massa=1&status=TODOS');
-    const selectAll=page.getByLabel('Selecionar todos os elegíveis desta lista',{exact:true});
+    const selectAll=page.getByLabel('Selecionar todos os elegíveis da página atual',{exact:true});
     await selectAll.waitFor();
     await page.getByLabel('Selecionar TIT-MASSA-1',{exact:true}).check();
     assert(await selectAll.evaluate(el=>el.indeterminate));
@@ -625,7 +692,7 @@ try {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('http://127.0.0.1:5308/qa-fila?compartilhado=1&status=TODOS');
     await page.getByText('TIT-OUTRO', {exact:true}).waitFor();
-    await page.getByLabel('Selecionar todos os elegíveis desta lista', {exact:true}).check();
+    await page.getByLabel('Selecionar todos os elegíveis da página atual', {exact:true}).check();
     assert.equal(await page.getByRole('button',{name:'Baixa em massa (1)',exact:true}).count(),1,'Baixa nao inclui os ja pagos');
     await page.getByRole('button',{name:'Anexar mesmo comprovante (2)',exact:true}).click();
     const compartilhado = page.getByRole('dialog',{name:'Anexar mesmo comprovante',exact:true});
@@ -639,13 +706,15 @@ try {
     assert.equal(await page.evaluate(()=>window.__settles.length),0,'Anexo nunca registra baixa');
     await page.goto('http://127.0.0.1:5308/qa-fila?compartilhado=1&status=PENDENTE_COMPROVANTE');
     await page.getByText('TIT-OUTRO',{exact:true}).waitFor();
-    await page.getByLabel('Selecionar todos os elegíveis desta lista',{exact:true}).check();
+    await page.getByLabel('Selecionar todos os elegíveis da página atual',{exact:true}).check();
     assert.equal(await page.getByRole('button',{name:/Baixa em massa/}).count(),0);
     assert(await page.getByRole('button',{name:'Anexar mesmo comprovante (1)',exact:true}).isEnabled());
     await page.goto('http://127.0.0.1:5308/qa-fila?compartilhado=1&readonly=1&status=PENDENTE_COMPROVANTE');
     await page.getByText('TIT-OUTRO',{exact:true}).waitFor();
     assert.equal(await page.getByRole('button',{name:/Anexar mesmo comprovante/}).count(),0,'Sem permissao de anexo individual nao recebe lote');
   }
+  await validarPaginacaoFila(page);
   assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
   console.log('OK: fila real desktop/mobile, cabecalho unico da massa conta/data/forma/instrumentos, quantidade/proprio/carteira, cancelamento/mutex, desconto, cheques, estorno, devolver nao pago, selecao/colunas e rolagem. APIs isoladas.');
+  }
 } finally { await browser?.close(); await server.close(); }
