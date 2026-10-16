@@ -317,6 +317,12 @@ function redistribuirNasUltimas(trabalho, diferencaCent, { excluir = new Set(), 
  * e a diferenca vai para a ultima parcela editavel — nunca para a propria parcela medida.
  */
 async function aplicarMedicaoNasParcelas({ contratoId, solicitacaoId, medicaoId = null, itens, usuarioId, apenasValidar = false }, transaction) {
+  // Mesmo ordenamento de locks da criacao: contrato antes das parcelas.
+  if (apenasValidar) {
+    const atual = await Contrato.findByPk(contratoId, { attributes: ['id', 'medicao_encerramento'], transaction,
+      ...(transaction ? { lock: transaction.LOCK.UPDATE } : {}) });
+    if (atual?.medicao_encerramento?.finalizado === true) require('./contratoMedicaoEncerramentoDomain').assertNovaMedicao(atual);
+  }
   const lista = Array.isArray(itens) ? itens : [];
   if (lista.length === 0) throw erro('Selecione ao menos uma parcela do contrato para medir.');
 
@@ -749,6 +755,7 @@ async function registrarMedicaoDoContrato({ contratoId, itens, periodoInicio, pe
       transaction
     });
     if (!contrato) throw erro('Contrato nao encontrado.', 404);
+    if (contrato.medicao_encerramento?.finalizado === true) require('./contratoMedicaoEncerramentoDomain').assertNovaMedicao(contrato);
     if (!contrato.fluxo_novo) {
       throw erro('Medicao como evento da solicitacao so vale para contrato do fluxo novo.');
     }

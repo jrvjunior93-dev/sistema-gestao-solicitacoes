@@ -76,6 +76,35 @@ A listagem usa `Contratado`, `Saldo` e `Aditivos`. O status e calculado em consu
 O detalhe reune medicoes, solicitacoes, titulos, valores movimentados, saldo contratual
 e saldo financeiro.
 
+## Marcacao manual de totalmente medido
+
+GEO com a permissao existente de editar contratos e SUPERADMIN podem marcar ou
+desfazer **Totalmente medido**, tanto no contrato novo quanto no legado, na gestao
+ou na solicitacao vinculada. Motivo obrigatorio, autor/data/revisao e auditoria
+atomica em ambos os fluxos. Recibo duravel em LogExclusao, entidade propria e
+solicitacao_id nulo, complementado por SecurityEventLog. Nao cria autoria ou
+interacao na solicitacao-mae, preservando suas regras de visibilidade.
+
+Esta e uma marcacao administrativa distinta da rescisao: mesmo com saldo positivo,
+retira o contrato das listas operacionais da Obra e das opcoes de nova solicitacao.
+Impede novas medicoes e reprogramacao; chamadas diretas/formularios antigos tambem
+sao validados sob lock. Medicoes anteriores seguem consultaveis/processaveis.
+Nao altera `ativo`, `status_contrato`, valores medidos, saldos, parcelas, titulos,
+baixas ou pagamentos. O resumo mostra Totalmente medido por marcacao e conserva
+tambem o status calculado e os valores reais, sem fabricar medicao ou despesa.
+
+GEO mantem acesso para consulta/reversao; desfazer nao reabre contrato rescindido
+nem dispensa as demais regras de saldo, prazo e aprovacao. A UI mostra os 50
+eventos mais recentes; a trilha completa permanece na auditoria. Controle de
+revisao e mutex impedem repeticao/concorrencia; replay anterior a reversao nao
+pode remarcar o contrato. Sem ampliar escopo ou conceder permissoes.
+
+GET/POST `/contratos/:id/medicao-encerramento`, com sessao/modulo/escopo e validacao
+de ator no backend. Migration estrutural nullable
+`202610150003_contrato_medicao_encerramento.js`, sem seed/backfill. Necessita
+aplicacao explicita antes de usar o novo backend; nao executada pelo agente.
+Testes isolados: `npm run test:contrato-medicao-marcacao` em backend e frontend.
+
 ## Rescisao
 
 Rescisao e transacional e protegida contra repeticao. Ela cancela somente saldo nao

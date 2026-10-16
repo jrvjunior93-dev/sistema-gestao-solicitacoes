@@ -64,12 +64,14 @@ function montarResumo({ contrato, medido, movimentado, solicitacoes, medicoes, t
   const saldoContratualCalculado = Math.max(dinheiro(base.contratado - medido), 0);
   const saldoContratual = rescindido ? 0 : saldoContratualCalculado;
   const saldoFinanceiro = Math.max(dinheiro(medido - movimentado), 0);
-  const statusOperacional = classificarStatusOperacional({
+  const statusCalculado = classificarStatusOperacional({
     contratado: base.contratado,
     medido,
     movimentado,
     rescindido
   });
+  const manual = contrato?.medicao_encerramento?.finalizado === true;
+  const statusOperacional = !rescindido && manual ? 'TOTALMENTE_MEDIDO' : statusCalculado;
 
   if (!rescindido && contrato?.ativo === false) {
     alertas.push({
@@ -94,6 +96,8 @@ function montarResumo({ contrato, medido, movimentado, solicitacoes, medicoes, t
     ...base,
     fluxo: contrato?.fluxo_novo ? 'NOVO' : 'LEGADO',
     status_operacional: statusOperacional,
+    status_operacional_calculado: statusCalculado,
+    medicao_finalizada_manualmente: manual,
     medido: dinheiro(medido),
     movimentado: dinheiro(movimentado),
     saldo_contratual: dinheiro(saldoContratual),

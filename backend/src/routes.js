@@ -434,6 +434,7 @@ const ConfiguracaoSistemaController = require('./controllers/ConfiguracaoSistema
 const ObraTipoApropriacaoController = require('./controllers/ObraTipoApropriacaoController');
 const ContratoFluxoNovoController = require('./controllers/ContratoFluxoNovoController');
 const ContratoSaldoReprogramacaoController = require('./controllers/ContratoSaldoReprogramacaoController');
+const ContratoMedicaoEncerramentoController = require('./controllers/ContratoMedicaoEncerramentoController');
 const UiVisibilityConfigController = require('./controllers/UiVisibilityConfigController');
 const ConversaInternaController = require('./controllers/ConversaInternaController');
 const ArquivoModeloController = require('./controllers/ArquivoModeloController');
@@ -2803,6 +2804,8 @@ router.get('/contratos', validateRequest({ query: validateContratoQuery }), Cont
 router.get('/contratos/resumo', validateRequest({ query: validateContratoQuery }), ContratoController.resumo);
 router.get('/contratos/relatorios/operacional', validateRequest({ query: validateContratoRelatorioOperacionalQuery }), ContratoController.relatorioOperacional);
 router.get('/contratos/exportar-csv', validateRequest({ query: validateContratoQuery }), ContratoController.exportarCsv);
+router.get('/contratos/:id/medicao-encerramento', requireEnabledModule('CONTRATOS'), validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, ContratoMedicaoEncerramentoController.consultar);
+router.post('/contratos/:id/medicao-encerramento', requireEnabledModule('CONTRATOS'), criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, ContratoMedicaoEncerramentoController.alterar);
 router.get('/contratos/:id/detalhe-operacional', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, ContratoController.detalheOperacional);
 router.get('/contratos/:id/solicitacoes', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, ContratoController.solicitacoes);
 router.get('/contratos/:id/anexos', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, ContratoController.listarAnexos);

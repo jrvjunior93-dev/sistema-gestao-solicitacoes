@@ -1,5 +1,20 @@
 import { API_URL, authHeaders } from './api';
 
+export async function getMarcacaoMedicaoContrato(id) {
+  const res = await fetch(`${API_URL}/contratos/${id}/medicao-encerramento`, { headers: authHeaders() });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.error || 'Erro ao consultar a marcacao do contrato.');
+  return data;
+}
+export async function alterarMarcacaoMedicaoContrato(id, payload) {
+  const res = await fetch(`${API_URL}/contratos/${id}/medicao-encerramento`, {
+    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(payload)
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.error || 'Erro ao atualizar a marcacao do contrato.');
+  return data;
+}
+
 export async function getContratos({ obra_id, ref, modo } = {}) {
   const search = new URLSearchParams();
   if (obra_id) search.set('obra_id', obra_id);

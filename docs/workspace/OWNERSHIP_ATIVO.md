@@ -170,6 +170,39 @@
   ACL, polling, build/navegacao/docs. Reserva encerrada; ownership liberado.
   Handoff: docs/handoffs/2026-10-15-performance-fila-dp.md. Publicacao so DEV;
   sem migration nova, sem EC2/banco/producao executados pelo agente.
+## Publicacao de contratos para homologacao - 2026-10-16
+
+- Usuario confirmou incluir contratos no pacote, somente apos publicar/testar
+  em DEV. Agente unico retoma os arquivos do escopo abaixo, revisao/testes e
+  integracao com refactor/frontend 67c985e6. Sem delegacao ou producao.
+- Reservar servico/auditoria/testes do marcador, docs, scripts de deploy DEV
+  e eventuais resolucoes de integracao. Preservar outputs/ e outros checkouts.
+- Integracao em codex/contratos-totalmente-medidos-dev-20261016 sobre 67c985e6;
+  unico conflito documental de ownership resolvido preservando os dois lados.
+  Reservados tambem aplicarMigrationContratoMedicaoDev.js,
+  validarDeployContratoMedicaoDev.js e atualizar-dev-contratos-medicao-20261016.sh.
+- Promocao para main aguarda homologacao do contrato e preflight real de
+  producao. Backup de producao confirmado pelo usuario, timer ativo.
+- Implementacao/publicacao DEV validada: marcador, ACL/replay/rollback,
+  auditoria duravel sem autoria de solicitacao, regressoes, UI desktop/mobile,
+  build/navegacao, guard exclusivo da migration 202610150003, Bash/docs/diff OK.
+  Ownership liberado para commit/push na refactor/frontend. Homologacao real
+  ainda depende do usuario; main permanece inalterada.
+
+## Contrato totalmente medido manual - 2026-10-15
+
+- Agente unico, sem delegacao. Usuario confirmou: GEO marca e desfaz com motivo
+  e auditoria; retira das opcoes da Obra e bloqueia novas medicoes, mesmo com
+  saldo. Preservar integralmente parcelas/titulos/pagamentos/medicoes existentes.
+- Reserva: model/migration estrutural do marcador, service/controller/rotas,
+  consultas/guards de medicao novo/legado/reprogramacao, resumo operacional,
+  componentes de gestao/detalhe e testes/docs correspondentes.
+- Branch codex/contrato-totalmente-medido-20261015 a partir da refactor homologada.
+  Sem commit/push/deploy, banco real ou migration aplicada. Outputs/ e outros
+  checkouts preservados. Handoff 2026-10-15-contrato-totalmente-medido-manual.md.
+- Implementacao e testes novos/regressoes principais/UI desktop-mobile/build/
+  navegacao/docs aprovados. Checagem textual legada Pix ja falha na base, sem
+  mudanca fora de escopo. Ownership liberado; migration somente criada, nao aplicada.
 
 ## Filtros/recebimento da fila e relatorio DP - 2026-10-15
 

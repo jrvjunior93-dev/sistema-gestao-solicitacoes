@@ -2255,7 +2255,7 @@ async function listarParcelasDoContrato(contratoId, { usuario = null } = {}) {
     // decide por eles — a aprovacao exige a categoria, e o bloco so aparece na solicitacao dona.
     attributes: ['id', 'codigo', 'obra_id', 'valor_total', 'valor_aditivos', 'fluxo_novo',
       'status_contrato', 'ativo', 'categoria_financeira_id', 'solicitacao_id', 'motivo_rejeicao',
-      'link_assinatura',
+      'link_assinatura', 'medicao_encerramento',
       // `favorecido_id` faltava aqui, e sem ele a busca do favorecido nem acontecia — o cabecalho
       // ficava sem "Favorecido" e sem "Chave PIX", em silencio. Lista de atributos e armadilha:
       // o campo existe no banco e no model, mas some se nao for pedido.
@@ -2546,9 +2546,10 @@ async function listarParcelasDoContrato(contratoId, { usuario = null } = {}) {
       // Mesma regra da guarda em SolicitacaoController: contrato do fluxo novo so e medivel
       // depois de APROVADO. Se esta linha divergir da guarda, a tela oferece o que a API
       // recusa (ou esconde o que ela aceita).
-      medivel: ehFluxoNovo
+      medicao_encerramento: contrato.medicao_encerramento || null,
+      medivel: contrato.medicao_encerramento?.finalizado !== true && (ehFluxoNovo
         ? Boolean(contrato.ativo) && contrato.status_contrato === STATUS_CONTRATO.ATIVO
-        : Boolean(contrato.ativo),
+        : Boolean(contrato.ativo)),
       // O que quem esta pedindo pode fazer aqui. A tela usa isto para nao oferecer o que a rota
       // vai recusar — ver `permissoesDoUsuarioNoContrato`.
       permissoes: await permissoesDoUsuarioNoContrato(contrato, usuario)
@@ -2600,7 +2601,7 @@ async function listarParcelasDoContrato(contratoId, { usuario = null } = {}) {
         // verdadeiro nela — e era por isso que o checkbox da Nova Solicitacao continuava liberado
         // depois de medir. Os dois campos nao podem virar um so: a EDICAO de uma medicao precisa,
         // justamente, alterar uma parcela ja medida.
-        medivel: efetivo.editavel && !medicaoPorParcela.has(Number(p.id)),
+        medivel: contrato.medicao_encerramento?.finalizado !== true && efetivo.editavel && !medicaoPorParcela.has(Number(p.id)),
         status_parcela: p.status,
         travada: Boolean(p.travada),
         titulo_financeiro_id: p.titulo_financeiro_id,

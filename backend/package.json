@@ -66,6 +66,7 @@
     "test:conciliacao-rendimentos": "node scripts/validarConciliacaoRendimentos.js",
     "test:cheques-terceiros": "node scripts/validarCarteiraChequesBaixaComposta.js",
     "test:docs": "node scripts/validarDocumentacao.js",
+    "test:contrato-medicao-marcacao": "node scripts/validarContratoMedicaoEncerramento.js",
     "test:dependencias-backend": "node scripts/validarDependenciasBackend.js",
     "test:smoke-sst": "node scripts/smoke-sst-simplificacao.js",
     "test:security-hardening": "node scripts/validarSecurityHardening.js",

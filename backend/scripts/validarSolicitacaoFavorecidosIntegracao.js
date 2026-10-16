@@ -169,12 +169,12 @@ async function testarPersistenciaController() {
   reset();
   const validados = await service.validarFavorecidos(lista, { valorTotal: 1000, formas, anexosPendentes: ['boleto QA.pdf'] });
   const source = fs.readFileSync(path.resolve(__dirname, '../src/controllers/SolicitacaoController.js'), 'utf8');
-  const inicio = source.indexOf('      const criarSolicitacaoComRateio = async');
+  const inicio = source.indexOf('      const validarMarcacaoNaCriacao = async');
   const fim = source.indexOf('      const criarSolicitacaoCadastroObra = async', inicio);
   let criadas = 0, rateios = [], distribuicoes = [];
   const modulo = { exports: {} };
   const contexto = {
-    module: modulo, dadosSolicitacao: { valor: 1000 }, usuarioId: 9, obra_id: 4,
+    module: modulo, dadosSolicitacao: { valor: 1000 }, criacaoDeMedicao: false, usuarioId: 9, obra_id: 4,
     pagamentosFavorecidosValidados: validados,
     rateioApropriacoesDetalhado: [{ apropriacao_id: 3, valor_rateio: 1000 }],
     distribuicaoCentroCustoValidada: { linhas: [{ obra_id: 4, criterio: 'VALOR', valor_distribuido: 1000 }] },
