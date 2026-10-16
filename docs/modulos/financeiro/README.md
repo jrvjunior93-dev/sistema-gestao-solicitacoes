@@ -68,7 +68,8 @@
   vinculado ao ID exato do titulo. Filtro de recebimento conserva SQL e fallback
   legado, sem reclassificar pelo cadastro atual. Nao ha backfill ou migration.
 - Selecao entre paginas conserva apenas dados em memoria da tela. Selecionar
-  todos/desmarcar todos afeta somente a pagina atual. Trocar filtro/status limpa
+  todos/desmarcar todos afeta somente a pagina atual em modo Paginas e somente
+  os elegiveis ja carregados em modo Rolagem. Trocar filtro/status limpa
   a selecao. Antes de baixar/autorizar/anexar, reler os IDs no mesmo recorte;
   alteracao ou indisponibilidade bloqueia a operacao. Locks/ACLs/idempotencia
   existentes continuam obrigatorios no backend.
@@ -77,6 +78,31 @@
 - Testes isolados: npm run test:performance-fila-dp no backend e
   node scripts/validarFilaInstrumentosUI.mjs --paginacao no frontend.
   Cenarios com 650 titulos; nao constituem benchmark de RDS real.
+
+### Navegacao por paginas ou rolagem - 2026-10-16
+
+- Todos os cards/status compartilham o alternador **Rolagem / Paginas** na barra
+  da fila, no mesmo padrao operacional de Solicitacoes. Rolagem e o padrao para
+  quem nao tem preferencia; escolha usa PreferenciasContext, tipo visual,
+  por usuario/lista `financeiro-fila-pagamentos`, sem alterar colunas/larguras.
+- Rolagem consulta o proximo lote de 50 ao aproximar o fim da tabela, em serie,
+  sem aumentar limite SQL nem carregar o historico inteiro na abertura. Botao
+  Carregar mais pagamentos permite avancar tambem sem IntersectionObserver.
+  Status e filtros continuam enviados ao mesmo endpoint e ACLs nao mudam.
+- Trocar modo volta ao inicio da lista e conserva selecao/rascunhos em memoria.
+  Marcar todos nunca seleciona registros ainda nao carregados. Limpar selecao
+  remove a selecao de todas as paginas/lotes. Limites de baixa/anexo e revalidacao
+  integral dos IDs antes de escrita permanecem, inclusive fora da janela exibida.
+- Atualizar ou concluir uma operacao reconsulta a janela ja carregada em serie,
+  removendo linhas que sairam do recorte. Deduplicacao por ID, resposta atrasada
+  descartada por revisao, janela invalidada em troca de usuario/filtro/status.
+  Carga automatica pausada em aba oculta, modal aberto ou operacao em andamento.
+- Falha transitoria ao carregar mais conserva a janela e oferece tentativa manual;
+  nao dispara loop de retry. 401/403 e outras falhas de autorizacao/validacao
+  retiram dados/selecao da tela. Baixas permanecem bloqueadas durante a carga.
+- Testes: `npm run test:fila-rolagem` e regressao `npm run test:fila-instrumentos-ui`.
+  Fixtures isoladas; nao sao prova de capacidade ilimitada de memoria ou de RDS.
+  Nao ha migration, alteracao financeira ou escrita de dados de producao.
 
 ## Comprovante compartilhado na fila - 2026-10-15
 

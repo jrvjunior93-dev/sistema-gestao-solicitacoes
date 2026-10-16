@@ -80,7 +80,8 @@ export async function getFilaPagamentos(params = {}) {
     headers: authHeaders(),
     cache: 'no-store'
   });
-  return parseJson(response, 'Erro ao carregar a fila de pagamentos');
+  try { return await parseJson(response, 'Erro ao carregar a fila de pagamentos'); }
+  catch (error) { error.status = response.status; throw error; }
 }
 
 export async function getInstrumentosFilaPagamentos() {

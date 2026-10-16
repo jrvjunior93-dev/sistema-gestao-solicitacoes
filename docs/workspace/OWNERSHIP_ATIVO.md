@@ -1,5 +1,35 @@
 # Ownership Ativo
 
+## Publicacao da fila com rolagem - 2026-10-16
+
+- Usuario autorizou commit/push dos ajustes pendentes para refactor/frontend
+  e entrega de comandos para EC2 DEV. Reserva temporaria do agente unico:
+  os arquivos de rolagem listados abaixo, README financeiro e handoff.
+- Preservar outputs/ fora do commit. Nenhuma alteracao na main, banco real,
+  .env, PM2 ou EC2 sera executada pelo agente. Delta sem migration nova.
+- Revisao de publicacao concluida e reserva liberada: QA de rolagem repetida
+  com 650 titulos/8 recortes/desktop/mobile, preferencia, selecao/rascunho,
+  anexo, retry/403 e concorrencia; build, regressoes backend, docs e diff OK.
+  Seguir somente com commit/push solicitado e homologacao DEV pelo usuario.
+
+## Fila: alternar paginas e rolagem progressiva - 2026-10-16
+
+- Agente unico, sem delegacao. Usuario autorizou navegacao por rolagem em todos
+  os cards, com alternativa por paginas igual a Solicitacoes.
+- Reservados: FinanceiroFilaPagamentos.jsx, novos helper de janela/componentes
+  de navegacao e testes isolados, validarFilaInstrumentosUI.mjs,
+  filaPaginacaoQA.mjs, package.json frontend, README financeiro e handoff.
+- Reserva adicional: frontend/src/services/financeiro.js, somente metadado HTTP
+  de erro da consulta da fila para diferenciar falha transitoria de 401/403.
+- Preservar endpoints, ACL, filtros, selecao entre paginas, rascunhos, limites
+  por operacao e revalidacao antes de escrita. Sem backend, migrations, dados
+  reais, producao, deploy, commit ou push autorizados nesta etapa.
+- Implementacao concluida e reserva liberada: testes da janela/servico, UI
+  real rolagem e regressao completa (650 titulos, 8 recortes, desktop/mobile),
+  backend financeiro/performance, build, sintaxe, docs e diff aprovados.
+  Handoff: docs/handoffs/2026-10-16-fila-rolagem-progressiva.md.
+  Homologacao DEV e publicacao pendentes de pedido; outputs/ preservado.
+
 ## Publicacao das correcoes de cartao na fila - 2026-10-16
 
 - Usuario autorizou commit e push dos dois deltas na refactor/frontend e entrega

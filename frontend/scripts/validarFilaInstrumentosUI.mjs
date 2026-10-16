@@ -12,6 +12,7 @@ import { validarArquivosPreviewFila } from './filaArquivosPreviewQA.mjs';
 import { validarDadosPagamentoFila } from './filaDadosPagamentoQA.mjs';
 import { validarFiltrosDpFila } from './filaFiltrosDpQA.mjs';
 import { validarPaginacaoFila } from './filaPaginacaoQA.mjs';
+import { validarRolagemFila } from './filaRolagemQA.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const stub = '\0qa-fila-instrumentos-';
 const forms = [
@@ -32,19 +33,22 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
   },
   load(id) {
     if (id === stub + 'tema') return `export const useTheme=()=>({tema:{}});`;
-    if (id === stub + 'auth') return `export const useAuth=()=>({user:{id:Number(new URLSearchParams(location.search).get('usuario')||1)},authReady:true,isAuthenticated:true});`;
+    if (id === stub + 'auth') return `const qaQuery=new URLSearchParams(location.search);if(!qaQuery.has('persistir-modo')){if(qaQuery.has('rolagem'))localStorage.removeItem('financeiro-fila-pagamentos:modo-lista');else localStorage.setItem('financeiro-fila-pagamentos:modo-lista',JSON.stringify({numerada:true}));}export const useAuth=()=>({user:{id:Number(new URLSearchParams(location.search).get('usuario')||1)},authReady:true,isAuthenticated:true});`;
     if (id === stub + 'permissoes') return `const noResolve=new URLSearchParams(location.search).has('sem-resolver');export const canBaixarFilaPagamentos=()=>!window.__readOnly,hasPermissao=(_,key)=>!(key==='financeiro.titulos.estornar'&&(window.__noReverse||window.__readOnly)),canImportarComprovantesFilaPagamentos=()=>false,canReportarFilaPagamentos=()=>true,canResolverFilaPagamentos=()=>!window.__readOnly&&!noResolve;`;
     if (id === stub + 'padrao') return `export{default as Pagina}from'/src/components/padrao/Pagina.jsx';export{default as BlocoConteudo}from'/src/components/padrao/BlocoConteudo.jsx';export{default as PageHeader}from'/src/components/padrao/PageHeader.jsx';const avisar={erro:console.error,sucesso:()=>{},alerta:message=>window.__alerts.push(message)};const confirmar=async()=>({ok:true,texto:'Correção QA'});export const Avisos=()=>null;export const useAvisos=()=>({avisos:[],fechar:()=>{},limpar:()=>{},avisar});export const useConfirmacao=()=>({confirmar});`;
     if (id === stub + 'api') return `
       const onlyConsult=new URLSearchParams(location.search).has('somente-consulta');
       const filtrosDpScenario=new URLSearchParams(location.search).has('filtros-dp');
+      const volumeScenario=new URLSearchParams(location.search).has('volume');
       export const getFilaPagamentos=async(params)=>{
         const {status}=params;
         (window.__filterQueries ||= []).push(params);
         const paid=window.__paid,receipt=window.__receipt,saldo=window.__saldo||200;
         const row={id:1,status:paid?'BAIXADO':'PENDENTE',movimento_financeiro_id:paid?10:null,valor_informado:paid?200:null,valor_previsto:saldo,juros:window.__juros||0,multa:window.__multa||0,conta_bancaria_id:5,data_baixa:paid?'2026-10-08':null,pendente_comprovante:paid&&!receipt,comprovante_hash:receipt||!window.__receiptScenario?'qa':null,comprovante_url:receipt||!window.__receiptScenario?'qa':null,titulo:{id:1,codigo:'TIT-QA',status:paid?'QUITADO':'ABERTO',valor_saldo:paid?0:saldo,forma_pagamento_id:1,solicitacao_id:100,solicitacao:{id:100,codigo:'SOL-QA'}}};
         row.titulo.descricao='SOL-QA - MEDIÇÃO';
-        if(new URLSearchParams(location.search).has('volume')) {
+        if(volumeScenario) {
+          if(window.__volumeDelay && params.pagina>1) await new Promise(resolve=>setTimeout(resolve,window.__volumeDelay));
+          if(window.__volumeFail && params.pagina>1) throw Object.assign(Error('Falha QA na consulta'),{status:window.__volumeFail});
           const pago=['BAIXADO','RESOLVIDO','PENDENTE_COMPROVANTE'].includes(status),estado=status==='PENDENTE_COMPROVANTE'?'BAIXADO':status==='TODOS'?'PENDENTE':status;
           let data=Array.from({length:650},(_,i)=>({...structuredClone(row),id:i+1,status:i===0&&window.__volumeChanged?'EM_EDICAO':estado,
             movimento_financeiro_id:pago?1000+i:null,pendente_comprovante:status==='PENDENTE_COMPROVANTE',
@@ -117,10 +121,16 @@ try {
   page.on('pageerror', e => { errors.push(e.message); console.error('Erro da tela QA:', e.message); });
   page.on('console', message => { if (message.type() === 'error') console.error(message.text()); });
   await page.route('**/*', route => {
+    if (new URL(route.request().url()).pathname.endsWith('/listas/financeiro-fila-pagamentos/preferencias/visual')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
+    }
     if (new URL(route.request().url()).origin === 'http://127.0.0.1:5308') return route.continue();
     unexpected.push(route.request().url()); return route.abort();
   });
-  if (process.argv.includes('--previsao-cartao')) {
+  if (process.argv.includes('--rolagem') || process.argv.includes('--concorrencia')) {
+    await validarRolagemFila(page);
+    assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
+  } else if (process.argv.includes('--previsao-cartao')) {
     for (const width of [1366, 390]) {
       await page.setViewportSize({width,height:900});
       await page.goto('http://127.0.0.1:5308/qa-fila?previsao-cartao=1');

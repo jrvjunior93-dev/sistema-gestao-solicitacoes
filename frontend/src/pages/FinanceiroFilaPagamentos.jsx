@@ -2,6 +2,9 @@ import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
 import ParticipacoesTitulo from '../components/financeiro/ParticipacoesTitulo';
 import useConsultaSerial from '../hooks/useConsultaSerial';
 import PaginacaoConsulta from '../components/padrao/PaginacaoConsulta';
+import NavegacaoRolagemConsulta, { AlternadorPaginacaoConsulta } from '../components/padrao/NavegacaoRolagemConsulta';
+import { consultarJanelaFila } from '../utils/consultarJanelaFila';
+import { TIPO_VISUAL, usePreferenciaDeLista } from '../contexts/PreferenciasContext';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
@@ -14,7 +17,7 @@ import {
   HiOutlineMagnifyingGlass
 } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
-import { useWorkspaceState, useWorkspaceWork } from '../navigation/WorkspaceContext';
+import { useWorkspaceActive, useWorkspaceState, useWorkspaceWork } from '../navigation/WorkspaceContext';
 import useQueryRevision from '../navigation/useQueryRevision';
 import { camposFila, revisaoFila } from '../navigation/filaWorkspaceDraft';
 import {
@@ -655,6 +658,13 @@ export default function FinanceiroFilaPagamentos() {
   const [opcoesFiltros, setOpcoesFiltros] = useState({ empresas: [], credores: [] });
   const [rows, setRows] = useState([]);
   const [pagina, setPagina] = useWorkspaceState('fila:pagina', 1);
+  const [visual, , remendarVisual] = usePreferenciaDeLista('financeiro-fila-pagamentos', TIPO_VISUAL);
+  const numerada = Boolean(visual?.numerada);
+  const ativa = useWorkspaceActive();
+  const cacheJanela = useRef(null);
+  const [erroConsulta, setErroConsulta] = useState(false);
+  const chaveJanela = JSON.stringify([status, appliedSearch, filtros, numerada, user?.id]);
+  const janelaAnterior = useRef(chaveJanela);
   const [paginacao, setPaginacao] = useState(null);
   const ultimaPaginaCarregada = useRef(null);
   const idsPaginaCarregada = useRef(new Set());
@@ -672,7 +682,7 @@ export default function FinanceiroFilaPagamentos() {
   const [edicoesFila, setEdicoesFila] = useWorkspaceState('fila:edicoes', {});
   const edicoesFilaRef = useRef(edicoesFila);
   edicoesFilaRef.current = edicoesFila;
-  const consultaFila = useQueryRevision(`${status}|${appliedSearch}|${JSON.stringify(filtros)}|${pagina}|${user?.id}`);
+  const consultaFila = useQueryRevision(`${chaveJanela}|${pagina}`);
   const [selected, setSelected] = useWorkspaceState('fila:selecionados', []);
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
@@ -695,6 +705,13 @@ export default function FinanceiroFilaPagamentos() {
   const canResolve = canResolverFilaPagamentos(user);
   const canImportReceipts = canImportarComprovantesFilaPagamentos(user);
   const usuarioSelecao = useRef(user?.id);
+  useLayoutEffect(() => {
+    if (janelaAnterior.current === chaveJanela) return;
+    janelaAnterior.current = chaveJanela;
+    cacheJanela.current = null;
+    ultimaPaginaCarregada.current = null; idsPaginaCarregada.current = new Set();
+    setRows([]); setPaginacao(null); setErroConsulta(false); setPagina(1);
+  }, [chaveJanela, setPagina]);
   useLayoutEffect(() => {
     if (usuarioSelecao.current !== user?.id) {
       setSelected([]); setLinhasConhecidas({}); setRows([]);
@@ -721,10 +738,14 @@ export default function FinanceiroFilaPagamentos() {
   const loadConsulta = useCallback(async () => {
     const token = consultaFila.begin();
     setLoading(true);
+    setErroConsulta(false);
     try {
       const [queueResult, accountResult, instrumentResult] = await Promise.all([
-        getFilaPagamentos({ status, q: appliedSearch || undefined, pagina, limite: 50,
-          ...Object.fromEntries(Object.entries(filtros).filter(([, value]) => value)) }),
+        consultarJanelaFila({ pagina, acumular: !numerada, chave: chaveJanela, cache: cacheJanela,
+          vigente: () => consultaFila.isCurrent(token),
+          request: n => getFilaPagamentos({ status, q: appliedSearch || undefined, pagina: n, limite: 50,
+            ...Object.fromEntries(Object.entries(filtros).filter(([, value]) => value)) })
+            .catch(error => { error.filaConsulta = true; throw error; }) }),
         getContasFilaPagamentos(),
         canSettle ? getInstrumentosFilaPagamentos() : Promise.resolve({ formas: [], cartoes: [], cheques: [] })
       ]);
@@ -732,12 +753,13 @@ export default function FinanceiroFilaPagamentos() {
       setFilaAutorizada(true);
       const nextRows = queueResult?.data || [];
       const paginaEfetiva = queueResult?.pagina || pagina;
-      const anterioresMesmaPagina = ultimaPaginaCarregada.current === paginaEfetiva ? idsPaginaCarregada.current : new Set();
+      const anterioresMesmaPagina = !numerada || ultimaPaginaCarregada.current === paginaEfetiva ? idsPaginaCarregada.current : new Set();
       const novosIds = new Set(nextRows.map(r => Number(r.id)));
       ultimaPaginaCarregada.current = paginaEfetiva;
       idsPaginaCarregada.current = novosIds;
       setRows(nextRows);
       setPaginacao(queueResult?.pagina ? { pagina: queueResult.pagina, total: queueResult.total, total_paginas: queueResult.total_paginas } : null);
+      if (paginaEfetiva !== pagina) setPagina(paginaEfetiva);
       setLinhasConhecidas(current => ({ ...Object.fromEntries(Object.entries(current).filter(([id]) => selectedRef.current.includes(Number(id))
         && (!anterioresMesmaPagina.has(Number(id)) || novosIds.has(Number(id))))),
         ...Object.fromEntries(nextRows.map(row => [row.id, row])) }));
@@ -791,17 +813,27 @@ export default function FinanceiroFilaPagamentos() {
       });
     } catch (error) {
       if (!consultaFila.isCurrent(token)) return;
+      setErroConsulta(true);
+      // Falha transitoria ao carregar mais nao apaga linhas, campos ou selecao.
+      // Erros de autorizacao sempre retiram os dados; a escrita revalida no servidor.
+      const codigo = Number(error?.status || error?.statusCode);
+      const transitorio = error.filaConsulta && (!codigo || codigo >= 500 || [408, 429].includes(codigo));
+      if (!numerada && cacheJanela.current?.chave === chaveJanela && transitorio) {
+        avisar.erro(error?.message || 'Erro ao carregar mais pagamentos. Tente novamente.');
+        return;
+      }
       setFilaAutorizada(false);
       setRows([]); setAccounts([]); setSummary({}); setSelected([]);
       setLinhasConhecidas({}); setPaginacao(null);
+      cacheJanela.current = null;
       setOpcoesFiltros({ empresas: [], credores: [] });
       setInstrumentos({ formas: [], cartoes: [], cheques: [] }); setDrafts({});
       avisar.erro(error?.message || 'Erro ao carregar a fila de pagamentos.');
     } finally {
       if (consultaFila.isCurrent(token)) setLoading(false);
     }
-  }, [status, appliedSearch, filtros, pagina, avisar, canSettle, user?.id]);
-  const identidadeConsulta = JSON.stringify([status, appliedSearch, filtros, canSettle, pagina, user?.id]);
+  }, [status, appliedSearch, filtros, pagina, numerada, chaveJanela, avisar, canSettle, user?.id]);
+  const identidadeConsulta = JSON.stringify([chaveJanela, canSettle, pagina]);
   const load = useConsultaSerial(loadConsulta, identidadeConsulta);
 
   useEffect(() => { consultaFila.begin(); load(); }, [load, identidadeConsulta]);
@@ -988,7 +1020,7 @@ export default function FinanceiroFilaPagamentos() {
   }
 
   async function executarOperacao(callback) {
-    if (settleLockRef.current || actionKey) return;
+    if (settleLockRef.current || actionKey || loading || !filaAutorizada) return;
     settleLockRef.current = true;
     setActionKey('conferencia');
     try { await callback(); }
@@ -1188,6 +1220,8 @@ export default function FinanceiroFilaPagamentos() {
   const hasBulkAction = status === 'DIVERGENTE' ? canResolve : (['PENDENTE', 'TODOS'].includes(status) && canSettle);
   const showReasonColumn = ['DIVERGENTE', 'PENDENTE', 'NAO_PAGO', 'EM_EDICAO', 'TODOS', 'RESOLVIDO'].includes(status);
   const busy = Boolean(actionKey);
+  const carregarMais = useCallback(() => setPagina((paginacao?.pagina || 1) + 1), [paginacao?.pagina, setPagina]);
+  const rotuloSelecao = numerada ? 'Selecionar todos os elegíveis da página atual' : 'Selecionar todos os elegíveis carregados';
   const colunasOriginais = PAYMENT_QUEUE_COLUMNS.filter(column => showReasonColumn || column.key !== 'justificativa');
   const colunasVisiveis = colunasConfiguradas.disponiveis(colunasOriginais);
 
@@ -1267,9 +1301,11 @@ export default function FinanceiroFilaPagamentos() {
         controles={(
           <div className="flex flex-wrap items-end gap-2">
             {colunasConfiguradas.painel}
+            <AlternadorPaginacaoConsulta numerada={numerada} ocupado={loading || busy || Boolean(baixaMassa || comprovanteLote)}
+              aoAlternar={() => { setPagina(1); remendarVisual({ numerada: !numerada }); }} />
             <label className="text-sm">
               <span className="sr-only">Status</span>
-              <select className="input input-sm" value={status} onChange={(event) => applyFilters(event.target.value, appliedSearch)} disabled={busy}>
+              <select aria-label="Status" className="input input-sm" value={status} onChange={(event) => applyFilters(event.target.value, appliedSearch)} disabled={busy}>
                 {STATUS_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
             </label>
@@ -1316,19 +1352,19 @@ export default function FinanceiroFilaPagamentos() {
           <button type="button" className="btn btn-outline btn-sm" disabled={busy || !Object.values(filtros).some(Boolean)}
             onClick={() => applyFilters(status, appliedSearch, { origem: '', empresa_id: '', credor_id: '', recebimento_dp: '' })}>Limpar filtros dos títulos</button>
         </div>
-        <PaginacaoConsulta pagina={paginacao?.pagina || pagina} paginas={paginacao?.total_paginas || 1}
-          total={paginacao?.total ?? rows.length} ocupado={loading || busy} aoMudar={setPagina} />
+        {numerada && <PaginacaoConsulta pagina={paginacao?.pagina || pagina} paginas={paginacao?.total_paginas || 1}
+          total={paginacao?.total ?? rows.length} ocupado={loading || busy} aoMudar={setPagina} />}
         {(hasBulkAction || hasReceiptSelection) && <div className="mb-2 flex flex-wrap items-center gap-3 text-sm">
           <label className="flex items-center gap-2">
-            <input type="checkbox" aria-label="Selecionar todos os elegíveis da página atual"
+            <input type="checkbox" aria-label={rotuloSelecao}
               ref={(elemento) => { if (elemento) elemento.indeterminate = selecionadosPagina > 0 && selecionadosPagina < selectableRows.length; }}
               checked={selectableRows.length > 0 && selecionadosPagina === selectableRows.length}
               disabled={loading || busy || !selectableRows.length}
               onChange={(event) => selecionarPagina(event.target.checked)} />
-            {approvingDivergences ? 'Todas as divergências da página atual' : 'Todos os elegíveis da página atual'}
+            {numerada ? (approvingDivergences ? 'Todas as divergências da página atual' : 'Todos os elegíveis da página atual') : 'Todos os elegíveis carregados'}
           </label>
           <span className="text-[var(--c-muted)]" role="status">{selectedRows.length} selecionado(s) · {currency(selectedRows.reduce((total, row) => total + Number(drafts[row.id]?.valor_pago || 0), 0))}</span>
-          {selectedRows.length > 0 && <><span className="text-[var(--c-muted)]">{selecionadosPagina} nesta página · Baixa: até 200 por operação; comprovante: até 100.</span>
+          {selectedRows.length > 0 && <><span className="text-[var(--c-muted)]">{selecionadosPagina} {numerada ? 'nesta página' : 'carregados'} · Baixa: até 200 por operação; comprovante: até 100.</span>
             <button type="button" className="btn btn-outline btn-sm" disabled={loading || busy} onClick={() => setSelected([])}>Limpar seleção</button></>}
         </div>}
         <div className="min-w-0 rounded-xl border border-[var(--c-border)]">
@@ -1343,7 +1379,7 @@ export default function FinanceiroFilaPagamentos() {
                 <ResizableTh columnKey="selecao" className="px-3 py-3">
                   <input
                     type="checkbox"
-                    aria-label={approvingDivergences ? 'Selecionar todas as divergências da página atual' : 'Selecionar todos os títulos pendentes da página atual'}
+                    aria-label={numerada ? (approvingDivergences ? 'Selecionar todas as divergências da página atual' : 'Selecionar todos os títulos pendentes da página atual') : 'Selecionar todos os títulos elegíveis carregados na tabela'}
                     checked={selectableRows.length > 0 && selecionadosPagina === selectableRows.length}
                     onChange={(event) => selecionarPagina(event.target.checked)}
                     disabled={selectableRows.length === 0 || loading || busy}
@@ -1370,11 +1406,12 @@ export default function FinanceiroFilaPagamentos() {
               </LinhaColunasOperacionais>
             </thead>
             <tbody className="divide-y divide-[var(--c-border)] bg-[var(--c-surface)]">
-              {loading ? (
+              {loading && (numerada || !rows.length) ? (
                 <tr><td colSpan={colunasVisiveis.length} className="px-4 py-8 text-center text-[var(--c-muted)]">Carregando pagamentos...</td></tr>
               ) : rows.length === 0 ? (
                 <tr><td colSpan={colunasVisiveis.length} className="px-4 py-8 text-center text-[var(--c-muted)]">Nenhum título encontrado neste recorte.</td></tr>
               ) : rows.map((row) => {
+                const busy = Boolean(actionKey) || loading;
                 const title = row.titulo || {};
                 const solicitacaoId = Number(title.solicitacao_id || title.solicitacao?.id);
                 const solicitacaoVinculada = solicitacaoId > 0
@@ -1627,6 +1664,10 @@ export default function FinanceiroFilaPagamentos() {
             </tbody>
           </ResizableTable>
         </div>
+        {!numerada && <NavegacaoRolagemConsulta pagina={paginacao?.pagina || 1} paginas={paginacao?.total_paginas || 1}
+          quantidade={rows.length} total={paginacao?.total ?? rows.length} carregando={loading}
+          bloqueado={!ativa || busy || Boolean(baixaMassa || comprovanteLote || comprovantesOpen || solicitacaoArquivos || erroBaixa || modalPreview)}
+          erro={erroConsulta} aoCarregar={carregarMais} aoRepetir={load} />}
         <p className="mt-3 text-xs text-[var(--c-muted)]">
           O processamento em massa é atômico: se uma linha falhar na validação, nenhuma baixa do lote é gravada.
         </p>
