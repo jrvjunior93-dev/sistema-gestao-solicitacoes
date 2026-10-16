@@ -37,10 +37,10 @@ function contratoFoiRescindido(contrato) {
   return STATUS_RESCISAO.has(status(contrato?.status_contrato)) || Boolean(contrato?.rescindido_em);
 }
 
-function classificarStatusOperacional({ contratado, medido, movimentado, rescindido }) {
+function classificarStatusOperacional({ contratado, medido, movimentado, abatimento = 0, rescindido }) {
   if (rescindido) return 'RESCINDIDO';
   const saldoContratual = Math.max(dinheiro(contratado - medido), 0);
-  const saldoFinanceiro = Math.max(dinheiro(medido - movimentado), 0);
+  const saldoFinanceiro = Math.max(dinheiro(medido - movimentado - abatimento), 0);
   if (saldoContratual > 0.009) return 'ATIVO';
   if (saldoFinanceiro > 0.009) return 'TOTALMENTE_MEDIDO';
   return 'CONCLUIDO';
@@ -59,17 +59,21 @@ function valoresBase(contrato) {
 }
 
 function montarResumo({ contrato, medido, movimentado, solicitacoes, medicoes, titulos, alertas }) {
+  const abatimento = dinheiro(titulos.filter(t => !t.cancelado).reduce((s, t) => s + numero(t.abatimento), 0));
   const base = valoresBase(contrato);
   const rescindido = contratoFoiRescindido(contrato);
   const saldoContratualCalculado = Math.max(dinheiro(base.contratado - medido), 0);
   const saldoContratual = rescindido ? 0 : saldoContratualCalculado;
-  const saldoFinanceiro = Math.max(dinheiro(medido - movimentado), 0);
-  const statusOperacional = classificarStatusOperacional({
+  const saldoFinanceiro = Math.max(dinheiro(medido - movimentado - abatimento), 0);
+  const statusCalculado = classificarStatusOperacional({
     contratado: base.contratado,
     medido,
     movimentado,
+    abatimento,
     rescindido
   });
+  const manual = contrato?.medicao_encerramento?.finalizado === true;
+  const statusOperacional = !rescindido && manual ? 'TOTALMENTE_MEDIDO' : statusCalculado;
 
   if (!rescindido && contrato?.ativo === false) {
     alertas.push({
@@ -94,8 +98,11 @@ function montarResumo({ contrato, medido, movimentado, solicitacoes, medicoes, t
     ...base,
     fluxo: contrato?.fluxo_novo ? 'NOVO' : 'LEGADO',
     status_operacional: statusOperacional,
+    status_operacional_calculado: statusCalculado,
+    medicao_finalizada_manualmente: manual,
     medido: dinheiro(medido),
     movimentado: dinheiro(movimentado),
+    abatimento_definitivo: abatimento,
     saldo_contratual: dinheiro(saldoContratual),
     saldo_contratual_cancelado: rescindido
       ? dinheiro(contrato?.saldo_rescindido ?? saldoContratualCalculado)
@@ -159,7 +166,7 @@ async function carregarDadosOperacionais(contratoIds, { transaction } = {}) {
           as: 'titulosFinanceiros',
           attributes: [
             'id', 'codigo', 'status', 'valor_original', 'valor_baixado', 'valor_saldo',
-            'data_vencimento', 'deleted_at', 'renegociado_por_id'
+            'data_vencimento', 'deleted_at', 'renegociado_por_id', 'medicao_pagamento', 'medicao_pagamento_origem_id'
           ],
           required: false
         },
@@ -185,7 +192,7 @@ async function carregarDadosOperacionais(contratoIds, { transaction } = {}) {
           as: 'titulo',
           attributes: [
             'id', 'codigo', 'status', 'valor_original', 'valor_baixado', 'valor_saldo',
-            'data_vencimento', 'deleted_at', 'renegociado_por_id'
+            'data_vencimento', 'deleted_at', 'renegociado_por_id', 'medicao_pagamento', 'medicao_pagamento_origem_id'
           ],
           required: false
         },
@@ -378,6 +385,7 @@ function resumirNovo(contrato, parcelas) {
         saldo: dinheiro(titulo.valor_saldo),
         vencimento: titulo.data_vencimento,
         medido: valorMedidoParcela,
+        abatimento: numero(titulo.medicao_pagamento?.abatimento),
         cancelado
       });
     }

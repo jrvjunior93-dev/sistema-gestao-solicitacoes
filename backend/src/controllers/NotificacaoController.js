@@ -1,4 +1,4 @@
-const { Op } = require('sequelize');
+const { Op, fn, col } = require('sequelize');
 const { NotificacaoDestinatario, Notificacao } = require('../models');
 const { filtrarNotificacoesRetornoParaDecisao } = require('../services/solicitacaoRetornoService');
 const DEFAULT_NOTIFICACOES_LIMIT = 20;
@@ -43,8 +43,14 @@ module.exports = {
         where.lida_em = null;
       }
 
-      const [totalNaoLidas, totalItens, itens] = await Promise.all([
-        NotificacaoDestinatario.count({
+      const contagemGlobal = tiposFiltro.length === 0;
+      const [contagem, totalItens, itens] = await Promise.all([
+        contagemGlobal ? NotificacaoDestinatario.findAll({
+          where: { usuario_id: req.user.id, lida_em: null },
+          attributes: [[col('notificacao.tipo'), 'tipo'], [fn('COUNT', col('NotificacaoDestinatario.id')), 'total']],
+          include: [{ ...includeNotificacao, attributes: [] }],
+          group: ['notificacao.tipo'], raw: true
+        }) : NotificacaoDestinatario.count({
           where: { usuario_id: req.user.id, lida_em: null },
           include: [includeNotificacao],
           distinct: true,
@@ -64,6 +70,8 @@ module.exports = {
           offset
         })
       ]);
+      const contadoresPorTipo = contagemGlobal ? Object.fromEntries(contagem.filter(r => r.tipo).map(r => [r.tipo, Number(r.total)])) : null;
+      const totalNaoLidas = contagemGlobal ? contagem.reduce((n, r) => n + Number(r.total || 0), 0) : contagem;
 
       const notificacoes = itens.map(item => ({
         destinatario_id: item.id,
@@ -81,6 +89,8 @@ module.exports = {
         : notificacoes;
 
       return res.json({
+        usuario_id: req.user.id,
+        ...(contadoresPorTipo ? { contadores_por_tipo: contadoresPorTipo } : {}),
         total_nao_lidas: totalNaoLidas,
         itens: resultado,
         meta: {

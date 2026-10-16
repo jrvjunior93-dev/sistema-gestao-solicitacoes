@@ -112,6 +112,9 @@ async function projetarDivisoesNasParcelas(parcelas, transaction, options) {
     if (parcela.setDataValue) parcela.setDataValue('titulo', titulo);
     else parcela.titulo = titulo;
   }
+  if (parcelas.some(p => p.titulo?.medicao_pagamento || p.divisao_favorecidos?.titulos_leitura?.some(t => t.medicao_pagamento))) {
+    await require('./medicaoPagamentoLeitura').projetarParcelas(parcelas, mapa, transaction);
+  }
   return mapa;
 }
 

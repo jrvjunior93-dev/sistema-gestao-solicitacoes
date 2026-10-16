@@ -356,6 +356,9 @@ export default function BlocoMedicaoContrato({
 
       {carregando && <p className="text-xs" style={{ color: 'var(--c-muted)' }}>Carregando parcelas do contrato...</p>}
       {erro && <div className="app-alert app-alert--error">{erro}</div>}
+      {dados?.contrato?.medicao_encerramento?.finalizado && <p className="app-alert app-alert--warning">
+        Contrato marcado como totalmente medido pelo GEO. Novas medicoes estao bloqueadas; os saldos e pagamentos existentes foram preservados.
+      </p>}
 
       {saldo && (
         <div className="flex min-w-0 flex-wrap gap-x-4 gap-y-2 text-sm">
@@ -410,7 +413,7 @@ export default function BlocoMedicaoContrato({
                   // Quitado e parcialmente pago ficam fechados: o saldo ja foi
                   // redistribuido no pagamento (PI-7).
                   disabled={Boolean(divisao) || !p.editavel || p.medivel === false || (!selecao[p.id]?.marcada && !liberadaParaMarcar(p.id))}
-                  title={p.medivel === false
+                  title={dados?.contrato?.medicao_encerramento?.finalizado ? 'Novas medicoes bloqueadas pela marcacao do GEO' : p.medivel === false
                     ? `Já medida${p.medicao ? ` na medição ${p.medicao.numero}` : ''}: para corrigir o valor, altere aquela medição`
                     : (!p.editavel
                       ? `Parcela ${p.status}: fechada para medição`
@@ -485,7 +488,7 @@ export default function BlocoMedicaoContrato({
                       precisaria passar o mouse por cima para descobrir o motivo. */}
                   {p.medivel === false && (
                     <span className="text-xs" style={{ display: 'block', color: 'var(--c-muted)' }}>
-                      já medida{p.medicao ? ` (medição ${p.medicao.numero})` : ''}
+                      {dados?.contrato?.medicao_encerramento?.finalizado && !p.medicao ? 'Bloqueada pela marcacao GEO' : <>já medida{p.medicao ? ` (medição ${p.medicao.numero})` : ''}</>}
                     </span>
                   )}
                 </>

@@ -118,8 +118,8 @@ async function validarPersistencia() {
     historicoCreate: RhSolicitacaoHistorico.create
   };
   let criado;
-  sequelize.transaction = async (callback) => callback({});
-  RhColaborador.findByPk = async () => ({ id: 91, obra_id: null });
+  sequelize.transaction = async (callback) => callback({ LOCK: { UPDATE: 'UPDATE' } });
+  RhColaborador.findByPk = async (id, options) => { assert.equal(options.lock, 'UPDATE'); return { id: 91, obra_id: null }; };
   RhSolicitacao.findOne = async () => null;
   RhSolicitacao.create = async (dados) => {
     criado = { id: 7, ...dados, async update(patch) { Object.assign(this, patch); } };

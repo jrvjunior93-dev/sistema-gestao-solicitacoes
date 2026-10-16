@@ -173,8 +173,15 @@ module.exports = {
         where.obra_id = localId;
       }
 
+      const paginado = String(req.query.paginado) === '1' || String(req.query.resumo) === '1';
+      const recorte = paginado ? await require('../services/rhSolicitacaoPaginaService').paginaSolicitacoes({
+        user: req.user, where, query: req.query, filtroSituacao, colaboradorId }) : null;
+      if (recorte && (String(req.query.resumo) === '1' || !recorte.ids.length)) {
+        const { ids, ...meta } = recorte;
+        return res.json({ ...meta, itens: [] });
+      }
       const dados = await RhSolicitacao.findAll({
-        where,
+        where: recorte ? { [Op.and]: [where, { id: { [Op.in]: recorte.ids } }] } : where,
         order: [['situacao', 'ASC'], ['createdAt', 'DESC']],
         include: [
           { model: Obra, as: 'obra', required: false },
@@ -211,7 +218,10 @@ module.exports = {
         });
       }
 
-      return res.json(await comAtividade(planos, req.user.id));
+      const itens = await comAtividade(planos, req.user.id);
+      if (!recorte) return res.json(itens); // Contrato legado dos demais consumidores.
+      const { ids, ...meta } = recorte;
+      return res.json({ ...meta, itens });
     } catch (error) {
       console.error(error);
       return responderErroController(res, error, 'Erro ao listar solicitacoes de pessoal');

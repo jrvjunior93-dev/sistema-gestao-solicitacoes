@@ -5,6 +5,7 @@ import { API_URL, authHeaders, fileUrl } from '../../services/api';
 import { Avisos, BlocoConteudo, useAvisos, useConfirmacao } from '../../components/padrao';
 import { anexoHistoricoRemovido, metadataAnexoHistorico } from './anexosHistorico';
 import useInteracoesVisiveis from '../../hooks/useInteracoesVisiveis';
+import BoletosPedidoHistorico from './BoletosPedidoHistorico';
 
 /**
  * HISTORICO DA SOLICITACAO — a linha do tempo de tudo o que aconteceu.
@@ -100,6 +101,7 @@ export default function Timeline({
     });
 
   const totalVisiveis = historicosVisiveis.length;
+  const temPedidoCompra = historicosVisiveis.some(h => metadataAnexoHistorico(h.metadata)?.pedido_compra_id);
   useEffect(() => {
     const el = listaRef.current;
     if (!el) return;
@@ -350,6 +352,7 @@ export default function Timeline({
           const meta = metadataAnexoHistorico(h.metadata);
 
           const acaoLabel = {
+            ANEXO_ADICIONADO: meta?.origem === 'PEDIDO_COMPRA' ? 'Boleto anexado ao pedido' : 'ANEXO_ADICIONADO',
             JUSTIFICATIVA_REGISTRADA: 'Justificativa registrada',
             NUMERO_PEDIDO_ATUALIZADO: 'Número do pedido atualizado',
             PEDIDO_COMPRA_GERADO: 'Pedido de compra gerado',
@@ -372,6 +375,7 @@ export default function Timeline({
             <div key={h.id} data-interacao-id={h.id} className="sol-detail-timeline-item"
               style={Number(eventoFoco) === Number(h.id) ? { outline: '2px solid var(--ui-accent)', outlineOffset: '4px' } : undefined}>
               <p className="text-sm font-semibold">{acaoLabel}</p>
+              {meta?.origem === 'PEDIDO_COMPRA' && <p className="app-note">{meta.tipo_documento === 'BOLETO_FRETE' ? 'Frete' : 'Compra'} · {pedidoCompraCodigo}</p>}
 
               {(h.status_anterior || h.status_novo) && (
                 <p className="text-sm" style={{ color: 'var(--c-text)' }}>
@@ -410,7 +414,7 @@ export default function Timeline({
                 </button>
               )}
 
-              {pedidoCompraId && solicitacaoHistoricoId && (
+              {pedidoCompraId && solicitacaoHistoricoId && meta?.origem !== 'PEDIDO_COMPRA' && (
                 <div className="flex flex-wrap gap-3 mt-1">
                   <button
                     type="button"
@@ -488,6 +492,8 @@ export default function Timeline({
           );
         })}
       </div>
+
+      {!recolhido && solicitacaoId && temPedidoCompra && <BoletosPedidoHistorico key={solicitacaoId} solicitacaoId={solicitacaoId} historicos={historicos} />}
 
       {preview && (
         <PreviewAnexoModal

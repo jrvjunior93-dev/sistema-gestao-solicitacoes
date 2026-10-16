@@ -230,17 +230,18 @@ async function sincronizarStatusSolicitacaoPorBaixaTitulos({
   });
   if (!solicitacao) return null;
 
-  const titulos = await TituloFinanceiro.findAll({
-    where: {
+  const titulosOriginais = await TituloFinanceiro.findAll({
+    where: require('./tituloCompartilhadoLeitura').whereOrigem({
       solicitacao_id: id,
       status: { [Op.notIn]: STATUS_TITULOS_IGNORADOS }
-    },
-    attributes: ['id', 'status', 'valor_saldo', 'valor_baixado', 'origem_titulo'],
+    }),
+    attributes: ['id', 'status', 'valor_original', 'valor_saldo', 'valor_baixado', 'origem_titulo', 'compartilhamento_id'],
     transaction,
     lock: transaction?.LOCK?.UPDATE
   });
 
   // DESVIO PARA A SOLICITACAO DE CONTRATO DO FLUXO NOVO (20/08).
+  const titulos = await require('./tituloCompartilhadoConsulta').porSolicitacao({}, titulosOriginais, id, { transaction });
   if (titulos.some(t => ['ADIANTAMENTO', 'DEVOLUCAO_ADIANTAMENTO'].includes(t.origem_titulo))) {
     return require('./adiantamentoService').sincronizarBaixa({ solicitacao, titulos, usuarioId, transaction });
   }

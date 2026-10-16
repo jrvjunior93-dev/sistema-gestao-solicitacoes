@@ -16,6 +16,9 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
     juros: { type: DataTypes.DECIMAL(14, 2), allowNull: false, defaultValue: 0 },
     multa: { type: DataTypes.DECIMAL(14, 2), allowNull: false, defaultValue: 0 },
     renegociacao_id: { type: DataTypes.INTEGER, allowNull: true },
+    compartilhamento_id: { type: DataTypes.INTEGER, allowNull: true },
+    medicao_pagamento: { type: DataTypes.JSON, allowNull: true },
+    medicao_pagamento_origem_id: { type: DataTypes.INTEGER, allowNull: true },
     renegociado_por_id: { type: DataTypes.INTEGER, allowNull: true },
     juros_renegociacao: { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
     multa_renegociacao: { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
@@ -313,14 +316,19 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       },
       async afterUpdate(titulo, options) {
         await require('../services/tituloRenegociacaoSincronizacao').aposAtualizarTitulo(titulo, options);
+        if (titulo.compartilhamento_id && !options.adiarSincronizacaoCompartilhamento && ['status', 'valor_baixado', 'valor_saldo'].some(c => titulo.changed(c))) {
+          await require('../services/tituloCompartilhadoSincronizacao').sincronizar([titulo.id], { transaction: options.transaction, usuarioId: titulo.atualizado_por });
+        }
       },
       async beforeBulkUpdate(options) {
         const rows = await require('../services/tituloRenegociacaoProtecao').proteger(sequelize.models.TituloFinanceiro,options.where,options.attributes,options);
         if (['status','valor_baixado','valor_saldo'].some(k => Object.hasOwn(options.attributes,k))) {
           options.renegociacaoDestinos = (rows || []).filter(t => t.renegociacao_id).map(t => t.id);
+          options.compartilhados = (rows || []).filter(t => t.compartilhamento_id).map(t => t.id);
         }
       },
       async afterBulkUpdate(options) {
+        if (options.compartilhados?.length && !options.adiarSincronizacaoCompartilhamento) await require('../services/tituloCompartilhadoSincronizacao').sincronizar(options.compartilhados, { transaction: options.transaction, usuarioId: options.attributes.atualizado_por });
         if (!options.renegociacaoDestinos?.length) return;
         await require('../services/tituloRenegociacaoSincronizacao').sincronizarDestinos(options.renegociacaoDestinos, {
           transaction: options.transaction, usuarioId: options.attributes.atualizado_por

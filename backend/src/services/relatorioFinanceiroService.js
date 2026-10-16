@@ -3444,7 +3444,7 @@ async function gerarRelatorioEndividamento(req, filters = {}) {
     ...companyScopeWhere
   }, filters.excluir_intercompany);
 
-  const titulos = await require('./tituloRenegociacaoLeitura').buscarTitulos({
+  const titulos = await TituloFinanceiro.findAll({
     where,
     attributes: schema.tituloAttributes,
     include: [
@@ -4218,7 +4218,7 @@ async function gerarRelatorioIntercompany(req, filters = {}) {
     where.elimina_consolidado = filters.elimina_consolidado;
   }
 
-  const titulos = await TituloFinanceiro.findAll({
+  const titulos = await require('./tituloRenegociacaoLeitura').buscarTitulos({
     where,
     attributes: schema.tituloAttributes,
     include: [
@@ -4779,7 +4779,7 @@ async function gerarDiagnosticoDre(req) {
       order: [['tipo', 'ASC'], ['nome', 'ASC']],
       limit: 8
     }),
-    countTitulosDiagnostico(tituloScopeWhere, { empresa_id: null }),
+    countTitulosDiagnostico(tituloScopeWhere, { empresa_id: null, compartilhamento_id: null }),
     countTitulosDiagnostico(tituloScopeWhere, { competencia_data: null }),
     countTitulosDiagnostico(tituloScopeWhere, { categoria_financeira_id: null }),
     countTitulosDiagnostico(tituloScopeWhere, {}, [
@@ -4856,7 +4856,7 @@ async function gerarDiagnosticoDre(req) {
     exemplosTransferenciasIntercompanyIncompletas,
     exemplosTransferenciasInternasInconsistentes
   ] = await Promise.all([
-    sampleTitulosDiagnostico(tituloScopeWhere, { empresa_id: null }),
+    sampleTitulosDiagnostico(tituloScopeWhere, { empresa_id: null, compartilhamento_id: null }),
     sampleTitulosDiagnostico(tituloScopeWhere, { competencia_data: null }),
     sampleTitulosDiagnostico(tituloScopeWhere, { categoria_financeira_id: null }),
     sampleTitulosDiagnostico(tituloScopeWhere, {}, [

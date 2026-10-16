@@ -60,7 +60,8 @@ assert(
   'autorizarValorAcimaSaldo: true',
   'MANUAL_PAYMENT_DIVERGENCE_APPROVED',
   "status: 'RESOLVIDO'",
-  'O titulo ${titulo.codigo || titulo.id} usa cartao'
+  'validarPrevisaoCartaoFila',
+  'corrigirPrevisaoCartaoNaBaixa'
 ].forEach((contract) => assert(service.includes(contract), `Protecao ausente no servico: ${contract}`));
 
 assert(titleService.includes('filaPagamentosManuais'), 'A consulta de titulos deve expor o alerta ativo da fila.');

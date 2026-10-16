@@ -14,6 +14,7 @@ const formas = [{ id: 1, nome: 'Boleto', gera_boleto: true }, { id: 2, nome: 'Pi
 const cartoes=[{id:10,nome:'Credito QA',tipo:'CREDITO',ativo:true}, {id:20,nome:'Debito QA',tipo:'DEBITO',ativo:true},
   {id:30,nome:'Inativo QA',tipo:'CREDITO',ativo:false}];
 const tituloPayloads = [], vinculos = [], documentos = [], anexos = [], historicos = [];
+let falharHistorico = false;
 const pedido = { id: 10, financeiro_fluxo_versao: 1, status: 'FECHADO_FORNECEDOR',
   obra_id: 7, valor_total_fornecedor: 100, fornecedor: { parceiro_id: 20, nome: 'Fornecedor' },
   solicitacao: { solicitacao_principal_id: 30 }, update: async () => {} };
@@ -41,9 +42,17 @@ const modelos = {
     assert.equal(tx, transaction); documentos.push(defaults); return [defaults];
   } },
   Anexo: { findOrCreate: async ({ defaults, transaction: tx }) => {
-    assert.equal(tx, transaction); anexos.push(defaults); return [defaults];
+    assert.equal(tx, transaction);
+    const existente = anexos.find(a => a.solicitacao_id === defaults.solicitacao_id
+      && a.caminho_arquivo === defaults.caminho_arquivo && a.nome_original === defaults.nome_original);
+    if (existente) return [existente, false];
+    const anexo = { id: anexos.length + 1, ...defaults }; anexos.push(anexo); return [anexo, true];
   } },
-  Historico: { create: async (data) => historicos.push(data) }
+  Historico: { create: async (data, options) => {
+    assert.equal(options.transaction, transaction);
+    if (falharHistorico) throw Error('Auditoria indisponivel QA');
+    historicos.push(data);
+  } }
 };
 const sandbox = { module: { exports: {} }, require(id) {
   if (id === 'sequelize') return { Op: {} };
@@ -70,6 +79,7 @@ vm.runInNewContext(fs.readFileSync(arquivo, 'utf8') + `
   module.exports.qaResumo = obterResumoFinanceiroPedido;
   obterResumoFinanceiroPedido = async () => ({ ok: true });
   module.exports.qaPagamento = validarPagamentoNegociado;
+  module.exports.qaBoletos = registrarBoletosPedido;
 `, sandbox, { filename: arquivo });
 const service = sandbox.module.exports;
 const base = { categoria_financeira_id: 1, forma_pagamento_id: 1, favorecido_pagamento_id: 20,
@@ -147,10 +157,43 @@ async function validarCuradoriaEFaturasReais() {
   const boletos = [1, 2].map((n) => ({ arquivo_url: `https://arquivos.test/boleto${n}.pdf`, arquivo_nome: `boleto${n}.pdf` }));
   await criar({ ...base, boletos, fretes: [{ ...base.fretes[0], boletos: [boletos[0]] }] }, 'com-boleto');
   assert.equal(documentos.length, 3, 'Preserva multiplos boletos da compra e o do frete');
-  assert.equal(anexos.length, 3);
+  assert.equal(anexos.length, 2, 'O mesmo boleto da compra/frete nao duplica o anexo da solicitacao');
   assert.equal(documentos[0].tipo, 'BOLETO_COMPRA');
   assert.equal(documentos[2].tipo, 'BOLETO_FRETE');
   assert.equal(anexos[0].solicitacao_id, 30);
+  const eventosBoletos = historicos.filter(h => h.acao === 'ANEXO_ADICIONADO');
+  assert.equal(eventosBoletos.length, 2);
+  const metadataBoleto = JSON.parse(eventosBoletos[0].metadata);
+  assert.equal(metadataBoleto.anexo_id, anexos[0].id);
+  assert.equal(metadataBoleto.caminho, boletos[0].arquivo_url);
+  assert.equal(metadataBoleto.pedido_compra_id, pedido.id);
+  assert.equal(metadataBoleto.origem, 'PEDIDO_COMPRA');
+  assert.equal(eventosBoletos[0].solicitacao_id, 30);
+  await criar({ ...base, boletos }, 'com-boleto');
+  assert.equal(historicos.filter(h => h.acao === 'ANEXO_ADICIONADO').length, 2, 'Replay nao duplica historico');
+  const registrarFrete = (extra = {}) => service.qaBoletos({ pedido, usuarioId: 4,
+    tipo: 'BOLETO_FRETE', idempotencyKey: 'frete-proprio',
+    boletos: [{ arquivo_url: 'https://arquivos.test/frete.pdf', arquivo_nome: 'frete.pdf' }], transaction, ...extra });
+  await registrarFrete();
+  const eventoFrete = historicos.at(-1);
+  assert.equal(eventoFrete.acao, 'ANEXO_ADICIONADO');
+  assert.equal(JSON.parse(eventoFrete.metadata).tipo_documento, 'BOLETO_FRETE');
+  assert.equal(eventoFrete.setor, 'COMPRAS');
+  assert.equal(eventoFrete.usuario_responsavel_id, 4);
+  const quantidadeEventos = historicos.length;
+  await registrarFrete();
+  assert.equal(historicos.length, quantidadeEventos, 'Anexo existente nao duplica evento');
+  const quantidadeDocs = documentos.length;
+  await assert.rejects(registrarFrete({ transaction: null }), /exige transacao/);
+  assert.equal(documentos.length, quantidadeDocs, 'Sem transacao nao escreve documento');
+  await registrarFrete({ boletos: [{ arquivo_nome: 'sem-url.pdf' }] });
+  assert.equal(historicos.length, quantidadeEventos);
+  await registrarFrete({ pedido: { id: 99 }, idempotencyKey: 'sem-solicitacao' });
+  assert.equal(historicos.length, quantidadeEventos, 'Nao cria evento em outra solicitacao por fallback');
+  falharHistorico = true;
+  await assert.rejects(registrarFrete({ boletos: [{ arquivo_url: 'https://arquivos.test/falha.pdf' }] }), /Auditoria indisponivel QA/);
+  falharHistorico = false;
+  assert.equal(historicos.length, quantidadeEventos, 'Erro de auditoria propaga para rollback do chamador');
   await assert.rejects(criar(base, ''), /idempotencia obrigatoria/);
   await assert.rejects(criar({ ...base, parcelas: [{ valor: 99, data_vencimento: '2026-10-20' }] }, 'soma'), /soma das parcelas/);
   const validar = (data) => service.qaPagamento({ favorecido_pagamento_id: 20, ...data }, 'a compra', formas, transaction);

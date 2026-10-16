@@ -1,4 +1,6 @@
 import VisualizadorArquivoModal from '../components/ui/VisualizadorArquivoModal';
+import ParticipacoesTitulo from '../components/financeiro/ParticipacoesTitulo';
+import { empresasDevedorasTitulo, tituloTemOutraDevedora } from '../utils/tituloEmpresasDevedoras';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWorkspaceState, useWorkspaceRestored, useWorkspaceWork } from '../navigation/WorkspaceContext';
 import { createPortal } from 'react-dom';
@@ -866,19 +868,10 @@ function getTituloCodigo(titulo) {
 }
 
 function getOrigemTitulo(titulo) {
+  if (titulo?.compartilhamento_id) return 'Compartilhado';
   if (titulo?.solicitacao?.id) return 'Solicitacao';
   if (titulo?.forma_cobranca) return 'Comercial';
   return 'Manual';
-}
-
-function getEmpresaTituloId(titulo) {
-  return String(
-    titulo?.empresa_id ||
-    titulo?.empresa?.id ||
-    titulo?.obra?.empresa_id ||
-    titulo?.obra?.empresa?.id ||
-    ''
-  );
 }
 
 function today() {
@@ -982,11 +975,12 @@ function isTituloBloqueadoRetornoObra(titulo) {
 }
 
 function isTituloExcluivel(titulo) {
+  if (titulo?.compartilhamento_id) return false;
   return ['PREVISAO', 'ABERTO', 'PARCIAL'].includes(String(titulo?.status || '').trim().toUpperCase());
 }
 
 function isTituloEditavel(titulo) {
-  if (titulo?.renegociacao_id || titulo?.renegociado_por_id) return false;
+  if (titulo?.renegociacao_id || titulo?.renegociado_por_id || titulo?.compartilhamento_id) return false;
   return ['PREVISAO', 'ABERTO'].includes(String(titulo?.status || '').trim().toUpperCase()) && Number(titulo?.valor_baixado || 0) === 0;
 }
 
@@ -1711,16 +1705,13 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   ), [selectedTitulosBaixaveis]);
   const baixaMassaEmpresasTitulo = useMemo(() => {
     const ids = selectedTitulosBaixaveis
-      .map(getEmpresaTituloId)
+      .flatMap(empresasDevedorasTitulo)
       .filter(Boolean);
     return Array.from(new Set(ids));
   }, [selectedTitulosBaixaveis]);
   const baixaMassaTemEmpresaDiferente = useMemo(() => {
     if (!baixaMassaForm.empresa_id) return false;
-    return selectedTitulosBaixaveis.some((titulo) => {
-      const empresaTituloId = getEmpresaTituloId(titulo);
-      return empresaTituloId && String(empresaTituloId) !== String(baixaMassaForm.empresa_id);
-    });
+    return selectedTitulosBaixaveis.some(titulo => tituloTemOutraDevedora(titulo, baixaMassaForm.empresa_id));
   }, [baixaMassaForm.empresa_id, selectedTitulosBaixaveis]);
   const baixaMassaMostrarIntercompany = baixaMassaTemEmpresaDiferente || baixaMassaForm.intercompany;
   const contasBancariasBaixaMassa = useMemo(() => {
@@ -1770,10 +1761,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
 
   function aplicarEmpresaFonteBaixaMassa(current, empresaFonteId) {
     const empresaResolvidaId = String(empresaFonteId || baixaMassaEmpresasTitulo[0] || '');
-    const empresaDiferente = Boolean(empresaResolvidaId && selectedTitulosBaixaveis.some((titulo) => {
-      const empresaTituloId = getEmpresaTituloId(titulo);
-      return empresaTituloId && String(empresaTituloId) !== empresaResolvidaId;
-    }));
+    const empresaDiferente = selectedTitulosBaixaveis.some(titulo => tituloTemOutraDevedora(titulo, empresaResolvidaId));
     const base = {
       ...current,
       empresa_id: empresaResolvidaId,
@@ -2154,9 +2142,8 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   }
 
   function buildBaixaMassaIntercompanyPayload(titulo = null) {
-    const empresaTituloId = titulo ? getEmpresaTituloId(titulo) : '';
     const empresaDiferente = titulo
-      ? Boolean(baixaMassaForm.empresa_id && empresaTituloId && String(empresaTituloId) !== String(baixaMassaForm.empresa_id))
+      ? tituloTemOutraDevedora(titulo, baixaMassaForm.empresa_id)
       : baixaMassaTemEmpresaDiferente;
 
     if (!empresaDiferente) {
@@ -3378,7 +3365,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                 tipo: 'identidade',
                 noCard: 'titulo',
                 render: (titulo) => (
-                  <CelulaDupla
+                  <div><CelulaDupla
                     title={`${getTituloCodigo(titulo)}${titulo.descricao ? ` — ${titulo.descricao}` : ''}`}
                     principal={(
                       <Link
@@ -3389,7 +3376,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                       </Link>
                     )}
                     sub={titulo.descricao || '-'}
-                  />
+                  /><ParticipacoesTitulo titulo={titulo} compacto /></div>
                 )
               },
               {
@@ -3476,7 +3463,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                 titulo: 'Obra / Centro de Custo',
                 ordenavel: true,
                 tipo: 'texto',
-                  render: (titulo) => <span className="text-[var(--c-muted)]">{titulo.obra?.nome || (titulo.renegociacao_id && titulo.possui_rateio ? 'Várias obras · rateado' : '-')}</span>
+                  render: (titulo) => <span className="text-[var(--c-muted)]">{titulo.obra?.nome || ((titulo.renegociacao_id || titulo.compartilhamento_id) && titulo.possui_rateio ? 'Várias obras · rateado' : '-')}</span>
               },
               {
                 id: 'categoria',

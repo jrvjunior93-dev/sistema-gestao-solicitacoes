@@ -4,6 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:medicao-valor-pagamento": "node scripts/validarMedicaoValorPagamento.mjs",
+    "test:boletos-pedido": "node scripts/validarArquivosSolicitacaoFila.mjs && node scripts/validarBoletosPedidoHistorico.mjs && node scripts/validarFilaInstrumentosUI.mjs --boletos-pedido",
+    "test:fila-rolagem": "node scripts/validarJanelaFila.mjs && node scripts/validarFilaInstrumentosUI.mjs --rolagem",
+    "test:titulo-desvincular-fatura-ui": "node scripts/validarTituloDetalheWorkspace.mjs --desvincular-fatura",
+    "test:rh-movimentacoes-documentais": "node scripts/validarRhPessoalPorLocal.mjs --movimentacoes",
+    "test:titulos-compartilhados": "node scripts/validarTitulosCompartilhadosModal.mjs",
+    "test:polling-seguro": "node scripts/validarPollingSeguro.mjs",
     "test:visualizadores-arquivos": "node scripts/validarVisualizadoresArquivos.mjs todos",
     "test:preview-mobile": "node scripts/validarPreviewMobile.mjs",
     "test:pix-copia-cola": "node scripts/validarPixCopiaCola.mjs",
@@ -43,6 +50,7 @@
     "mobile:ios:add": "npx cap add ios",
     "mobile:ios:open": "npx cap open ios",
     "test:navegacao": "node scripts/validarNavegacao.mjs && node scripts/validarAbasInternas.mjs",
+    "test:contrato-medicao-marcacao": "node scripts/validarContratoMedicaoMarcacaoUI.mjs",
     "test:reaproveitamento-compra": "node scripts/validarReaproveitamentoCompra.mjs",
     "provas": "node scripts/provas/acentoNoCodigo.mjs && node scripts/provas/ordemDeDeclaracao.mjs && node scripts/provas/larguraDeColuna.mjs && node scripts/provas/contagemDeLinhas.mjs && node scripts/provas/contrasteDosTokens.mjs && node scripts/provas/regrasMordem.mjs && node scripts/provas/itensDaDoDMordem.mjs && node scripts/provas/itensDoRunnerMordem.mjs && node scripts/provas/tokensExistem.mjs && node scripts/provas/filtrosVisiveisMordem.mjs && node scripts/provas/paginaCabeNoCelular.mjs && node scripts/qa-preview/provaLarguraCabe.mjs && node scripts/qa-preview/provaEtiquetaCabe.mjs && node scripts/qa-preview/provaVisaoAtivaAparece.mjs && node scripts/provas/erroNaoVazaCru.mjs && node scripts/qa-preview/provaCamadasCabem.mjs && node scripts/qa-preview/provaModaisCabem.mjs && node scripts/qa-preview/provaBarraDoTopo.mjs && node scripts/qa-preview/provaTextoInteiroAparece.mjs && node scripts/provas/escSemCliqueFora.mjs && node scripts/provas/modalPortalNaoPropaga.mjs",
     "cancelamento": "node scripts/varreduraCancelamento.mjs"

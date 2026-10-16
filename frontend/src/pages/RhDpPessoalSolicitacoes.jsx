@@ -1,4 +1,9 @@
 import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
+import { rotuloMovimentacao } from '../utils/rhMovimentacoes';
+import useConsultaSerial from '../hooks/useConsultaSerial';
+import usePollingSeguro from '../hooks/usePollingSeguro';
+import useQueryRevision from '../navigation/useQueryRevision';
+import PaginacaoConsulta from '../components/padrao/PaginacaoConsulta';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -227,6 +232,10 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
   const [ativos, setAtivos] = useWorkspaceState('rhSolicitacoes:filtros', () => ({ situacao: new Set(), tipo: new Set() }));
   const filtroSituacao = useMemo(() => primeiroValor(ativos.situacao), [ativos]);
   const filtroTipo = useMemo(() => primeiroValor(ativos.tipo), [ativos]);
+  const [pagina, setPagina] = useWorkspaceState('rhSolicitacoes:pagina', 1);
+  const [resumo, setResumo] = useState(null);
+  const identidadeConsulta = JSON.stringify([obraId, filtroSituacao, filtroTipo, pagina]);
+  const consultaLista = useQueryRevision(identidadeConsulta);
 
   const [aberta, setAberta] = useState(null);
   const [comentarios, setComentarios] = useWorkspaceState('rhSolicitacoes:comentarios', {});
@@ -255,49 +264,47 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
     })
   ), []);
 
-  const carregar = useCallback(async () => {
-    setCarregando(true);
-    limpar();
+  const carregarConsulta = useCallback(async (silencioso = false) => {
+    const token = consultaLista.begin();
+    if (!silencioso) setCarregando(true);
+    if (!silencioso) limpar();
     try {
-      const lista = await listarRhSolicitacoes({
+      const resposta = await listarRhSolicitacoes({
         situacao: filtroSituacao || undefined,
         tipo: filtroTipo || undefined,
-        obra_id: obraId || undefined
+        obra_id: obraId || undefined, paginado: 1, pagina, limite: 50
       });
+      if (!consultaLista.isCurrent(token)) return null;
+      const lista = Array.isArray(resposta) ? resposta : resposta.itens || [];
+      setResumo(Array.isArray(resposta) ? null : resposta);
       setSolicitacoes(normalizarLeiturasLocais(lista).filter((item) => !obraId || Number(item.obra_id) === Number(obraId)));
+      return true;
     } catch (error) {
-      avisar.erro(error.message || 'Nao foi possivel carregar as solicitacoes.');
+      if (!silencioso && consultaLista.isCurrent(token)) avisar.erro(error.message || 'Nao foi possivel carregar as solicitacoes.');
+      return false;
     } finally {
-      setCarregando(false);
+      if (consultaLista.isCurrent(token)) setCarregando(false);
     }
-  }, [obraId, filtroSituacao, filtroTipo, avisar, limpar, normalizarLeiturasLocais]);
+  }, [obraId, filtroSituacao, filtroTipo, pagina, avisar, limpar, normalizarLeiturasLocais, consultaLista.begin, consultaLista.isCurrent]);
+  const carregarSerial = useConsultaSerial(carregarConsulta, identidadeConsulta);
+  const carregar = useCallback(() => carregarSerial(false), [carregarSerial]);
 
-  useEffect(() => { carregar(); }, [carregar]);
-  useEffect(() => {
-    const atualizar = async () => {
-      if (document.hidden) return;
-      try {
-        const lista = await listarRhSolicitacoes({ obra_id: obraId || undefined, situacao: filtroSituacao || undefined, tipo: filtroTipo || undefined });
-        setSolicitacoes(normalizarLeiturasLocais(lista).filter((item) => !obraId || Number(item.obra_id) === Number(obraId)));
-      } catch { /* A atualização manual mantém o tratamento visível de erros. */ }
-    };
-    const timer = setInterval(atualizar, 30000);
-    window.addEventListener('focus', atualizar);
-    return () => { clearInterval(timer); window.removeEventListener('focus', atualizar); };
-  }, [obraId, filtroSituacao, filtroTipo, normalizarLeiturasLocais]);
+  useEffect(() => { carregar(); }, [carregar, identidadeConsulta]);
+  usePollingSeguro(() => carregarSerial(true), { imediato: false });
 
   useEffect(() => {
     if (filtroTipo || (filtroSituacao && filtroSituacao !== 'ABERTA')) return;
     const abertas = solicitacoes.filter((solicitacao) => ['ABERTA', 'ENVIO_PARCIAL', 'EM_REVISAO'].includes(solicitacao.situacao));
-    aoContarAbertas?.(abertas.length);
-    aoContarNaoLidas?.(abertas.filter((solicitacao) => solicitacao.nao_lida).length);
-  }, [solicitacoes, filtroSituacao, filtroTipo, aoContarAbertas, aoContarNaoLidas]);
+    aoContarAbertas?.(resumo?.abertas ?? abertas.length);
+    aoContarNaoLidas?.(resumo?.nao_lidas_abertas ?? abertas.filter((solicitacao) => solicitacao.nao_lida).length);
+  }, [solicitacoes, resumo, filtroSituacao, filtroTipo, aoContarAbertas, aoContarNaoLidas]);
 
   const contagem = useMemo(() => {
+    if (resumo?.por_tipo) return resumo.por_tipo;
     const porTipo = {};
     solicitacoes.forEach((s) => { porTipo[s.tipo] = (porTipo[s.tipo] || 0) + 1; });
     return porTipo;
-  }, [solicitacoes]);
+  }, [solicitacoes, resumo]);
 
   const dimensoesFiltro = useMemo(() => [
     { id: 'situacao', rotulo: 'Situação', unico: true, opcoes: OPCOES_SITUACAO },
@@ -645,7 +652,7 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
 
       <div className="rh-pessoal-alertas">
         <div className="rh-pessoal-alerta">
-          <div className="rh-pessoal-alerta-numero">{solicitacoes.length}</div>
+          <div className="rh-pessoal-alerta-numero">{resumo?.total ?? solicitacoes.length}</div>
           <div className="rh-pessoal-alerta-texto">{rotuloDoRecorte}</div>
         </div>
         {Object.entries(contagem).map(([tipo, qtd]) => (
@@ -666,10 +673,11 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
       <BarraFiltros
         filtros={dimensoesFiltro}
         ativos={ativos}
-        aoAlternar={(dimensao, valor, opcoes) => setAtivos(
-          (atuais) => alternarValorFiltro(atuais, dimensao, valor, opcoes)
-        )}
-        aoLimpar={() => setAtivos(SEM_FILTRO)}
+        aoAlternar={(dimensao, valor, opcoes) => {
+          setPagina(1);
+          setAtivos((atuais) => alternarValorFiltro(atuais, dimensao, valor, opcoes));
+        }}
+        aoLimpar={() => { setPagina(1); setAtivos(SEM_FILTRO); }}
       />
 
       <div className="app-actionbar">
@@ -679,6 +687,7 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
       </div>
 
       <div className="card sol-surface-card">
+        <PaginacaoConsulta pagina={resumo?.pagina || pagina} paginas={resumo?.total_paginas || 1} total={resumo?.total ?? solicitacoes.length} ocupado={carregando} aoMudar={setPagina} />
         <TabelaPadrao
           colunas={[
             { id: 'codigo', titulo: 'Código', tipo: 'codigo', render: s => s.codigo || '—' },
@@ -694,7 +703,8 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
                   */}
                   {(s.tipo === 'TROCA_OBRA' || s.subtipo === 'TRANSFERENCIA_OBRA') && !s.colaborador?.obra_id
                     ? 'Vincular a obra'
-                    : ehPagamentoPorSolicitacao(s) ? 'Pagamento' : ROTULO_TIPO[s.tipo] || s.tipo}
+                    : ehPagamentoPorSolicitacao(s) ? 'Pagamento'
+                      : s.tipo === 'MOVIMENTACAO' && s.subtipo ? rotuloMovimentacao(s.subtipo) : ROTULO_TIPO[s.tipo] || s.tipo}
                 </span>
               )
             },
@@ -864,14 +874,14 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
             <div><span>Situacao</span><strong>{ROTULO_SITUACAO[aberta.situacao] || aberta.situacao}</strong></div>
             <div><span>Colaborador</span><strong>{aberta.tipo === 'JORNADA' ? 'Equipe da obra' : aberta.colaborador?.nome || aberta.dados_json?.nome || 'A admitir'}</strong></div>
             <div><span>Obra / Centro de Custo</span><strong>{aberta.obra?.nome || aberta.colaborador?.obra?.nome || '—'}</strong></div>
-            <div><span>Tipo</span><strong>{ROTULO_TIPO[aberta.tipo] || aberta.tipo}{aberta.subtipo ? ` · ${String(aberta.subtipo).replaceAll('_', ' ')}` : ''}</strong></div>
+            <div><span>Tipo</span><strong>{ROTULO_TIPO[aberta.tipo] || aberta.tipo}{aberta.subtipo ? ` · ${aberta.tipo === 'MOVIMENTACAO' ? rotuloMovimentacao(aberta.subtipo) : String(aberta.subtipo).replaceAll('_', ' ')}` : ''}</strong></div>
             <div><span>Aberta em</span><strong>{aberta.createdAt ? new Date(aberta.createdAt).toLocaleString('pt-BR') : '—'}</strong></div>
             <div><span>Ultima atualizacao</span><strong>{aberta.updatedAt ? new Date(aberta.updatedAt).toLocaleString('pt-BR') : '—'}</strong></div>
             {dadosOperacionais(aberta).map((campo) => (
               <div key={campo.chave}><span>{campo.rotulo}</span><strong>{campo.valor}</strong></div>
             ))}
             {aberta.justificativa ? (
-              <div className="rh-solicitacao-resumo--largo"><span>Justificativa</span><strong>{aberta.justificativa}</strong></div>
+              <div className="rh-solicitacao-resumo--largo"><span>{aberta.tipo === 'MOVIMENTACAO' && aberta.subtipo === 'ACIDENTE_TRABALHO_CAT' ? 'Relato do acidente' : 'Justificativa'}</span><strong>{aberta.justificativa}</strong></div>
             ) : null}
           </section>
           </details>

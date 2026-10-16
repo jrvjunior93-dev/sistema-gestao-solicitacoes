@@ -434,6 +434,7 @@ const ConfiguracaoSistemaController = require('./controllers/ConfiguracaoSistema
 const ObraTipoApropriacaoController = require('./controllers/ObraTipoApropriacaoController');
 const ContratoFluxoNovoController = require('./controllers/ContratoFluxoNovoController');
 const ContratoSaldoReprogramacaoController = require('./controllers/ContratoSaldoReprogramacaoController');
+const ContratoMedicaoEncerramentoController = require('./controllers/ContratoMedicaoEncerramentoController');
 const UiVisibilityConfigController = require('./controllers/UiVisibilityConfigController');
 const ConversaInternaController = require('./controllers/ConversaInternaController');
 const ArquivoModeloController = require('./controllers/ArquivoModeloController');
@@ -457,6 +458,7 @@ const ComercialUnidadeController = require('./controllers/ComercialUnidadeContro
 const ComercialContratoController = require('./controllers/ComercialContratoController');
 const ComercialContratoImportacaoController = require('./controllers/ComercialContratoImportacaoController');
 const ComercialContratoDocumentoController = require('./controllers/ComercialContratoDocumentoController');
+const MedicaoPagamentoController = require('./controllers/MedicaoPagamentoController');
 const ComercialTabelaPrecoController = require('./controllers/ComercialTabelaPrecoController');
 const ComercialRelatorioController = require('./controllers/ComercialRelatorioController');
 const ProvisaoFinanceiraController = require('./controllers/ProvisaoFinanceiraController');
@@ -1108,6 +1110,12 @@ const allowComprasPedidosFinanceiroPrevisao = allowPaymentAction(
   canGerarPrevisaoPedidoCompraFinanceiro,
   'Acesso negado para gerar previsoes financeiras do pedido'
 );
+// Mesmas permissões funcionais; cada origem é revalidada pelo serviço.
+const allowTitulosCompartilhados = allowPaymentAction('TITULOS_COMPARTILHADOS', async user =>
+  await canGerarPrevisaoPedidoCompraFinanceiro(user)
+    || (await require('./services/authorizationService').canOperateSolicitacaoFinanceiro(user)
+      && await require('./services/authorizationService').userHasAreaPermission(user, ['financeiro.titulos.criar'])),
+  'Acesso negado para gerar títulos compartilhados');
 const allowComprasPedidosFinanceiroDocumento = allowPaymentAction(
   'COMPRAS_PEDIDOS_FINANCEIRO_DOCUMENTO',
   canAnexarDocumentoPedidoCompraFinanceiro,
@@ -2403,6 +2411,7 @@ router.get('/financeiro/cheques-terceiros/disponiveis', allowFinanceiro, TituloF
 router.get('/financeiro/titulos/:id', allowFinanceiro, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro') }), TituloFinanceiroController.show);
 router.get('/financeiro/titulos/:id/auditoria', allowFinanceiro, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro') }), TituloFinanceiroController.auditoria);
 router.patch('/financeiro/titulos/:id', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro'), body: validateFinanceTituloUpdateBody }), TituloFinanceiroController.update);
+router.post('/financeiro/titulos/:id/desvincular-fatura', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro'), body: require('./validators/tituloDesvincularFaturaValidator').validateTituloDesvincularFaturaBody }), require('./controllers/TituloDesvincularFaturaController').desvincular);
 router.patch('/financeiro/titulos/:id/cobranca', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro'), body: validateFinanceTituloCobrancaBody }), TituloFinanceiroController.atualizarCobranca);
 router.post('/financeiro/titulos/:id/baixas/conciliacoes', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro'), body: validateFinanceTituloBaixaConciliacoesBody }), TituloFinanceiroController.baixarPorConciliacoes);
 router.post('/financeiro/titulos/:id/baixas', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro'), body: validateFinanceTituloBaixaBody }), TituloFinanceiroController.baixar);
@@ -2556,6 +2565,10 @@ router.get('/compras/relatorios/precos-insumos', allowComprasRelatoriosRead, val
 router.get('/compras/relatorios/ciclo', allowComprasRelatoriosRead, validateRequest({ query: validateCompraRelatorioCicloQuery }), scopeCompraListAccess, RelatorioComprasController.ciclo);
 router.get('/compras/relatorios/economia-cotacoes', allowComprasRelatoriosRead, validateRequest({ query: validateCompraRelatorioEconomiaCotacoesQuery }), scopeCompraListAccess, RelatorioComprasController.economiaCotacoes);
 router.get('/compras/relatorios/fornecedores', allowComprasRelatoriosRead, validateRequest({ query: validateCompraRelatorioFornecedoresQuery }), scopeCompraListAccess, RelatorioComprasController.fornecedores);
+router.get('/titulos-compartilhados/origens', requireEnabledModule('SOLICITACOES'), allowTitulosCompartilhados, require('./controllers/TituloCompartilhadoController').buscar);
+router.post('/titulos-compartilhados/preview', requireEnabledModule('SOLICITACOES'), allowTitulosCompartilhados, criticalRateLimit, require('./controllers/TituloCompartilhadoController').preview);
+router.post('/titulos-compartilhados', requireEnabledModule('SOLICITACOES'), allowTitulosCompartilhados, criticalRateLimit, require('./controllers/TituloCompartilhadoController').confirmar);
+router.post('/titulos-compartilhados/:id/cancelar', requireEnabledModule('FINANCEIRO'), allowFinanceiroArea('TITULOS_COMPARTILHADOS_CANCELAR', ['financeiro.titulos.excluir']), criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Lote') }), require('./controllers/TituloCompartilhadoController').cancelar);
 router.get('/compras/pedidos/:id', allowComprasPedidosRead, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra') }), requirePedidoCompraAccess, PedidoCompraController.show);
 router.post('/compras/pedidos/:id/itens', allowComprasPedidosEditarItens, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoItemAddBody }), requirePedidoCompraAccess, PedidoCompraController.addItem);
 router.patch('/compras/pedidos/:id/status', allowComprasPedidosAlterarStatus, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoStatusBody }), requirePedidoCompraAccess, PedidoCompraController.updateStatus);
@@ -2792,6 +2805,8 @@ router.get('/contratos', validateRequest({ query: validateContratoQuery }), Cont
 router.get('/contratos/resumo', validateRequest({ query: validateContratoQuery }), ContratoController.resumo);
 router.get('/contratos/relatorios/operacional', validateRequest({ query: validateContratoRelatorioOperacionalQuery }), ContratoController.relatorioOperacional);
 router.get('/contratos/exportar-csv', validateRequest({ query: validateContratoQuery }), ContratoController.exportarCsv);
+router.get('/contratos/:id/medicao-encerramento', requireEnabledModule('CONTRATOS'), validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, ContratoMedicaoEncerramentoController.consultar);
+router.post('/contratos/:id/medicao-encerramento', requireEnabledModule('CONTRATOS'), criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, ContratoMedicaoEncerramentoController.alterar);
 router.get('/contratos/:id/detalhe-operacional', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, ContratoController.detalheOperacional);
 router.get('/contratos/:id/solicitacoes', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, ContratoController.solicitacoes);
 router.get('/contratos/:id/anexos', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, ContratoController.listarAnexos);
@@ -2825,6 +2840,8 @@ router.post('/contratos/fluxo-novo/:id/juridico', criticalRateLimit, ContratoFlu
 // Aprovar a medicao: leva a solicitacao a LIBERADO e a encaminha ao Financeiro (item 25, 23/08).
 router.post('/contratos/medicoes/:id/aprovar', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Medicao') }), ContratoFluxoNovoController.aprovarMedicao);
 router.put('/contratos/medicoes/:id', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Medicao') }), ContratoFluxoNovoController.atualizarMedicao);
+router.get('/contratos/:id/medicoes/:medicaoId/pagamento', validateRequest({ params: validateNumericIdParams(['id', 'medicaoId'], 'Contrato/medicao') }), requireContratoAccess, MedicaoPagamentoController.consultar);
+router.post('/contratos/:id/medicoes/:medicaoId/pagamento', criticalRateLimit, validateRequest({ params: validateNumericIdParams(['id', 'medicaoId'], 'Contrato/medicao') }), requireContratoAccess, MedicaoPagamentoController.alterar);
 // Termo aditivo: teto de 25% sobre o valor original, acumulando os aprovados (PI-12).
 // Termo aditivo (PI-15): vale para contrato do fluxo ANTIGO e do NOVO, entao as rotas nao ficam
 // sob o prefixo `fluxo-novo` — o prefixo seria uma mentira sobre o alcance. As tres rotas antigas

@@ -17,7 +17,7 @@ export function podeNegociarTitulos(titulos, minimo = 1) {
   const primeiro = titulos[0];
   return titulos.length >= minimo && titulos.length <= 100 && titulos.every(t =>
     ['ABERTO', 'PARCIAL'].includes(t.status) && Number(t.valor_saldo) > 0
-    && !t.renegociacao_id && !t.renegociado_por_id
+    && !t.renegociacao_id && !t.renegociado_por_id && !t.compartilhamento_id
     && t.parceiro_id && t.empresa_id
     && ['tipo', 'empresa_id', 'parceiro_id'].every(k => String(t[k]) === String(primeiro[k])));
 }

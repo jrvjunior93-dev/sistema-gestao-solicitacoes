@@ -104,12 +104,22 @@ dependencies['./comercialService'].sincronizarContratoComercialPorTituloEditado 
 dependencies['./solicitacaoFavorecidosService'] = { listarFavorecidos: async () => [] };
 dependencies['./adiantamentoService'] = { ehAdiantamento: async () => false };
 dependencies['./instrucaoFinanceiraFavorecidoService'] = { anexarInstrucoes: async () => {} };
+// A leitura canonica passou a anexar participacoes mesmo em titulos simples.
+// Esta fixture nao simula compartilhamento; rejeitar em vez de dispensar ACL.
+dependencies['./tituloCompartilhadoLeitura'] = { anexarParticipacoes: async titulos => {
+  assert(titulos.every(titulo => !titulo.compartilhamento_id));
+} };
 dependencies['./pagamentoFilaValoresDomain'] = require('../src/services/pagamentoFilaValoresDomain');
 const instrucaoModule = { exports: {} };
 vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/instrucaoFinanceiraFavorecidoService.js'), 'utf8'), {
   module: instrucaoModule, require(id) { if (!(id in dependencies)) throw Error(`Dependencia de instrucao nao isolada: ${id}`); return dependencies[id]; }
 });
 dependencies['./instrucaoFinanceiraFavorecidoService'] = instrucaoModule.exports;
+// Esta fixture cobre titulo avulso/cartao; medicao aprovada e exercitada pela
+// suite dedicada. Nao dispensar o bloqueio em nenhum titulo daquele dominio.
+dependencies['./medicaoPagamentoVinculoService'] = { impedirValorGenerico: async titulo => {
+  assert(!titulo.medicao_pagamento && !titulo.medicao_pagamento_origem_id && !/^CONTRATO|^MEDICAO/.test(titulo.origem_titulo || ''));
+} };
 // Pontos substituiveis pela suite de rateio: servico de titulo permanece real.
 const faturaMocks = dependencies['./faturaCartaoFinanceiroService'];
 dependencies['./faturaCartaoFinanceiroService'] = Object.fromEntries(Object.keys(faturaMocks)

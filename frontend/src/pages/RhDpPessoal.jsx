@@ -3,6 +3,7 @@ import { useWorkspaceState, useWorkspaceWork } from '../navigation/WorkspaceCont
 import useWorkspaceRecordDraft from '../navigation/useWorkspaceRecordDraft';
 import useQueryRevision from '../navigation/useQueryRevision';
 import { PIX_TIPOS_CHAVE, pixTipoLabel } from '../utils/pix';
+import { SUBTIPOS_MOVIMENTACAO, orientacaoMovimentacao } from '../utils/rhMovimentacoes';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   HiOutlineArrowPath,
@@ -119,21 +120,12 @@ const TIPOS = [
 ];
 
 /**
- * OS SEIS SUBTIPOS DE MOVIMENTACAO, na ordem do item 9 do escopo.
+ * Os subtipos sao compartilhados com a lista/detalhe em utils/rhMovimentacoes.
  *
  * Decisao do cliente em 27/08: "Movimentacoes passa o botao principal, e Troca de Obra e Alteracao
  * de Salario entra na lista de movimentacoes possiveis". Por isso a coluna de acoes passou de
  * quatro icones para tres — os dois que sairam viraram opcao DENTRO deste modal.
  */
-const SUBTIPOS_MOVIMENTACAO = [
-  { valor: 'ATESTADO', rotulo: 'Atestado' },
-  { valor: 'FERIAS', rotulo: 'Ferias' },
-  { valor: 'RETORNO_AFASTAMENTO', rotulo: 'Retorno de afastamento' },
-  { valor: 'ALTERACAO_SALARIAL', rotulo: 'Alteracao salarial' },
-  { valor: 'ALTERACAO_CARGO', rotulo: 'Alteracao de cargo ou funcao' },
-  { valor: 'TRANSFERENCIA_OBRA', rotulo: 'Transferencia de obra' }
-];
-
 /** Os cinco motivos do item 10. Aqui o motivo E o subtipo — e o que muda a papelada exigida. */
 const MOTIVOS_DEMISSAO = [
   { valor: 'PEDIDO_DEMISSAO', rotulo: 'Pedido de demissao' },
@@ -560,6 +552,7 @@ export default function RhDpPessoal() {
 
   useEffect(() => {
     let ativo = true;
+    let contagemGlobalRecebida = false;
     const carregarAvisosTransferencia = async () => {
       try {
         const resposta = await getNotificacoes({
@@ -567,19 +560,23 @@ export default function RhDpPessoal() {
           limit: 1,
           tipos: ['RH_TRANSFERENCIA_ATUALIZADA']
         });
-        if (ativo) setTransferenciasNaoLidas(Number(resposta.total_nao_lidas || 0));
+        if (ativo && !contagemGlobalRecebida) setTransferenciasNaoLidas(Number(resposta.total_nao_lidas || 0));
       } catch {
         // A central global continua sendo a fonte de verdade. Uma falha temporaria
         // neste contador nao deve impedir o restante da tela de Pessoal.
       }
     };
     carregarAvisosTransferencia();
-    const timer = setInterval(carregarAvisosTransferencia, 30000);
-    window.addEventListener('notificacoes:atualizar', carregarAvisosTransferencia);
+    const receberContagens = event => {
+      if (ativo && Number(event.detail?.usuario_id) === Number(user?.id)) {
+        contagemGlobalRecebida = true;
+        setTransferenciasNaoLidas(Number(event.detail.contadores?.RH_TRANSFERENCIA_ATUALIZADA || 0));
+      }
+    };
+    window.addEventListener('notificacoes:contagens', receberContagens);
     return () => {
       ativo = false;
-      clearInterval(timer);
-      window.removeEventListener('notificacoes:atualizar', carregarAvisosTransferencia);
+      window.removeEventListener('notificacoes:contagens', receberContagens);
     };
   }, [user?.id]);
 
@@ -720,7 +717,7 @@ export default function RhDpPessoal() {
             status: localValido ? 'ATIVO' : undefined,
             q: busca || undefined
           }),
-        listarRhSolicitacoes({ situacao: 'EM_ANDAMENTO', obra_id: localValido?.id || undefined })
+        listarRhSolicitacoes({ situacao: 'EM_ANDAMENTO', obra_id: localValido?.id || undefined, resumo: 1 })
       ]);
       if (consultaId !== ultimaConsultaColaboradoresRef.current) return;
       const listaConfirmada = Array.isArray(lista) ? lista : [];
@@ -735,7 +732,7 @@ export default function RhDpPessoal() {
         return vigente.status === 'ATIVO' && vigente.obra_id ? [[id, vigente]] : [];
       })));
       restaurandoSelecao.current = false;
-      setTotalSolicitacoesAbertas(Array.isArray(solicitacoesAbertas) ? solicitacoesAbertas.length : 0);
+      setTotalSolicitacoesAbertas(Array.isArray(solicitacoesAbertas) ? solicitacoesAbertas.length : Number(solicitacoesAbertas?.total || 0));
       if (!obras.length) setObras(Array.isArray(listaObras) ? listaObras : []);
     } catch (error) {
       if (consultaId !== ultimaConsultaColaboradoresRef.current) return;
@@ -1606,7 +1603,7 @@ export default function RhDpPessoal() {
               {pedidosDoColaborador.lista.map((pedido) => (
                 <li key={pedido.id} className="rh-pessoal-pedido">
                   <div>
-                    <span className={chipDoTipo(pedido.tipo)}>{ROTULO_TIPO[pedido.tipo] || pedido.tipo}</span>
+                    <span className={chipDoTipo(pedido.tipo)}>{pedido.tipo === 'MOVIMENTACAO' && pedido.subtipo ? ROTULO_SUBTIPO[pedido.subtipo] || pedido.subtipo : ROTULO_TIPO[pedido.tipo] || pedido.tipo}</span>
                     <strong className="ml-2">{pedido.situacao}</strong>
                     {pedido.motivo_rejeicao ? (
                       <div className="text-sm rh-pessoal-devolucao">
@@ -1935,6 +1932,7 @@ export default function RhDpPessoal() {
                 </select>
                 </label>
 
+                {orientacaoMovimentacao(formulario.subtipo) && <p className="form-hint">{orientacaoMovimentacao(formulario.subtipo)}</p>}
                 {['ATESTADO', 'FERIAS'].includes(formulario.subtipo) ? (
                   <div className="rh-colaboradores-filter-grid">
                     <label className="form-field">
@@ -2315,7 +2313,7 @@ export default function RhDpPessoal() {
             {!(formulario.tipo === 'MOVIMENTACAO' && formulario.subtipo === 'ALTERACAO_SALARIAL')
               && formulario.tipo !== 'ALTERACAO_SALARIAL' ? (
             <label className="form-field">
-              <span className="form-label">Justificativa</span>
+              <span className="form-label">{formulario.tipo === 'MOVIMENTACAO' && formulario.subtipo === 'ACIDENTE_TRABALHO_CAT' ? 'Relato do acidente' : 'Justificativa'}</span>
               <textarea className="form-control" rows={2}
                 value={formulario.justificativa}
                 onChange={(e) => setFormulario({ ...formulario, justificativa: e.target.value })} />

@@ -14,6 +14,7 @@ import Timeline from './Timeline';
 import Conversa from './Conversa';
 import FinanceiroCard from './FinanceiroCard';
 import AcoesContrato from './AcoesContrato';
+import ContratoMedicaoMarcacao from '../../components/contratos/ContratoMedicaoMarcacao';
 import RetornoSolicitacaoBar from './RetornoSolicitacaoBar';
 import RecargaCartaoDetalhe from './RecargaCartaoDetalhe';
 import AdiantamentoDetalhe from './AdiantamentoDetalhe';
@@ -93,7 +94,8 @@ import {
   canOperateSolicitacaoFinanceiro,
   hasConfiguredAreaPermissions,
   hasEnabledModule,
-  hasPermissao
+  hasPermissao,
+  canViewContratos
 } from '../../utils/acessoProduto';
 
 /*
@@ -1621,7 +1623,7 @@ export default function SolicitacaoDetalhe() {
       />
     ) : null,
 
-    acoes_contrato: (solicitacaoEhContrato || falhaContrato) ? (
+    acoes_contrato: (solicitacaoEhContrato || falhaContrato || (solicitacao?.contrato_id && canViewContratos(user))) ? (
       <>
         {falhaContrato && (
           <div className="app-alert app-alert--warning" data-testid="falha-contrato">
@@ -1630,6 +1632,8 @@ export default function SolicitacaoDetalhe() {
         )}
         <div id="sol-detail-contrato-acoes">
           <AcoesContrato contrato={contratoSomenteLeitura} onMudou={aoRecarregarSilencioso} />
+          {canViewContratos(user) && (contratoDoFluxo?.id || solicitacao?.contrato_id) && <ContratoMedicaoMarcacao
+            key={contratoDoFluxo?.id || solicitacao.contrato_id} contratoId={contratoDoFluxo?.id || solicitacao.contrato_id} onMudou={aoRecarregarSilencioso} />}
         </div>
       </>
     ) : null,
