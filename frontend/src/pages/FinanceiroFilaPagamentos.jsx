@@ -1454,6 +1454,18 @@ export default function FinanceiroFilaPagamentos() {
                       )}
                       <div className="mt-1 max-w-56 truncate" title={title.descricao}>{title.descricao || 'Sem descrição'}</div>
                       <ParticipacoesTitulo titulo={title} compacto />
+                      {solicitacaoVinculada && title.solicitacao?.boletos?.length > 0 && (
+                        <details className="mt-1 max-w-56 text-xs">
+                          <summary className="cursor-pointer text-[var(--module-financeiro)]">Boletos da solicitação ({title.solicitacao.boletos.length})</summary>
+                          <ul className="mt-1 space-y-1 break-words" aria-label={`Boletos de ${solicitacaoVinculada.codigo}`}>
+                            {title.solicitacao.boletos.map(boleto => <li key={boleto.id}>{boleto.nome}</li>)}
+                          </ul>
+                          <button type="button" className="btn btn-outline btn-sm mt-1" onClick={event => {
+                            guardarRolagemArquivos(event.currentTarget);
+                            setSolicitacaoArquivos(solicitacaoVinculada);
+                          }}>Visualizar / baixar boletos</button>
+                        </details>
+                      )}
                       <div className="mt-2 flex flex-wrap items-center gap-1.5" aria-label={`Ações e comprovantes de ${title.codigo || row.id}`}>
                       {solicitacaoVinculada ? (
                         <>

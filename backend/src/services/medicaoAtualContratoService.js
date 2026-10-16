@@ -50,6 +50,7 @@ async function titulosQueAtualizamMedicaoAtual({ solicitacaoId, titulos, transac
     });
     partes.forEach(p => { if (p.titulo_financeiro_id) ids.add(Number(p.titulo_financeiro_id)); });
   }
+  titulos.forEach(t => { if (t.medicao_pagamento_origem_id && ids.has(Number(t.medicao_pagamento_origem_id))) ids.add(Number(t.id)); });
   const naoDiretos = titulos.filter(t => !ids.has(Number(t.id)));
   // A renegociacao preserva a parcela apontando ao titulo original.
   const alocacoes = naoDiretos.length ? await TituloRenegociacaoAlocacao.findAll({

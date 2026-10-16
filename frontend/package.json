@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:medicao-valor-pagamento": "node scripts/validarMedicaoValorPagamento.mjs",
+    "test:boletos-pedido": "node scripts/validarArquivosSolicitacaoFila.mjs && node scripts/validarBoletosPedidoHistorico.mjs && node scripts/validarFilaInstrumentosUI.mjs --boletos-pedido",
     "test:fila-rolagem": "node scripts/validarJanelaFila.mjs && node scripts/validarFilaInstrumentosUI.mjs --rolagem",
     "test:titulo-desvincular-fatura-ui": "node scripts/validarTituloDetalheWorkspace.mjs --desvincular-fatura",
     "test:rh-movimentacoes-documentais": "node scripts/validarRhPessoalPorLocal.mjs --movimentacoes",

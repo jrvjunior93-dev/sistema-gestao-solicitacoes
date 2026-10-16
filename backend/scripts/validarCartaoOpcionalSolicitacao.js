@@ -102,6 +102,11 @@ dependencies['./tituloCompartilhadoLeitura'] = { anexarParticipacoes: async titu
   assert(titulos.every(titulo => !titulo.compartilhamento_id));
 } };
 dependencies['./pagamentoFilaValoresDomain'] = require('../src/services/pagamentoFilaValoresDomain');
+// Esta fixture cobre titulo avulso/cartao; medicao aprovada e exercitada pela
+// suite dedicada. Nao dispensar o bloqueio em nenhum titulo daquele dominio.
+dependencies['./medicaoPagamentoVinculoService'] = { impedirValorGenerico: async titulo => {
+  assert(!titulo.medicao_pagamento && !titulo.medicao_pagamento_origem_id && !/^CONTRATO|^MEDICAO/.test(titulo.origem_titulo || ''));
+} };
 // Pontos substituiveis pela suite de rateio: servico de titulo permanece real.
 const faturaMocks = dependencies['./faturaCartaoFinanceiroService'];
 dependencies['./faturaCartaoFinanceiroService'] = Object.fromEntries(Object.keys(faturaMocks)

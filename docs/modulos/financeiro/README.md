@@ -1,5 +1,31 @@
 # Modulo FINANCEIRO
 
+## Medicao x valor efetivamente autorizado - 2026-10-16
+
+O ajuste de pagamento de medicao preserva o medido e permite reduzir titulo
+aberto sem baixa, destinando a diferenca a previsao futura ou abatimento
+definitivo auditado. Os valores aparecem separados no Financeiro da solicitacao.
+Invalida o dossie anterior e encerra fila nao processada sem pagamento, exigindo
+novo envio pelas permissoes/gate atuais. Titulos pagos/parciais nao mudam.
+Nao baixar a diferenca PREVISAO antes da liberacao explicita. Regras, limites e
+migration aditiva DEV em [Contratos](../contratos/README.md#valor-medido-e-valor-autorizado-para-pagamento---2026-10-16).
+
+## Boletos da solicitacao e dos pedidos na fila - 2026-10-16
+
+- Todos os recortes/cards usam a mesma consulta paginada de boletos ativos:
+  `BOLETO`, `BOLETO_COMPRA` e `BOLETO_FRETE`. Uma consulta em lote para as
+  solicitacoes da janela atual, sem N+1, sem presign em massa e sem mudar pool.
+- A coluna Titulo/Documento oferece `Boletos da solicitacao (N)`, com nomes e
+  acesso ao modal ja existente de Visualizar/Baixar. O modal identifica boleto
+  da compra, do frete ou da solicitacao e nao mistura comprovantes/anexos gerais.
+- Nao pressupor que todos os boletos da solicitacao pertencem a uma unica
+  parcela: conferir fornecedor, documento, valor e vencimento antes da baixa.
+- Leitura/listagem/presign mantem as autorizacoes atuais. Nao altera selecao,
+  rascunhos, parcelas, contas, instrumentos, autorizacoes ou pagamentos.
+- Historico de novos uploads e leitura de boletos antigos documentados no
+  [README Compras](../compras/README.md#boletos-dos-titulos-de-pedido-na-fila-e-historico---2026-10-16).
+  Ajuste de boletos sem migration propria; aguarda homologacao DEV.
+
 ## Titulos compartilhados entre origens e CNPJs - 2026-10-16
 
 - A acao `Gerar titulos compartilhados`, no financeiro da solicitacao ou do

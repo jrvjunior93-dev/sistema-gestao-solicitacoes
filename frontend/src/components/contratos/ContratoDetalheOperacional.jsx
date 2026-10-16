@@ -75,6 +75,7 @@ export default function ContratoDetalheOperacional({ data, loading, error, onClo
           ['Contratado', data.contratado],
           ['Medido', data.medido],
           ['Movimentado', data.movimentado],
+          ...(Number(data.abatimento_definitivo) > 0 ? [['Abatimento definitivo', data.abatimento_definitivo]] : []),
           ['Saldo contratual', data.saldo_contratual],
           ['Saldo financeiro', data.saldo_financeiro],
           ['Aditivos', data.valor_aditivos]

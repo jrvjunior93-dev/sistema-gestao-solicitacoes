@@ -44,6 +44,11 @@ try {
   await page.route('**/*', async (route) => {
     const request = route.request(), url = new URL(request.url());
     const json = (data, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) });
+    if (url.pathname.endsWith('/contratos/1/medicoes/1/pagamento')) {
+      assert.equal(request.method(), 'GET', 'Fluxo anterior apenas consulta o novo resumo');
+      return json({ contrato_id: 1, medicao_id: 1, valor_medido: 100, aprovada: approved,
+        pode_ajustar: false, titulos: [], historico: [] });
+    }
     if (url.pathname.endsWith('/solicitacoes/100/titulos-financeiros')) return json(listaLegada ? [] : titles());
     if (url.pathname.endsWith('/contratos/1/parcelas')) return json({
       contrato: { id: 1, fluxo_novo: true, solicitacao_id: 100, permissoes: { aprovar: true, editar_medicao: true } },

@@ -1,5 +1,26 @@
 # Modulo COMPRAS
 
+## Boletos dos titulos de pedido na fila e historico - 2026-10-16
+
+Os arquivos enviados por Compras na geracao dos titulos do pedido conservam
+os tipos `BOLETO_COMPRA` e `BOLETO_FRETE`. A fila e o modal de arquivos aceitam
+esses tipos junto com `BOLETO`, excluindo anexos removidos. A lista identifica
+compra/frete; conferir documento e parcela antes de pagar. A vinculação continua
+sendo por solicitacao/pedido, nao uma associacao nova e automatica a cada parcela.
+
+Novo anexo do pedido registra `ANEXO_ADICIONADO` na mesma transacao dos titulos,
+com anexo/documento/pedido, caminho, autor e origem Compras. Retry nao duplica
+evento nem arquivo. Falha de auditoria propaga para rollback. Nao copia o S3.
+
+Arquivos antigos sem evento aparecem em `Boletos dos pedidos` no Historico da
+solicitacao, via consulta autorizada dos anexos ao expandir o bloco. Nao executa
+backfill nem inventa data/autoria de evento; novos eventos nao sao duplicados
+nessa lista. Presign/download seguem os endpoints e ACL existentes; exclusoes
+e escopo sao preservados. Nenhuma migration ou mudanca de valores/baixas.
+
+Validacao isolada: `npm run test:boletos-pedido` em backend e frontend.
+Homologacao real em DEV ainda necessaria; sem operacoes em producao nesta etapa.
+
 ## Compra consolidada / titulos compartilhados - 2026-10-16
 
 Em pedido fechado e adotado no fluxo financeiro, `Gerar titulos compartilhados`

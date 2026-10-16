@@ -458,6 +458,7 @@ const ComercialUnidadeController = require('./controllers/ComercialUnidadeContro
 const ComercialContratoController = require('./controllers/ComercialContratoController');
 const ComercialContratoImportacaoController = require('./controllers/ComercialContratoImportacaoController');
 const ComercialContratoDocumentoController = require('./controllers/ComercialContratoDocumentoController');
+const MedicaoPagamentoController = require('./controllers/MedicaoPagamentoController');
 const ComercialTabelaPrecoController = require('./controllers/ComercialTabelaPrecoController');
 const ComercialRelatorioController = require('./controllers/ComercialRelatorioController');
 const ProvisaoFinanceiraController = require('./controllers/ProvisaoFinanceiraController');
@@ -2839,6 +2840,8 @@ router.post('/contratos/fluxo-novo/:id/juridico', criticalRateLimit, ContratoFlu
 // Aprovar a medicao: leva a solicitacao a LIBERADO e a encaminha ao Financeiro (item 25, 23/08).
 router.post('/contratos/medicoes/:id/aprovar', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Medicao') }), ContratoFluxoNovoController.aprovarMedicao);
 router.put('/contratos/medicoes/:id', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Medicao') }), ContratoFluxoNovoController.atualizarMedicao);
+router.get('/contratos/:id/medicoes/:medicaoId/pagamento', validateRequest({ params: validateNumericIdParams(['id', 'medicaoId'], 'Contrato/medicao') }), requireContratoAccess, MedicaoPagamentoController.consultar);
+router.post('/contratos/:id/medicoes/:medicaoId/pagamento', criticalRateLimit, validateRequest({ params: validateNumericIdParams(['id', 'medicaoId'], 'Contrato/medicao') }), requireContratoAccess, MedicaoPagamentoController.alterar);
 // Termo aditivo: teto de 25% sobre o valor original, acumulando os aprovados (PI-12).
 // Termo aditivo (PI-15): vale para contrato do fluxo ANTIGO e do NOVO, entao as rotas nao ficam
 // sob o prefixo `fluxo-novo` — o prefixo seria uma mentira sobre o alcance. As tres rotas antigas

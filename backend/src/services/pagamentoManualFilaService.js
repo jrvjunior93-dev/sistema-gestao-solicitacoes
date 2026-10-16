@@ -75,7 +75,8 @@ function filaInclude() {
         'valor_original', 'valor_saldo', 'valor_baixado', 'juros', 'multa', 'data_vencimento',
         'forma_pagamento_id', 'empresa_id', 'linha_digitavel', 'codigo_barras',
         'banco_cobranca', 'observacoes', 'solicitacao_id', 'favorecido_pagamento_id',
-        'cartao_id', 'fatura_cartao_id', 'origem_titulo', 'status_interno_pagar', 'compartilhamento_id'
+        'cartao_id', 'fatura_cartao_id', 'origem_titulo', 'status_interno_pagar', 'compartilhamento_id',
+        'medicao_pagamento', 'medicao_pagamento_origem_id'
       ],
       include: [
         { model: Parceiro, as: 'parceiro', attributes: ['id', 'nome', 'cpf_cnpj', 'telefone', 'email'] },
@@ -236,10 +237,10 @@ async function listarFilaPagamentos(req, filters = {}) {
     ? await Anexo.findAll({
         where: {
           solicitacao_id: { [Op.in]: solicitacaoIds },
-          tipo: 'BOLETO',
+          tipo: { [Op.in]: ['BOLETO', 'BOLETO_COMPRA', 'BOLETO_FRETE'] },
           deleted_at: null
         },
-        attributes: ['id', 'solicitacao_id', 'nome_original'],
+        attributes: ['id', 'solicitacao_id', 'nome_original', 'tipo'],
         order: [['id', 'ASC']],
         raw: true
       })
@@ -247,7 +248,7 @@ async function listarFilaPagamentos(req, filters = {}) {
   const boletosPorSolicitacao = boletos.reduce((acc, boleto) => {
     const id = Number(boleto.solicitacao_id);
     if (!acc.has(id)) acc.set(id, []);
-    acc.get(id).push({ id: Number(boleto.id), nome: boleto.nome_original });
+    acc.get(id).push({ id: Number(boleto.id), nome: boleto.nome_original, tipo: boleto.tipo });
     return acc;
   }, new Map());
   data.forEach((item) => {

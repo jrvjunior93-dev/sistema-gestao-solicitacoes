@@ -893,7 +893,7 @@ async function calcularStatusDaSolicitacaoDoContrato(contratoId, transaction) {
     include: [{
       model: TituloFinanceiro,
       as: 'titulo',
-      attributes: ['id', 'status', 'valor_saldo', 'valor_baixado', 'status_interno_pagar'],
+      attributes: ['id', 'status', 'valor_original', 'valor_saldo', 'valor_baixado', 'status_interno_pagar', 'medicao_pagamento', 'medicao_pagamento_origem_id'],
       required: false
     }],
     transaction,
@@ -1028,7 +1028,7 @@ async function reconciliarParcelasComOPago(contratoId, { usuarioId = null, setor
     include: [{
       model: TituloFinanceiro,
       as: 'titulo',
-      attributes: ['id', 'status', 'valor_original', 'valor_baixado', 'valor_saldo', 'possui_rateio'],
+      attributes: ['id', 'status', 'valor_original', 'valor_baixado', 'valor_saldo', 'possui_rateio', 'medicao_pagamento', 'medicao_pagamento_origem_id'],
       required: false
     }],
     order: [['numero', 'ASC']],
@@ -1070,6 +1070,7 @@ async function reconciliarParcelasComOPago(contratoId, { usuarioId = null, setor
   // dois iguais desde a criacao.
   const origens = trabalho
     .map((t) => {
+      if (t.parcela.medicao_pagamento_resumo) return null; // Autorizado/abatimento nao redefine o que foi medido.
       const titulo = t.parcela.titulo;
       if (!titulo || titulo.status === 'RENEGOCIADO') return null;
       const baixadoCent = paraCentavos(titulo.valor_baixado || 0);
@@ -1101,6 +1102,7 @@ async function reconciliarParcelasComOPago(contratoId, { usuarioId = null, setor
   // Mesmo quando diferencas de duas partes se compensam, a parte paga a menor
   // deve fechar. Nunca fecha a parte ainda sem baixa.
   for (const t of trabalho) {
+    if (t.parcela.medicao_pagamento_resumo) continue; // Pagamento parcial conserva o saldo financeiro deste novo fluxo.
     for (const titulo of t.parcela.divisao_favorecidos?.titulos || []) {
       if (titulo.renegociado_por_id || ['RENEGOCIADO', 'EXCLUIDO'].includes(titulo.status)) continue;
       if (paraCentavos(titulo.valor_baixado || 0) > 0 && paraCentavos(titulo.valor_saldo || 0) > 0) {

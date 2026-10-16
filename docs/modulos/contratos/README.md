@@ -1,5 +1,45 @@
 # Modulo CONTRATOS
 
+## Valor medido e valor autorizado para pagamento - 2026-10-16
+
+No Financeiro da solicitacao, abrir uma medicao estruturada aprovada e usar
+`Ajustar valor para pagamento`. Exige GEO com permissoes nominais
+`contratos.medicao.editar_valor` e `financeiro.titulos.editar`, ou SUPERADMIN;
+escopos de Contratos/Financeiro e acesso ao titulo sao revalidados no backend.
+Nao cria permissao ou amplia visibilidade. A leitura requer acesso financeiro.
+
+- Informar valor positivo menor que o titulo, motivo e destino obrigatorio:
+  `Pagamento futuro` cria titulo PREVISAO da diferenca, vinculado a origem;
+  `Abatimento definitivo` registra a reducao sem criar divida futura.
+- Medicao, parcela medida e saldo contratual para novas medicoes nao mudam.
+  O financeiro mostra Medido, Valor dos titulos, Diferenca futura e Abatimento.
+  Abatimento reduz o saldo financeiro, mas nunca aparece como valor pago.
+- Dossie anterior fica INVALIDADO com eventos e snapshots preservados; entrada
+  nao processada da fila e encerrada sem baixa. Reenviar explicitamente pelo
+  ciclo atual de autorizacao/fila; aprovacao informal nao vira decisao digital.
+- A diferenca futura exige `Liberar diferenca futura` e motivo, depois novo
+  envio normal. Pode ser liberada apos quitar o titulo original sem altera-lo.
+- Baixados/parciais, movimento ativo ou pagamento bancario em andamento sao
+  protegidos. Titulos compartilhados/negociados, de outro fluxo, com encargos,
+  retencoes ou cobranca bancaria emitida exigem regularizacao especifica.
+  Fatura de cartao exige consentimento expresso e nao pode estar paga.
+- Conferir/reemitir boleto apos reduzir o principal. Documentos e comprovantes
+  antigos nao sao apagados nem convertidos para o novo valor automaticamente.
+- Operacao transacional, revisao otimista, lock de titulo, chave idempotente e
+  recibo permanente. Edicao generica/renegociacao nao substitui esse fluxo.
+
+Pacote de homologacao DEV. Migration estrutural aditiva
+`202610160002_medicao_pagamento_autorizado.js` (JSON nullable e FK indexada)
+precisa ser aplicada no DEV antes do backend novo; sem backfill ou escrita em
+dados existentes. Nao aplicar em producao nesta etapa. Testes isolados:
+`npm run test:medicao-valor-pagamento` em backend e frontend. O helper
+`node scripts/aplicarMigrationMedicaoPagamentoDev.js --verificar` permite
+preflight somente leitura com a migration pendente; `--aplicar` exige
+`CONFIRM_DEV_BACKUP=SIM`, banco/checkout/processo DEV corretos e nenhuma outra
+pendencia. Nao persiste flags. Teste: `npm run test:deploy-medicao-pagamento-dev`.
+Handoff:
+`docs/handoffs/2026-10-16-medicao-valor-autorizado.md`.
+
 ## Papel
 
 Contratos mantem o contexto contratual operacional, seus vinculos, referencias e arquivos. Contrato operacional nao e titulo financeiro e nao se confunde com contrato de venda do modulo Comercial.

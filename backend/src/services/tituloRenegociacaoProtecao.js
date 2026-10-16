@@ -1,10 +1,12 @@
 const CAMPOS_COBRANCA = ['forma_cobranca','status_cobranca','nosso_numero','linha_digitavel','codigo_barras','boleto_emitido_em'];
 const CAMPOS_ORIGEM = ['status','valor_original','valor_bruto','valor_liquido','valor_saldo','valor_baixado','obra_id',
+  'medicao_pagamento', 'medicao_pagamento_origem_id',
   'apropriacao_id','categoria_financeira_id','empresa_id','parceiro_id','deleted_at','solicitacao_id','considera_dre',
   'data_vencimento','competencia_data','renegociado_por_id','renegociacao_id','compartilhamento_id',
   'tipo','origem_titulo','valor_impostos','possui_rateio','juros_renegociacao','multa_renegociacao',...CAMPOS_COBRANCA];
 const CAMPOS_DESTINO = CAMPOS_ORIGEM.filter(k=>!['status','valor_saldo','valor_baixado',...CAMPOS_COBRANCA].includes(k));
 function validar(row,alteracoes,options={}) {
+  if (row.medicao_pagamento || row.medicao_pagamento_origem_id) require('./medicaoPagamentoProtecao').validar(row, alteracoes, options);
   require('./tituloCompartilhadoProtecao').validar(row, alteracoes, options);
   if(options.operacaoRenegociacao)return;
   const campos=Object.keys(alteracoes);

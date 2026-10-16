@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
+    "test:deploy-medicao-pagamento-dev": "node scripts/validarDeployMedicaoPagamentoDev.js",
+    "test:medicao-valor-pagamento": "node scripts/validarMedicaoValorPagamento.js",
+    "test:boletos-pedido": "node scripts/validarPedidoBoletoOpcional.js && node scripts/validarFilaPagamentoSolicitacaoAcesso.js && node scripts/validarPedidoCompraFinanceiroGeo.js && node scripts/validarPedidoDocumentoRemocao.js",
     "test:titulo-desvincular-fatura": "node scripts/validarTituloDesvincularFatura.js",
     "test:fila-previsao-cartao": "node scripts/validarFilaPrevisaoCartao.js",
     "test:sessao-12h": "node scripts/validarDuracaoSessao.js",

@@ -2276,7 +2276,7 @@ async function listarParcelasDoContrato(contratoId, { usuario = null } = {}) {
     include: [{
       model: TituloFinanceiro,
       as: 'titulo',
-      attributes: ['id', 'tipo', 'status', 'status_interno_pagar', 'valor_original', 'valor_baixado', 'valor_saldo', 'renegociado_por_id'],
+      attributes: ['id', 'tipo', 'status', 'status_interno_pagar', 'valor_original', 'valor_baixado', 'valor_saldo', 'renegociado_por_id', 'medicao_pagamento', 'medicao_pagamento_origem_id'],
       required: false
     }],
     order: [['numero', 'ASC']]
@@ -2608,9 +2608,13 @@ async function listarParcelasDoContrato(contratoId, { usuario = null } = {}) {
         pagamentos_favorecidos: divisoesFavorecidos.get(Number(p.id))?.pagamentos || [],
         titulos_pagamento: (p.divisao_favorecidos?.titulos_leitura || []).map(t =>
           resumoTituloEnvioMedicao(t, filasPorTituloEnvio.get(Number(t.id)) || [])),
-        titulo_pagamento: resumoTituloEnvioMedicao(p.titulo, filasPorTituloEnvio.get(Number(p.titulo?.id)) || []),
+        titulo_pagamento: resumoTituloEnvioMedicao(p.medicao_pagamento_resumo
+          ? (p.divisao_favorecidos?.titulos_leitura || []).find(t => Number(t.id) === Number(p.titulo_financeiro_id)) || null
+          : p.titulo, filasPorTituloEnvio.get(Number(p.titulo_financeiro_id)) || []),
         titulo_valor_baixado: p.titulo ? Number(p.titulo.valor_baixado || 0) : null,
         titulo_valor_saldo: p.titulo ? Number(p.titulo.valor_saldo || 0) : null,
+        titulo_valor_original: p.titulo ? Number(p.titulo.valor_original || 0) : null,
+        medicao_pagamento_resumo: p.medicao_pagamento_resumo || null,
         renegociado_por_id: p.titulo?.renegociado_por_id || null,
         renegociacao_titulos: p.titulo?.renegociacao_titulos || [],
         parceiro_id: p.parceiro_id,

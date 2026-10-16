@@ -610,6 +610,7 @@ async function validarPagamentoNegociado(payload = {}, contexto, formasPermitida
 
 async function registrarBoletosPedido({ pedido, boletos, tipo, usuarioId, idempotencyKey, transaction }) {
   if (!boletos.length) return [];
+  if (!transaction) throw httpError(400, 'O registro de boletos do pedido exige transacao.');
   const solicitacaoId = Number(pedido.solicitacao?.solicitacao_principal_id || 0) || null;
   const registros = [];
   for (const [index, boleto] of boletos.entries()) {
@@ -632,7 +633,7 @@ async function registrarBoletosPedido({ pedido, boletos, tipo, usuarioId, idempo
     });
     registros.push(documento);
     if (solicitacaoId) {
-      await Anexo.findOrCreate({
+      const [anexo, criado] = await Anexo.findOrCreate({
         where: {
           solicitacao_id: solicitacaoId,
           caminho_arquivo: arquivoUrl,
@@ -649,6 +650,19 @@ async function registrarBoletosPedido({ pedido, boletos, tipo, usuarioId, idempo
         },
         transaction
       });
+      // O pedido ja esta bloqueado pela geracao de titulos. Arquivo e evento
+      // usam a mesma transacao; replay nao duplica anexos nem autoria no historico.
+      if (criado) await Historico.create({
+        solicitacao_id: solicitacaoId,
+        usuario_responsavel_id: usuarioId || null,
+        setor: 'COMPRAS',
+        acao: 'ANEXO_ADICIONADO',
+        descricao: arquivoNome,
+        observacao: `Boleto ${tipo === 'BOLETO_FRETE' ? 'do frete' : 'da compra'} de ${buildPedidoCodigo(pedido.id)}.`,
+        metadata: JSON.stringify({ origem: 'PEDIDO_COMPRA', tipo_documento: tipo,
+          anexo_id: anexo.id, caminho: arquivoUrl, documento_id: documento.id,
+          pedido_compra_id: pedido.id, pedido_compra_codigo: buildPedidoCodigo(pedido.id) })
+      }, { transaction });
     }
   }
   return registros;

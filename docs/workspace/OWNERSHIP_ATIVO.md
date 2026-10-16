@@ -1,5 +1,56 @@
 # Ownership Ativo
 
+## Publicacao boletos e valor autorizado de medicao - 2026-10-16
+
+- Usuario autorizou commit/push para refactor/frontend e comandos de EC2 DEV
+  incluindo migration. Agente unico, sem delegacao; preservar outputs e outros
+  checkouts. Reservados deltas de boletos/medicao abaixo, helper/teste de migration
+  DEV, scripts npm, README/handoffs e ownership. Nenhuma escrita em banco real,
+  .env, EC2, PM2, main ou producao sera executada pelo agente.
+- Migration permitida neste deploy: 202610160002_medicao_pagamento_autorizado.js.
+  Outras pendencias devem interromper; backup DEV deve ser conferido pelo operador.
+- Revisao e helper DEV concluidos; testes de deploy/medicao/boletos/performance
+  aprovados. Publicacao via integracao GitHub autenticada, pois Git HTTPS local
+  exige login interativo indisponivel; validar tree e ref remotos antes de concluir.
+
+## Medicao x valor autorizado para pagamento - 2026-10-16
+
+- Agente unico, sem delegacao. Usuario autorizou implementar em base
+  refactor/frontend os destinos FUTURO e DEFINITIVO, sem producao.
+- Preservar delta local de boletos e outputs. Reservar novos domain/service/
+  leitura/controller/validator/UI/testes, model TituloFinanceiro, migration
+  202610160002, routes, medicaoContratoService, contratoFluxoNovoService,
+  solicitacaoFavorecidosService, medicaoAtualContratoService, tituloFinanceiroService,
+  envio/autorizacao/fila e bloqueios de mutacoes genericas afetados; FinanceiroCard,
+  ModalMedicao/PrevisoesContrato, services frontend, scripts npm e docs/handoff.
+- Valor medido nao muda. Diferenca futura vira titulo PREVISAO vinculado,
+  bloqueado ate liberacao explicita e novo ciclo de autorizacao. Definitivo
+  vira abatimento auditado. Mudanca encerra fila nao paga e invalida dossie antigo
+  sem fabricar decisao digital. Sem banco real, .env, PM2, migration aplicada ou deploy.
+- Implementacao local concluida e reserva liberada. Suites novas backend/UI,
+  ORM/migration simulada, regressoes financeiras/permissoes/boletos,
+  fila 650 titulos/8 recortes, build e docs aprovados. Sem commit/push.
+  Handoff: docs/handoffs/2026-10-16-medicao-valor-autorizado.md.
+  Migration nova ainda nao aplicada; exige publicacao e homologacao DEV.
+
+## Boletos de pedidos na fila e historico - 2026-10-16
+
+- Agente unico, sem delegacao. Usuario pediu listar boletos dos titulos de
+  Compras na fila de pagamento e no historico da solicitacao. Base DEV 2cee6b9f,
+  branch codex/boletos-pedido-fila-historico-20261016 neste worktree.
+- Reservados: pedidoCompraFinanceiroService.js, pagamentoManualFilaService.js,
+  solicitacaoFilaPagamentoAcessoService.js, ArquivosSolicitacaoFilaModal.jsx,
+  FinanceiroFilaPagamentos.jsx, Timeline.jsx, novos helper/componentes/testes
+  de boletos e ajustes de fixtures pertinentes, README Compras/Financeiro e handoff.
+- Reserva adicional: scripts npm de testes em backend/frontend/package.json.
+- Preservar ACL, escopo, exclusoes, financeiro e idempotencia. Boletos antigos
+  consultados sem backfill; sem banco real, migration, EC2, producao ou publicacao.
+- Implementacao local concluida e ownership liberado. Suites especificas,
+  regressoes de anexos/ACL/financeiro/performance, UI real desktop/mobile,
+  fila completa e rolagem (650 titulos/8 recortes), build, docs e diff aprovados.
+  Handoff: docs/handoffs/2026-10-16-boletos-pedido-fila-historico.md.
+  Sem commit/push; aguarda publicacao solicitada e homologacao real DEV.
+
 ## Publicacao da fila com rolagem - 2026-10-16
 
 - Usuario autorizou commit/push dos ajustes pendentes para refactor/frontend

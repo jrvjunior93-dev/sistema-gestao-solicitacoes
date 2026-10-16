@@ -2490,6 +2490,8 @@ export default function FinanceiroCard({
         historicos={solicitacao?.historicos || []}
         parcelas={dadosContrato?.parcelas || []}
         solicitacaoId={solicitacao?.id}
+        contratoId={dadosContrato?.contrato?.id}
+        consultarValorPagamento={!somenteLeitura && podeConsultarTitulo}
         podeEditar={!somenteLeitura && dadosContrato?.contrato?.permissoes?.editar_medicao === true}
         podeAprovar={!somenteLeitura && dadosContrato?.contrato?.permissoes?.aprovar === true}
         podeAnexar={somenteLeitura}

@@ -1,5 +1,6 @@
 const { Anexo, PagamentoManualFilaItem, TituloFinanceiro } = require('../models');
 const { canAccessFilaPagamentos } = require('./authorizationService');
+const { Op } = require('sequelize');
 
 // A fila concede apenas leitura da solicitacao vinculada a um titulo que
 // realmente integra a fila. Nao amplia a permissao de edicao por setor.
@@ -29,10 +30,10 @@ async function listarArquivosSolicitacaoPelaFila(user, solicitacaoId) {
     throw error;
   }
 
-  // BOLETO identifica o campo de pagamento; nome/extensao do arquivo nao
+  // Os tres tipos identificam boletos da solicitacao/compra/frete; nome/extensao nao
   // determinam a origem. Demais anexos/comprovantes seguem no fluxo proprio.
   const anexos = await Anexo.findAll({
-    where: { solicitacao_id: id, tipo: 'BOLETO', deleted_at: null },
+    where: { solicitacao_id: id, tipo: { [Op.in]: ['BOLETO', 'BOLETO_COMPRA', 'BOLETO_FRETE'] }, deleted_at: null },
     attributes: ['id', 'nome_original', 'caminho_arquivo', 'tipo', 'createdAt']
   });
 

@@ -133,7 +133,7 @@ export default function PrevisoesContrato({
           },
           {
             id: 'valor',
-            titulo: 'Valor',
+            titulo: 'Medido / previsto',
             tipo: 'valor',
             render: (p) => {
               // Previsto x atual: a medicao reduz a parcela e joga a diferenca na ultima.
@@ -156,6 +156,16 @@ export default function PrevisoesContrato({
                 </>
               );
             }
+          },
+          {
+            id: 'valor_titulo',
+            titulo: 'Valor dos títulos',
+            tipo: 'valor',
+            render: p => <>
+              {moeda(p.medicao_pagamento_resumo?.valor_titulos ?? p.titulo_valor_original ?? p.valor)}
+              {Number(p.medicao_pagamento_resumo?.valor_pendente) > 0 && <span className="block text-xs text-[var(--c-muted)]">futuro {moeda(p.medicao_pagamento_resumo.valor_pendente)}</span>}
+              {Number(p.medicao_pagamento_resumo?.abatimento) > 0 && <span className="block text-xs text-[var(--c-muted)]">abatimento {moeda(p.medicao_pagamento_resumo.abatimento)}</span>}
+            </>
           },
           {
             id: 'situacao',

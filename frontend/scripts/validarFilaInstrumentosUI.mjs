@@ -46,6 +46,7 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
         const paid=window.__paid,receipt=window.__receipt,saldo=window.__saldo||200;
         const row={id:1,status:paid?'BAIXADO':'PENDENTE',movimento_financeiro_id:paid?10:null,valor_informado:paid?200:null,valor_previsto:saldo,juros:window.__juros||0,multa:window.__multa||0,conta_bancaria_id:5,data_baixa:paid?'2026-10-08':null,pendente_comprovante:paid&&!receipt,comprovante_hash:receipt||!window.__receiptScenario?'qa':null,comprovante_url:receipt||!window.__receiptScenario?'qa':null,titulo:{id:1,codigo:'TIT-QA',status:paid?'QUITADO':'ABERTO',valor_saldo:paid?0:saldo,forma_pagamento_id:1,solicitacao_id:100,solicitacao:{id:100,codigo:'SOL-QA'}}};
         row.titulo.descricao='SOL-QA - MEDIÇÃO';
+        if(new URLSearchParams(location.search).has('arquivos'))row.titulo.solicitacao.boletos=[{id:1,nome:'boleto.PDF',tipo:'BOLETO_COMPRA'},{id:2,nome:'foto.jpeg',tipo:'BOLETO_FRETE'}];
         if(volumeScenario) {
           if(window.__volumeDelay && params.pagina>1) await new Promise(resolve=>setTimeout(resolve,window.__volumeDelay));
           if(window.__volumeFail && params.pagina>1) throw Object.assign(Error('Falha QA na consulta'),{status:window.__volumeFail});
@@ -101,7 +102,7 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
       export const anexarComprovanteFilaPagamento=async()=>{window.__uploads++;window.__receipt=true};
       export const anexarComprovanteFilaPagamentoLote=async(ids,file)=>{window.__sharedCalls=(window.__sharedCalls||0)+1;await new Promise(r=>setTimeout(r,150));window.__shared={ids,name:file.name};return {quantidade:ids.length,criados:ids.length}};
       export const getArquivosSolicitacaoFila=async()=>new URLSearchParams(location.search).has('arquivos')
-        ? ['boleto.PDF','foto.jpeg','planta.png','animacao.gif','foto.webp','arquivo.docx','arquivo.svg'].map((nome,i)=>({id:'qa-'+i,nome_original:nome,caminho_arquivo:'https://bucket.example.test/qa/'+nome,tipo:'BOLETO',createdAt:'2026-10-08T12:00:00Z'})) : [];
+        ? ['boleto.PDF','foto.jpeg','planta.png','animacao.gif','foto.webp','arquivo.docx','arquivo.svg'].map((nome,i)=>({id:'qa-'+i,nome_original:nome,caminho_arquivo:'https://bucket.example.test/qa/'+nome,tipo:i===0?'BOLETO_COMPRA':i===1?'BOLETO_FRETE':'BOLETO',createdAt:'2026-10-08T12:00:00Z'})) : [];
       export const estornarBaixaFilaPagamento=async(id,motivo,key)=>{window.__reverseCalls=(window.__reverseCalls||0)+1;window.__reversed={id,motivo,key};};
       export const resolverFilaPagamento=async(id,action,motivo)=>{window.__returned={id,action,motivo};};
       export const aprovarDivergenciasFilaPagamentos=async()=>{},getComprovanteFilaPagamento=async()=>{},informarNaoPagamentoFila=async()=>{},previewComprovantesFilaPagamentos=async()=>{},vincularComprovantesFilaPagamentos=async()=>{};`;
@@ -127,7 +128,26 @@ try {
     if (new URL(route.request().url()).origin === 'http://127.0.0.1:5308') return route.continue();
     unexpected.push(route.request().url()); return route.abort();
   });
-  if (process.argv.includes('--rolagem') || process.argv.includes('--concorrencia')) {
+  if (process.argv.includes('--boletos-pedido')) {
+    for (const width of [1366,390]) {
+      await page.setViewportSize({width,height:900});
+      await page.goto('http://127.0.0.1:5308/qa-fila?arquivos=1');
+      await page.getByText('Boletos da solicitação (2)',{exact:true}).click();
+      const lista=page.getByRole('list',{name:'Boletos de SOL-QA',exact:true});
+      await lista.getByText('boleto.PDF',{exact:true}).waitFor();
+      await lista.getByText('foto.jpeg',{exact:true}).waitFor();
+      await page.getByRole('button',{name:'Visualizar / baixar boletos',exact:true}).click();
+      const modal=page.getByRole('dialog',{name:'Arquivos da solicitação SOL-QA',exact:true});
+      await modal.getByText(/Boleto da compra ·/).waitFor();
+      await modal.getByText(/Boleto do frete ·/).waitFor();
+      assert.equal(await modal.getByRole('listitem').count(),7);
+      await page.screenshot({path:path.join(root,`../outputs/boletos-pedido/fila-${width}.png`),fullPage:true});
+      await modal.getByRole('button',{name:'Fechar',exact:true}).click();
+      assert.equal(await page.evaluate(()=>window.__settles.length),0,'Listar boletos nao altera titulo nem baixa');
+    }
+    assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
+    console.log('OK: fila real desktop/mobile lista nomes dos boletos e abre compra/frete no modal existente, sem baixa.');
+  } else if (process.argv.includes('--rolagem') || process.argv.includes('--concorrencia')) {
     await validarRolagemFila(page);
     assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
   } else if (process.argv.includes('--previsao-cartao')) {

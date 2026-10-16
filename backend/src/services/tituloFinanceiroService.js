@@ -2028,6 +2028,7 @@ async function carregarTituloParaBaixaComLock(req, tituloId, transaction, option
 }
 
 function assertTituloEditavel(titulo) {
+  if (titulo.medicao_pagamento || titulo.medicao_pagamento_origem_id) require('./medicaoPagamentoDomain').impedirEdicaoGenerica(titulo);
   if (titulo.compartilhamento_id) throw createHttpError(409, 'Título compartilhado: mantenha as participações do lote. Baixas e estornos permanecem disponíveis no fluxo financeiro.');
   require('./rhPagamentoRevisaoPolicy').assertSemRevisaoDp(titulo);
   if (titulo.renegociacao_id || titulo.renegociado_por_id) throw createHttpError(409, 'Título vinculado a uma negociação. Consulte o acordo de origem.');
@@ -2094,6 +2095,9 @@ async function atualizarTituloEmTransacao(req, tituloId, payload, transaction) {
   const valorOriginal = toCurrencyNumber(payload.valor);
   if (!Number.isFinite(valorOriginal) || valorOriginal <= 0) {
     throw createHttpError(400, 'Valor invalido para editar o titulo.');
+  }
+  if (roundCurrency(valorOriginal) !== roundCurrency(titulo.valor_original)) {
+    await require('./medicaoPagamentoVinculoService').impedirValorGenerico(titulo, transaction);
   }
 
   const descricao = String(payload.descricao || '').trim();
@@ -4386,6 +4390,7 @@ async function baixarTitulosParceladosEmMassa(req, payload = {}) {
     const movimentosOriginais = [];
     for (const titulo of titulos) {
       if (titulo.compartilhamento_id) throw createHttpError(409, 'Use a baixa direta ou a fila para títulos compartilhados. A baixa agrupada com novos títulos não pode substituir as participações do lote.');
+      if (titulo.medicao_pagamento || titulo.medicao_pagamento_origem_id) require('./medicaoPagamentoDomain').impedirEdicaoGenerica(titulo);
       const saldo = roundCurrency(titulo.valor_saldo);
       const empresaTituloId = await resolverEmpresaTituloParaBaixa(titulo);
       const movimentoIntercompanyFields = await validarIntercompanyBaixa({
