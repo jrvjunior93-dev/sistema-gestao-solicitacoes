@@ -1,5 +1,19 @@
 # Ownership Ativo
 
+## TLS de producao e retomada do release - 2026-10-16
+
+- Usuario autorizou persistir TLS ja testado (TLSv1.3), com backup, mantendo
+  PILOT e demais configuracoes, concluir migrations/sessao12h sem alterar DEV.
+- Agente unico, reserva: helper/teste TLS PROD, release/teste de 16/10,
+  ops de producao, adaptador SSL (verifyIdentity), scripts npm e handoff.
+- Base main 5bb0618a, EC2 ja atualizada mas parada antes de migrations/restart;
+  tres migrations pendentes e health8000=200 informados pelo operador. Nenhuma
+  execucao de EC2/RDS/PM2/.env real pelo agente. Publicar somente retomada PROD;
+  refactor/frontend, frontend e regras financeiras permanecem intactos.
+- Implementacao e suites isoladas de TLS/release/PILOT, seguranca e regressoes
+  aprovadas; handoff em docs/handoffs/2026-10-16-tls-producao-retomada.md.
+  Reserva de implementacao concluida, publicacao e comandos ao operador pendentes.
+
 ## Promocao de todas as pendencias homologadas para main - 2026-10-16
 
 - Usuario aprovou todos os ajustes publicados em DEV e solicitou promocao

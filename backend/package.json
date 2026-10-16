@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
+    "test:tls-producao-20261016": "node scripts/validarTlsProducao20261016.js",
     "test:release-producao-20261016": "node scripts/validarReleaseProducao20261016.js",
     "test:deploy-medicao-pagamento-dev": "node scripts/validarDeployMedicaoPagamentoDev.js",
     "test:medicao-valor-pagamento": "node scripts/validarMedicaoValorPagamento.js",
