@@ -12,11 +12,13 @@ const opcoes = filtros.opcoesDosTitulos([{ titulo: { empresa: { id: 3, nome: 'Em
 assert.equal(opcoes.empresas.length, 1); assert.equal(opcoes.credores.length, 1);
 const db = new Sequelize('qa', 'qa', 'qa', { dialect: 'mysql', logging: false });
 const models = { sequelize: db };
-for (const name of ['TituloFinanceiro', 'PagamentoManualFilaItem', 'PagamentoManualFilaComprovante']) models[name] = require('../src/models/' + name)(db, DataTypes);
+for (const name of ['TituloFinanceiro', 'PagamentoManualFilaItem', 'PagamentoManualFilaComprovante', 'TituloCompartilhadoOrigem']) models[name] = require('../src/models/' + name)(db, DataTypes);
 for (const name of ['ContaBancaria', 'EmpresaGrupo', 'Obra', 'Parceiro', 'PaymentBeneficiary', 'Solicitacao', 'FormaPagamentoFinanceira', 'User']) {
   models[name] = db.define(name, { id: { type: DataTypes.INTEGER, primaryKey: true } });
 }
 const fila = models.PagamentoManualFilaItem, titulo = models.TituloFinanceiro;
+titulo.hasMany(models.TituloCompartilhadoOrigem, { as: 'participacoesCompartilhadas', foreignKey: 'titulo_financeiro_id' });
+models.TituloCompartilhadoOrigem.belongsTo(models.EmpresaGrupo, { as: 'empresa', foreignKey: 'empresa_id' });
 fila.belongsTo(titulo, { as: 'titulo', foreignKey: 'titulo_financeiro_id' });
 fila.hasMany(models.PagamentoManualFilaComprovante, { as: 'comprovantes', foreignKey: 'fila_id' });
 fila.belongsTo(models.ContaBancaria, { as: 'contaBancaria', foreignKey: 'conta_bancaria_id' });
@@ -45,6 +47,8 @@ vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/paga
     if (id === './pagamentoFilaComprovanteDomain') return require('../src/services/pagamentoFilaComprovanteDomain');
     if (id === './instrucaoFinanceiraFavorecidoService') return { anexarInstrucoes: async () => {} };
     if (id === './recebimentoDpConsultaService') return { anexarRecebimentosDp: async () => {} };
+    if (id === './authorizationService') return { getFinanceiroObraScopeIds: async () => null };
+    if (id === './tituloCompartilhadoLeitura') return { anexarParticipacoes: async () => {} };
     return {};
   }
 });

@@ -1,5 +1,60 @@
 # Modulo FINANCEIRO
 
+## Titulos compartilhados entre origens e CNPJs - 2026-10-16
+
+- A acao `Gerar titulos compartilhados`, no financeiro da solicitacao ou do
+  pedido fechado, busca SOL/PC/pedido/descricao/obra dentro da visibilidade atual.
+  Reune de 2 a 100 origens do mesmo credor e gera de 1 a 120 parcelas A PAGAR.
+  Obras e empresas devedoras diferentes sao permitidas: existe **um titulo por
+  parcela**, nao uma copia por solicitacao ou CNPJ.
+- Cada origem participa pelo valor integral registrado; pedido usa total fechado
+  do fornecedor com frete embutido. A previa discrimina empresa/CNPJ, origem,
+  participacao e vencimento. Soma das origens e parcelas fecha em centavos. Mudanca
+  invalida a previa; confirmacao revalida acesso, valores e disponibilidade com
+  locks, transacao e chave idempotente por usuario. Nao reutilizar a chave para
+  outro lote. Origens ja tituladas nao podem gerar outra divida ativa.
+- Nao cria permissoes: pedidos exigem as mesmas autorizacoes de gerar titulos em
+  Compras e escopo da compra; demais solicitacoes exigem criacao financeira e
+  acesso operacional atuais. Modulos devem estar habilitados. Contratos,
+  medicoes, DP, compra direta, adiantamentos e recargas preservam fluxos proprios.
+- Empresa/obra do titulo fica nula quando houver varios devedores/destinos;
+  identidade economica permanece nas participacoes imutaveis. A conta identifica
+  quem pagou, nao substitui o devedor. Baixa parcial e estorno redistribuem
+  principal/encargos/desconto/saldo sem duplicar valores por obra ou empresa nos
+  relatorios adaptados de titulos, fluxo/DRE e resultado/gestao de obras.
+- Fila manual mantem uma linha por titulo, com participacoes para conferencia.
+  Baixa direta/em massa normal e comprovantes usam o titulo inteiro; entre
+  empresas, natureza operacional a terceiro, sem transferencia interna ficticia.
+  Paginar/selecionar titulos conserva as regras existentes. Autorizacao do
+  proprietario congela tambem as participacoes; nenhuma flag de ativacao muda.
+- Na aba da solicitacao, a leitura expõe somente sua participacao e nao permite
+  enfileirar esse valor parcial. Detalhe, fila, comprovantes e operacoes do titulo
+  canonico exigem todas as obras no escopo financeiro. Pedido recebe valores
+  proporcionais; historico da origem nao replica nomes/codigos de outras origens.
+  Retorno pendente de qualquer origem conserva o bloqueio de baixa do conjunto.
+- Edicao estrutural, renegociacao, exclusao isolada e baixa agrupada que cria
+  novos titulos sao bloqueadas para preservar o rateio. `Cancelar lote
+  compartilhado`, no detalhe, exige a permissao existente de excluir titulos,
+  todas as obras e motivo. Cancela todo o lote somente sem baixas, cartoes, fila,
+  autorizacoes ou pagamentos ativos; nao apaga vinculos, documentos ou historico.
+- Frete de terceiro permanece separado; se ainda pendente de titulo, regularizar
+  no fluxo do pedido antes de consolidar o fornecedor. Cartao na criacao e envio
+  bancario automatico nao foram ampliados: homologacao deste recurso e pela fila
+  manual. Em especial, lote bancario atual exige empresa unica no titulo; nao
+  atribuir artificialmente o titulo multiempresa a um CNPJ para contornar isso.
+  Relatorio especializado Entre Empresas conserva seu modelo escalar; consultar
+  participacoes/relatorios economicos por empresa para divida multiempresa.
+- Schema: `202610160001_titulos_compartilhados.js`, estrutural/idempotente, cria
+  lotes e participacoes com indices/FKs RESTRICT, sem backfill de negocios.
+  Criada, mas nao aplicada pelo agente. Exige homologacao DEV antes de promocao
+  para main; nao executar automaticamente em producao.
+- Validacao local isolada: `npm run test:titulos-compartilhados` no backend e
+  frontend, regressao `npm run test:performance-fila-dp`, build/navegacao/docs.
+  Fixtures nao substituem homologacao em MySQL dev com migration aplicada.
+  Atualizacao DEV: `ops/deploy/atualizar-dev-titulos-compartilhados-20261016.sh`
+  confere identidade/PM2/porta/flags, aplica somente esta migration e reinicia
+  backend-dev. Interrompe com pendencias adicionais; nao altera producao.
+
 ## Performance e paginacao da fila - 2026-10-15
 
 - Tela consulta 50 registros por pagina em TODOS os cards/status, inclusive

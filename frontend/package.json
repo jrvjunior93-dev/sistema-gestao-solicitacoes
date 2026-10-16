@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:titulos-compartilhados": "node scripts/validarTitulosCompartilhadosModal.mjs",
     "test:polling-seguro": "node scripts/validarPollingSeguro.mjs",
     "test:visualizadores-arquivos": "node scripts/validarVisualizadoresArquivos.mjs todos",
     "test:preview-mobile": "node scripts/validarPreviewMobile.mjs",

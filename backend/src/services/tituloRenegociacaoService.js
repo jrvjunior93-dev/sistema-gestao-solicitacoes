@@ -42,7 +42,7 @@ async function carregarOrigens(req,ids,transaction) {
     await assertEscopoTitulo(req,t,transaction);
     if(!['PAGAR','RECEBER'].includes(t.tipo))falhar(409,'Tipo de título não suportado para negociação.');
     if(!['ABERTO','PARCIAL'].includes(t.status)||centavos(t.valor_saldo)<=0)falhar(409,`${t.codigo}: somente saldo em aberto ou parcial pode ser negociado.`);
-    if(t.renegociacao_id||t.renegociado_por_id)falhar(409,`${t.codigo}: já faz parte de uma negociação; consulte o histórico antes de alterar o acordo.`);
+    if(t.renegociacao_id||t.renegociado_por_id||t.compartilhamento_id)falhar(409,`${t.codigo}: já faz parte de uma negociação ou lote compartilhado; preserve suas participações.`);
     if(t.bloqueado_retorno_obra||t.intercompany||t.tipo_intercompany||t.intercompany_group_id||t.transferencia_interna||t.cartao_id||t.fatura_cartao_id||Number(t.valor_impostos)>0)
       falhar(409,`${t.codigo}: título com bloqueio, cartão, intercompany ou retenções exige tratamento no fluxo de origem.`);
     if(['EMITIDO','PAGO_BANCO','CONCILIADO'].includes(t.status_cobranca)||t.nosso_numero||t.linha_digitavel||t.codigo_barras)

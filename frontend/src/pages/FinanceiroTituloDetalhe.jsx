@@ -4,6 +4,8 @@ import useWorkspaceRecordDraft from '../navigation/useWorkspaceRecordDraft';
 import useQueryRevision from '../navigation/useQueryRevision';
 import useWorkspaceOpenRecord from '../navigation/useWorkspaceOpenRecord';
 import TituloNegociacaoHistorico from '../components/financeiro/TituloNegociacaoHistorico';
+import ParticipacoesTitulo from '../components/financeiro/ParticipacoesTitulo';
+import CancelarLoteCompartilhado from '../components/financeiro/CancelarLoteCompartilhado';
 import { Link, useParams } from 'react-router-dom';
 import {
   atualizarCobrancaTituloFinanceiro,
@@ -478,7 +480,7 @@ export default function FinanceiroTituloDetalhe() {
     ? pagamentosAtivos.length
     : Number(titulo?.payment_intents_ativos_count || 0);
   const podeEditarTitulo = ['PREVISAO', 'ABERTO'].includes(String(titulo?.status || '').toUpperCase())
-    && !titulo?.renegociacao_id && !titulo?.renegociado_por_id
+    && !titulo?.renegociacao_id && !titulo?.renegociado_por_id && !titulo?.compartilhamento_id
     && Number(titulo?.valor_baixado || 0) === 0
     && movimentosAtivosCount === 0
     && pagamentosAtivosCount === 0;
@@ -550,16 +552,18 @@ export default function FinanceiroTituloDetalhe() {
 
   const empresaTituloId = String(titulo?.empresa_id || '');
   const baixaEmpresaDiferente = Boolean(
-    empresaTituloId &&
-    baixaForm.empresa_id &&
-    String(baixaForm.empresa_id) !== empresaTituloId
+    baixaForm.empresa_id && (titulo?.compartilhamento_id
+      ? titulo.participacoes?.some(p => String(p.empresa_id) !== String(baixaForm.empresa_id))
+      : empresaTituloId && String(baixaForm.empresa_id) !== empresaTituloId)
   );
   const mostrarIntercompanyBaixa = baixaEmpresaDiferente || baixaForm.intercompany;
 
   function aplicarEmpresaFonteBaixa(current, empresaFonteId) {
     const empresaResolvidaId = String(empresaFonteId || titulo?.empresa_id || '');
     const empresaDiferente = Boolean(
-      empresaTituloId && empresaResolvidaId && empresaResolvidaId !== empresaTituloId
+      empresaResolvidaId && (titulo?.compartilhamento_id
+        ? titulo.participacoes?.some(p => String(p.empresa_id) !== empresaResolvidaId)
+        : empresaTituloId && empresaResolvidaId !== empresaTituloId)
     );
     const base = {
       ...current,
@@ -789,7 +793,7 @@ export default function FinanceiroTituloDetalhe() {
               : podeEditarDadosTitulo ? {
                 rotulo: 'Editar título',
                 desabilitada: true,
-                title: 'Somente titulos em aberto, sem baixa e sem pagamento em massa vinculado podem ser editados',
+                title: titulo?.compartilhamento_id ? 'Título compartilhado: as participações do lote devem ser preservadas. Baixas e estornos seguem disponíveis.' : 'Somente titulos em aberto, sem baixa e sem pagamento em massa vinculado podem ser editados',
                 onClick: () => {}
               } : null
           ].filter(Boolean)}
@@ -843,6 +847,8 @@ export default function FinanceiroTituloDetalhe() {
           variante="primario"
           cor="var(--module-financeiro)"
         >
+          <ParticipacoesTitulo titulo={titulo} />
+          <CancelarLoteCompartilhado key={titulo.compartilhamento_id || titulo.id} titulo={titulo} permitido={hasPermissao(user, 'financeiro.titulos.excluir')} onCanceled={carregar} />
           <CamposComVazios
             colunas={4}
             campos={[

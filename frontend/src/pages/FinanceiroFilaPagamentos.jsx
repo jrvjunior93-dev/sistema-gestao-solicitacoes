@@ -1,4 +1,5 @@
 import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
+import ParticipacoesTitulo from '../components/financeiro/ParticipacoesTitulo';
 import useConsultaSerial from '../hooks/useConsultaSerial';
 import PaginacaoConsulta from '../components/padrao/PaginacaoConsulta';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -1415,6 +1416,7 @@ export default function FinanceiroFilaPagamentos() {
                         <span className="font-semibold text-[var(--c-text)]">{title.codigo || `#${title.id}`}</span>
                       )}
                       <div className="mt-1 max-w-56 truncate" title={title.descricao}>{title.descricao || 'Sem descrição'}</div>
+                      <ParticipacoesTitulo titulo={title} compacto />
                       <div className="mt-2 flex flex-wrap items-center gap-1.5" aria-label={`Ações e comprovantes de ${title.codigo || row.id}`}>
                       {solicitacaoVinculada ? (
                         <>

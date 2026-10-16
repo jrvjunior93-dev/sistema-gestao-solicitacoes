@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import DateInputBR from '../../../components/DateInputBR';
 import { BlocoConteudo, CampoForm, FormSecao } from '../../../components/padrao';
+import TitulosCompartilhadosModal from '../../../components/financeiro/TitulosCompartilhadosModal';
 import ParceiroBuscaRemota from '../../../components/solicitacoes/ParceiroBuscaRemota';
 import {
   adotarFinanceiroPedidoCompra,
@@ -200,6 +201,7 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
   const fretesPagamentoKey = JSON.stringify(fretesPendentes.map(frete => [frete.id, frete.parceiro_id,
     frete.parceiro?.nome, frete.fornecedor?.nome, frete.valor_total, frete.data_vencimento]));
   const [processando, setProcessando] = useState('');
+  const [loteAberto, setLoteAberto] = useState(false);
   const processandoRef = useRef(false);
   const arquivoInputRef = useRef(null);
   const [categoriaId, setCategoriaId] = useState('');
@@ -233,6 +235,9 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
   const titulosAtivos = titulos.filter((item) => !['CANCELADO', 'ESTORNADO'].includes(String(item.titulo?.status || '').toUpperCase()));
   const pedidoFechado = ['FECHADO_FORNECEDOR', 'ENCERRADO'].includes(String(pedido?.status || '').toUpperCase());
   const podeCriarPrevisao = podePrever && !financeiro?.legado && titulosAtivos.length === 0 && pedidoFechado;
+  const idsFreteTerceiro = new Set((pedido?.fretes || []).filter(f => f.tipo === 'TERCEIRO').map(f => Number(f.titulo_financeiro_id)));
+  const podeCriarCompartilhado = podePrever && !financeiro?.legado && pedidoFechado
+    && !titulosAtivos.some(item => item.origem !== 'FRETE_TERCEIRO' && !idsFreteTerceiro.has(Number(item.titulo?.id)));
   const podeReparcelarPrevisao = podePrever && !financeiro?.legado && pedidoFechado && previsoes.length > 0 && previsoes.length === titulosAtivos.length;
   const exibirFormularioParcelas = podeCriarPrevisao || (podeReparcelarPrevisao && editandoParcelas);
   const reabertura = financeiro?.reabertura;
@@ -342,6 +347,9 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
 
   return (
     <BlocoConteudo titulo="Gestão financeira do pedido" contagem={STATUS_LABEL[financeiro.status] || String(financeiro.status || '').replace(/_/g, ' ')} descricao="O pedido permanece com Compras. Compras cria os títulos; o GEO autoriza o envio pela tela de Contas a Pagar." variante="primario" cor="var(--module-financeiro)">
+      {podeCriarCompartilhado && <button type="button" className="btn btn-outline btn-sm" disabled={Boolean(processando) || !pedido?.fornecedor?.parceiro_id} onClick={() => setLoteAberto(true)}>Gerar títulos compartilhados com outras solicitações / pedidos</button>}
+      {loteAberto && <TitulosCompartilhadosModal solicitacaoId={pedido.solicitacao?.solicitacao_principal_id || pedido.solicitacao_principal_id}
+        pedidoId={pedido.id} credorInicial={credorPedido} onClose={() => setLoteAberto(false)} onCreated={() => onAtualizar?.()} />}
       <fieldset disabled={Boolean(processando)} className="min-w-0">
         {financeiro.legado ? <div className="app-alert"><p className="font-semibold">Pedido anterior ao novo fluxo</p><p className="mt-1">{pedidoFechado ? 'Os vínculos existentes foram apenas identificados. A adoção abaixo não altera nem recria títulos legados.' : 'Este pedido entrará na gestão financeira quando Compras concluir o fechamento com o fornecedor.'}</p>{podePrever && pedidoFechado ? <button type="button" className="btn btn-outline mt-3" disabled={Boolean(processando)} onClick={() => executar('adotar', () => adotarFinanceiroPedidoCompra(pedido.id), 'Pedido legado incorporado à gestão de títulos de Compras.')}>Revisar e adotar pedido legado</button> : null}</div> : null}
 
@@ -368,6 +376,7 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
 
         {titulosAtivos.length ? <div className="mt-4 border-t border-[var(--c-border)] pt-4"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold text-[var(--c-text)]">Títulos vinculados</h3>{podeReparcelarPrevisao && !editandoParcelas ? <button type="button" className="btn btn-outline btn-sm" disabled={Boolean(processando)} onClick={iniciarEdicaoParcelas}>Editar parcelas</button> : null}</div><div className="mt-3 overflow-x-auto rounded-lg border border-[var(--c-border)]"><table className="w-full min-w-[720px] text-sm"><thead className="bg-[var(--c-surface-2)] text-left"><tr><th className="p-3">Título</th><th className="p-3">Vencimento</th><th className="p-3">Valor</th><th className="p-3">Status</th><th className="p-3">Origem</th></tr></thead><tbody>{titulosAtivos.map((item) => <tr key={`${item.origem}-${item.titulo?.id}`} className="border-t border-[var(--c-border)]"><td className="p-3">{podeAbrirTituloFinanceiro ? <Link className="font-semibold text-[var(--c-primary)] hover:underline" to={`/financeiro/titulos/${item.titulo?.id}`}>{item.titulo?.codigo || `#${item.titulo?.id}`}</Link> : <span className="font-semibold">{item.titulo?.codigo || `#${item.titulo?.id}`}</span>}</td><td className="p-3">{formatarData(item.titulo?.data_vencimento)}</td><td className="p-3 font-semibold">{moeda(item.titulo?.valor_original)}</td><td className="p-3">{String(item.titulo?.status || '-').replace(/_/g, ' ')}</td><td className="p-3">{item.origem === 'FRETE_TERCEIRO' ? 'Frete a terceiro' : item.origem === 'LEGADO_DETECTADO' ? 'Legado detectado' : item.origem === 'LEGADO_CONFIRMADO' ? 'Legado confirmado' : 'Compra'}</td></tr>)}</tbody></table></div></div> : null}
 
+        {titulosAtivos.some(item => item.titulo?.compartilhamento_id) && <p className="mt-2 text-xs text-[var(--c-muted)]">Títulos compartilhados: os valores e status desta tabela representam somente a participação deste pedido, não o total da compra consolidada.</p>}
         {(financeiro.documentos || []).length ? <div className="mt-4 border-t border-[var(--c-border)] pt-4">
           <h3 className="font-semibold text-[var(--c-text)]">Documentos financeiros do pedido</h3>
           <div className="mt-3 grid gap-2">{financeiro.documentos.map(item => <div key={item.id}

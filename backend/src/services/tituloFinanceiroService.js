@@ -1690,6 +1690,9 @@ function resolverEmpresaTitulo({ obra }) {
 }
 
 async function resolverEmpresaTituloParaBaixa(titulo = {}) {
+  // Mais de um devedor: a identidade é preservada nas participações, nunca
+  // substituída pela empresa pagadora ou pela primeira obra do lote.
+  if (titulo.compartilhamento_id && !titulo.empresa_id) return null;
   const empresaAtualId = titulo?.empresa_id ? Number(titulo.empresa_id) : null;
   if (Number.isInteger(empresaAtualId) && empresaAtualId > 0) {
     await validarEmpresaGrupo(empresaAtualId);
@@ -1920,7 +1923,10 @@ function buildTituloIntercompanyUpdateFromBaixa(fields = {}) {
   };
 }
 
-async function validarIntercompanyBaixa({ payload = {}, titulo = {}, empresaBaixaId }) {
+async function validarIntercompanyBaixa({ payload = {}, titulo = {}, empresaBaixaId, transaction }) {
+  if (titulo.compartilhamento_id) {
+    return require('./tituloCompartilhadoPagamento').validarEntreEmpresas(titulo, payload, empresaBaixaId, transaction);
+  }
   const empresaTituloId = await resolverEmpresaTituloParaBaixa(titulo);
 
   const empresasDiferentes = Boolean(
@@ -1980,11 +1986,13 @@ async function carregarTituloPorId(req, tituloId, { includeMovimentos = false, t
     throw createHttpError(404, 'Titulo financeiro nao encontrado');
   }
 
-  if (titulo.renegociacao_id) await require('./tituloRenegociacaoService').assertEscopoTitulo(req, titulo, transaction);
+  if (titulo.compartilhamento_id) await require('./tituloCompartilhadoLeitura').assertEscopo(req, titulo, transaction);
+  else if (titulo.renegociacao_id) await require('./tituloRenegociacaoService').assertEscopoTitulo(req, titulo, transaction);
   else await assertObraScope(req, titulo.obra_id, 'TITULO_FINANCEIRO', titulo.id,
     'Usuario tentou acessar titulo financeiro fora do seu escopo de obra');
 
   await require('./instrucaoFinanceiraFavorecidoService').anexarInstrucoes([titulo], { transaction });
+  await require('./tituloCompartilhadoLeitura').anexarParticipacoes([titulo], { transaction });
   return titulo;
 }
 
@@ -2005,7 +2013,8 @@ async function carregarTituloParaBaixaComLock(req, tituloId, transaction, option
   assertTituloDisponivelParaBaixa(titulo);
 
   if (!options.autorizadoPorFilaPagamento && !acessoInternoAutorizado) {
-    if (titulo.renegociacao_id) await require('./tituloRenegociacaoService').assertEscopoTitulo(req, titulo, transaction);
+    if (titulo.compartilhamento_id) await require('./tituloCompartilhadoLeitura').assertEscopo(req, titulo, transaction);
+    else if (titulo.renegociacao_id) await require('./tituloRenegociacaoService').assertEscopoTitulo(req, titulo, transaction);
     else await assertObraScope(
       req,
       titulo.obra_id,
@@ -2019,6 +2028,7 @@ async function carregarTituloParaBaixaComLock(req, tituloId, transaction, option
 }
 
 function assertTituloEditavel(titulo) {
+  if (titulo.compartilhamento_id) throw createHttpError(409, 'Título compartilhado: mantenha as participações do lote. Baixas e estornos permanecem disponíveis no fluxo financeiro.');
   require('./rhPagamentoRevisaoPolicy').assertSemRevisaoDp(titulo);
   if (titulo.renegociacao_id || titulo.renegociado_por_id) throw createHttpError(409, 'Título vinculado a uma negociação. Consulte o acordo de origem.');
   const status = String(titulo?.status || '').trim().toUpperCase();
@@ -2433,6 +2443,7 @@ async function listarTitulos(req, filters = {}, { tituloIds = null } = {}) {
       { '$obra.nome$': { [Op.like]: `%${term}%` } },
       { '$obra.codigo$': { [Op.like]: `%${term}%` } },
       { '$solicitacao.codigo$': { [Op.like]: `%${term}%` } },
+      require('./tituloCompartilhadoLeitura').buscaSql(term, v => sequelize.escape(v)),
       ...(solicitacoesContratuais.length > 0 ? [{
         origem_titulo: 'CONTRATO',
         solicitacao_id: { [Op.in]: solicitacoesContratuais }
@@ -2446,6 +2457,7 @@ async function listarTitulos(req, filters = {}, { tituloIds = null } = {}) {
     whereNegociacao[Op.and] = [...(whereNegociacao[Op.and] || []), sequelize.literal(
       `NOT EXISTS (SELECT 1 FROM titulo_renegociacao_alocacoes esc WHERE esc.titulo_destino_id = TituloFinanceiro.id AND esc.obra_id NOT IN (${idsEscopo.join(',') || '0'}))`
     )];
+    whereNegociacao[Op.and].push(require('./tituloCompartilhadoLeitura').escopoCompletoSql(idsEscopo));
   }
   const colunasOrdenaveis = {
     titulo: 'codigo',
@@ -2457,7 +2469,7 @@ async function listarTitulos(req, filters = {}, { tituloIds = null } = {}) {
     obra: sequelize.col('obra.nome'),
     categoria: sequelize.col('categoriaFinanceira.nome'),
     forma_pagamento: sequelize.col('formaPagamento.nome'),
-    origem: sequelize.literal("CASE WHEN TituloFinanceiro.solicitacao_id IS NOT NULL THEN 'Solicitacao' WHEN TituloFinanceiro.forma_cobranca IS NOT NULL THEN 'Comercial' ELSE 'Manual' END"),
+    origem: sequelize.literal("CASE WHEN TituloFinanceiro.compartilhamento_id IS NOT NULL THEN 'Compartilhado' WHEN TituloFinanceiro.solicitacao_id IS NOT NULL THEN 'Solicitacao' WHEN TituloFinanceiro.forma_cobranca IS NOT NULL THEN 'Comercial' ELSE 'Manual' END"),
     emissao: 'data_emissao',
     vencimento: 'data_vencimento',
     valor_total: 'valor_original',
@@ -2493,7 +2505,7 @@ async function listarTitulos(req, filters = {}, { tituloIds = null } = {}) {
     });
 
     return {
-      data: result.rows,
+      data: await require('./tituloCompartilhadoLeitura').anexarParticipacoes(result.rows),
       pagination: {
         page,
         limit: listAll ? 'all' : pageSize,
@@ -2503,7 +2515,7 @@ async function listarTitulos(req, filters = {}, { tituloIds = null } = {}) {
     };
   }
 
-  return TituloFinanceiro.findAll(queryOptions);
+  return require('./tituloCompartilhadoLeitura').anexarParticipacoes(await TituloFinanceiro.findAll(queryOptions));
 }
 
 async function listarBaixasRealizadas(req, filters = {}) {
@@ -2657,9 +2669,7 @@ async function listarTitulosPorSolicitacao(req, solicitacaoId) {
   const solicitacao = await carregarSolicitacaoFinanceira(req, solicitacaoId);
 
   const consulta = {
-    where: {
-      solicitacao_id: solicitacao.id
-    },
+    where: require('./tituloCompartilhadoLeitura').whereOrigem({ solicitacao_id: solicitacao.id }),
     order: [
       ['data_vencimento', 'ASC'],
       ['createdAt', 'DESC']
@@ -2676,6 +2686,7 @@ async function listarTitulosPorSolicitacao(req, solicitacaoId) {
       'solicitacao_id',
       'tipo',
       'origem_titulo',
+      'compartilhamento_id',
       'status',
       'descricao',
       'valor_original',
@@ -2713,7 +2724,8 @@ async function listarTitulosPorSolicitacao(req, solicitacaoId) {
     order: [['id', 'DESC']]
   });
 
-  const titulos = await require('./tituloRenegociacaoVinculos').projetarOrigens(await TituloFinanceiro.findAll(consulta));
+  const originais = await require('./tituloRenegociacaoVinculos').projetarOrigens(await TituloFinanceiro.findAll(consulta));
+  const titulos = await require('./tituloCompartilhadoConsulta').porSolicitacao(req, originais, solicitacao.id);
   if (acessoFinanceiroCompleto) await require('./instrucaoFinanceiraFavorecidoService').anexarInstrucoes(titulos);
   // Importacao pelo nome SOL-xxxx vincula a solicitacao, nao um titulo especifico.
   // Nao cria vinculos nem altera baixa/historico; o frontend identifica essa origem.
@@ -2938,6 +2950,12 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
   const baixasCartaoNoAto = [];
   try {
     await freteCompraService.validarGeracao(solicitacao.id, contextoCompraDireta, transaction);
+    const origemAtual = await Solicitacao.findByPk(solicitacao.id, { transaction, lock: transaction.LOCK.UPDATE });
+    if (!origemAtual || origemAtual.cancelada) throw createHttpError(409, 'Solicitação alterada ou cancelada. Atualize antes de gerar títulos.');
+    const compartilhado = await require('../models').TituloCompartilhadoOrigem.findOne({ where: { solicitacao_id: solicitacao.id },
+      include: [{ model: TituloFinanceiro, as: 'titulo', required: true, attributes: ['id'], where: { status: { [Op.notIn]: ['CANCELADO', 'ESTORNADO'] } } }],
+      transaction, lock: transaction.LOCK.UPDATE });
+    if (compartilhado) throw createHttpError(409, 'A solicitação já participa de um lote compartilhado. Não gere títulos novamente pelo fluxo individual.');
     if (partesSolicitadas.length) {
       const principal = await Solicitacao.findByPk(solicitacao.id, { transaction, lock: transaction.LOCK.UPDATE });
       if (!principal || Number(principal.valor) !== valorOriginal) throw createHttpError(409, 'Solicitacao alterada; atualize a divisao.');
@@ -3985,7 +4003,7 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
     const movimentoIntercompanyFields = await validarIntercompanyBaixa({
       payload,
       titulo,
-      empresaBaixaId
+      empresaBaixaId, transaction
     });
 
     const novoValorBaixado = roundCurrency(Number(titulo.valor_baixado || 0) + valorBaixa);
@@ -4086,7 +4104,8 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
 
     const tituloIntercompanyUpdate = options.skipTituloIntercompanyUpdate
       ? {}
-      : buildTituloIntercompanyUpdateFromBaixa(movimentoIntercompanyFields);
+      : titulo.compartilhamento_id && !movimentoIntercompanyFields.empresa_destino_id ? {}
+        : buildTituloIntercompanyUpdateFromBaixa(movimentoIntercompanyFields);
 
     await titulo.update({
       empresa_id: empresaTituloId,
@@ -4366,6 +4385,7 @@ async function baixarTitulosParceladosEmMassa(req, payload = {}) {
 
     const movimentosOriginais = [];
     for (const titulo of titulos) {
+      if (titulo.compartilhamento_id) throw createHttpError(409, 'Use a baixa direta ou a fila para títulos compartilhados. A baixa agrupada com novos títulos não pode substituir as participações do lote.');
       const saldo = roundCurrency(titulo.valor_saldo);
       const empresaTituloId = await resolverEmpresaTituloParaBaixa(titulo);
       const movimentoIntercompanyFields = await validarIntercompanyBaixa({
@@ -5275,7 +5295,7 @@ async function excluirTitulosEmMassa(req, payload = {}) {
       id: { [Op.in]: idsUnicos },
       deleted_at: null
     },
-    attributes: ['id', 'codigo', 'status', 'obra_id', 'origem_titulo', 'status_interno_pagar', 'numero_documento']
+    attributes: ['id', 'codigo', 'status', 'obra_id', 'origem_titulo', 'status_interno_pagar', 'numero_documento', 'compartilhamento_id']
   });
 
   if (titulos.length !== idsUnicos.length) {
@@ -5294,6 +5314,10 @@ async function excluirTitulosEmMassa(req, payload = {}) {
 
   for (const titulo of titulos) {
     require('./rhPagamentoRevisaoPolicy').assertSemRevisaoDp(titulo);
+    if (titulo.compartilhamento_id) {
+      await require('./tituloCompartilhadoLeitura').assertEscopo(req, titulo);
+      throw createHttpError(409, 'Título compartilhado não pode ser excluído isoladamente. Use Cancelar lote compartilhado no detalhe para preservar todas as origens.');
+    }
     if (['ADIANTAMENTO', 'DEVOLUCAO_ADIANTAMENTO'].includes(titulo.origem_titulo)) throw createHttpError(409, 'Adiantamentos e devolucoes possuem prestacao vinculada e nao permitem exclusao em massa.');
     if (titulo.origem_titulo === 'RH_DP' && /-SOL-\d+-/.test(titulo.numero_documento || '')) {
       throw createHttpError(409, 'Cancele este pagamento na solicitacao RH/DP para preservar a fila e os reembolsos vinculados.');

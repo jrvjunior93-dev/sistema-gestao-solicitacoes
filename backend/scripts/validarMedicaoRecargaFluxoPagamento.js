@@ -306,6 +306,8 @@ async function medicaoMaisRecente() {
   assert.equal(state.Solicitacao[0].status_global, analise.STATUS_ANALISE_PROPRIETARIO);
 
   const financeiro = load('solicitacaoFinanceiroStatusService.js', {
+    './tituloCompartilhadoLeitura': { whereOrigem: w => w },
+    './tituloCompartilhadoConsulta': { porSolicitacao: async (req, titulos) => titulos },
     sequelize: { Op }, '../models': models, './medicaoContratoService': service,
     './medicaoAtualContratoService': medicaoAtual,
     './setorCapabilityService': { findSetorByCapability: async () => ({ codigo: 'FINANCEIRO' }),
@@ -340,7 +342,7 @@ async function medicaoMaisRecente() {
 async function relatorio() {
   const titulos = [
     { id: 1, obra_id: 10, origem_titulo: 'RECARGA_CARTAO', tipo: 'PAGAR', status: 'QUITADO', renegociacao_id: null, valor_original: 100, valor_baixado: 100, valor_saldo: 0, considera_dre: false },
-    { id: 2, obra_id: 10, origem_titulo: null, tipo: 'PAGAR', status: 'QUITADO', renegociacao_id: null, valor_original: 50, valor_baixado: 50, valor_saldo: 0 }
+    { id: 2, obra_id: 10, origem_titulo: null, tipo: 'PAGAR', status: 'QUITADO', renegociacao_id: null, compartilhamento_id: null, valor_original: 50, valor_baixado: 50, valor_saldo: 0 }
   ];
   const modelReport = {
     Obra: { findAll: async () => [{ id: 10, ativo: true, nome: 'Obra QA', classificacao: 'PRIVADA' }] },

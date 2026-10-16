@@ -125,7 +125,7 @@ async function gerarResultadoObras({ query = {}, obraIdsEscopo = null } = {}) {
       ],
       where: {
         obra_id: { [Op.in]: obraIds },
-        renegociacao_id: null,
+        renegociacao_id: null, compartilhamento_id: null,
         status: { [Op.notIn]: ['CANCELADO', 'ESTORNADO'] },
         // A obra da recarga identifica a origem, nao uma despesa. Custos entram somente
         // pelos rateios validados abaixo, evitando antecipacao e dupla contagem.
@@ -237,7 +237,7 @@ async function gerarResultadoObras({ query = {}, obraIdsEscopo = null } = {}) {
   const parcelasNegociadas = await require('./tituloRenegociacaoLeitura').buscarTitulos({
     where: {
       obra_id: { [Op.in]: obraIds },
-      renegociacao_id: { [Op.ne]: null },
+      [Op.or]: [{ renegociacao_id: { [Op.ne]: null } }, { compartilhamento_id: { [Op.ne]: null } }],
       status: { [Op.notIn]: ['CANCELADO', 'ESTORNADO'] }
     },
     attributes: ['id', 'obra_id', 'tipo', 'valor_original', 'valor_baixado', 'valor_saldo']
@@ -280,9 +280,9 @@ async function gerarResultadoObras({ query = {}, obraIdsEscopo = null } = {}) {
   });
 
   if (filters.comPeriodo) {
-    const directMovements = await MovimentoFinanceiro.findAll({
+    const directMovements = await require('./tituloRenegociacaoLeitura').buscarMovimentos({
       where: { status: 'ATIVO', data_movimento: { [Op.lte]: filters.dataFinal } },
-      attributes: ['valor', 'valor_quitacao', 'data_movimento'],
+      attributes: ['id', 'valor', 'valor_quitacao', 'juros', 'multa', 'desconto', 'status', 'data_movimento'],
       include: [{
         model: TituloFinanceiro,
         as: 'titulo',

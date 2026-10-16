@@ -132,7 +132,7 @@ async function registrarHistorico({ pedido, solicitacao, usuarioId, acao, descri
   }, { transaction });
 }
 
-async function buscarIdsTitulosLegados(pedidoId, transaction) {
+async function buscarVinculosTitulosLegados(pedidoId, transaction) {
   const [alocacoes, fretes] = await Promise.all([
     SolicitacaoCompraAlocacao.findAll({
       where: {
@@ -148,14 +148,17 @@ async function buscarIdsTitulosLegados(pedidoId, transaction) {
         pedido_compra_id: Number(pedidoId),
         titulo_financeiro_id: { [Op.ne]: null }
       },
-      attributes: ['titulo_financeiro_id'],
+      attributes: ['titulo_financeiro_id', 'tipo'],
       transaction,
       raw: true
     })
   ]);
-  return [...new Set([...alocacoes, ...fretes]
+  return { ids: [...new Set([...alocacoes, ...fretes]
     .map((item) => Number(item.titulo_financeiro_id || 0))
-    .filter((id) => id > 0))];
+    .filter((id) => id > 0))], freteIds: new Set(fretes.filter(f => normalize(f.tipo) === 'TERCEIRO').map(f => Number(f.titulo_financeiro_id))) };
+}
+async function buscarIdsTitulosLegados(pedidoId, transaction) {
+  return (await buscarVinculosTitulosLegados(pedidoId, transaction)).ids;
 }
 
 async function buscarTitulosPedido(pedidoId, { transaction, incluirLegados = true } = {}) {
@@ -166,7 +169,7 @@ async function buscarTitulosPedido(pedidoId, { transaction, incluirLegados = tru
       as: 'titulo',
       required: true,
       attributes: [
-        'id', 'codigo', 'status', 'descricao', 'valor_original', 'valor_saldo', 'valor_baixado',
+        'id', 'codigo', 'status', 'descricao', 'valor_original', 'valor_saldo', 'valor_baixado', 'compartilhamento_id',
         'data_emissao', 'data_vencimento', 'forma_pagamento_id', 'categoria_financeira_id'
       ]
     }],
@@ -175,6 +178,7 @@ async function buscarTitulosPedido(pedidoId, { transaction, incluirLegados = tru
     order: [['numero_parcela', 'ASC'], ['id', 'ASC']]
   });
   await require('./tituloRenegociacaoVinculos').projetarAssociacoes(vinculos, 'titulo', { transaction });
+  await require('./tituloCompartilhadoLeitura').projetarPedido(vinculos, transaction);
   const resultado = vinculos.map((vinculo) => ({
     vinculo_id: vinculo.id,
     origem: vinculo.origem,
@@ -186,7 +190,9 @@ async function buscarTitulosPedido(pedidoId, { transaction, incluirLegados = tru
 
   if (!incluirLegados) return resultado;
   const conhecidos = new Set(resultado.map((item) => Number(item.titulo?.id || 0)));
-  const idsLegados = (await buscarIdsTitulosLegados(pedidoId, transaction)).filter((id) => !conhecidos.has(id));
+  const legados = await buscarVinculosTitulosLegados(pedidoId, transaction);
+  resultado.forEach(item => { if (legados.freteIds.has(Number(item.titulo?.id))) item.origem = 'FRETE_TERCEIRO'; });
+  const idsLegados = legados.ids.filter((id) => !conhecidos.has(id));
   if (!idsLegados.length) return resultado;
 
   const titulosLegados = await TituloFinanceiro.findAll({
@@ -202,7 +208,7 @@ async function buscarTitulosPedido(pedidoId, { transaction, incluirLegados = tru
   const legadosEfetivos = await require('./tituloRenegociacaoVinculos').projetarOrigens(titulosLegados, { transaction });
   return resultado.concat(legadosEfetivos.map((titulo) => ({
     vinculo_id: null,
-    origem: 'LEGADO_DETECTADO',
+    origem: legados.freteIds.has(Number(titulo.id)) ? 'FRETE_TERCEIRO' : 'LEGADO_DETECTADO',
     status_liberacao: normalize(titulo.status) === 'PREVISAO' ? 'PREVISAO' : 'LIBERADO',
     numero_parcela: titulo.numero_parcela,
     total_parcelas: titulo.total_parcelas,
@@ -213,6 +219,8 @@ async function buscarTitulosPedido(pedidoId, { transaction, incluirLegados = tru
 function derivarStatusFinanceiro(pedido, titulos = []) {
   if (normalize(pedido.status) === 'CANCELADO') return STATUS_FLUXO.CANCELADO;
   const ativos = titulos.filter((item) => !STATUS_TITULO_ENCERRADO.has(normalize(item.titulo?.status)));
+  if (titulos.some(item => item.origem === 'COMPARTILHADO' || item.titulo?.compartilhamento_id)
+    && !ativos.some(item => item.origem !== 'FRETE_TERCEIRO')) return STATUS_FLUXO.AGUARDANDO_PREVISAO;
   if (ativos.some((item) => STATUS_TITULO_PAGO.has(normalize(item.titulo?.status))
     || normalize(item.titulo?.status) === 'PARCIAL' || Number(item.titulo?.valor_baixado || 0) > 0)) {
     return ativos.every((item) => STATUS_TITULO_PAGO.has(normalize(item.titulo?.status)))
@@ -316,7 +324,7 @@ async function aplicarResumoFinanceiroPedidos(pedidos = [], options = {}) {
         model: TituloFinanceiro,
         as: 'titulo',
         required: true,
-        attributes: ['id', 'status', 'valor_original']
+        attributes: ['id', 'status', 'valor_original', 'valor_baixado', 'valor_saldo', 'compartilhamento_id']
       }],
       transaction: options.transaction
     }),
@@ -334,7 +342,7 @@ async function aplicarResumoFinanceiroPedidos(pedidos = [], options = {}) {
         pedido_compra_id: { [Op.in]: ids },
         titulo_financeiro_id: { [Op.ne]: null }
       },
-      attributes: ['pedido_compra_id', 'titulo_financeiro_id'],
+      attributes: ['pedido_compra_id', 'titulo_financeiro_id', 'tipo'],
       transaction: options.transaction,
       raw: true
     }),
@@ -346,13 +354,15 @@ async function aplicarResumoFinanceiroPedidos(pedidos = [], options = {}) {
   ]);
 
   await require('./tituloRenegociacaoVinculos').projetarAssociacoes(vinculos, 'titulo', { transaction: options.transaction });
+  await require('./tituloCompartilhadoLeitura').projetarPedido(vinculos, options.transaction);
   const titulosPorPedido = new Map(ids.map((id) => [id, []]));
   const tituloIdsExplicitamenteVinculados = new Set();
   for (const vinculo of vinculos) {
     const pedidoId = Number(vinculo.pedido_compra_id);
     const titulo = vinculo.titulo?.toJSON ? vinculo.titulo.toJSON() : vinculo.titulo;
     tituloIdsExplicitamenteVinculados.add(Number(titulo?.id));
-    titulosPorPedido.get(pedidoId)?.push({ vinculo_id: vinculo.id, origem: vinculo.origem, titulo });
+    titulosPorPedido.get(pedidoId)?.push({ vinculo_id: vinculo.id,
+      origem: fretes.some(f => Number(f.pedido_compra_id) === pedidoId && Number(f.titulo_financeiro_id) === Number(titulo?.id) && normalize(f.tipo) === 'TERCEIRO') ? 'FRETE_TERCEIRO' : vinculo.origem, titulo });
   }
 
   const legadosPorPedido = new Map(ids.map((id) => [id, new Set()]));
@@ -377,7 +387,8 @@ async function aplicarResumoFinanceiroPedidos(pedidos = [], options = {}) {
   for (const [pedidoId, tituloIds] of legadosPorPedido.entries()) {
     for (const tituloId of tituloIds) {
       const titulo = mapaTitulosLegados.get(tituloId);
-      if (titulo) titulosPorPedido.get(pedidoId)?.push({ vinculo_id: null, origem: 'LEGADO_DETECTADO', titulo });
+      if (titulo) titulosPorPedido.get(pedidoId)?.push({ vinculo_id: null,
+        origem: fretes.some(f => Number(f.pedido_compra_id) === pedidoId && Number(f.titulo_financeiro_id) === tituloId && normalize(f.tipo) === 'TERCEIRO') ? 'FRETE_TERCEIRO' : 'LEGADO_DETECTADO', titulo });
     }
   }
 
@@ -1257,6 +1268,7 @@ async function decidirReaberturaGeo({ pedidoId, reaberturaId, decisao, motivo, u
 }
 
 module.exports = {
+  validarPagamentoNegociado,
   STATUS_FLUXO,
   adotarPedidoLegado,
   aplicarResumoFinanceiroPedidos,

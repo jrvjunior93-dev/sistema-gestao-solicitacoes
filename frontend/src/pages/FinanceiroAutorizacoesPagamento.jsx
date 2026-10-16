@@ -378,7 +378,10 @@ export default function FinanceiroAutorizacoesPagamento() {
                       {snapshot.solicitacao?.codigo && <small>Título {snapshot.codigo || `#${snapshot.titulo_id}`}</small>}
                       <small>{resumoSolicitacaoAutorizacao(snapshot)}</small><small className="pa-title-value"><span>Valor do título</span><strong>{money(item.valor_snapshot)}</strong></small></td>
                     <td>{snapshot.favorecido_pagamento?.nome || snapshot.credor?.nome || '-'}<small>{snapshot.favorecido_pagamento?.documento_mascarado || snapshot.credor?.documento_mascarado || ''}</small><small>{snapshot.forma_pagamento?.nome || snapshot.favorecido_pagamento?.metodo || ''}{snapshot.favorecido_pagamento?.pix_mascarado ? ` · ${snapshot.favorecido_pagamento.pix_mascarado}` : ''}</small></td>
-                    <td>{snapshot.obra?.nome || '-'}</td><td>{snapshot.data_vencimento || '-'}</td><td className="num pa-value-column">{money(item.valor_snapshot)}</td>
+                    <td>{snapshot.obra?.nome || (snapshot.compartilhamento_id ? 'Várias origens' : '-')}
+                      {snapshot.compartilhamento_id && <details><summary>Lote #{snapshot.compartilhamento_id} · participações</summary>
+                        {(snapshot.participacoes || []).map((p, i) => <small key={i}>Solicitação #{p.solicitacao_id}{p.pedido_compra_id ? ` · PC-${String(p.pedido_compra_id).padStart(5, '0')}` : ''}<br />{p.obra_nome || `Obra #${p.obra_id}`} · {p.empresa_nome || `Empresa #${p.empresa_id}`} · {money(p.valor)}</small>)}
+                      </details>}</td><td>{snapshot.data_vencimento || '-'}</td><td className="num pa-value-column">{money(item.valor_snapshot)}</td>
                     <td><div className="pa-documents">{(item.documentos || []).map((doc) => <button type="button" key={doc.id} onClick={() => openDocument(doc)} title={doc.nome}><HiOutlineDocumentText /><span>{doc.nome}</span></button>)}</div></td>
                     <td><Status value={item.status} />{item.fila_item_id && <small>Fila #{item.fila_item_id}</small>}
                       {caps.can_decide && ['AUTORIZADO', 'ENFILEIRADO'].includes(item.status) && item.titulo?.status === 'ABERTO' &&

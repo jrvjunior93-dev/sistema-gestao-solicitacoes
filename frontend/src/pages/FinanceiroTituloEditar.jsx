@@ -192,6 +192,7 @@ function getParceiroPixPrincipal(parceiro) {
 }
 
 function getTituloBloqueado(titulo) {
+  if (titulo?.compartilhamento_id) return 'Título compartilhado: preserve as participações. Para desfazer uma geração sem pagamentos, cancele o lote completo pelo detalhe.';
   const status = String(titulo?.status || '').toUpperCase();
   const valorBaixado = Number(titulo?.valor_baixado || 0);
   const movimentosAtivos = Array.isArray(titulo?.movimentos)

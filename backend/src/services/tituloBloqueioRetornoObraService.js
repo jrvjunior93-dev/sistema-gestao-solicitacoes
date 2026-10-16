@@ -23,7 +23,7 @@ async function obterIdsTitulosVinculadosSolicitacao(solicitacaoId, { transaction
 
   const [titulosDiretos, contratos, recargas] = await Promise.all([
     TituloFinanceiro.findAll({
-      where: { solicitacao_id: id },
+      where: require('./tituloCompartilhadoLeitura').whereOrigem({ solicitacao_id: id }),
       attributes: ['id'],
       transaction
     }),
@@ -83,6 +83,11 @@ async function desbloquearTitulosVinculados({ solicitacaoId, pedidoId = null, tr
   const tituloIds = await obterIdsTitulosVinculadosSolicitacao(solicitacaoId, { transaction });
   if (!tituloIds.length) return 0;
   const where = { id: { [Op.in]: tituloIds }, bloqueado_retorno_obra: true };
+  const titulos = await TituloFinanceiro.findAll({ where: { id: { [Op.in]: tituloIds } }, attributes: ['id', 'compartilhamento_id'], transaction });
+  const compartilhados = titulos.filter(t => t.compartilhamento_id).map(t => Number(t.id));
+  const quantidadeCompartilhados = await require('./tituloCompartilhadoRetorno').reconciliar(compartilhados, { transaction });
+  // Encerrar o retorno de uma origem não libera um retorno de outra origem.
+  where.id = { [Op.in]: tituloIds.filter(id => !compartilhados.includes(Number(id))) };
   if (pedidoId) where.bloqueio_retorno_pedido_id = Number(pedidoId);
 
   const [quantidade] = await TituloFinanceiro.update({
@@ -91,7 +96,7 @@ async function desbloquearTitulosVinculados({ solicitacaoId, pedidoId = null, tr
     bloqueio_retorno_motivo: null,
     bloqueio_retorno_em: null
   }, { where, transaction });
-  return Number(quantidade || 0);
+  return Number(quantidade || 0) + quantidadeCompartilhados;
 }
 
 async function sincronizarAposEncerramentoPedido({ solicitacaoId, pedidoId, transaction = null }) {

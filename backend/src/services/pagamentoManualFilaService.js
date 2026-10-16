@@ -75,7 +75,7 @@ function filaInclude() {
         'valor_original', 'valor_saldo', 'valor_baixado', 'juros', 'multa', 'data_vencimento',
         'forma_pagamento_id', 'empresa_id', 'linha_digitavel', 'codigo_barras',
         'banco_cobranca', 'observacoes', 'solicitacao_id', 'favorecido_pagamento_id',
-        'cartao_id', 'fatura_cartao_id', 'origem_titulo', 'status_interno_pagar'
+        'cartao_id', 'fatura_cartao_id', 'origem_titulo', 'status_interno_pagar', 'compartilhamento_id'
       ],
       include: [
         { model: Parceiro, as: 'parceiro', attributes: ['id', 'nome', 'cpf_cnpj', 'telefone', 'email'] },
@@ -153,6 +153,8 @@ async function listarFilaPagamentos(req, filters = {}) {
       : (status && status !== 'TODOS' ? { status } : { status: { [Op.ne]: 'CANCELADO' } });
   if (filters.fila_ids) where.id = { [Op.in]: filters.fila_ids };
   const filtroConsulta = tituloWhere(filters);
+  const obrasCompartilhadas = await getFinanceiroObraScopeIds(req.user);
+  if (obrasCompartilhadas !== null) filtroConsulta[Op.and] = [...(filtroConsulta[Op.and] || []), require('./tituloCompartilhadoLeitura').escopoCompletoSql(obrasCompartilhadas, 'titulo')];
   const filtroBusca = paginado && filters.q ? buscaTituloWhere(filters.q, valor => sequelize.escape(valor)) : null;
   // Campos dos JOINs filhos so existem no WHERE externo, nao no ON do titulo.
   const whereLista = filtroBusca ? { [Op.and]: [where, filtroBusca] } : where;
@@ -224,6 +226,7 @@ async function listarFilaPagamentos(req, filters = {}) {
   }
   if (['NAO_PAGO', 'TODOS'].includes(status)) data.push(...rejeitados.filter(item => matchesSearch(item, filters.q)));
   await require('./recebimentoDpConsultaService').anexarRecebimentosDp(data.map(item => item.titulo).filter(Boolean));
+  await require('./tituloCompartilhadoLeitura').anexarParticipacoes(data.map(item => item.titulo).filter(Boolean));
   const solicitacaoIds = Array.from(new Set(
     data
       .map((item) => Number(item?.titulo?.solicitacao_id || item?.titulo?.solicitacao?.id))
@@ -256,7 +259,7 @@ async function listarFilaPagamentos(req, filters = {}) {
   if (filters.fila_ids) return { data, total, pagina, limite, total_paginas: paginas, resumo: {}, filtros: { empresas: [], credores: [] } };
   const counts = await PagamentoManualFilaItem.findAll({
     attributes: ['status', [sequelize.fn('COUNT', sequelize.col('PagamentoManualFilaItem.id')), 'total']],
-    include: [{ model: TituloFinanceiro, as: 'titulo', required: true, attributes: [], where: tituloWhere(filters) }],
+    include: [{ model: TituloFinanceiro, as: 'titulo', required: true, attributes: [], where: filtroConsulta }],
     group: ['PagamentoManualFilaItem.status'],
     raw: true
   });
@@ -274,14 +277,18 @@ async function listarFilaPagamentos(req, filters = {}) {
     [Op.and]: whereSemEstornoFila()
   }, include: [{ model: TituloFinanceiro, as: 'titulo', required: true, attributes: [], where: tituloWhere(filters) }] });
   resumo.PENDENTE_COMPROVANTE = await PagamentoManualFilaItem.count({ where: wherePendenteComprovante(),
-    include: [{ model: TituloFinanceiro, as: 'titulo', required: true, attributes: [], where: tituloWhere(filters) }] });
+    include: [{ model: TituloFinanceiro, as: 'titulo', required: true, attributes: [], where: filtroConsulta }] });
   // Catalogo minimo apenas de titulos desta fila/status, nao de todas as empresas/credores.
   // Independente dos filtros estruturados para permitir trocar/limpar selecoes vazias.
   const opcoes = await PagamentoManualFilaItem.findAll({ where, attributes: [],
     include: [{ model: TituloFinanceiro, as: 'titulo', required: true, attributes: ['empresa_id', 'parceiro_id'],
+      ...(obrasCompartilhadas !== null ? { where: require('./tituloCompartilhadoLeitura').escopoCompletoSql(obrasCompartilhadas, 'titulo') } : {}),
       include: [{ model: EmpresaGrupo, as: 'empresa', attributes: ['id', 'nome'] },
-        { model: Parceiro, as: 'parceiro', attributes: ['id', 'nome'] }] }],
-    group: ['titulo.empresa_id', 'titulo.parceiro_id', 'titulo.empresa.id', 'titulo.empresa.nome', 'titulo.parceiro.id', 'titulo.parceiro.nome'],
+        { model: Parceiro, as: 'parceiro', attributes: ['id', 'nome'] },
+        { model: require('../models').TituloCompartilhadoOrigem, as: 'participacoesCompartilhadas', attributes: ['empresa_id'],
+          include: [{ model: EmpresaGrupo, as: 'empresa', attributes: ['id', 'nome'] }] }] }],
+    group: ['titulo.empresa_id', 'titulo.parceiro_id', 'titulo.empresa.id', 'titulo.empresa.nome', 'titulo.parceiro.id', 'titulo.parceiro.nome',
+      'titulo.participacoesCompartilhadas.empresa_id', 'titulo.participacoesCompartilhadas.empresa.id', 'titulo.participacoesCompartilhadas.empresa.nome'],
     raw: true, nest: true });
   return { data, resumo, filtros: opcoesDosTitulos(opcoes), limite,
     ...(paginado ? { total, pagina, total_paginas: paginas } : {}) };
@@ -417,7 +424,8 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
     });
     if (titulos.length !== tituloIds.length) throw createHttpError(404, 'Um ou mais titulos nao foram encontrados.');
     for (const titulo of titulos) {
-      if (obrasPermitidas !== null && !obrasPermitidas.includes(Number(titulo.obra_id))) {
+      if (titulo.compartilhamento_id) await require('./tituloCompartilhadoLeitura').assertEscopo(req, titulo, transaction);
+      if (!titulo.compartilhamento_id && obrasPermitidas !== null && !obrasPermitidas.includes(Number(titulo.obra_id))) {
         throw createHttpError(403, `O titulo ${titulo.codigo || titulo.id} nao pertence a uma obra do seu acesso.`);
       }
       if (String(titulo.tipo || '').toUpperCase() !== 'PAGAR') {
@@ -518,7 +526,11 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
     const vinculosSolicitacoes = await resolverSolicitacoesDosTitulos(novos, transaction);
     await registrarVinculosContratuaisAoEnfileirar({ titulos: novos, vinculos: vinculosSolicitacoes,
       usuarioId: req.user?.id || null, transaction });
-    const solicitacaoIdsEnvio = [...new Set([...vinculosSolicitacoes.values()].map(v => v.solicitacao_id).filter(Boolean))].sort((a, b) => a - b);
+    const compartilhados = novos.filter(t => t.compartilhamento_id);
+    const origensCompartilhadas = compartilhados.length ? await require('../models').TituloCompartilhadoOrigem.findAll({
+      where: { titulo_financeiro_id: { [Op.in]: compartilhados.map(t => t.id) } }, transaction, attributes: ['titulo_financeiro_id', 'solicitacao_id'] }) : [];
+    const solicitacaoIdsEnvio = [...new Set([...vinculosSolicitacoes.values()].map(v => v.solicitacao_id)
+      .concat(origensCompartilhadas.map(o => Number(o.solicitacao_id))).filter(Boolean))].sort((a, b) => a - b);
     const contratosEnvio = solicitacaoIdsEnvio.length ? await Contrato.findAll({
       where: { solicitacao_id: { [Op.in]: solicitacaoIdsEnvio }, fluxo_novo: true },
       attributes: ['solicitacao_id'], transaction
@@ -527,12 +539,14 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
     for (const solicitacaoId of solicitacaoIdsEnvio) {
       const solicitacao = await Solicitacao.findByPk(solicitacaoId, { transaction, lock: transaction.LOCK.UPDATE });
       if (!solicitacao) continue;
+      if (solicitacao.cancelada && origensCompartilhadas.some(o => Number(o.solicitacao_id) === solicitacaoId)) continue;
       await encaminharSolicitacaoParaFinanceiroAoEnfileirar({
         solicitacao,
         usuarioId: req.user?.id || null,
         transaction,
         retornarParaObra: solicitacoesContrato.has(solicitacaoId),
-        titulos: novos.filter(t => vinculosSolicitacoes.get(Number(t.id))?.solicitacao_id === solicitacaoId)
+        titulos: novos.filter(t => vinculosSolicitacoes.get(Number(t.id))?.solicitacao_id === solicitacaoId
+          || origensCompartilhadas.some(o => Number(o.titulo_financeiro_id) === Number(t.id) && Number(o.solicitacao_id) === solicitacaoId))
       });
     }
     const processados = itens.filter(item => !ACTIVE_STATUSES.includes(item.status)).length;
@@ -577,6 +591,10 @@ async function anexarComprovanteFila(req, filaId, file) {
   const result = await vincularArquivoFila(req, [filaId], file, false);
   return result.itens[0];
 }
+async function conferirEscopoComprovanteCompartilhado(req, item, transaction) {
+  const titulo = await TituloFinanceiro.unscoped().findByPk(item.titulo_financeiro_id, { attributes: ['id', 'compartilhamento_id'], transaction });
+  if (titulo?.compartilhamento_id) await require('./tituloCompartilhadoLeitura').assertEscopo(req, titulo, transaction);
+}
 
 async function anexarComprovanteFilaLote(req, filaIds, file) {
   // Mesma permissao do anexo individual; nao e uma permissao de baixa automatica.
@@ -601,6 +619,7 @@ async function vincularArquivoFila(req, filaIds, file, lote) {
   const anteriores = new Map();
   for (const id of ids) {
     const item = await PagamentoManualFilaItem.findByPk(id);
+    if (item) await conferirEscopoComprovanteCompartilhado(req, item);
     // Repetir o mesmo par fila/hash e inofensivo mesmo apos sair do filtro de pendencia.
     const existente = await PagamentoManualFilaComprovante.findOne({ where: { fila_id: id, hash } });
     const repetido = item && (item.comprovante_hash === hash || existente);
@@ -619,6 +638,7 @@ async function vincularArquivoFila(req, filaIds, file, lote) {
     for (const id of ids) {
       const item = await PagamentoManualFilaItem.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
       if (!podeAnexarComprovanteFila(item)) throw createHttpError(409, 'O item nao permite anexar comprovantes.');
+      await conferirEscopoComprovanteCompartilhado(req, item, transaction);
       const existente = item.comprovante_hash === hash || await PagamentoManualFilaComprovante.findOne({ where: { fila_id: id, hash }, transaction });
       if (!existente) {
         if (!podeAnexar(item) || JSON.stringify(anteriores.get(id)) !== JSON.stringify([item.status, Number(item.movimento_financeiro_id || 0)]) || !uploads.get(id)) {
@@ -647,9 +667,10 @@ async function vincularArquivoFila(req, filaIds, file, lote) {
 async function obterComprovanteFila(req, filaId) {
   const item = await PagamentoManualFilaItem.findByPk(filaId, {
     attributes: ['id', 'titulo_financeiro_id', 'comprovante_nome', 'comprovante_url'],
-    include: [{ model: TituloFinanceiro, as: 'titulo', attributes: ['id', 'solicitacao_id'] }]
+    include: [{ model: TituloFinanceiro, as: 'titulo', attributes: ['id', 'solicitacao_id', 'compartilhamento_id'] }]
   });
   if (!item?.comprovante_url) throw createHttpError(404, 'Comprovante nao encontrado.');
+  if (item.titulo?.compartilhamento_id) await require('./tituloCompartilhadoLeitura').assertEscopo(req, item.titulo);
   const acesso = item.titulo?.solicitacao_id
     ? await canAccessSolicitacaoFile(req, item.titulo.solicitacao_id)
     : { allowed: await canAccessFilaPagamentos(req.user) };
@@ -666,12 +687,13 @@ async function obterComprovanteAdicionalFila(req, filaId, comprovanteId) {
   }
   const item = await PagamentoManualFilaItem.findByPk(filaNumerica, {
     attributes: ['id', 'titulo_financeiro_id'],
-    include: [{ model: TituloFinanceiro, as: 'titulo', attributes: ['id', 'solicitacao_id'] }]
+    include: [{ model: TituloFinanceiro, as: 'titulo', attributes: ['id', 'solicitacao_id', 'compartilhamento_id'] }]
   });
   const comprovante = item && await PagamentoManualFilaComprovante.findOne({
     where: { id: comprovanteNumerico, fila_id: item.id }, attributes: ['nome', 'url']
   });
   if (!comprovante?.url) throw createHttpError(404, 'Comprovante nao encontrado.');
+  if (item.titulo?.compartilhamento_id) await require('./tituloCompartilhadoLeitura').assertEscopo(req, item.titulo);
   const acesso = item.titulo?.solicitacao_id
     ? await canAccessSolicitacaoFile(req, item.titulo.solicitacao_id)
     : { allowed: await canAccessFilaPagamentos(req.user) };
@@ -723,6 +745,7 @@ async function processarItemFila(req, itemPayload, requestKey, transaction, liqu
   }
   assertTituloDisponivelParaBaixa(titulo);
 
+  if (titulo.compartilhamento_id) await require('./tituloCompartilhadoLeitura').assertEscopo(req, titulo, transaction);
   // Somente a liquidacao interna ja validada pode usar a empresa da carteira.
   // Nao ha flag no payload publico que dispense a conta dos demais pagamentos.
   const carteiraCompartilhada = liquidacao?.fonte?.usar_cheque_terceiro === true;
@@ -736,7 +759,9 @@ async function processarItemFila(req, itemPayload, requestKey, transaction, liqu
 
   const empresaPagadoraId = carteiraCompartilhada ? liquidacao.fonte.empresa_id : conta.empresa_id;
   const empresaTituloId = await carregarEmpresaTitulo(titulo, transaction);
-  const baixaEntreEmpresas = Boolean(empresaTituloId && Number(empresaPagadoraId) !== empresaTituloId);
+  const baixaEntreEmpresas = titulo.compartilhamento_id
+    ? await require('./tituloCompartilhadoPagamento').entreEmpresas(titulo, empresaPagadoraId, transaction)
+    : Boolean(empresaTituloId && Number(empresaPagadoraId) !== empresaTituloId);
 
   const valorPago = roundCurrency(itemPayload.valor_pago);
   const encargos = { juros: itemPayload.juros ?? filaItem.juros, multa: itemPayload.multa ?? filaItem.multa,
@@ -942,7 +967,9 @@ async function aprovarDivergenciasFila(req, payload = {}) {
           throw createHttpError(400, `A conta pagadora do titulo ${titulo.codigo || titulo.id} e invalida ou nao possui empresa.`);
         }
         const empresaTituloId = await carregarEmpresaTitulo(titulo, transaction);
-        const baixaEntreEmpresas = Boolean(empresaTituloId && Number(conta.empresa_id) !== empresaTituloId);
+        const baixaEntreEmpresas = titulo.compartilhamento_id
+          ? await require('./tituloCompartilhadoPagamento').entreEmpresas(titulo, conta.empresa_id, transaction)
+          : Boolean(empresaTituloId && Number(conta.empresa_id) !== empresaTituloId);
 
         const valorPago = roundCurrency(current.valor_informado);
         const valores = calcularValoresFila(current.valor_informado, titulo.valor_saldo, {

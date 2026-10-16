@@ -1,5 +1,37 @@
 # Modulo COMPRAS
 
+## Compra consolidada / titulos compartilhados - 2026-10-16
+
+Em pedido fechado e adotado no fluxo financeiro, `Gerar titulos compartilhados`
+permite buscar outras solicitacoes/pedidos visiveis e consolidar a divida do
+mesmo fornecedor. Obras e CNPJs devedores diferentes **nao bloqueiam a criacao**.
+Cada parcela e um titulo unico, vinculado a todas as origens, com participacoes
+por empresa/obra/pedido; nao duplicar o valor total em cada pedido.
+
+Pedidos participam pelo total fechado do fornecedor, incluindo frete embutido;
+frete de terceiro permanece no fluxo separado e precisa estar regularizado.
+Nao substitui cotacao, fechamento de pedido, aprovacao ou gestao de fretes.
+Origens ja tituladas, pedidos legados nao adotados e fluxos especializados nao
+podem ser reintroduzidos como nova divida. Permissoes/modulo/visibilidade atuais
+sao revalidados na busca, previa e confirmacao, inclusive em retry.
+
+Conferir credor/favorecido, forma, instrucoes, empresa/CNPJ de cada origem e
+parcelas; aceitar a previa para gerar. Alterar qualquer condicao exige nova
+conferencia. Duplo clique/retry da mesma chave nao gera outra leva. Baixa parcial,
+estorno e cancelamento integral sem pagamentos conservam os vinculos/auditoria.
+Pedido mostra sua participacao; operacoes financeiras sobre o titulo inteiro
+exigem escopo de todas as obras e as permissoes financeiras atuais.
+
+Homologar em dev: duas obras/CNPJs, mesmo fornecedor, duas parcelas com centavos;
+conferir um unico titulo por parcela em todas as origens/fila; baixar parcialmente,
+estornar, conferir saldos/relatorios por empresa e repetir envio; testar usuario
+sem acesso a uma origem. Testar cancelamento integral com motivo, negativa com
+pagamento/fila ativa e bloqueio de duplicacao pelo fluxo individual.
+
+Migration nova `202610160001_titulos_compartilhados.js` ainda nao aplicada nesta
+etapa local. Detalhes, limites e caminhos preservados (inclusive bancario
+automatico) no [README Financeiro](../financeiro/README.md#titulos-compartilhados-entre-origens-e-cnpjs---2026-10-16).
+
 ## Compra Direta: quantidade e frete depois da criacao - 2026-10-15
 
 No detalhe, `Gerenciar todos os itens` e `Editar` permitem alterar a quantidade

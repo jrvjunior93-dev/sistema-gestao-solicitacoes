@@ -121,6 +121,9 @@ async function capabilitiesForUser(user) {
 
 function titleInclude() {
   return [
+    { model: require('../models').TituloCompartilhadoOrigem, as: 'participacoesCompartilhadas', separate: true,
+      attributes: ['id', 'solicitacao_id', 'pedido_compra_id', 'obra_id', 'empresa_id', 'valor'], order: [['id', 'ASC']],
+      include: [{ model: EmpresaGrupo, as: 'empresa', attributes: ['id', 'nome'] }, { model: Obra, as: 'obra', attributes: ['id', 'nome'] }] },
     { model: Parceiro, as: 'parceiro', attributes: ['id', 'nome', 'cpf_cnpj'] },
     { model: Parceiro, as: 'favorecidoPagamento', attributes: ['id', 'nome', 'cpf_cnpj'] },
     { model: Obra, as: 'obra', attributes: ['id', 'codigo', 'nome'] },
@@ -135,6 +138,10 @@ function buildSnapshot(title) {
   const creditor = title.favorecidoPagamento || title.parceiro;
   return {
     titulo_id: Number(title.id),
+    ...(title.compartilhamento_id ? { compartilhamento_id: Number(title.compartilhamento_id),
+      participacoes: (title.participacoesCompartilhadas || []).map(p => ({ solicitacao_id: Number(p.solicitacao_id),
+        pedido_compra_id: p.pedido_compra_id ? Number(p.pedido_compra_id) : null, obra_id: Number(p.obra_id), empresa_id: Number(p.empresa_id),
+        obra_nome: p.obra?.nome || null, empresa_nome: p.empresa?.nome || null, valor: roundCurrency(p.valor) })) } : {}),
     codigo: title.codigo || null,
     descricao: title.descricao,
     valor_saldo: roundCurrency(title.valor_saldo),
@@ -176,7 +183,8 @@ async function createBatch(req, payload = {}) {
   const result = await sequelize.transaction(async (transaction) => {
     const titles = await TituloFinanceiro.findAll({ where: { id: { [Op.in]: titleIds } }, include: titleInclude(), transaction, lock: transaction.LOCK.UPDATE, order: [['id', 'ASC']] });
     if (titles.length !== titleIds.length) throw httpError(404, 'Um ou mais titulos nao foram encontrados.');
-    if (obrasPermitidas !== null && titles.some((title) => !obrasPermitidas.includes(Number(title.obra_id)))) {
+    for (const title of titles.filter(t => t.compartilhamento_id)) await require('./tituloCompartilhadoLeitura').assertEscopo(req, title, transaction);
+    if (obrasPermitidas !== null && titles.some((title) => !title.compartilhamento_id && !obrasPermitidas.includes(Number(title.obra_id)))) {
       throw httpError(403, 'Um ou mais titulos nao pertencem a uma obra do seu acesso.');
     }
     const concurrentDuplicate = await PagamentoAutorizacaoLote.findOne({ where: { idempotency_key: idempotencyKey }, transaction, lock: transaction.LOCK.UPDATE });
@@ -191,7 +199,7 @@ async function createBatch(req, payload = {}) {
       }
       return buildSnapshot(title);
     });
-    const solicitationIds = Array.from(new Set(titles.map((title) => Number(title.solicitacao_id)).filter(Boolean)));
+    const solicitationIds = Array.from(new Set(titles.flatMap(title => [Number(title.solicitacao_id), ...(title.participacoesCompartilhadas || []).map(p => Number(p.solicitacao_id))]).filter(Boolean)));
     const attachments = solicitationIds.length ? await Anexo.findAll({
       where: { solicitacao_id: { [Op.in]: solicitationIds }, deleted_at: null },
       attributes: ['id', 'solicitacao_id', 'tipo', 'nome_original', 'caminho_arquivo'], transaction, order: [['id', 'ASC']]
@@ -204,7 +212,8 @@ async function createBatch(req, payload = {}) {
     }, new Map());
     const dossierMaterial = snapshots.map((snapshot) => {
       const title = titles.find((candidate) => Number(candidate.id) === snapshot.titulo_id);
-      const documents = (attachmentsBySolicitation.get(Number(title?.solicitacao_id)) || []).map((attachment) => ({
+      const origensDocumentos = [...new Set([Number(title?.solicitacao_id), ...(title?.participacoesCompartilhadas || []).map(p => Number(p.solicitacao_id))].filter(Boolean))];
+      const documents = origensDocumentos.flatMap(id => attachmentsBySolicitation.get(id) || []).map((attachment) => ({
         origem_id: Number(attachment.id), nome: attachment.nome_original || `Documento ${attachment.id}`,
         origem_tipo: attachment.tipo || 'ANEXO', source_url: attachment.caminho_arquivo,
         arquivo_hash: sha256({ source_url: attachment.caminho_arquivo })

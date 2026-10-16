@@ -1108,6 +1108,12 @@ const allowComprasPedidosFinanceiroPrevisao = allowPaymentAction(
   canGerarPrevisaoPedidoCompraFinanceiro,
   'Acesso negado para gerar previsoes financeiras do pedido'
 );
+// Mesmas permissões funcionais; cada origem é revalidada pelo serviço.
+const allowTitulosCompartilhados = allowPaymentAction('TITULOS_COMPARTILHADOS', async user =>
+  await canGerarPrevisaoPedidoCompraFinanceiro(user)
+    || (await require('./services/authorizationService').canOperateSolicitacaoFinanceiro(user)
+      && await require('./services/authorizationService').userHasAreaPermission(user, ['financeiro.titulos.criar'])),
+  'Acesso negado para gerar títulos compartilhados');
 const allowComprasPedidosFinanceiroDocumento = allowPaymentAction(
   'COMPRAS_PEDIDOS_FINANCEIRO_DOCUMENTO',
   canAnexarDocumentoPedidoCompraFinanceiro,
@@ -2556,6 +2562,10 @@ router.get('/compras/relatorios/precos-insumos', allowComprasRelatoriosRead, val
 router.get('/compras/relatorios/ciclo', allowComprasRelatoriosRead, validateRequest({ query: validateCompraRelatorioCicloQuery }), scopeCompraListAccess, RelatorioComprasController.ciclo);
 router.get('/compras/relatorios/economia-cotacoes', allowComprasRelatoriosRead, validateRequest({ query: validateCompraRelatorioEconomiaCotacoesQuery }), scopeCompraListAccess, RelatorioComprasController.economiaCotacoes);
 router.get('/compras/relatorios/fornecedores', allowComprasRelatoriosRead, validateRequest({ query: validateCompraRelatorioFornecedoresQuery }), scopeCompraListAccess, RelatorioComprasController.fornecedores);
+router.get('/titulos-compartilhados/origens', requireEnabledModule('SOLICITACOES'), allowTitulosCompartilhados, require('./controllers/TituloCompartilhadoController').buscar);
+router.post('/titulos-compartilhados/preview', requireEnabledModule('SOLICITACOES'), allowTitulosCompartilhados, criticalRateLimit, require('./controllers/TituloCompartilhadoController').preview);
+router.post('/titulos-compartilhados', requireEnabledModule('SOLICITACOES'), allowTitulosCompartilhados, criticalRateLimit, require('./controllers/TituloCompartilhadoController').confirmar);
+router.post('/titulos-compartilhados/:id/cancelar', requireEnabledModule('FINANCEIRO'), allowFinanceiroArea('TITULOS_COMPARTILHADOS_CANCELAR', ['financeiro.titulos.excluir']), criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Lote') }), require('./controllers/TituloCompartilhadoController').cancelar);
 router.get('/compras/pedidos/:id', allowComprasPedidosRead, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra') }), requirePedidoCompraAccess, PedidoCompraController.show);
 router.post('/compras/pedidos/:id/itens', allowComprasPedidosEditarItens, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoItemAddBody }), requirePedidoCompraAccess, PedidoCompraController.addItem);
 router.patch('/compras/pedidos/:id/status', allowComprasPedidosAlterarStatus, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoStatusBody }), requirePedidoCompraAccess, PedidoCompraController.updateStatus);

@@ -1,5 +1,30 @@
 # Ownership Ativo
 
+## Titulos compartilhados entre solicitacoes e empresas - 2026-10-16
+
+- Publicacao DEV autorizada agora: reserva temporaria do delta, script/teste de
+  deploy DEV e handoff para commit/push em refactor/frontend. Sem executar EC2,
+  migration real ou producao. Incluir somente migration 202610160001.
+- Script e negativas de deploy, backend/UI, performance/fila/DP, docs e build
+  revalidados. Reserva de publicacao encerrada e ownership liberado; apenas
+  este delta segue para refactor/frontend, sem outputs/ ou outro checkout.
+- Reserva do agente unico desta conversa, sem delegacao. Base DEV bed984fa.
+- Usuario autorizou implementar: uma parcela/titulo canonico, com participacao
+  por origem e empresa, inclusive obras e CNPJs distintos. Nao executar banco
+  real, migrations, reinicio, deploy ou alteracoes em producao.
+- Reservados: novos modelos/migration/domain/services/controller e UI de lote
+  compartilhado; integracoes de titulos, pedidos, fila, rateio/relatorios,
+  permissoes/rotas correspondentes, testes isolados, docs e handoff.
+- Migration reservada: 202610160001_titulos_compartilhados.js (schema apenas).
+- Preservar visibilidade de cada origem, trilha financeira, centavos exatos,
+  idempotencia, baixas/estornos e impedir cancelamento por uma origem isolada.
+- Worktree performance-fila-dp-20261015, branch
+  codex/titulos-compartilhados-20261016. Outros checkouts preservados.
+- Implementacao/QA local concluidos; reserva encerrada, ownership liberado.
+  Handoff: docs/handoffs/2026-10-16-titulos-compartilhados.md. Sem commit/push,
+  migration aplicada ou producao. Publicacao/homologacao DEV dependem do pedido.
+  Escopo: fila manual; envio bancario automatico multiempresa nao ampliado.
+
 ## Performance da fila e RH/DP - 2026-10-15
 
 - Reserva ativa do agente unico desta conversa, sem delegacao. Base DEV da9cf569.

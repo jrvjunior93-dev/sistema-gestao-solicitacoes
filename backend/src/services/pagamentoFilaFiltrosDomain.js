@@ -35,7 +35,7 @@ function tituloWhere(filters = {}) {
   const clauses = [];
   if (filters.origem === 'RH_DP') clauses.push({ origem_titulo: { [Op.in]: ORIGENS_DP } });
   if (filters.origem === 'OUTROS') clauses.push({ origem_titulo: { [Op.notIn]: ORIGENS_DP } });
-  if (filters.empresa_id) clauses.push({ empresa_id: Number(filters.empresa_id) });
+  if (filters.empresa_id) clauses.push(require('./tituloCompartilhadoLeitura').whereOrigem({ empresa_id: Number(filters.empresa_id) }, 'titulo'));
   if (filters.credor_id) clauses.push({ parceiro_id: Number(filters.credor_id) });
   if (filters.recebimento_dp) clauses.push(where(literal(recebimentoDpSql()), filters.recebimento_dp));
   return clauses.length ? { [Op.and]: clauses } : {};
@@ -46,6 +46,8 @@ function opcoesDosTitulos(rows) {
   for (const row of rows) {
     const titulo = row.titulo || {};
     if (titulo.empresa?.id) empresas.set(Number(titulo.empresa.id), { id: Number(titulo.empresa.id), nome: titulo.empresa.nome });
+    const compartilhada = titulo.participacoesCompartilhadas?.empresa;
+    if (compartilhada?.id) empresas.set(Number(compartilhada.id), { id: Number(compartilhada.id), nome: compartilhada.nome });
     if (titulo.parceiro?.id) credores.set(Number(titulo.parceiro.id), { id: Number(titulo.parceiro.id), nome: titulo.parceiro.nome });
   }
   const ordenar = map => [...map.values()].sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
@@ -59,6 +61,7 @@ function buscaTituloWhere(busca, escape) {
   return { [Op.or]: ['`titulo`.codigo', '`titulo`.descricao', '`titulo`.numero_documento',
     '`titulo->parceiro`.nome', '`titulo->parceiro`.cpf_cnpj', '`titulo->paymentBeneficiary`.nome',
     '`titulo->paymentBeneficiary`.cpf_cnpj', '`titulo->obra`.nome', '`titulo->obra`.codigo', '`titulo->solicitacao`.codigo']
-    .map(campo => literal(`LOWER(COALESCE(${campo}, '')) COLLATE utf8mb4_bin LIKE ${valor}`)) };
+    .map(campo => literal(`LOWER(COALESCE(${campo}, '')) COLLATE utf8mb4_bin LIKE ${valor}`))
+    .concat(require('./tituloCompartilhadoLeitura').buscaSql(termo, escape, 'titulo')) };
 }
 module.exports = { MODOS, ORIGENS_DP, recebimentoDpSql, recebimentoDpAtributo, tituloWhere, opcoesDosTitulos, buscaTituloWhere };
