@@ -24,7 +24,8 @@ const sequelize = new Sequelize(
       dialectOptions: {
         ssl: {
           ca: fs.readFileSync(env.dbSslCaFile),
-          rejectUnauthorized: true
+          rejectUnauthorized: true,
+          verifyIdentity: true
         }
       }
     } : {}),

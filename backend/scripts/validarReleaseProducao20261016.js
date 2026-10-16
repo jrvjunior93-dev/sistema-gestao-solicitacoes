@@ -2,7 +2,7 @@
 // Helper e script reais, configuracao/FS/PM2/banco isolados em memoria.
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const dotenv = require('dotenv');
-const { executar, ROOT, BASE, SOURCE, ALLOWED, ENV_FILE } = require('./releaseProducao20261016');
+const { executar, ROOT, BASE, SOURCE, ALLOWED, ENV_FILE, CA_FILE } = require('./releaseProducao20261016');
 const SHA = 'a'.repeat(40);
 async function testar(alterar = () => {}) {
   const args = { modo: '--preflight', cwd: `${ROOT}/backend`, expectedSha: SHA,
@@ -63,7 +63,9 @@ async function testar(alterar = () => {}) {
   const antes = dotenv.parse(r.textoAntes), depois = dotenv.parse(r.files.get(ENV_FILE)); assert.equal(depois.JWT_EXPIRES_IN, '12h'); delete antes.JWT_EXPIRES_IN; delete depois.JWT_EXPIRES_IN; assert.deepEqual(depois, antes);
   assert([...r.files.keys()].some(file => file.endsWith('.bak') && r.files.get(file) === r.textoAntes));
   for (const modo of ['--sessao-12h', '--verificar']) {
-    r = await testar(({ args, state, processos, files }) => { args.modo = modo; state.pending = []; args.env.jwtExpiresIn = '12h'; processos[0].pm2_env.JWT_EXPIRES_IN = '12h'; files.set(ENV_FILE, files.get(ENV_FILE).replace('JWT_EXPIRES_IN=8h', 'JWT_EXPIRES_IN=12h')); });
+    r = await testar(({ args, state, processos, files }) => { args.modo = modo; state.pending = []; args.env.jwtExpiresIn = '12h'; processos[0].pm2_env.JWT_EXPIRES_IN = '12h';
+      args.env.dbSslCaFile = args.runtimeEnv.DB_SSL_CA_FILE = processos[0].pm2_env.DB_SSL_CA_FILE = CA_FILE;
+      files.set(ENV_FILE, files.get(ENV_FILE).replace('JWT_EXPIRES_IN=8h', 'JWT_EXPIRES_IN=12h') + `DB_SSL_CA_FILE=${CA_FILE}\n`); });
     assert.equal(r.erro, null); assert.equal(r.writes, 0);
   }
   for (const modo of ['OFF', 'PILOT', 'ENFORCED', 'PAUSED']) {
@@ -100,6 +102,21 @@ async function testar(alterar = () => {}) {
   r = await testar(({ args, state }) => { args.modo = '--sessao-12h'; state.pending = []; state.mudou = true; }); assert(r.erro); assert.equal(r.writes, 2);
   r = await testar(({ args, state }) => { args.modo = '--sessao-12h'; state.pending = [ALLOWED[0]]; }); assert(r.erro); assert.equal(r.writes, 0);
   r = await testar(({ args, state }) => { args.modo = '--verificar'; state.pending = []; }); assert(r.erro); assert.equal(r.writes, 0);
+  const transicao = ({ args, processos, files }) => {
+    args.env.dbSslCaFile = args.runtimeEnv.DB_SSL_CA_FILE = CA_FILE; processos[0].pm2_env.DB_SSL_CA_FILE = '';
+    args.runtimeEnv.PROD_RELEASE_TLS_CONFIRMED = 'true'; files.set(ENV_FILE, files.get(ENV_FILE) + `DB_SSL_CA_FILE=${CA_FILE}\n`);
+  };
+  r = await testar(transicao); assert.equal(r.erro, null); assert.equal(r.writes, 0);
+  for (const mudar of [
+    ({ args }) => { delete args.runtimeEnv.PROD_RELEASE_TLS_CONFIRMED; },
+    ({ args }) => { delete args.runtimeEnv.PROD_RELEASE_BACKUP_CONFIRMED; },
+    ({ args }) => { delete args.runtimeEnv.PROD_RELEASE_TIMER_CONFIRMED; },
+    ({ args }) => { args.runtimeEnv.DB_SSL_CA_FILE = '/outro.pem'; },
+    ({ args }) => { args.env.dbSslCaFile = '/outro.pem'; },
+    ({ processos }) => { processos[0].pm2_env.DB_SSL_CA_FILE = '/outra-ca.pem'; },
+    ({ files }) => { files.set(ENV_FILE, files.get(ENV_FILE).replace(CA_FILE, '/outro.pem')); },
+    ({ args }) => { args.modo = '--verificar'; }
+  ]) { r = await testar(ctx => { transicao(ctx); mudar(ctx); }); assert(r.erro); assert.equal(r.queries, 0); assert.equal(r.writes, 0); }
   const source = fs.readFileSync(path.join(__dirname, '../../ops/deploy/atualizar-prod-pendencias-20261016.sh'), 'utf8');
   for (const texto of ['flock -n 9', 'fluxy-prod-db-backup.timer', 'test "$(git branch --show-current)" = main', '--preflight "$1"', '--aplicar-migrations "$1"', '--sessao-12h "$1"', 'JWT_EXPIRES_IN=12h pm2 restart backend-solicitacoes --update-env', '--verificar "$1"']) assert(source.includes(texto), texto);
   assert(source.indexOf('--preflight "$1"') < source.indexOf('--aplicar-migrations "$1"'));

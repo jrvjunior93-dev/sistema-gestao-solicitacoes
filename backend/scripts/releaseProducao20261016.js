@@ -15,6 +15,7 @@ const ALLOWED = Object.freeze([
 ]);
 const MODES = ['--preflight', '--aplicar-migrations', '--sessao-12h', '--verificar'];
 const ENV_FILE = `${ROOT}/backend/.env`;
+const CA_FILE = `${ROOT}/.git/fluxy-rds-global-bundle.pem`;
 
 function conferirArquivo(fileSystem) {
   const stat = fileSystem.lstatSync(ENV_FILE);
@@ -36,8 +37,8 @@ function guardarSessao(fileSystem, log) {
   log(`Somente JWT_EXPIRES_IN alterado para 12h em producao. Backup privado: ${path.posix.basename(backup)}`);
 }
 
-async function executar({ modo, expectedSha, cwd, env, runtimeEnv = process.env, validateRequiredEnv,
-  db, schema, execFileSync, fileSystem = fs, log = console.log }) {
+function conferirContexto({ modo, expectedSha, cwd, env, runtimeEnv = process.env, validateRequiredEnv,
+  execFileSync, fileSystem = fs, permitirTransicaoTls = false }) {
   if (!MODES.includes(modo)) throw Error('Modo de release invalido.');
   validateRequiredEnv();
   if (cwd !== `${ROOT}/backend` || env.deploymentEnvironment !== 'production' || Number(env.port) !== 8000
@@ -55,9 +56,15 @@ async function executar({ modo, expectedSha, cwd, env, runtimeEnv = process.env,
   const pmEnv = processos[0]?.pm2_env;
   if (processos.length !== 1 || path.posix.normalize(pmEnv?.pm_exec_path || '') !== `${ROOT}/backend/server.js`
     || Number(pmEnv.PORT || env.port) !== 8000) throw Error('PROCESSO_PRODUCAO_DIFERENTE. Nenhum processo alterado.');
-  for (const key of ['DB_HOST', 'DB_NAME', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_PASS', 'DB_SSL_CA_FILE', 'DEPLOYMENT_ENV']) {
+  for (const key of ['DB_HOST', 'DB_NAME', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_PASS', 'DEPLOYMENT_ENV']) {
     if (pmEnv[key] !== undefined && String(pmEnv[key]) !== String(runtimeEnv[key] ?? '')) throw Error(`Variavel ${key} diverge entre PM2 e terminal/.env. Confira sem compartilhar segredos.`);
   }
+  const caPm = String(pmEnv.DB_SSL_CA_FILE || '').trim(), caConfigurada = String(runtimeEnv.DB_SSL_CA_FILE || '').trim();
+  const transicaoTls = permitirTransicaoTls && !caPm && caConfigurada === CA_FILE
+    && env.dbSslCaFile === CA_FILE && arquivoEnv.DB_SSL_CA_FILE === CA_FILE
+    && runtimeEnv.PROD_RELEASE_TLS_CONFIRMED === 'true'
+    && runtimeEnv.PROD_RELEASE_BACKUP_CONFIRMED === 'true' && runtimeEnv.PROD_RELEASE_TIMER_CONFIRMED === 'true';
+  if (pmEnv.DB_SSL_CA_FILE !== undefined && caPm !== caConfigurada && !transicaoTls) throw Error('DB_SSL_CA_FILE diverge do PM2 fora da transicao TLS autorizada.');
   for (const [key, carregado] of [['DEV_USER_SWITCH_ENABLED', env.devUserSwitchEnabled], ['PRODUCTION_USER_SWITCH_ENABLED', env.productionUserSwitchEnabled]]) {
     if (pmEnv[key] !== undefined && ['1', 'true', 'yes', 'on'].includes(String(pmEnv[key]).trim().toLowerCase()) !== carregado) throw Error(`Flag ${key} divergente. Nao alterar para contornar.`);
   }
@@ -65,10 +72,17 @@ async function executar({ modo, expectedSha, cwd, env, runtimeEnv = process.env,
   const configurado = String(runtimeEnv.PAYMENT_OWNER_APPROVAL_MODE || 'OFF').trim().toUpperCase();
   const atual = String(pmEnv.PAYMENT_OWNER_APPROVAL_MODE || 'OFF').trim().toUpperCase();
   if (!modos.includes(configurado) || !modos.includes(atual) || configurado !== env.paymentOwnerApprovalMode || atual !== configurado) throw Error('Modo de autorizacao invalido ou divergente. Nao alterar a flag para contornar.');
+  return { arquivoEnv, pmEnv, git, atual, transicaoTls };
+}
+async function executar({ modo, expectedSha, cwd, env, runtimeEnv = process.env, validateRequiredEnv,
+  db, schema, execFileSync, fileSystem = fs, log = console.log }) {
+  const { arquivoEnv, pmEnv, git, atual, transicaoTls } = conferirContexto({ modo, expectedSha, cwd, env, runtimeEnv,
+    validateRequiredEnv, execFileSync, fileSystem, permitirTransicaoTls: modo !== '--verificar' });
   const [rows] = await db.query('SELECT @@GLOBAL.server_uuid AS uuid, DATABASE() AS banco');
   if (rows[0]?.uuid !== '5ed4b970-009f-11f1-809c-0ad0e0c90c53' || rows[0]?.banco !== 'gestao_solicitacoes') throw Error('BANCO_PRODUCAO_DIFERENTE. Nenhuma alteracao executada.');
   const [ssl] = await db.query("SHOW SESSION STATUS LIKE 'Ssl_cipher'");
   if (!ssl[0]?.Value) throw Error('Conexao TLS com o banco nao confirmada. Pare e confira.');
+  if (transicaoTls) log('Transicao autorizada: somente CA TLS vazia no PM2 passa ao certificado oficial antes do restart.');
   const state = await schema.getMigrationState();
   if (!state.tableExists || state.pending.some(nome => !ALLOWED.includes(nome))) throw Error('Migrations adicionais ou controle ausente. Pare e envie a lista: ' + state.pending.join(', '));
   for (const name of ALLOWED) {
@@ -90,6 +104,7 @@ async function executar({ modo, expectedSha, cwd, env, runtimeEnv = process.env,
   await schema.assertMigrationsUpToDate();
   if (modo === '--sessao-12h') guardarSessao(fileSystem, log);
   if (modo === '--verificar') {
+    if (env.dbSslCaFile !== CA_FILE || arquivoEnv.DB_SSL_CA_FILE !== CA_FILE || String(pmEnv.DB_SSL_CA_FILE || '').trim() !== CA_FILE) throw Error('TLS persistente nao confirmado no .env/configuracao/PM2 de producao.');
     if (env.jwtExpiresIn !== '12h' || arquivoEnv.JWT_EXPIRES_IN !== '12h' || String(pmEnv.JWT_EXPIRES_IN || '').trim() !== '12h') throw Error('Sessao12h nao confirmada no .env/configuracao/PM2 de producao.');
     log('Sessao de producao confirmada em 12h. Novo login necessario; inatividade preservada.');
   }
@@ -102,4 +117,4 @@ if (require.main === module) {
     db, schema: require('../src/database/runMigrations'), execFileSync: require('node:child_process').execFileSync })
     .catch(e => { console.error(e.message); process.exitCode = 1; }).finally(() => db.close());
 }
-module.exports = { executar, guardarSessao, ROOT, BASE, SOURCE, ALLOWED, ENV_FILE };
+module.exports = { executar, conferirContexto, guardarSessao, ROOT, BASE, SOURCE, ALLOWED, ENV_FILE, CA_FILE };
