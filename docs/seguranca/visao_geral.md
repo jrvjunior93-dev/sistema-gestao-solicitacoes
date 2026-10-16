@@ -25,6 +25,27 @@
 - anexos
 - usuarios e configuracoes
 
+## Prazo de login - 16/10/2026
+
+- Prazo absoluto padrao de autenticacao: 12 horas desde a emissao do JWT, definido
+  por `JWT_EXPIRES_IN=12h`. Nao renova silenciosamente com atividade nem muda
+  tokens ja emitidos; e necessario novo login para receber o novo vencimento.
+- Cookies de autenticacao e CSRF acompanham o mesmo `exp` do token; frontend usa
+  `session_expires_at` retornado pelo backend. Nao ha outro limite fixo de 8h na UI.
+- Logout por inatividade e independente e continua na configuracao atual. Logout,
+  revogacao/token_version, senha, MFA e permissoes conservam suas validacoes.
+- Deploy precisa conferir `JWT_EXPIRES_IN` efetivo no .env/terminal e PM2: valor
+  explicito antigo `8h` prevalece sobre o padrao. Ajustar para `12h` no ambiente
+  autorizado antes de reiniciar exclusivamente seu processo. Nao alterar .env ou
+  PM2 de producao durante atualizacao DEV. Nenhuma migration necessaria.
+- Teste isolado: `cd backend` e `npm run test:sessao-12h`. Confere token/cookies
+  apos 8h, vencimento em 12h, tokens antigos e desafio MFA curto, sem .env real.
+- Atualizacao DEV: `ops/deploy/atualizar-dev-rh-sessao-12h-20261016.sh` confere
+  identidade/schema/processo, guarda backup privado do .env, altera somente
+  JWT_EXPIRES_IN e reinicia backend-dev com override 12h. Revalida PM2/.env e health;
+  nao aplica migrations nem grava dump global do PM2. Revalidar o prazo depois de
+  eventual restauracao de dump antigo/reboot da EC2.
+
 ## Regra Estrutural
 
 O frontend pode sugerir uma acao. A permissao real, o valor valido e o escopo final sempre dependem do backend.

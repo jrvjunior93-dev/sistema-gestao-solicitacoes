@@ -1,5 +1,34 @@
 # Modulo RH/DP
 
+## Movimentacoes documentais e comunicacao de acidente - 2026-10-16
+
+- Em Colaboradores > Movimentacoes, novos subtipos: Contra-cheque
+  (`CONTRA_CHEQUE`), Folha de ponto (`FOLHA_PONTO`) e Acidente de Trabalho - CAT
+  (`ACIDENTE_TRABALHO_CAT`). Rotulos compartilhados entre abertura, lista,
+  solicitacoes do colaborador e detalhe, sem mostrar apenas Movimentacao.
+- Contra-cheque e folha de ponto orientam anexar arquivos assinados. Mantem o
+  fluxo atual: criar rascunho, anexar varios arquivos e enviar ao DP. Classificacao
+  documental e opcional conforme checklist configurado; anexo sem classificacao
+  permanece na solicitacao. Somente documentos classificados e validados pelo DP
+  seguem para a pasta documental, conforme regras existentes. Nao valida assinatura
+  digital automaticamente e nao altera o cadastro de tipos/exigencias documentais.
+- CAT oferece o campo Relato do acidente (mesma justificativa persistida) e
+  anexos para comunicar internamente o DP. Nao emite/transmite CAT a orgaos
+  externos. Nao altera afastamento, salario, lotacao, apuracao nem gera titulos.
+  Os tres novos subtipos concluem como registro documental, sem efeito cadastral.
+- Mesmas permissoes de abrir/visualizar/decidir, escopo de obra, privacidade de
+  rascunho e auditoria do fluxo atual. Mantem protecao de duplo clique na tela,
+  transacao/mutex por colaborador e recusa de pedido igual ainda em andamento.
+  CAT continua no fluxo de envio ao DP; nao cria canal de emergencia ou alerta
+  externo automatico. Sem novas permissoes, seeds, migration ou integracao.
+- Testes isolados: `npm run test:rh-movimentacoes-documentais` no backend e
+  frontend. UI real desktop/mobile: tres tipos, dois PDFs, relato, payload,
+  lista/detalhe, duplo clique e somente leitura; modelos/S3 simulados.
+- Entrega DEV conjunta com sessao 12h:
+  `ops/deploy/atualizar-dev-rh-sessao-12h-20261016.sh`. Sem migrations novas;
+  confere identidade/schema/flags e reinicia somente backend-dev. Configuracao de
+  sessao e limites documentados em docs/seguranca/visao_geral.md.
+
 ## Consultas e atualizacao segura - 2026-10-15
 
 - Relatorio de titulos enviados: paginas de 50, filtros no SQL, historico completo

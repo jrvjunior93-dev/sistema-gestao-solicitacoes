@@ -1,4 +1,5 @@
 import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
+import { rotuloMovimentacao } from '../utils/rhMovimentacoes';
 import useConsultaSerial from '../hooks/useConsultaSerial';
 import usePollingSeguro from '../hooks/usePollingSeguro';
 import useQueryRevision from '../navigation/useQueryRevision';
@@ -702,7 +703,8 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
                   */}
                   {(s.tipo === 'TROCA_OBRA' || s.subtipo === 'TRANSFERENCIA_OBRA') && !s.colaborador?.obra_id
                     ? 'Vincular a obra'
-                    : ehPagamentoPorSolicitacao(s) ? 'Pagamento' : ROTULO_TIPO[s.tipo] || s.tipo}
+                    : ehPagamentoPorSolicitacao(s) ? 'Pagamento'
+                      : s.tipo === 'MOVIMENTACAO' && s.subtipo ? rotuloMovimentacao(s.subtipo) : ROTULO_TIPO[s.tipo] || s.tipo}
                 </span>
               )
             },
@@ -872,14 +874,14 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
             <div><span>Situacao</span><strong>{ROTULO_SITUACAO[aberta.situacao] || aberta.situacao}</strong></div>
             <div><span>Colaborador</span><strong>{aberta.tipo === 'JORNADA' ? 'Equipe da obra' : aberta.colaborador?.nome || aberta.dados_json?.nome || 'A admitir'}</strong></div>
             <div><span>Obra / Centro de Custo</span><strong>{aberta.obra?.nome || aberta.colaborador?.obra?.nome || '—'}</strong></div>
-            <div><span>Tipo</span><strong>{ROTULO_TIPO[aberta.tipo] || aberta.tipo}{aberta.subtipo ? ` · ${String(aberta.subtipo).replaceAll('_', ' ')}` : ''}</strong></div>
+            <div><span>Tipo</span><strong>{ROTULO_TIPO[aberta.tipo] || aberta.tipo}{aberta.subtipo ? ` · ${aberta.tipo === 'MOVIMENTACAO' ? rotuloMovimentacao(aberta.subtipo) : String(aberta.subtipo).replaceAll('_', ' ')}` : ''}</strong></div>
             <div><span>Aberta em</span><strong>{aberta.createdAt ? new Date(aberta.createdAt).toLocaleString('pt-BR') : '—'}</strong></div>
             <div><span>Ultima atualizacao</span><strong>{aberta.updatedAt ? new Date(aberta.updatedAt).toLocaleString('pt-BR') : '—'}</strong></div>
             {dadosOperacionais(aberta).map((campo) => (
               <div key={campo.chave}><span>{campo.rotulo}</span><strong>{campo.valor}</strong></div>
             ))}
             {aberta.justificativa ? (
-              <div className="rh-solicitacao-resumo--largo"><span>Justificativa</span><strong>{aberta.justificativa}</strong></div>
+              <div className="rh-solicitacao-resumo--largo"><span>{aberta.tipo === 'MOVIMENTACAO' && aberta.subtipo === 'ACIDENTE_TRABALHO_CAT' ? 'Relato do acidente' : 'Justificativa'}</span><strong>{aberta.justificativa}</strong></div>
             ) : null}
           </section>
           </details>

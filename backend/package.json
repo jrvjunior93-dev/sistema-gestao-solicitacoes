@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
+    "test:sessao-12h": "node scripts/validarDuracaoSessao.js",
+    "test:rh-movimentacoes-documentais": "node scripts/validarRhMovimentacoesDocumentais.js",
     "test:titulos-compartilhados": "node scripts/validarTitulosCompartilhados.js && node scripts/validarTitulosCompartilhadosMigration.js && node scripts/validarTitulosCompartilhadosSincronizacao.js",
     "test:performance-fila-dp": "node scripts/validarPerformanceFilaDp.js && node scripts/validarFilaPaginacao.js && node scripts/validarFilaFiltrosDp.js && node scripts/validarRhTitulosEnviadosRelatorio.js && node scripts/validarDeployPerformanceFilaDpDev.js",
     "test:fila-filtros-dp": "node scripts/validarFilaFiltrosDp.js",

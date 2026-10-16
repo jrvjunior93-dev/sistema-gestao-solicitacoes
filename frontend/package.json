@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:rh-movimentacoes-documentais": "node scripts/validarRhPessoalPorLocal.mjs --movimentacoes",
     "test:titulos-compartilhados": "node scripts/validarTitulosCompartilhadosModal.mjs",
     "test:polling-seguro": "node scripts/validarPollingSeguro.mjs",
     "test:visualizadores-arquivos": "node scripts/validarVisualizadoresArquivos.mjs todos",

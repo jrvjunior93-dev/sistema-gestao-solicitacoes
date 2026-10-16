@@ -1,5 +1,40 @@
 # Ownership Ativo
 
+## Duracao da sessao de login: 12 horas - 2026-10-16
+
+- Publicacao conjunta RH + sessao autorizada: reservar delta, scripts/testes de
+  deploy e handoffs para commit/push refactor/frontend. Entregar configuracao
+  DEV JWT_EXPIRES_IN=12h com backup restrito do .env; agente nao executa EC2.
+- Script/testes de deploy e regressoes RH/auth/UI, build, navegacao, docs e
+  sintaxe/bash aprovados; reserva de publicacao encerrada e ownership liberado.
+  Somente delta RH/sessao segue para DEV. Sem migration nova ou operacao real
+  de .env/PM2/EC2/producao executada pelo agente; outputs/ preservado.
+- Reserva do agente unico desta conversa, sem delegacao: backend/src/config/env.js,
+  backend/.env.example, novo validador de prazo JWT/cookies, package.json backend,
+  docs de seguranca e handoff. Preservar delta RH pendente no mesmo worktree.
+- Usuario autorizou aumentar o prazo absoluto de login de 8h para 12h. Sem alterar
+  logout por inatividade, MFA, CSRF, revogacao, permissoes ou flags de pagamento.
+- Nao editar .env real, PM2, banco ou producao; publicacao depende de pedido.
+- Implementacao local e testes de JWT/cookies, MFA/CSRF, revogacao e escopo
+  aprovados. Ownership liberado; handoff docs/handoffs/2026-10-16-sessao-login-12h.md.
+  Novo prazo requer novo login e JWT_EXPIRES_IN=12h efetivo no deploy autorizado.
+
+## Movimentacoes RH: contra-cheque, folha de ponto e CAT - 2026-10-16
+
+- Reserva do agente unico, sem delegacao. Base DEV c6b91b4e, branch
+  codex/rhdp-movimentacoes-documentos-cat-20261016 no worktree atual.
+- Escopo: tres subtipos de MOVIMENTACAO, anexos no fluxo atual e identificacao
+  legivel na lista/detalhe. Sem mudar ACL, salario, lotacao, apuracao ou financeiro.
+- Reservados: rhSolicitacaoService, RhDpPessoal/RhDpPessoalSolicitacoes,
+  novo helper de subtipos, testes backend/UI, package.json, README RH e handoff.
+- Nao executar banco real, migration, deploy ou producao. Commit/push dependem
+  de pedido desta entrega. CAT e comunicacao interna, sem integracao externa.
+- Implementacao e validacoes locais concluidas; ownership de edicao liberado.
+  Handoff: docs/handoffs/2026-10-16-rhdp-movimentacoes-documentos-cat.md. Testes
+  especificos backend/UI, escopo, primeira lotacao, pessoal por solicitacao,
+  consulta salario, build/navegacao/docs aprovados. Limitacao de fixture legada
+  da jornada registrada no handoff. Sem commit/push, migration ou producao.
+
 ## Titulos compartilhados entre solicitacoes e empresas - 2026-10-16
 
 - Publicacao DEV autorizada agora: reserva temporaria do delta, script/teste de
