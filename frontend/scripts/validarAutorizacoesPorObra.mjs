@@ -18,10 +18,10 @@ const server = await createServer({ root, server: { host: '127.0.0.1', port: 534
   load(id) { if (id === tag) return `export const autenticarComPasskey=async()=>{window.__passkeys=(window.__passkeys||0)+1;return {id:'qa-credential'}};`; },
   configureServer(s) { s.middlewares.use('/qa-obras', async (_req, res) => {
     res.setHeader('Content-Type', 'text/html'); res.end(await s.transformIndexHtml('/qa-obras', `<html lang="pt-BR"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module">
-import React from 'react';import{createRoot}from'react-dom/client';import Page from '/src/components/financeiro/AutorizacoesPorObra.jsx';import ModalPortal from '/src/components/ui/ModalPortal.jsx';
+import React from 'react';import{createRoot}from'react-dom/client';import{BrowserRouter}from'react-router-dom';import Page from '/src/components/financeiro/AutorizacoesPorObra.jsx';import ModalPortal from '/src/components/ui/ModalPortal.jsx';
 import '/src/index.css';import '/src/styles/design-tokens.css';import '/src/styles/componentes-padrao.css';import '/src/styles/financeiro-autorizacoes-pagamento.css';
 function App(){const[busy,setBusy]=React.useState(false);const[caps,setCaps]=React.useState({can_decide:true,passkey_count:1,mode:'PILOT'});const[doc,setDoc]=React.useState(null);window.__setCaps=setCaps;return React.createElement(React.Fragment,null,React.createElement('main',{style:{padding:12,maxWidth:1400,margin:'auto'}},React.createElement('h1',null,'Autorizações de pagamento'),React.createElement(Page,{caps,userId:31,busy,setBusy,abrirDocumento:async doc=>{window.__documento=doc.id;setDoc(doc)}})),doc&&React.createElement(ModalPortal,{onClose:()=>setDoc(null)},React.createElement('div',{role:'dialog','aria-label':'Documento QA',style:{position:'fixed',inset:20,zIndex:1100,background:'white'}},'Documento '+doc.id,React.createElement('button',{onClick:()=>setDoc(null)},'Fechar documento'))))}
-createRoot(document.getElementById('root')).render(React.createElement(App));</script></body></html>`));
+createRoot(document.getElementById('root')).render(React.createElement(BrowserRouter,null,React.createElement(App)));</script></body></html>`));
   }); }
 }] });
 await server.listen(); const browser = await chromium.launch({ channel: 'chrome', headless: true });
@@ -42,6 +42,7 @@ for (const [id, status, tituloStatus] of [[4,'QUITADO','QUITADO'],[5,'PARCIALMEN
 const nomes = id => 'Obra ' + String(id).padStart(3, '0');
 const originais = structuredClone(items);
 let fail = false, failLot = 0, invalidar = 0, active = 0, maxActive = 0, slow = false, modoDetalhe = false;
+let sinalDecisao, liberarDecisao;
 const chamadas = [], decisoes = [], errors = [], unexpected = [];
 const page = await browser.newPage({ viewport: { width: 1366, height: 900 } }); page.on('pageerror', e => errors.push(e.message));
 await page.route('**/*', async route => {
@@ -53,6 +54,7 @@ await page.route('**/*', async route => {
       const id = Number(idLote[1]), body = route.request().postDataJSON();
       if (id === failLot) return json({ message: 'Falha QA no próximo lote' }, 403);
       if (idLote[2] === 'autenticacao/opcoes') return json({ challenge: 'qa', decisoes: body.decisoes });
+      if (sinalDecisao) await new Promise(resolve => { liberarDecisao = resolve; sinalDecisao(); sinalDecisao = null; });
       decisoes.push({ id, body });
       for (const d of body.decisoes) {
         const i = items.find(i => i.id === d.item_id); assert.equal(i.lote_id, id); assert.equal(i.status, 'PENDENTE');
@@ -221,7 +223,14 @@ try {
   assert.equal(await detalhe.getByRole('region',{name:'Conferência deste título'}).count(),0);
   await detalhe.getByRole('button',{name:'Próxima',exact:true}).click(); await prontoDetalhe(80);
   await detalhe.getByRole('button', { name: 'Aprovar', exact: true }).click();
+  const decisaoEmVoo = new Promise(resolve => { sinalDecisao = resolve; });
   await detalhe.getByRole('button', { name: 'Confirmar aprovação com passkey' }).evaluate(el=>{el.click();el.click();});
+  await decisaoEmVoo;
+  const indiceEmDecisao = await page.evaluate(() => history.state.idx);
+  await page.goBack(); await page.waitForFunction(idx => history.state.idx === idx, indiceEmDecisao);
+  assert(await detalhe.isVisible(), 'Voltar nao desmonta uma decisao em andamento');
+  assert(await detalhe.getByRole('button', { name: 'Confirmar aprovação com passkey' }).isDisabled());
+  liberarDecisao(); liberarDecisao = null;
   await detalhe.getByText('Somente este título foi aprovado. Os demais não foram decididos.').waitFor(); await prontoDetalhe(80);
   assert.deepEqual(decisoes.at(-1).body.decisoes.map(d=>d.item_id), [80]); assert.equal(decisoes.length,totalDecisoes+1);
   assert.equal(items[129].status,'PENDENTE','Selecao fora do detalhe nao foi aprovada');
@@ -255,6 +264,31 @@ try {
   await page.keyboard.press('Escape'); await detalhe.waitFor({state:'detached'}); await pronto();
   assert.equal(await page.locator('#root').evaluate(el=>el.inert),false);
   assert(await page.getByLabel('Selecionar TIT-130',{exact:true}).isChecked(),'Selecao geral preservada ao fechar o detalhe');
+  // Historico real do navegador: anterior/proxima nao acrescentam etapas.
+  const postsAntesVoltar = decisoes.length;
+  await page.getByRole('button', { name: 'Abrir detalhes de TIT-81', exact: true }).evaluate(el => { el.click(); el.click(); }); await prontoDetalhe(81);
+  await detalhe.getByRole('button', { name: 'Próxima', exact: true }).click(); await prontoDetalhe(76);
+  await detalhe.getByRole('button', { name: 'Boleto 76.pdf', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Documento QA' }).waitFor();
+  const indiceDetalhe = await page.evaluate(() => history.state.idx);
+  await page.goBack(); await page.getByRole('dialog', { name: 'Documento QA' }).waitFor({ state: 'detached' });
+  await page.waitForFunction(idx => history.state.idx === idx, indiceDetalhe);
+  assert(await detalhe.isVisible(), 'Voltar fecha apenas o anexo sobreposto');
+  await page.goBack(); await detalhe.waitFor({ state: 'detached' }); await pronto();
+  assert(await page.getByLabel('Selecionar TIT-130',{exact:true}).isChecked());
+  await page.goForward(); await prontoDetalhe(81); // Revalida o alvo ao reabrir.
+  slow = true;
+  await detalhe.getByRole('button', { name: 'Atualizar título', exact: true }).click();
+  await page.goBack();
+  await page.waitForFunction(idx => history.state.idx === idx, indiceDetalhe);
+  assert(await detalhe.isVisible(), 'Voltar durante consulta nao desmonta a operacao');
+  await prontoDetalhe(81); slow = false;
+  await page.goBack(); await detalhe.waitFor({ state: 'detached' }); await pronto();
+  await page.goBack(); await page.locator('.pa-obras[data-detalhe="false"]').waitFor();
+  await page.goForward(); await pronto();
+  assert(await page.getByLabel('Selecionar TIT-130',{exact:true}).isChecked(), 'Selecao mantida ao voltar e avancar entre obras');
+  assert.equal(decisoes.length, postsAntesVoltar, 'Voltar/avancar nunca decide');
+  assert(!/snapshot_json|SOL-|Fornecedor QA/.test(await page.evaluate(() => JSON.stringify(history.state))), 'Historico nao armazena dossies');
   assert.equal(maxActive, 1, 'Leituras seriais, sem N+1/polling concorrente'); assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
   console.log('UI por obra e titulo fullscreen: desktop/tablet/mobile/escuro, selecao global, lote parcial, cursor entre paginas, Anterior/Proxima sem decidir, aprovar/rejeitar somente o atual, passkey/motivo/revalidacao/duplo clique/INVALIDADO/ACL, anexos empilhados/Escape/foco/root inert e retorno preservado aprovados. APIs isoladas.');
-} finally { await page.close(); await browser.close(); await server.close(); }
+} finally { liberarDecisao?.(); await page.close(); await browser.close(); await server.close(); }

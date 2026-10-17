@@ -2055,7 +2055,9 @@ async function anexarArquivosCabecalhoSolicitacao({ anexos = [], solicitacaoPrin
     try {
       const anexo = await Anexo.create({
         solicitacao_id: solicitacaoPrincipalId,
-        tipo: 'ANEXO',
+        // Somente o campo dedicado identifica boleto; nome/extensao nao.
+        tipo: anexoPayload.tipo_documento === 'BOLETO' ? 'BOLETO_COMPRA'
+          : anexoPayload.tipo_documento === 'FRETE_BOLETO' ? 'BOLETO_FRETE' : 'ANEXO',
         nome_original: anexoPayload.arquivo_nome_original,
         caminho_arquivo: anexoPayload.arquivo_url,
         uploaded_by: usuario.id,

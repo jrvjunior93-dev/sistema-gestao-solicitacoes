@@ -22,8 +22,9 @@ let paddingDireitoAnterior = '';
  */
 const pilhaDeModais = [];
 
-export function closeTopWorkspaceModal() {
+export function closeTopWorkspaceModal({ exceptOwner } = {}) {
   const top = pilhaDeModais.at(-1);
+  if (exceptOwner && top?.historyOwner === exceptOwner) return false;
   if (!top?.closeOnEscape || !top.onClose.current) return false;
   top.onClose.current(); return true;
 }
@@ -49,7 +50,7 @@ function liberarRolagemDocumento() {
   }
 }
 
-export default function ModalPortal({ children, onClose, closeOnEscape = true }) {
+export default function ModalPortal({ children, onClose, closeOnEscape = true, historyOwner }) {
   const active = useWorkspaceActive();
   const focoAnterior = useRef(null);
   const onCloseRef = useRef(onClose);
@@ -65,7 +66,7 @@ export default function ModalPortal({ children, onClose, closeOnEscape = true })
 
     // Ordem de montagem = ordem de empilhamento: o último a montar é o que
     // o usuário está vendo por cima.
-    const marca = { onClose: onCloseRef, closeOnEscape };
+    const marca = { onClose: onCloseRef, closeOnEscape, historyOwner };
     pilhaDeModais.push(marca);
 
     function handleKeyDown(event) {
@@ -86,7 +87,7 @@ export default function ModalPortal({ children, onClose, closeOnEscape = true })
         focoAnterior.current.focus({ preventScroll: true });
       }
     };
-  }, [closeOnEscape, active]);
+  }, [closeOnEscape, active, historyOwner]);
 
   if (!active || typeof document === 'undefined') return null;
 

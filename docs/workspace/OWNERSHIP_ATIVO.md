@@ -1,5 +1,27 @@
 # Ownership Ativo
 
+## Autorizacoes: voltar do aparelho - 2026-10-17
+
+- Agente unico, branch local codex/autorizacoes-voltar-aparelho-20261017,
+  base publicada refactor/frontend 9b960708, neste worktree performance-fila-dp.
+- Reserva: hook de historico das autorizacoes, AutorizacoesPorObra,
+  AutorizacaoTituloDetalhe, adaptacao opt-in ModalPortal/Layout, testes e handoff.
+- Corrigir somente navegacao detalhe -> titulos da obra -> obras. Preservar
+  filtros/selecao, ACL, passkey, PILOT e POSTs. Usuario autorizou agora
+  commit/publicacao na refactor/frontend e roteiro de EC2 DEV. Nenhuma
+  operacao remota em DEV/producao, banco ou migration autorizada ao agente.
+- Pedido adicional: ocultar toolbar/resumo na obra aberta no celular, corrigir
+  menu Opcoes fora da tela e situacao truncada. Reserva tambem CSS da pagina,
+  testes responsivos e auditoria somente leitura dos quatro fluxos de boletos.
+- Auditoria encontrou BOLETO/FRETE_BOLETO da criacao/edicao de compra direta
+  espelhados como ANEXO. Reserva adicional: SolicitacaoCompraController.js,
+  compraDiretaGestaoService.js e testes de classificacao/acesso. Corrigir somente
+  gravacao nova pela origem explicita, sem reclassificar legados ou mudar ACL.
+- Handoff: docs/handoffs/2026-10-17-autorizacoes-voltar-boletos.md.
+  Suites de obras/PWA/boletos/front/back, gestao compra direta, navegacao,
+  tela inicial, polling, docs e build aprovados com dependencias isoladas.
+  Publicacao autorizada somente na refactor/frontend; nenhum dado real alterado.
+
 ## Autorizacoes: area util e titulo em tela inteira - 2026-10-17
 
 - Usuario autorizou compactar a pagina para TODOS os usuarios com acesso,

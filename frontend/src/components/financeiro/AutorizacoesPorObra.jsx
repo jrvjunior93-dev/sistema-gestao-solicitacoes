@@ -7,6 +7,7 @@ import { autenticarComPasskey } from '../../utils/webauthn';
 import { SITUACOES_AUTORIZACAO, rotuloSituacao, podeSelecionarAutorizacao, selecionarPagina, reconciliarSelecao, agruparDecisoes } from '../../utils/autorizacaoPagamentoSituacao';
 import { resumoSolicitacaoAutorizacao } from '../../utils/autorizacaoPagamentoResumo';
 import AutorizacaoTituloDetalhe from './AutorizacaoTituloDetalhe';
+import useAutorizacaoHistorico from '../../hooks/useAutorizacaoHistorico';
 
 const moeda = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const INICIAL = { vencimento_inicio: '', vencimento_fim: '', obra: '', situacao: 'AGUARDANDO' };
@@ -24,7 +25,6 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
   const workspaceAtivo = useWorkspaceActive();
   const [filtro, setFiltro] = useWorkspaceState(slot + ':filtro', INICIAL);
   const [rascunho, setRascunho] = useState(filtro);
-  const [obra, setObra] = useWorkspaceState(slot + ':obra', null);
   const [paginaObras, setPaginaObras] = useWorkspaceState(slot + ':pagina-obras', 1);
   const [paginaTitulos, setPaginaTitulos] = useWorkspaceState(slot + ':pagina-titulos', 1);
   const [selecao, setSelecao] = useWorkspaceState(slot + ':selecao', {});
@@ -34,7 +34,8 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
   const [revisaoDecisao, setRevisaoDecisao] = useState(null), [preparando, setPreparando] = useState(false);
   const [chaveCarregada, setChaveCarregada] = useState('');
   const [tentativaManual, setTentativaManual] = useState(0);
-  const [detalhe, setDetalhe] = useState(null);
+  const [detalheOcupado, setDetalheOcupado] = useState(false);
+  const { obra, detalhe, abrirObra, abrirDetalhe, voltar } = useAutorizacaoHistorico(slot, busy || preparando || detalheOcupado);
   const vivo = useRef(true), voo = useRef(null), travado = useRef(false);
   const parametros = { filtro, obra, paginaObras, paginaTitulos };
   const chave = JSON.stringify(parametros), contexto = useRef({ parametros, chave }); contexto.current = { parametros, chave };
@@ -84,7 +85,7 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
   useEffect(() => { setRevisaoDecisao(null); }, [chave]);
   function aplicar(event) {
     event.preventDefault(); if (busy || preparando) return;
-    setFiltro({ ...rascunho, obra: rascunho.obra.trim() }); setPaginaObras(1); setPaginaTitulos(1); setObra(null); setRevisaoDecisao(null);
+    setFiltro({ ...rascunho, obra: rascunho.obra.trim() }); setPaginaObras(1); setPaginaTitulos(1); voltar(); setRevisaoDecisao(null);
     setTentativaManual(current => current + 1);
   }
   function mudarSelecao(update) { setRevisaoDecisao(null); setSelecao(update); setAviso(''); }
@@ -141,11 +142,11 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
       <label>Vencimento inicial<DateInputBR value={rascunho.vencimento_inicio} onChange={altera('vencimento_inicio')} disabled={busy || preparando} /></label>
       <label>Vencimento final<DateInputBR value={rascunho.vencimento_fim} onChange={altera('vencimento_fim')} disabled={busy || preparando} /></label>
       <label className="pa-obras-busca">Obra / centro de custo<input value={rascunho.obra} onChange={altera('obra')} placeholder="Digite parte do nome da obra" maxLength={120} disabled={busy || preparando} /></label>
-      <label>Situação atual<select value={rascunho.situacao} onChange={altera('situacao')} disabled={busy || preparando}>
+      <label className="pa-obras-situacao">Situação atual<select value={rascunho.situacao} onChange={altera('situacao')} disabled={busy || preparando}>
         <option value="">Todas as situações</option>{SITUACOES_AUTORIZACAO.map(([id, nome]) => <option key={id} value={id}>{nome}</option>)}
       </select></label>
       <button type="submit" className="btn btn-outline btn-sm" disabled={busy || preparando}>Aplicar filtros</button>
-      <button type="button" className="btn btn-outline btn-sm" disabled={busy || preparando} onClick={() => { setRascunho(INICIAL); setFiltro(INICIAL); setPaginaObras(1); setPaginaTitulos(1); setObra(null); }}>Limpar filtros</button>
+      <button type="button" className="btn btn-outline btn-sm" disabled={busy || preparando} onClick={() => { setRascunho(INICIAL); setFiltro(INICIAL); setPaginaObras(1); setPaginaTitulos(1); voltar(); }}>Limpar filtros</button>
     </form>
     <div className="pa-obras-resumo" aria-live="polite"><span>{obras.resumo?.quantidade_titulos || 0} títulos únicos nos filtros</span>
       <span>Valor das obras filtradas <strong>{moeda(obras.resumo?.valor_total)}</strong></span>
@@ -156,14 +157,14 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
       <aside className="pa-obras-lista" aria-label="Obras nos filtros" aria-busy={carregando}>
         {semResultado && <p className="pa-empty">Nenhuma obra nesta situação e período. Ajuste os filtros para consultar o histórico.</p>}
         {obras.data.map(o => <button type="button" key={o.obra_id} disabled={busy || preparando || carregando} aria-pressed={Number(obra?.id) === Number(o.obra_id)}
-          className="pa-obra" onClick={() => { setObra({ id: o.obra_id, nome: o.obra_nome }); setPaginaTitulos(1); }}>
+          className="pa-obra" onClick={() => { abrirObra({ id: o.obra_id, nome: o.obra_nome }); setPaginaTitulos(1); }}>
           <strong>{o.obra_nome}</strong><span><span>{o.quantidade_titulos} título(s)</span><strong>{moeda(o.valor_total)}</strong></span>
         </button>)}
         <Paginacao nome="obras" pagina={paginaObras} dados={obras.paginacao} alterar={setPaginaObras} disabled={busy || preparando || carregando} />
       </aside>
       <section className="pa-obras-titulos" aria-label="Títulos da obra" aria-busy={carregando}>
         {!obra ? <p className="pa-empty">Selecione uma obra para conferir os títulos e decidir.</p> : <>
-          <header className="pa-obras-cabecalho"><button type="button" className="btn btn-outline btn-sm pa-voltar-obras" disabled={busy || preparando} onClick={() => setObra(null)}>Voltar às obras</button><strong>{obra.nome}</strong></header>
+          <header className="pa-obras-cabecalho"><button type="button" className="btn btn-outline btn-sm pa-voltar-obras" disabled={busy || preparando} onClick={voltar}>Voltar às obras</button><strong>{obra.nome}</strong></header>
           <div className="pa-obras-selecao"><label><input type="checkbox" checked={todosDaPagina} disabled={indisponivel || !caps.can_decide || !elegiveis.length || caps.paused}
             onChange={e => mudarSelecao(current => selecionarPagina(current, titulos.data, e.target.checked))} /> Selecionar os pendentes desta página</label></div>
           {titulos.data.map(item => {
@@ -172,7 +173,7 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
               <div className="pa-obra-titulo__principal"><div><input type="checkbox" aria-label={`Selecionar ${s.codigo || item.titulo_financeiro_id}`}
                 checked={selecao[String(item.titulo_financeiro_id)]?.id === item.id} disabled={indisponivel || !caps.can_decide || caps.paused || !permitido}
                 onChange={e => mudarSelecao(current => selecionarPagina(current, [item], e.target.checked))} /><button type="button" className="pa-titulo-abrir" aria-label={`Abrir detalhes de ${s.codigo || item.titulo_financeiro_id}`} disabled={busy || preparando || carregando}
-                  onClick={() => setDetalhe({ item, filtro: { ...filtro, obra_id: String(obra.id) } })}>{s.solicitacao?.codigo || s.codigo || `Título #${item.titulo_financeiro_id}`} <span aria-hidden="true">›</span></button></div>
+                  onClick={() => abrirDetalhe({ item, filtro: { ...filtro, obra_id: String(obra.id) } })}>{s.solicitacao?.codigo || s.codigo || `Título #${item.titulo_financeiro_id}`} <span aria-hidden="true">›</span></button></div>
                 <span className={`pa-status pa-status--${item.situacao_financeira?.toLowerCase()}`}>{rotuloSituacao(item.situacao_financeira)}</span></div>
               {item.status === 'PENDENTE' && (!permitido || item.situacao_financeira !== 'AGUARDANDO') && <small>{permitido ? 'Aguardando aprovação do saldo deste título.' : 'Pendente de decisão, mas o saldo ou vínculo mudou. Confira o financeiro antes de aprovar.'}</small>}
               {item.fila_atual?.status === 'NAO_PAGO' && item.situacao_financeira !== 'NAO_PAGO' && <small>Última tentativa na fila: não pago.</small>}
@@ -211,7 +212,7 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
       </section>}
     </section>}
     {detalhe && <AutorizacaoTituloDetalhe inicial={detalhe.item} filtro={detalhe.filtro} caps={caps} setBusy={setBusy} abrirDocumento={abrirDocumento}
-      onFechar={() => { setDetalhe(null); setTentativaManual(current => current + 1); }}
+      onOcupado={setDetalheOcupado} onFechar={() => { voltar(); setTentativaManual(current => current + 1); }}
       onDecidido={tituloId => { setRevisaoDecisao(null); setSelecao(current => Object.fromEntries(Object.entries(current).filter(([id]) => Number(id) !== Number(tituloId)))); }} />}
   </section>;
 }

@@ -149,6 +149,7 @@ async function negativa(fn, regex) {
   const boleto = { arquivo_url: '/uploads/compras/itens-temporarios/usuario-7/123-boleto.pdf', arquivo_nome_original: 'Boleto.pdf' };
   await negativa(() => editar('FRETE', frete({ frete_forma_pagamento_id: 2, boleto: { ...boleto, arquivo_url: boleto.arquivo_url.replace('usuario-7', 'usuario-99') } })), /invalido/);
   await editar('FRETE', frete({ frete_forma_pagamento_id: 2, boleto })); assert.equal(state.anexos.length, 1);
+  assert.equal(state.anexos[0].tipo, 'BOLETO_FRETE', 'Campo dedicado do frete precisa aparecer na consulta restrita de boletos da fila');
   await editar('FRETE', frete({ frete_forma_pagamento_id: 2, boleto })); assert.equal(state.anexos.length, 1);
   await editar('FRETE', { frete_tipo: 'SEM_FRETE' }); assert.equal(state.compra[0].frete_parceiro_id, null); assert.equal(state.itens[0].frete_valor, 0);
   assert.equal(state.titulos.length, 1); assert.equal(state.titulos[0].status, 'CANCELADO');

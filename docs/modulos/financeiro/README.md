@@ -1,5 +1,27 @@
 # Modulo FINANCEIRO
 
+## Autorizar no celular: retorno e area util - 2026-10-17
+
+- Voltar do navegador/PWA e botao nativo respeitam detalhe do titulo -> titulos
+  da obra -> obras -> pagina anterior. Anterior/Proxima do detalhe continuam
+  apenas consultando vizinhos, sem criar uma etapa de historico por titulo.
+- Filtros, pagina e selecao ficam preservados. Anexo sobreposto fecha primeiro;
+  operacao em andamento impede desmontagem. Historico guarda somente tokens
+  opacos; snapshots ficam em memoria da sessao, com reconsulta ao reabrir.
+- No celular, abrir obra oculta toolbar de visoes/opcoes e totais gerais,
+  alem dos filtros ja recolhidos. Voltar as obras devolve esses controles.
+  Situacao usa a largura inteira e Opcoes abre dentro do viewport.
+- Lista de boletos da fila continua limitada a BOLETO/BOLETO_COMPRA/BOLETO_FRETE
+  nao removidos e vinculados a solicitacao acessivel. Nome/extensao do arquivo
+  nao tornam um anexo comum em boleto; comprovantes tem fluxo proprio.
+- Correcao de gravacao NOVA: campos BOLETO/FRETE_BOLETO da compra direta
+  passam a gerar BOLETO_COMPRA/BOLETO_FRETE no espelho da solicitacao. A edicao
+  do boleto do frete usa BOLETO_FRETE. Nota fiscal/anexo comum continuam ANEXO.
+  Nova solicitacao conserva BOLETO; solicitacao de compra via pedido conserva
+  BOLETO_COMPRA/BOLETO_FRETE. Sem migration/reclassificacao de arquivos antigos,
+  alteracao dos dossies assinados, permissoes ou baixa de titulos.
+- [Handoff e testes](../../handoffs/2026-10-17-autorizacoes-voltar-boletos.md).
+
 ## Autorizacoes: area util e detalhe sequencial - 2026-10-17
 
 - A rota de autorizacoes usa shell compacto em navegador e PWA para TODOS os

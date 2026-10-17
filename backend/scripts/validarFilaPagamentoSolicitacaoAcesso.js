@@ -78,5 +78,29 @@ const { podeVisualizarSolicitacaoPelaFila, listarArquivosSolicitacaoPelaFila } =
   assert(files.includes('await podeVisualizarSolicitacaoPelaFila(req.user, solicitacao.id)'), 'Anexos devem usar o mesmo limite de acesso');
   assert(queue.includes("'solicitacao_id'") && queue.includes("as: 'solicitacao'"), 'Fila deve expor o vinculo com a solicitacao');
   assert(routes.includes("'/financeiro/fila-pagamentos/solicitacoes/:id/arquivos', allowFilaPagamentosRead"), 'Rota de arquivos deve exigir acesso a fila');
+  // Executa a rotina real de espelhamento da criacao de compra direta,
+  // sem carregar controller/modelos, banco ou S3. A classificacao segue o
+  // campo de origem, nunca o nome do PDF/imagem.
+  const compra = fs.readFileSync(path.join(root, 'src/controllers/SolicitacaoCompraController.js'), 'utf8');
+  const registros = [], eventos = [];
+  const contextoCompra = {
+    Anexo: { create: async data => { const row = { id: registros.length + 1, ...data }; registros.push(row); return row; } },
+    Historico: { create: async data => eventos.push(data) }, console,
+    normalizeOriginalName: valor => valor,
+    normalizeTextCompra: valor => String(valor || '').trim().toUpperCase()
+  };
+  const helpers = compra.slice(compra.indexOf('function isAnexoBoletoCompraDireta('), compra.indexOf('function buildRespostaItemKey('));
+  const rotina = compra.slice(compra.indexOf('async function anexarArquivosCabecalhoSolicitacao('), compra.indexOf('async function podeAcessarCompraDiretaNaFilaGeo('));
+  assert(helpers && rotina, 'Fixture precisa executar as funcoes reais');
+  vm.runInNewContext(helpers + rotina + ';globalThis.executar=anexarArquivosCabecalhoSolicitacao;', contextoCompra);
+  await contextoCompra.executar({ solicitacaoPrincipalId: 42, usuario: { id: 7, setor_id: 3 }, anexos: [
+    { tipo_documento: 'BOLETO', arquivo_nome_original: 'pagamento.png', arquivo_url: 'qa-compra' },
+    { tipo_documento: 'FRETE_BOLETO', arquivo_nome_original: 'frete.pdf', arquivo_url: 'qa-frete' },
+    { tipo_documento: 'NOTA_FISCAL_GUIA', arquivo_nome_original: 'boleto-informativo.pdf', arquivo_url: 'qa-nota' },
+    { arquivo_nome_original: 'boleto.pdf', arquivo_url: 'qa-generico' }
+  ] });
+  assert.deepEqual(registros.map(r => r.tipo), ['BOLETO_COMPRA', 'BOLETO_FRETE', 'ANEXO', 'ANEXO']);
+  assert.equal(eventos.length, 4, 'Historico preservado para todos os documentos');
+  assert.deepEqual(registros.filter(r => ['BOLETO', 'BOLETO_COMPRA', 'BOLETO_FRETE'].includes(r.tipo)).map(r => r.nome_original), ['pagamento.png', 'frete.pdf']);
   console.log('OK: mesmo acesso da fila, boletos da solicitacao/compra/frete, multiplos PDF/imagem, removidos/outra solicitacao excluidos, nenhuma consulta a comprovantes.');
 })().catch((error) => { console.error(error); process.exitCode = 1; });

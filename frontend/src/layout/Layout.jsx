@@ -42,6 +42,7 @@ import { workspaceAccessIdentity } from '../navigation/workspaceModel';
 import { useConfirmacao } from '../components/padrao/Confirmacao';
 import Avisos, { useAvisos } from '../components/padrao/Avisos';
 import { closeTopWorkspaceModal } from '../components/ui/ModalPortal';
+import { temEtapaAutorizacao } from '../hooks/useAutorizacaoHistorico';
 
 const COMPRAS_RESPONSIVE_ROUTES = [
   '/solicitacoes-compra',
@@ -173,7 +174,9 @@ export default function Layout() {
   const activateWorkspaceTab = id => podeSairWorkspace() && activateWorkspaceTabRaw(id);
   const openWorkspaceTab = (route, title) => podeSairWorkspace() && openWorkspaceTabRaw(route, title);
   const workspaceFacade = { ...workspace, openTab: openWorkspaceTab, activateTab: activateWorkspaceTab,
-    back: fallback => { if (closeTopWorkspaceModal()) return; if (podeSairWorkspace()) workspace.back(fallback); } };
+    back: fallback => { if (closeTopWorkspaceModal()) return; if (podeSairWorkspace()) {
+      if (temEtapaAutorizacao(location)) navigate(-1); else workspace.back(fallback);
+    } } };
   useEffect(() => {
     const proteger = event => {
       if (!memory.dirty.size && !memory.busy.size) return;
@@ -222,6 +225,7 @@ export default function Layout() {
       canNavigateBack: () => location.pathname !== '/',
       onNavigateBack: () => {
         if (closeTopWorkspaceModal()) return;
+        if (temEtapaAutorizacao(location)) { if (podeSairWorkspace()) navigate(-1); return; }
         if (pilotEnabled) { if (podeSairWorkspace()) workspace.back(getFallbackRoute(location.pathname)); return; }
         if (hasSafeBrowserHistory()) {
           navigate(-1);
@@ -230,7 +234,7 @@ export default function Layout() {
         navigate(getFallbackRoute(location.pathname), { replace: true });
       }
     });
-  }, [location.pathname, buscaAberta, navigate, workspace.back, pilotEnabled, activeWorkspaceTabId, memory]);
+  }, [location.pathname, location.state, buscaAberta, navigate, workspace.back, pilotEnabled, activeWorkspaceTabId, memory]);
 
   useEffect(() => {
     const userId = Number(user?.id);

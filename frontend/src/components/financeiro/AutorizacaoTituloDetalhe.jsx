@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { DONO_DETALHE } from '../../hooks/useAutorizacaoHistorico';
 import ModalPortal from '../ui/ModalPortal';
 import { useWorkspaceActive, useWorkspaceWork } from '../../navigation/WorkspaceContext';
 import { listarTitulosAutorizacao, obterOpcoesDecisaoPasskey, decidirAutorizacaoPagamento } from '../../services/pagamentoAutorizacao';
@@ -11,7 +12,7 @@ const mesmaVersao = (a, b) => a.id === b.id && a.snapshot_hash === b.snapshot_ha
 
 // Dossie de leitura, nao o formulario editavel da solicitacao. Todos os POSTs
 // continuam no contrato nominal/passkey existente, sempre com UM item explicito.
-export default function AutorizacaoTituloDetalhe({ inicial, filtro, caps, setBusy, abrirDocumento, onFechar, onDecidido }) {
+export default function AutorizacaoTituloDetalhe({ inicial, filtro, caps, setBusy, abrirDocumento, onFechar, onDecidido, onOcupado }) {
   const [item, setItem] = useState(inicial), [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(''), [aviso, setAviso] = useState('');
   const [motivo, setMotivo] = useState(''), [confirmacao, setConfirmacao] = useState(null), [operando, setOperando] = useState(false);
@@ -19,6 +20,7 @@ export default function AutorizacaoTituloDetalhe({ inicial, filtro, caps, setBus
   const ativo = useWorkspaceActive();
   const s = item.snapshot_json || {};
   const bloqueado = carregando || operando;
+  useLayoutEffect(() => { onOcupado?.(bloqueado); return () => onOcupado?.(false); }, [bloqueado, onOcupado]);
   const podeDecidir = caps.can_decide && caps.passkey_count && !caps.paused && podeSelecionarAutorizacao(item) && !erro;
   // Rascunho local da rejeicao e descartado ao navegar/fechar; nao deixar
   // um marcador dirty orfao no snapshot do workspace apos desmontar o detalhe.
@@ -110,7 +112,7 @@ export default function AutorizacaoTituloDetalhe({ inicial, filtro, caps, setBus
     if (event.shiftKey && document.activeElement === primeiro) { event.preventDefault(); ultimo?.focus(); }
     else if (!event.shiftKey && document.activeElement === ultimo) { event.preventDefault(); primeiro?.focus(); }
   }
-  return <ModalPortal onClose={fechar}>
+  return <ModalPortal onClose={fechar} historyOwner={DONO_DETALHE}>
     <section ref={painel} role="dialog" aria-modal="true" aria-label="Detalhes do título para autorização" className="pa-titulo-tela" onKeyDown={manterFoco}>
       <header className="pa-titulo-cabecalho">
         <div><h2 tabIndex={-1}>{s.solicitacao?.codigo || s.codigo || `Título #${item.titulo_financeiro_id}`}</h2><span>{s.codigo} · {item.lote?.codigo || `Lote #${item.lote_id}`}</span></div>

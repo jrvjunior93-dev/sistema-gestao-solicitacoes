@@ -257,7 +257,7 @@ async function anexarBoletoFrete({ payload, principal, usuario, transaction, obr
     || normalizado.slice(segmento.length).includes('/')) fail('Boleto invalido. Envie o arquivo novamente.');
   const repetido = await Anexo.findOne({ where: { solicitacao_id: principal.id, caminho_arquivo: caminho, deleted_at: null }, transaction });
   if (repetido) return false;
-  const anexo = await Anexo.create({ solicitacao_id: principal.id, tipo: 'ANEXO',
+  const anexo = await Anexo.create({ solicitacao_id: principal.id, tipo: 'BOLETO_FRETE',
     nome_original: normalizeOriginalName(recebido.arquivo_nome_original || 'boleto-frete.pdf'),
     caminho_arquivo: caminho, uploaded_by: usuario.id, area_origem: usuario.setor_id }, { transaction });
   await Historico.create({ solicitacao_id: principal.id, usuario_responsavel_id: usuario.id, setor: usuario.setor_id,
