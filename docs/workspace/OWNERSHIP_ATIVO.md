@@ -1,5 +1,31 @@
 # Ownership Ativo
 
+## Autorizacoes: area util e titulo em tela inteira - 2026-10-17
+
+- Usuario autorizou compactar a pagina para TODOS os usuarios com acesso,
+  inclusive SUPERADMIN, e abrir titulo em tela inteira com Anterior, Rejeitar,
+  Aprovar, Proxima; navegacao sem decisao. Cards das obras com superficie clara.
+- Usuario autorizou agora commit/push somente na refactor/frontend e comandos
+  de EC2 DEV com validacao dos cursores no MySQL. Sem publicacao ou operacao
+  de producao; preservar main, TLS, PILOT, sessao12h e outputs preexistentes.
+- Agente unico; base origin/refactor/frontend 9ef3b136, branch local
+  codex/autorizacoes-tela-inteira-20261017 neste worktree. Sem producao/deploy.
+- Reserva frontend: Layout.jsx, autorizacaoPagamentoPwa.js, pagina/componentes/
+  CSS de autorizacoes, testes PWA/tela-inicial/obras e docs financeiro/handoff.
+- Reserva backend limitada a pagamentoAutorizacaoConsultaService.js e testes
+  painel/SQL/validador DEV: cursor parametrizado de leitura para Anterior/Proxima
+  sem pular pendencias quando uma decisao retira o titulo do filtro. Sem POST novo.
+- Preservar ACL nominal, passkey, PILOT, POSTs existentes, selecao entre paginas,
+  documentos e historico. Perfil SUPERADMIN nao ganha poder de decidir.
+- Auditoria real enviada pelo usuario: origens dos acordos #3/#4/#5 zeradas/
+  RENEGOCIADO; TIT-003948/3949/3950 nao pertencem aos acordos. Sem regularizacao
+  autorizada nem escrita em dados reais nesta tarefa de UI.
+- Implementacao local concluida; reserva liberada. Backend/SQL isolado650,
+  UI fullscreen/navegacao passiva/decisao individual/anexos/ACL, PWA/SUPERADMIN,
+  polling/navegacao/build/docs aprovados. Sem commit/push ou migration nova.
+  Revalidar novos cursores no MySQL DEV apos publicacao. Handoff:
+  docs/handoffs/2026-10-17-autorizacoes-tela-inteira.md.
+
 ## Publicacao autorizacoes por obra e auditoria de titulos - 2026-10-17
 
 - Usuario autorizou commit/push somente na refactor/frontend e comandos DEV.

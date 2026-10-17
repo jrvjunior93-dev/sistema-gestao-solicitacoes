@@ -4,7 +4,7 @@ import { useWorkspaceState, useWorkspaceWork } from '../navigation/WorkspaceCont
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { HiOutlineBell, HiOutlineCheckCircle, HiOutlineDocumentText, HiOutlineFingerPrint, HiOutlineLockClosed, HiOutlineXCircle } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
-import { Avisos, Pagina, PageHeader, useAvisos } from '../components/padrao';
+import { Avisos, Pagina, useAvisos } from '../components/padrao';
 import { getUsuarios } from '../services/usuarios';
 import {
   confirmarRegistroPasskey,
@@ -24,7 +24,6 @@ import {
 import { autenticarComPasskey, registrarPasskey, suportaPasskeys } from '../utils/webauthn';
 import { criarAssinaturaPush, obterAssinaturaPush, suportaWebPush } from '../utils/webPush';
 import { codigoLoteAutorizacao, motivosAjusteAutorizacao, resumoSolicitacaoAutorizacao } from '../utils/autorizacaoPagamentoResumo';
-import { isAutorizadorPwa } from '../utils/autorizacaoPagamentoPwa';
 import OverlayModal from '../components/ui/OverlayModal';
 import AutorizacoesPorObra from '../components/financeiro/AutorizacoesPorObra';
 import { rotuloSituacao } from '../utils/autorizacaoPagamentoSituacao';
@@ -47,9 +46,8 @@ export default function FinanceiroAutorizacoesPagamento() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, refreshSession } = useAuth();
   const caps = user?.autorizacao_pagamentos || {};
-  const compactPwa = isAutorizadorPwa(user);
   const workspaceAtivo = useWorkspaceActive();
-  const [visao, setVisao] = useWorkspaceState('autorizacoes:visao', caps.can_decide ? 'obras' : 'lotes');
+  const [visao, setVisao] = useWorkspaceState('autorizacoes:visao:v2', 'obras');
   const [paginaLotes, setPaginaLotes] = useWorkspaceState('autorizacoes:pagina', 1);
   const [paginacaoLotes, setPaginacaoLotes] = useState({ total: 0, mais: false });
   const [revisaoObras, setRevisaoObras] = useState(0);
@@ -314,36 +312,28 @@ export default function FinanceiroAutorizacoesPagamento() {
   }
 
   return (
-    <Pagina>
-      {!compactPwa && <PageHeader title="Autorizações de pagamento" subtitle="Decisão do proprietário antes de os títulos entrarem na fila operacional." />}
+    <Pagina className="pa-pagina">
       <Avisos avisos={avisos} onFechar={fechar} />
 
-      {compactPwa ? <div className="pa-pwa-toolbar">
+      <div className="pa-pwa-toolbar">
+        <div className="pa-visoes" role="group" aria-label="Visualização das autorizações">
+          <button type="button" className="btn btn-outline btn-sm" aria-pressed={visao === 'obras'} disabled={busy} onClick={() => setVisao('obras')}>Por obra</button>
+          <button type="button" className="btn btn-outline btn-sm" aria-pressed={visao === 'lotes'} disabled={busy} onClick={() => setVisao('lotes')}>Por lote / histórico</button>
+        </div>
         <button type="button" className="btn btn-secondary btn-sm" onClick={load} disabled={busy}>Atualizar</button>
-        {!caps.passkey_count && <button type="button" className="btn btn-secondary btn-sm" onClick={registerPasskey} disabled={busy}><HiOutlineFingerPrint /> Cadastrar passkey</button>}
         <details className="pa-pwa-options">
           <summary>Opções</summary>
           <div className="pa-pwa-options__content">
             <span>Modo {caps.mode}</span>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={togglePush} disabled={busy || !caps.push_available || !suportaWebPush()}><HiOutlineBell /> {!caps.push_available ? 'Avisos não configurados' : (pushActive ? 'Desativar avisos' : 'Ativar avisos')}</button>
-            {Boolean(caps.passkey_count) && <button type="button" className="btn btn-secondary btn-sm" onClick={registerPasskey} disabled={busy}><HiOutlineFingerPrint /> Adicionar passkey</button>}
-            <a href="#pa-dispositivos">Dispositivos autorizados</a>
+            {caps.can_decide && <>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={togglePush} disabled={busy || !caps.push_available || !suportaWebPush()}><HiOutlineBell /> {!caps.push_available ? 'Avisos não configurados' : (pushActive ? 'Desativar avisos' : 'Ativar avisos')}</button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={registerPasskey} disabled={busy}><HiOutlineFingerPrint /> {caps.passkey_count ? 'Adicionar passkey' : 'Cadastrar passkey'}</button>
+              <a href="#pa-dispositivos">Dispositivos autorizados</a>
+            </>}
           </div>
         </details>
-      </div> : <div className="pa-toolbar">
-        <div><strong>Modo {caps.mode}</strong><span>{caps.paused ? 'Novas decisões pausadas' : 'Dossiês sem acesso de edição à solicitação'}</span></div>
-        <div className="pa-toolbar__actions">
-          <button type="button" className="btn btn-secondary btn-sm" onClick={load} disabled={busy}>Atualizar</button>
-          {caps.can_decide && <button type="button" className="btn btn-secondary btn-sm" onClick={togglePush} disabled={busy || !caps.push_available || !suportaWebPush()} title={!caps.push_available ? 'O envio de avisos ainda não foi configurado neste ambiente.' : (!suportaWebPush() ? 'Este navegador não oferece notificações push.' : undefined)}><HiOutlineBell /> {!caps.push_available ? 'Avisos não configurados' : (pushActive ? 'Desativar avisos' : 'Ativar avisos')}</button>}
-          {caps.can_decide && <button type="button" className="btn btn-secondary btn-sm" onClick={registerPasskey} disabled={busy}><HiOutlineFingerPrint /> {caps.passkey_count ? 'Adicionar passkey' : 'Cadastrar passkey'}</button>}
-        </div>
-      </div>}
-      {compactPwa && caps.paused && <p role="status">Novas decisões pausadas.</p>}
-
-      <div className="pa-visoes" role="group" aria-label="Visualização das autorizações">
-        <button type="button" className="btn btn-outline btn-sm" aria-pressed={visao === 'obras'} disabled={busy} onClick={() => setVisao('obras')}>Por obra</button>
-        <button type="button" className="btn btn-outline btn-sm" aria-pressed={visao === 'lotes'} disabled={busy} onClick={() => setVisao('lotes')}>Por lote / histórico</button>
       </div>
+      {caps.paused && <p role="status">Novas decisões pausadas.</p>}
       {visao === 'obras' && <AutorizacoesPorObra userId={user?.id} caps={caps} busy={busy} setBusy={setBusy} abrirDocumento={openDocument} revisao={revisaoObras} />}
       {visao === 'lotes' && <div className="pa-layout">
         <aside className="pa-list" aria-label="Lotes de autorização">
@@ -450,7 +440,7 @@ export default function FinanceiroAutorizacoesPagamento() {
         <p className="pa-justification-text">{itemMotivo.motivo_decisao}</p>
       </OverlayModal>}
 
-      {caps.can_decide && (compactPwa || passkeys.length > 0) && <details id="pa-dispositivos" className="pa-device-disclosure" open={compactPwa ? undefined : true}>
+      {caps.can_decide && <details id="pa-dispositivos" className="pa-device-disclosure">
         <summary>Dispositivos autorizados ({passkeys.length})</summary>
         {passkeys.length === 0 && <p>Nenhuma passkey cadastrada.</p>}
         {passkeys.length > 0 && <section className="pa-devices">

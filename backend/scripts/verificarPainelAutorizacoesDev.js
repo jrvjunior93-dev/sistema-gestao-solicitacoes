@@ -21,6 +21,14 @@ async function executar({ db, env, schema, log = console.log }) {
   const raw = plano[0]?.EXPLAIN; log(JSON.stringify({ plano_dev: acessos(typeof raw === 'string' ? JSON.parse(raw) : raw) }));
   const inicio = Date.now();
   const obras = await listarObras({ limite: '5' }, db), titulos = await listarTitulos({ limite: '5' }, db);
+  if (titulos.data.length) {
+    const primeiro = titulos.data[0];
+    for (const sentido of ['ANTERIOR', 'PROXIMA']) {
+      const navegacao = await listarTitulos({ limite: '1', sentido, cursor_item_id: String(primeiro.id),
+        cursor_vencimento: primeiro.vencimento_atual ? String(primeiro.vencimento_atual).slice(0, 10) : 'SEM_DATA' }, db);
+      log(JSON.stringify({ cursor_dev: sentido, quantidade: navegacao.data.length }));
+    }
+  }
   log(JSON.stringify({ dev: true, obras: obras.paginacao.total, titulos: titulos.paginacao.total, duracao_ms: Date.now() - inicio }));
   log('SQL/EXPLAIN do painel conferidos no DEV. Somente leitura; nenhum registro, configuracao, migration ou processo alterado.');
 }

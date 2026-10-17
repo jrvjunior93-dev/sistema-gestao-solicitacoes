@@ -14,13 +14,13 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tag = '\0qa-autorizacoes-obras';
 const server = await createServer({ root, server: { host: '127.0.0.1', port: 5341, strictPort: true, proxy: {} }, plugins: [{
   name: 'qa-autorizacoes-obras', enforce: 'pre',
-  resolveId(source, importer) { if (source.endsWith('/utils/webauthn') && importer?.endsWith('/AutorizacoesPorObra.jsx')) return tag; },
+  resolveId(source, importer) { if (source.endsWith('/utils/webauthn') && ['/AutorizacoesPorObra.jsx', '/AutorizacaoTituloDetalhe.jsx'].some(p => importer?.endsWith(p))) return tag; },
   load(id) { if (id === tag) return `export const autenticarComPasskey=async()=>{window.__passkeys=(window.__passkeys||0)+1;return {id:'qa-credential'}};`; },
   configureServer(s) { s.middlewares.use('/qa-obras', async (_req, res) => {
     res.setHeader('Content-Type', 'text/html'); res.end(await s.transformIndexHtml('/qa-obras', `<html lang="pt-BR"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module">
-import React from 'react';import{createRoot}from'react-dom/client';import Page from '/src/components/financeiro/AutorizacoesPorObra.jsx';
+import React from 'react';import{createRoot}from'react-dom/client';import Page from '/src/components/financeiro/AutorizacoesPorObra.jsx';import ModalPortal from '/src/components/ui/ModalPortal.jsx';
 import '/src/index.css';import '/src/styles/design-tokens.css';import '/src/styles/componentes-padrao.css';import '/src/styles/financeiro-autorizacoes-pagamento.css';
-function App(){const[busy,setBusy]=React.useState(false);const[caps,setCaps]=React.useState({can_decide:true,passkey_count:1,mode:'PILOT'});window.__setCaps=setCaps;return React.createElement('main',{style:{padding:12,maxWidth:1400,margin:'auto'}},React.createElement('h1',null,'Autorizações de pagamento'),React.createElement(Page,{caps,userId:31,busy,setBusy,abrirDocumento:async doc=>{window.__documento=doc.id}}))}
+function App(){const[busy,setBusy]=React.useState(false);const[caps,setCaps]=React.useState({can_decide:true,passkey_count:1,mode:'PILOT'});const[doc,setDoc]=React.useState(null);window.__setCaps=setCaps;return React.createElement(React.Fragment,null,React.createElement('main',{style:{padding:12,maxWidth:1400,margin:'auto'}},React.createElement('h1',null,'Autorizações de pagamento'),React.createElement(Page,{caps,userId:31,busy,setBusy,abrirDocumento:async doc=>{window.__documento=doc.id;setDoc(doc)}})),doc&&React.createElement(ModalPortal,{onClose:()=>setDoc(null)},React.createElement('div',{role:'dialog','aria-label':'Documento QA',style:{position:'fixed',inset:20,zIndex:1100,background:'white'}},'Documento '+doc.id,React.createElement('button',{onClick:()=>setDoc(null)},'Fechar documento'))))}
 createRoot(document.getElementById('root')).render(React.createElement(App));</script></body></html>`));
   }); }
 }] });
@@ -40,7 +40,8 @@ for (const [id, status, tituloStatus] of [[4,'QUITADO','QUITADO'],[5,'PARCIALMEN
   if (id === 5) { i.titulo.valor_baixado = 30; i.titulo.valor_saldo = 70; }
 }
 const nomes = id => 'Obra ' + String(id).padStart(3, '0');
-let fail = false, failLot = 0, invalidar = 0, active = 0, maxActive = 0, slow = false;
+const originais = structuredClone(items);
+let fail = false, failLot = 0, invalidar = 0, active = 0, maxActive = 0, slow = false, modoDetalhe = false;
 const chamadas = [], decisoes = [], errors = [], unexpected = [];
 const page = await browser.newPage({ viewport: { width: 1366, height: 900 } }); page.on('pageerror', e => errors.push(e.message));
 await page.route('**/*', async route => {
@@ -80,8 +81,15 @@ await page.route('**/*', async route => {
           return await json({ data: data.slice(inicio, inicio + limite), resumo: { quantidade_titulos: recorte.length, valor_total: data.reduce((s,o)=>s+o.valor_total,0) },
             paginacao: { pagina, total: data.length, mais: inicio + limite < data.length } });
         }
-        return await json({ data: recorte.slice(inicio, inicio + limite).map(i => ({ ...i, obras_nomes: i.obras.map(nomes).join(' / '), valor_no_recorte: i.valor_snapshot * i.obras.length / (i.id === 1 ? 2 : 1) })),
-          paginacao: { pagina, total: recorte.length, mais: inicio + limite < recorte.length } });
+        let navegaveis = recorte;
+        if (modoDetalhe || p.has('sentido')) navegaveis = [...recorte].sort((a,b) => a.vencimento_atual.localeCompare(b.vencimento_atual) || b.id-a.id);
+        if (p.has('sentido')) {
+          const referencia = { id: Number(p.get('cursor_item_id')), vencimento_atual: p.get('cursor_vencimento') }, proxima = p.get('sentido') === 'PROXIMA';
+          navegaveis = navegaveis.filter(i => { const ordem = i.vencimento_atual.localeCompare(referencia.vencimento_atual) || referencia.id-i.id; return proxima ? ordem > 0 : ordem < 0; });
+          if (!proxima) navegaveis.reverse();
+        }
+        return await json({ data: navegaveis.slice(inicio, inicio + limite).map(i => ({ ...i, obras_nomes: i.obras.map(nomes).join(' / '), valor_no_recorte: i.valor_snapshot * i.obras.length / (i.id === 1 ? 2 : 1) })),
+          paginacao: { pagina, total: navegaveis.length, mais: inicio + limite < navegaveis.length } });
       } finally { active--; }
     }
   }
@@ -172,6 +180,81 @@ try {
   await page.getByRole('button', { name: 'Voltar às obras' }).click(); await pronto();
   await page.getByLabel('Obra / centro de custo').fill('Obra 999'); await page.getByRole('button', { name: 'Aplicar filtros' }).click(); await pronto();
   await page.getByText(/Nenhuma obra nesta situação/).waitFor(); await page.screenshot({ path: path.join(output, 'vazio-mobile.png'), fullPage: true });
+  // Detalhe de tela inteira: mesma lista/filtros, sem aprovar ao navegar.
+  modoDetalhe = true; items.splice(0, items.length, ...structuredClone(originais));
+  await page.getByRole('button', { name: 'Limpar filtros', exact: true }).click(); await pronto();
+  assert.equal(await page.getByRole('region', { name: 'Seleção e decisão' }).count(), 0, 'Nao ocupa area com selecao vazia antes de abrir obra');
+  await abrirObra(1); await page.getByLabel('Selecionar TIT-130', { exact: true }).check();
+  const totalDecisoes = decisoes.length;
+  await page.getByRole('button', { name: 'Abrir detalhes de TIT-81', exact: true }).click();
+  const detalhe = page.getByRole('dialog', { name: 'Detalhes do título para autorização' });
+  const prontoDetalhe = async id => { await detalhe.getByRole('heading', { name: 'SOL-' + id, exact: true }).waitFor(); await detalhe.getByRole('button', { name: 'Próxima', exact: true }).waitFor({ state: 'visible' }); await page.waitForFunction(() => !document.querySelector('.pa-titulo-rodape button')?.disabled); };
+  await prontoDetalhe(81);
+  assert.equal(await page.locator('#root').evaluate(el => el.inert), true);
+  assert.deepEqual(await detalhe.getByRole('navigation').getByRole('button').allTextContents(), ['Anterior','Rejeitar','Aprovar','Próxima']);
+  await detalhe.getByRole('button', { name: 'Próxima', exact: true }).click(); await prontoDetalhe(80);
+  await detalhe.getByRole('button', { name: 'Anterior', exact: true }).click(); await prontoDetalhe(81);
+  assert.equal(decisoes.length, totalDecisoes, 'Anterior/proxima nao chamam POST de decisao');
+  await detalhe.getByRole('button', { name: 'Próxima', exact: true }).click(); await prontoDetalhe(80);
+  await detalhe.getByRole('button', { name: 'Boleto 80.pdf', exact: true }).click(); assert.equal(await page.evaluate(() => window.__documento), 80);
+  await page.getByRole('dialog',{name:'Documento QA'}).waitFor(); await page.keyboard.press('Escape');
+  await page.getByRole('dialog',{name:'Documento QA'}).waitFor({state:'detached'}); assert(await detalhe.isVisible(),'Escape do anexo nao fecha o titulo');
+  for (const width of [390,768,1366]) {
+    await page.setViewportSize({width,height:850});
+    assert(await detalhe.evaluate(el => { const r=el.getBoundingClientRect();return r.top===0 && r.left===0 && r.width===innerWidth && Math.abs(r.height-innerHeight)<2; }), 'Tela inteira '+width);
+    assert(await detalhe.locator('footer').evaluate(el => el.getBoundingClientRect().bottom<=innerHeight+1), 'Rodape sempre visivel');
+    await page.screenshot({path:path.join(output,'titulo-tela-inteira-'+width+'.png')});
+  }
+  await page.setViewportSize({width:390,height:850});
+  await page.evaluate(()=>document.documentElement.classList.add('dark'));
+  await page.waitForTimeout(700); // Aguarda a transicao de tema antes da prova visual.
+  const coresDetalhe = await detalhe.locator('footer button').evaluateAll(nodes => nodes.map(el=>({texto:el.textContent,disabled:el.disabled,cor:getComputedStyle(el).color,fundo:getComputedStyle(el).backgroundColor,opacidade:getComputedStyle(el).opacity})));
+  const luminancia = cor => cor.match(/[\d.]+/g).slice(0,3).map(Number).map(c=>c/255).map(c=>c<=.04045?c/12.92:((c+.055)/1.055)**2.4).reduce((s,c,i)=>s+c*[.2126,.7152,.0722][i],0);
+  for (const botao of coresDetalhe) { const a=luminancia(botao.cor),b=luminancia(botao.fundo);assert((Math.max(a,b)+.05)/(Math.min(a,b)+.05)>=4.5,'Contraste do botao '+botao.texto+': '+JSON.stringify(botao)); }
+  await page.screenshot({path:path.join(output,'titulo-tela-inteira-dark.png')}); await page.evaluate(()=>document.documentElement.classList.remove('dark'));
+  await detalhe.getByRole('button',{name:'Próxima',exact:true}).focus(); await page.keyboard.press('Tab');
+  assert.equal(await detalhe.getByRole('button',{name:'Voltar à lista'}).evaluate(el=>el===document.activeElement),true,'Foco permanece no detalhe');
+  await detalhe.getByRole('button', { name: 'Aprovar', exact: true }).click();
+  await detalhe.getByRole('region',{name:'Conferência deste título'}).waitFor();
+  await detalhe.getByRole('button',{name:'Anterior',exact:true}).click(); await prontoDetalhe(81);
+  assert.equal(decisoes.length,totalDecisoes,'Navegar apos conferir tambem nao decide');
+  assert.equal(await detalhe.getByRole('region',{name:'Conferência deste título'}).count(),0);
+  await detalhe.getByRole('button',{name:'Próxima',exact:true}).click(); await prontoDetalhe(80);
+  await detalhe.getByRole('button', { name: 'Aprovar', exact: true }).click();
+  await detalhe.getByRole('button', { name: 'Confirmar aprovação com passkey' }).evaluate(el=>{el.click();el.click();});
+  await detalhe.getByText('Somente este título foi aprovado. Os demais não foram decididos.').waitFor(); await prontoDetalhe(80);
+  assert.deepEqual(decisoes.at(-1).body.decisoes.map(d=>d.item_id), [80]); assert.equal(decisoes.length,totalDecisoes+1);
+  assert.equal(items[129].status,'PENDENTE','Selecao fora do detalhe nao foi aprovada');
+  await detalhe.getByRole('button', { name: 'Próxima', exact: true }).click(); await prontoDetalhe(79);
+  await detalhe.getByRole('button', { name: 'Anterior', exact: true }).click(); await prontoDetalhe(81);
+  await detalhe.getByRole('button', { name: 'Próxima', exact: true }).click(); await prontoDetalhe(79);
+  await detalhe.getByRole('button', { name: 'Rejeitar', exact: true }).click(); await detalhe.getByText('Informe o motivo da rejeição.', {exact:true}).waitFor();
+  assert.equal(decisoes.length,totalDecisoes+1);
+  await detalhe.getByLabel('Motivo da rejeição').fill('Conferir valores do contrato');
+  await detalhe.getByRole('button', { name: 'Rejeitar', exact: true }).click(); await detalhe.getByRole('button', { name: 'Confirmar rejeição com passkey' }).click();
+  await detalhe.getByText('Somente este título foi rejeitado, com motivo e histórico.').waitFor(); await prontoDetalhe(79);
+  assert.deepEqual(decisoes.at(-1).body.decisoes,[{item_id:79,decisao:'REJEITAR',motivo:'Conferir valores do contrato'}]);
+  await detalhe.getByRole('button', { name: 'Próxima', exact: true }).click(); await prontoDetalhe(78);
+  await page.evaluate(()=>window.__setCaps({can_decide:false,passkey_count:1}));
+  assert(await detalhe.getByRole('button', {name:'Aprovar',exact:true}).isDisabled());
+  assert(await detalhe.getByRole('button', {name:'Rejeitar',exact:true}).isDisabled());
+  assert(await detalhe.getByRole('button', {name:'Próxima',exact:true}).isEnabled());
+  await page.evaluate(()=>window.__setCaps({can_decide:true,passkey_count:0})); assert(await detalhe.getByRole('button', {name:'Aprovar',exact:true}).isDisabled());
+  await page.evaluate(()=>window.__setCaps({can_decide:true,passkey_count:1,paused:true})); assert(await detalhe.getByRole('button', {name:'Aprovar',exact:true}).isDisabled());
+  await page.evaluate(()=>window.__setCaps({can_decide:true,passkey_count:1}));
+  invalidar=78;
+  await detalhe.getByRole('button', { name: 'Aprovar', exact: true }).click(); await detalhe.getByRole('button', { name: 'Confirmar aprovação com passkey' }).click();
+  await detalhe.getByRole('alert').getByText(/O servidor não confirmou esta decisão/).waitFor(); invalidar=0;
+  assert(await detalhe.getByRole('button', {name:'Aprovar',exact:true}).isDisabled());
+  await detalhe.getByRole('button',{name:'Atualizar título',exact:true}).click(); await prontoDetalhe(78);
+  await detalhe.getByRole('button',{name:'Próxima',exact:true}).click(); await prontoDetalhe(77);
+  const antesObsoleto=decisoes.length;
+  items[76].titulo.status='QUITADO';items[76].titulo.valor_saldo=0;items[76].situacao_financeira='QUITADO';
+  await detalhe.getByRole('button',{name:'Aprovar',exact:true}).click(); await detalhe.getByText(/A situação do título mudou/).waitFor();
+  assert.equal(decisoes.length,antesObsoleto); assert.equal(await detalhe.getByRole('region',{name:'Conferência deste título'}).count(),0);
+  await page.keyboard.press('Escape'); await detalhe.waitFor({state:'detached'}); await pronto();
+  assert.equal(await page.locator('#root').evaluate(el=>el.inert),false);
+  assert(await page.getByLabel('Selecionar TIT-130',{exact:true}).isChecked(),'Selecao geral preservada ao fechar o detalhe');
   assert.equal(maxActive, 1, 'Leituras seriais, sem N+1/polling concorrente'); assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
-  console.log('UI por obra: desktop/tablet/mobile, filtros/status atuais, selecao entre paginas/obras sem duplicar compartilhado, limpar todas, aprovar um e voltar aos outros do MESMO lote, passkey/revalidacao/duplo clique/falha parcial/ACL/vazio aprovados. APIs isoladas.');
+  console.log('UI por obra e titulo fullscreen: desktop/tablet/mobile/escuro, selecao global, lote parcial, cursor entre paginas, Anterior/Proxima sem decidir, aprovar/rejeitar somente o atual, passkey/motivo/revalidacao/duplo clique/INVALIDADO/ACL, anexos empilhados/Escape/foco/root inert e retorno preservado aprovados. APIs isoladas.');
 } finally { await page.close(); await browser.close(); await server.close(); }

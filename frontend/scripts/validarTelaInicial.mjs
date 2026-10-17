@@ -22,12 +22,14 @@ try {
   assert.equal(resolverRotaInicial(owner, { installedPwa: false }), '/perfil', 'Navegador preserva preferencia');
   assert.equal(isAutorizacaoPwaCompacta(owner, authorizationRoute, true), true);
   assert.equal(isAutorizacaoPwaCompacta(owner, '/modulos', true), false);
-  assert.equal(isAutorizacaoPwaCompacta(owner, authorizationRoute, false), false);
+  assert.equal(isAutorizacaoPwaCompacta(owner, authorizationRoute, false), true, 'Navegador tambem usa area util compacta');
   for (const caps of [{ enabled: false, can_decide: true }, { enabled: true, can_prepare: true }, {}]) {
     const limited = { perfil: 'SUPERADMIN', autorizacao_pagamentos: caps };
     assert.equal(resolverRotaInicial(limited, { installedPwa: true }), '/');
-    assert.equal(isAutorizacaoPwaCompacta(limited, authorizationRoute, true), false, 'Sem bypass por perfil');
+    assert.equal(isAutorizacaoPwaCompacta(limited, authorizationRoute, true), Boolean(caps.enabled && caps.can_prepare), 'Somente visual: segue capacidade de acesso');
   }
+  assert.equal(isAutorizacaoPwaCompacta({ perfil: 'SUPERADMIN', autorizacao_pagamentos: { enabled: true, can_view: true } }, authorizationRoute), true);
+  assert.equal(isAutorizacaoPwaCompacta({ perfil: 'SUPERADMIN' }, authorizationRoute), false, 'Perfil sozinho nao libera a pagina');
   const superadmin = { id: 1, perfil: 'SUPERADMIN', setor: { codigo: 'SUPORTE' }, modulos_habilitados: [] };
 
   assert.equal(resolverRotaInicial(superadmin), '/', 'Sem escolha, Inicio abre o menu.');

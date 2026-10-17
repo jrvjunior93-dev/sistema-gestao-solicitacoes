@@ -87,6 +87,8 @@ try {
       if (url.pathname.endsWith('/autorizacoes-pagamento/painel/obras')) return json({ data: [{ obra_id: 1, obra_nome: 'Obra QA', quantidade_titulos: 5, valor_total: 500 }], resumo: { quantidade_titulos: 5, valor_total: 500 }, paginacao: { total: 1, mais: false } });
       if (url.pathname.endsWith('/autorizacoes-pagamento/painel/titulos')) return json({ data: [], paginacao: { total: 0, mais: false } });
       if (url.pathname.endsWith('/autorizacoes-pagamento/passkeys')) return json({ data: [{ id: 1, nome_dispositivo: 'Celular QA' }] });
+      if (url.pathname.endsWith('/autorizacoes-pagamento/autorizadores')) return json({ data: [] });
+      if (url.pathname.endsWith('/usuarios')) return json([]);
       if (url.pathname.endsWith('/passkeys/registro/opcoes')) return json({ challenge: 'qa' });
       if (url.pathname.endsWith('/passkeys/registro/verificar')) return json({ ok: true });
       if (url.origin === 'http://127.0.0.1:5311' && !url.pathname.startsWith('/api')) return route.continue();
@@ -99,6 +101,10 @@ try {
   await page.waitForFunction(() => window.__qaInitialRoute);
   assert.equal(await page.evaluate(() => window.__qaInitialRoute), '/financeiro/autorizacoes-pagamento');
   await page.locator('.pa-obra').waitFor().catch(async e => { console.error({ errors, unexpected, body: await page.locator('body').innerText() }); throw e; });
+  assert.equal(await page.locator('.app-page-header').count(),0,'Sem cabecalho redundante/area branca vazia');
+  assert(await page.locator('.pa-obras-filtros').evaluate(el=>el.getBoundingClientRect().top<220),'Filtros no primeiro viewport util');
+  assert.equal(await page.locator('.pa-obra').first().evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(255, 255, 255)','Obras com fundo branco no tema claro');
+  await page.screenshot({path:path.join(output,'obras-compactas-navegador.png'),fullPage:false});
   await page.getByRole('button', { name: 'Por lote / histórico', exact: true }).click();
   await page.getByRole('checkbox').waitFor();
   assert.equal(await page.locator('.fx-topbar').count(), 0);
@@ -139,20 +145,26 @@ try {
   assert.equal(await page.locator('.fx-topbar').count(), 1, 'Outras telas mantem shell completo');
   assert.deepEqual(errors, []); assert.deepEqual(unexpected, []); await page.close();
 
-  for (const options of [{ installed: false, entry: 'auth' }, { user: { ...owner, autorizacao_pagamentos: { enabled: true, can_prepare: true, can_view: true } }, entry: 'auth' }]) {
+  for (const options of [{ installed: false, entry: 'auth' }, { user: { ...owner, autorizacao_pagamentos: { enabled: true, can_prepare: true, can_view: true } }, entry: 'auth' },
+    { installed: false, user: { ...owner, perfil: 'SUPERADMIN', autorizacao_pagamentos: { enabled: true, can_view: true, can_configure: true } }, entry: 'auth' }]) {
     const qa = await scenario(options);
-    if (options.user?.autorizacao_pagamentos?.can_decide !== false && !options.user) await qa.page.getByRole('button', { name: 'Por lote / histórico', exact: true }).click();
+    await qa.page.locator('.pa-obra').waitFor();
+    assert.equal(await qa.page.getByRole('button', { name: 'Por obra', exact: true }).getAttribute('aria-pressed'), 'true');
+    await qa.page.getByRole('button', { name: 'Por lote / histórico', exact: true }).click();
     await qa.page.locator('.pa-list').waitFor();
-    assert.equal(await qa.page.locator('.fx-topbar').count(), 1);
-    assert.equal(await qa.page.locator('.pa-toolbar').count(), 1);
+    assert.equal(await qa.page.locator('.fx-topbar').count(), 0);
+    assert.equal(await qa.page.locator('.pa-toolbar').count(), 0);
+    assert.equal(await qa.page.locator('.pa-pwa-shell').count(), 1);
+    if (options.user) assert.equal(await qa.page.getByRole('button', { name: /^Autorizar/ }).count(), 0, 'Visao comum nao concede decisao por perfil');
     assert.deepEqual(qa.errors, []); assert.deepEqual(qa.unexpected, []); await qa.page.close();
   }
   const ios = await scenario({ ios: true, user: { ...owner, autorizacao_pagamentos: { ...owner.autorizacao_pagamentos, passkey_count: 0 } } });
   await ios.page.getByRole('button', { name: 'Por lote / histórico', exact: true }).click();
   await ios.page.locator('.pa-list').waitFor();
   assert.equal(await ios.page.locator('.pa-pwa-shell').count(), 1);
+  await ios.page.locator('.pa-pwa-toolbar summary').click();
   assert.equal(await ios.page.getByRole('button', { name: 'Cadastrar passkey' }).isVisible(), true);
   assert.equal(await ios.page.getByRole('button', { name: /^Autorizar/ }).isDisabled(), true);
   assert.deepEqual(ios.errors, []); assert.deepEqual(ios.unexpected, []); await ios.page.close();
-  console.log('OK: PWA Android/iOS, rota inicial, shell compacto exclusivo, area util, opcoes/passkey/tema/saida, guardas e legados preservados. APIs simuladas.');
+  console.log('OK: PWA Android/iOS/navegador, visao por obra e shell compacto para leitor/preparador/SUPERADMIN com acesso, sem conceder decisao; rota inicial, opcoes/passkey/tema/saida, guardas e legados preservados. APIs simuladas.');
 } finally { await browser?.close(); await server.close(); }

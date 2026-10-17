@@ -31,6 +31,12 @@ for (const query of [ { pagina: '0' }, { limite: '100' }, { limite: '99999' }, {
   { obra: [] }, { obra_id: '1 OR 1=1' }, { pagina: {} }, { vencimento_inicio: '2026-02-30' },
   { vencimento_inicio: '2026-10-18', vencimento_fim: '2026-10-17' }, { item_ids: '1,2,0' },
   { item_ids: Array.from({ length: 201 }, (_, i) => i + 1).join(',') } ]) assert.throws(() => filtros(query));
+for (const cursor of [ { sentido: 'PROXIMA' }, { sentido: 'APROVAR', cursor_item_id: '1', cursor_vencimento: '2026-10-17' },
+  { sentido: 'ANTERIOR', cursor_item_id: '1 OR 1=1', cursor_vencimento: 'SEM_DATA' },
+  { sentido: 'PROXIMA', cursor_item_id: '1', cursor_vencimento: '2026-02-30' },
+  { sentido: 'PROXIMA', cursor_item_id: '1', cursor_vencimento: '2026-10-17', pagina: '2' },
+  { sentido: 'PROXIMA', cursor_item_id: '1', cursor_vencimento: '2026-10-17', item_ids: '1' } ]) assert.throws(() => filtros(cursor));
+assert.equal(filtros({ sentido: 'PROXIMA', cursor_item_id: '1', cursor_vencimento: 'SEM_DATA' }).cursorId, 1);
 const sql = consulta({ situacao: 'QUITADO', obra: "Obra_%' OR 1=1 --", vencimento_inicio: '2026-10-01', pagina: '20' });
 assert(!sql.cte.includes("OR 1=1 --")); assert.equal(sql.replacements.obra, "%Obra!_!%' OR 1=1 --%"); assert.equal(sql.replacements.offset, 570);
 assert(sql.cte.indexOf('situacao_financeira = :situacao') < sql.cte.indexOf('pesos AS'));

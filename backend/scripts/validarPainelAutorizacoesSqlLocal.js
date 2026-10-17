@@ -44,6 +44,21 @@ const db = { sequelize: { query: async (sql, options) => executar(sql, options) 
   assert.equal(new Set(obras.map(o => o.obra_id)).size, 150);
   const ids = []; for (let pagina = 1; pagina <= 13; pagina++) ids.push(...(await listarTitulos({ pagina: String(pagina), limite: '50' }, db)).data.map(i => i.id));
   assert.equal(ids.length, 650); assert.equal(new Set(ids).size, 650);
+  // Cursor continua na ordem da lista mesmo apos aprovar os 50 primeiros.
+  const cursor = { situacao: 'AGUARDANDO', cursor_item_id: '601', cursor_vencimento: '2026-10-17', limite: '1' };
+  assert.equal((await listarTitulos({ ...cursor, sentido: 'PROXIMA' }, db)).data[0].id, 600);
+  assert.equal((await listarTitulos({ ...cursor, sentido: 'ANTERIOR' }, db)).data[0].id, 602);
+  for (let id = 601; id <= 650; id++) mudar(id, { status: 'QUITADO', valor_baixado: 100, valor_saldo: 0 });
+  assert.equal((await listarTitulos({ ...cursor, sentido: 'PROXIMA' }, db)).data[0].id, 600, 'Nao pula 50 pendencias quando a pagina encolhe');
+  assert.equal((await listarTitulos({ ...cursor, sentido: 'ANTERIOR' }, db)).data.length, 0);
+  for (let id = 601; id <= 650; id++) mudar(id, { status: 'ABERTO', valor_baixado: 0, valor_saldo: 100 });
+  mudar(650, { data_vencimento: '2026-10-16' });
+  assert.equal((await listarTitulos({ ...cursor, cursor_item_id: '650', cursor_vencimento: '2026-10-16', sentido: 'PROXIMA' }, db)).data[0].id, 649);
+  assert.equal((await listarTitulos({ ...cursor, cursor_item_id: '649', sentido: 'ANTERIOR' }, db)).data[0].id, 650);
+  mudar(650, { data_vencimento: null }); sqlite.prepare('UPDATE pagamento_autorizacao_itens SET vencimento_snapshot=NULL WHERE id=650').run();
+  assert.equal((await listarTitulos({ ...cursor, cursor_item_id: '650', cursor_vencimento: 'SEM_DATA', sentido: 'PROXIMA' }, db)).data[0].id, 649);
+  assert.equal((await listarTitulos({ ...cursor, cursor_item_id: '649', sentido: 'ANTERIOR' }, db)).data[0].id, 650);
+  mudar(650, { data_vencimento: '2026-10-17' }); sqlite.prepare("UPDATE pagamento_autorizacao_itens SET vencimento_snapshot='2026-10-17' WHERE id=650").run();
   const f = await listarObras({ obra: 'Obra 150', vencimento_inicio: '2026-10-17', vencimento_fim: '2026-10-17' }, db);
   assert.equal(f.paginacao.total, 1); assert.equal(f.resumo.quantidade_titulos, 4); assert.equal(f.resumo.valor_total, 400);
   assert.equal((await listarObras({ obra: '%' }, db)).resumo.quantidade_titulos, 0, 'Busca literal, sem wildcard');
@@ -84,5 +99,5 @@ const db = { sequelize: { query: async (sql, options) => executar(sql, options) 
   assert.equal(loteAtual[0].itens[0].fila_atual.id, 2, 'Historico por lote tambem usa ultimo ciclo, nao a fila antiga');
   assert.equal(loteAtual[0].itens[0].fila_item_id, 1);
   assert.equal((await listarTitulos({ pagina: '99' }, db)).paginacao.total, 650);
-  console.log('CTE real em SQLite memoria (JSON_ARRAYAGG adaptado): 650 titulos/150 obras, todas as paginas, filtros anteriores ao limite, pagamentos/estorno/ultima fila, dossie mais recente, rateios/renegociados/compartilhados e centavos sem duplicidade aprovados. Nao substitui MySQL/EXPLAIN DEV.');
+  console.log('CTE real em SQLite memoria (JSON_ARRAYAGG adaptado): 650 titulos/150 obras, paginas/filtros, cursor Anterior/Proxima com datas/null e pagina reduzida apos 50 quitacoes, pagamentos/estorno/ultima fila, dossie mais recente, rateios/renegociados/compartilhados e centavos sem duplicidade aprovados. Nao substitui MySQL/EXPLAIN DEV.');
 } finally { sqlite.close(); } })().catch(e => { console.error(e); process.exitCode = 1; });

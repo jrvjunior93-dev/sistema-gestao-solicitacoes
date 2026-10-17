@@ -1,9 +1,44 @@
 # Modulo FINANCEIRO
 
+## Autorizacoes: area util e detalhe sequencial - 2026-10-17
+
+- A rota de autorizacoes usa shell compacto em navegador e PWA para TODOS os
+  usuarios que ja possuem capacidade de acesso, inclusive SUPERADMIN. Nao ha
+  concessao de permissao por perfil nem mudanca da tela inicial individual.
+  Cabecalho geral, breadcrumbs, abas e banner PILOT saem desta rota; conta,
+  tema, menu, busca, saida, passkey, avisos e dispositivos continuam acessiveis
+  por controles compactos. Outras rotas conservam o shell completo.
+- `Por obra` e a visao inicial comum; historico por lote continua disponivel.
+  Cards usam superficie branca no claro e tokens de contraste no escuro.
+  A selecao vazia nao ocupa espaco antes de escolher obra.
+- Clicar no codigo da solicitacao/titulo abre dossie de leitura em tela inteira,
+  sem conceder edicao/acesso direto ao formulario da solicitacao. Corpo rolante
+  mostra valores, dados do dossie, justificativa atual, participacoes e documentos.
+  Rodape sempre acessivel na ordem Anterior, Rejeitar, Aprovar, Proxima.
+- Anterior/Proxima sao apenas GET; nao aprovam, rejeitam ou selecionam. Mantem
+  obra/filtros e atravessam paginas por cursor vencimento+ID, inclusive quando
+  o titulo recem-decidido deixa o filtro. Nao ha carregamento integral da fila.
+  Limites de navegacao mostram mensagem, sem sair da obra automaticamente.
+- Aprovar/Rejeitar reconsultam o titulo, pedem conferencia e passkey, enviam
+  somente UM item pelo POST existente. Nao avancam automaticamente. Motivo e
+  obrigatorio para rejeicao. Falha/INVALIDADO nao e apresentado como aprovado.
+  Sem bypass nominal, snapshot reescrito, nova permissao, POST ou migration.
+- Fechar o detalhe preserva filtros, pagina e selecao geral; decisao individual
+  so remove aquele titulo da selecao. Anexos usam o visualizador existente;
+  Escape fecha apenas o anexo superior. Fundo fica inert e foco fica no detalhe.
+  Polling da lista pausa durante o detalhe e retoma ao fechar, com dados atuais.
+- Novos parametros GET de titulos: `sentido=ANTERIOR|PROXIMA`,
+  `cursor_item_id`, `cursor_vencimento=YYYY-MM-DD|SEM_DATA`. Valores validados e
+  parametrizados; nao combinar com pagina diferente de1 ou item_ids.
+  `verificarPainelAutorizacoesDev.js --verificar` passou a exercitar ambos os
+  sentidos no MySQL DEV. Revalidar apos publicar; teste local SQLite nao substitui
+  homologacao MySQL/EXPLAIN. Nao executar novo painel em producao nesta etapa.
+- [Handoff](../../handoffs/2026-10-17-autorizacoes-tela-inteira.md).
+
 ## Autorizacoes por obra e situacao financeira atual - 2026-10-17
 
-- Autorizador nominal inicia a tela em `Por obra`; `Por lote / historico`
-  permanece disponivel. O shell compacto continua exclusivo do PWA instalado.
+- Usuarios com acesso iniciam a tela em `Por obra`; `Por lote / historico`
+  permanece disponivel. O shell compacto agora tambem atende o navegador.
   Filtros por vencimento inicial/final, nome da obra e situacao sao aplicados no
   servidor, antes da paginacao. Sem conceder acesso geral ao modulo Financeiro.
 - Obras mostram quantidade/valor das participacoes dos dossies no recorte.

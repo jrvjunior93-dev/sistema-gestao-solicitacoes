@@ -16,7 +16,27 @@ function filtros(query = {}) {
   if (!/^[1-9]\d{0,5}$/.test(pagina) || !/^[1-9]\d?$/.test(limite) || Number(limite) > 50) erro('Paginacao invalida. Use no maximo 50 registros por pagina.');
   const ids = scalar('item_ids');
   if (ids && (!/^[1-9]\d*(,[1-9]\d*)*$/.test(ids) || ids.split(',').length > 200 || ids.split(',').some(v => !Number.isSafeInteger(Number(v))))) erro('Consulte no maximo 200 itens distintos.');
-  return { status, inicio, fim, q, obra, pagina: Number(pagina), limite: Number(limite), ids: ids ? [...new Set(ids.split(',').map(Number))] : [] };
+  const sentido = scalar('sentido'), cursorId = scalar('cursor_item_id'), cursorData = scalar('cursor_vencimento');
+  if (sentido || cursorId || cursorData) {
+    if (!['ANTERIOR', 'PROXIMA'].includes(sentido) || !/^[1-9]\d*$/.test(cursorId) || !Number.isSafeInteger(Number(cursorId))
+      || (cursorData !== 'SEM_DATA' && (!/^\d{4}-\d{2}-\d{2}$/.test(cursorData) || !Number.isFinite(Date.parse(cursorData + 'T00:00:00Z')) || new Date(cursorData + 'T00:00:00Z').toISOString().slice(0, 10) !== cursorData))
+      || pagina !== '1' || ids) erro('Cursor de navegacao invalido.');
+  }
+  return { status, inicio, fim, q, obra, pagina: Number(pagina), limite: Number(limite), ids: ids ? [...new Set(ids.split(',').map(Number))] : [],
+    sentido, cursorId: Number(cursorId), cursorData };
+}
+function navegar(f, replacements) {
+  if (!f.sentido) return { where: '', ordem: 'f.vencimento_atual, f.id DESC' };
+  const proxima = f.sentido === 'PROXIMA';
+  replacements.cursor_id = f.cursorId;
+  const id = `f.id ${proxima ? '<' : '>'} :cursor_id`;
+  let condicao;
+  if (f.cursorData === 'SEM_DATA') condicao = proxima ? `(f.vencimento_atual IS NOT NULL OR (f.vencimento_atual IS NULL AND ${id}))` : `(f.vencimento_atual IS NULL AND ${id})`;
+  else {
+    replacements.cursor_data = f.cursorData;
+    condicao = `(${proxima ? '' : 'f.vencimento_atual IS NULL OR '}f.vencimento_atual ${proxima ? '>' : '<'} :cursor_data OR (f.vencimento_atual = :cursor_data AND ${id}))`;
+  }
+  return { where: 'WHERE ' + condicao, ordem: proxima ? 'f.vencimento_atual, f.id DESC' : 'f.vencimento_atual DESC, f.id ASC' };
 }
 function consulta(query) {
   const f = filtros(query), replacements = { limite: f.limite, offset: (f.pagina - 1) * f.limite };
@@ -88,14 +108,16 @@ async function listarObras(query = {}, db = require('../models')) {
 }
 async function listarTitulos(query = {}, db = require('../models')) {
   const { f, cte, replacements } = consulta(query);
+  const cursor = navegar(f, replacements);
   const rows = await db.sequelize.query(cte + ` SELECT f.*, SUM(r.valor_parte) valor_no_recorte,
     JSON_ARRAYAGG(JSON_OBJECT('obra_id', r.obra_id, 'obra_nome', r.obra_nome, 'valor', r.valor_parte)) participacoes_no_recorte,
     COUNT(*) OVER() total FROM filtrados f JOIN recorte r ON r.id = f.id
+    ${cursor.where}
     GROUP BY f.id, f.lote_id, f.titulo_financeiro_id, f.status_decisao, f.valor_snapshot, f.lote_status, f.expira_em,
       f.titulo_id, f.titulo_status, f.renegociado_por_id, f.renegociacao_id, f.compartilhamento_id, f.obra_id,
       f.valor_baixado, f.valor_saldo, f.vencimento_atual, f.fila_id, f.fila_status, f.fila_motivo, f.situacao_financeira
-    ORDER BY f.vencimento_atual, f.id DESC LIMIT :limite OFFSET :offset`, { replacements, type: QueryTypes.SELECT });
-  const total = rows.length ? Number(rows[0].total) : Number((await db.sequelize.query(cte + ' SELECT COUNT(DISTINCT id) total FROM recorte', { replacements, type: QueryTypes.SELECT }))[0]?.total || 0);
+    ORDER BY ${cursor.ordem} LIMIT :limite OFFSET :offset`, { replacements, type: QueryTypes.SELECT });
+  const total = rows.length ? Number(rows[0].total) : f.sentido ? 0 : Number((await db.sequelize.query(cte + ' SELECT COUNT(DISTINCT id) total FROM recorte', { replacements, type: QueryTypes.SELECT }))[0]?.total || 0);
   const items = rows.length ? await db.PagamentoAutorizacaoItem.findAll({ where: { id: { [Op.in]: rows.map(r => r.id) } },
     include: [
       { model: db.PagamentoAutorizacaoLote, as: 'lote', attributes: ['id', 'codigo', 'status', 'expira_em'] },

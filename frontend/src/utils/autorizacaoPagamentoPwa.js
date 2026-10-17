@@ -12,6 +12,8 @@ export function isAutorizadorPwa(user, installed = isInstalledPwa()) {
   return Boolean(installed && user?.autorizacao_pagamentos?.can_decide && canAccessAutorizacoesPagamento(user));
 }
 
-export function isAutorizacaoPwaCompacta(user, pathname, installed = isInstalledPwa()) {
-  return pathname === AUTORIZACAO_PAGAMENTO_ROUTE && isAutorizadorPwa(user, installed);
+// Compactar a pagina nao concede permissao nem muda a rota inicial individual.
+// Navegador/PWA e todos os perfis com acesso usam a mesma area util.
+export function isAutorizacaoPwaCompacta(user, pathname) {
+  return String(pathname || '').replace(/\/+$/, '') === AUTORIZACAO_PAGAMENTO_ROUTE && canAccessAutorizacoesPagamento(user);
 }

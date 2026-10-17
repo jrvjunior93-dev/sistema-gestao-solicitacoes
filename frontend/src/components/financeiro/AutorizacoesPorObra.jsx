@@ -6,6 +6,7 @@ import { listarObrasAutorizacao, listarTitulosAutorizacao, obterOpcoesDecisaoPas
 import { autenticarComPasskey } from '../../utils/webauthn';
 import { SITUACOES_AUTORIZACAO, rotuloSituacao, podeSelecionarAutorizacao, selecionarPagina, reconciliarSelecao, agruparDecisoes } from '../../utils/autorizacaoPagamentoSituacao';
 import { resumoSolicitacaoAutorizacao } from '../../utils/autorizacaoPagamentoResumo';
+import AutorizacaoTituloDetalhe from './AutorizacaoTituloDetalhe';
 
 const moeda = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const INICIAL = { vencimento_inicio: '', vencimento_fim: '', obra: '', situacao: 'AGUARDANDO' };
@@ -33,6 +34,7 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
   const [revisaoDecisao, setRevisaoDecisao] = useState(null), [preparando, setPreparando] = useState(false);
   const [chaveCarregada, setChaveCarregada] = useState('');
   const [tentativaManual, setTentativaManual] = useState(0);
+  const [detalhe, setDetalhe] = useState(null);
   const vivo = useRef(true), voo = useRef(null), travado = useRef(false);
   const parametros = { filtro, obra, paginaObras, paginaTitulos };
   const chave = JSON.stringify(parametros), contexto = useRef({ parametros, chave }); contexto.current = { parametros, chave };
@@ -78,7 +80,7 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
     })();
     return voo.current;
   }
-  usePollingSeguro(carregar, { ativo: !busy && !preparando && workspaceAtivo, eventos: [EVENTO], revisao: `${chave}:${revisao}:${tentativaManual}` });
+  usePollingSeguro(carregar, { ativo: !busy && !preparando && !detalhe && workspaceAtivo, eventos: [EVENTO], revisao: `${chave}:${revisao}:${tentativaManual}` });
   useEffect(() => { setRevisaoDecisao(null); }, [chave]);
   function aplicar(event) {
     event.preventDefault(); if (busy || preparando) return;
@@ -167,9 +169,10 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
           {titulos.data.map(item => {
             const s = item.snapshot_json || {}, permitido = podeSelecionarAutorizacao(item);
             return <article key={item.id} className="pa-obra-titulo">
-              <div className="pa-obra-titulo__principal"><label><input type="checkbox" aria-label={`Selecionar ${s.codigo || item.titulo_financeiro_id}`}
+              <div className="pa-obra-titulo__principal"><div><input type="checkbox" aria-label={`Selecionar ${s.codigo || item.titulo_financeiro_id}`}
                 checked={selecao[String(item.titulo_financeiro_id)]?.id === item.id} disabled={indisponivel || !caps.can_decide || caps.paused || !permitido}
-                onChange={e => mudarSelecao(current => selecionarPagina(current, [item], e.target.checked))} /><strong>{s.solicitacao?.codigo || s.codigo || `Título #${item.titulo_financeiro_id}`}</strong></label>
+                onChange={e => mudarSelecao(current => selecionarPagina(current, [item], e.target.checked))} /><button type="button" className="pa-titulo-abrir" aria-label={`Abrir detalhes de ${s.codigo || item.titulo_financeiro_id}`} disabled={busy || preparando || carregando}
+                  onClick={() => setDetalhe({ item, filtro: { ...filtro, obra_id: String(obra.id) } })}>{s.solicitacao?.codigo || s.codigo || `Título #${item.titulo_financeiro_id}`} <span aria-hidden="true">›</span></button></div>
                 <span className={`pa-status pa-status--${item.situacao_financeira?.toLowerCase()}`}>{rotuloSituacao(item.situacao_financeira)}</span></div>
               {item.status === 'PENDENTE' && (!permitido || item.situacao_financeira !== 'AGUARDANDO') && <small>{permitido ? 'Aguardando aprovação do saldo deste título.' : 'Pendente de decisão, mas o saldo ou vínculo mudou. Confira o financeiro antes de aprovar.'}</small>}
               {item.fila_atual?.status === 'NAO_PAGO' && item.situacao_financeira !== 'NAO_PAGO' && <small>Última tentativa na fila: não pago.</small>}
@@ -190,7 +193,7 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
         </>}
       </section>
     </div>
-    {caps.can_decide && <section className="pa-obras-decisao" aria-label="Seleção e decisão">
+    {caps.can_decide && (obra || selecionados.length > 0) && <section className="pa-obras-decisao" aria-label="Seleção e decisão">
       <div><strong>{selecionados.length} selecionado(s) · {moeda(totalSelecionado)}</strong><small>Seleção mantida entre obras e páginas. Títulos compartilhados são contados uma vez.</small></div>
       <button type="button" className="btn btn-outline btn-sm" disabled={busy || preparando || !selecionados.length} onClick={() => mudarSelecao({})}>Limpar seleção de todas as páginas</button>
       <label>Motivo para rejeição<input value={motivo} maxLength={500} disabled={busy || preparando} onChange={e => { setMotivo(e.target.value); setRevisaoDecisao(null); }} /></label>
@@ -207,5 +210,8 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
           <button type="button" className="btn btn-primary btn-sm" disabled={busy || caps.paused} onClick={confirmar}>Confirmar {revisaoDecisao.decisao === 'AUTORIZAR' ? 'autorização' : 'rejeição'} com passkey</button></div>
       </section>}
     </section>}
+    {detalhe && <AutorizacaoTituloDetalhe inicial={detalhe.item} filtro={detalhe.filtro} caps={caps} setBusy={setBusy} abrirDocumento={abrirDocumento}
+      onFechar={() => { setDetalhe(null); setTentativaManual(current => current + 1); }}
+      onDecidido={tituloId => { setRevisaoDecisao(null); setSelecao(current => Object.fromEntries(Object.entries(current).filter(([id]) => Number(id) !== Number(tituloId)))); }} />}
   </section>;
 }
