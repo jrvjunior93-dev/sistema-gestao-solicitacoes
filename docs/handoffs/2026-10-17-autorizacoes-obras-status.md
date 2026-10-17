@@ -119,6 +119,13 @@
 
 ## Execucao separada pelo operador
 
+- Publicacao funcional confirmada na refactor/frontend:
+  6d524adcd47178fd89238109ea7a098cb9ad3301, pai fb9a0e89 e tree
+  beb1c718f77a320042504ae3db8a6221a6909466 identica ao commit local testado.
+  Git push HTTPS local nao autenticou; integracao GitHub atualizou a ref com
+  expected_sha e sem force. Fetch/ls-remote/diff confirmaram o resultado.
+  Main segue 8f1b2c8530262b5536853262e95b15c11e8f24b3. Registro documental
+  posterior nao altera codigo funcional; usar SHA final informado na entrega.
 - DEV: checkout refactor/frontend limpo nos arquivos rastreados, fast-forward
   para SHA entregue, npm ci --omit=dev no backend, verificacao de identidade/
   schema/processo/flags/sessao12h com configurarSessao12hDev.js --verificar.

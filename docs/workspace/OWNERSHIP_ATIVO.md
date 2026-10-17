@@ -9,6 +9,10 @@
   validacao/publicacao. Preservar outputs/, main-only TLS e demais worktrees.
 - Separar MySQL/EXPLAIN do painel novo (DEV) da auditoria dos dados reais dos
   acordos #3/#4/#5 e SOL-5419/PC-00139 (main, codigo fixado lido do Git em memoria).
+- Publicacao funcional confirmada: origin/refactor/frontend 6d524adc,
+  tree beb1c718 idêntica a testada. Main 8f1b2c85 inalterada. Reserva liberada.
+  Deploy DEV e consultas reais ficam para o operador com os comandos entregues;
+  agente nao executou banco, EC2, reinicio ou configuracao reais.
 
 ## Autorizacoes por obra/status financeiros e diagnostico de negociacao - 2026-10-17
 
