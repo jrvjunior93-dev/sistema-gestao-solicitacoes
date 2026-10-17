@@ -1,5 +1,69 @@
 # Modulo FINANCEIRO
 
+## Autorizacoes por obra e situacao financeira atual - 2026-10-17
+
+- Autorizador nominal inicia a tela em `Por obra`; `Por lote / historico`
+  permanece disponivel. O shell compacto continua exclusivo do PWA instalado.
+  Filtros por vencimento inicial/final, nome da obra e situacao sao aplicados no
+  servidor, antes da paginacao. Sem conceder acesso geral ao modulo Financeiro.
+- Obras mostram quantidade/valor das participacoes dos dossies no recorte.
+  Resumo conta titulos unicos; varias origens na mesma obra sao agrupadas e
+  residuos em centavos ficam na ultima obra. Selecionar um compartilhado decide
+  o titulo inteiro, com aviso, sem repetir o pagamento em cada obra/CNPJ.
+- Abrir obra lista titulos de varios lotes juntos. Aprovar apenas um NAO decide
+  os outros do lote. Pode voltar depois para decidir os restantes. A selecao
+  persiste entre obras/paginas; selecionar todos abrange somente a pagina atual,
+  e limpar selecao remove de todas. Conferencia explicita inclui os nao visiveis.
+- Passkey continua pelo contrato atual, com apenas os itens selecionados de
+  cada lote. Multiplos lotes sao confirmados serialmente, com aviso de progresso
+  parcial; falha interrompe os seguintes e nao desfaz decisoes anteriores.
+  Revalidacao de todos os selecionados ocorre antes da conferencia, e a decisao
+  continua revalidando material/ACL/locks no servidor. HTTP200 com item INVALIDADO
+  nao e apresentado como autorizado. Duplo clique permanece bloqueado.
+- Situacao financeira e projecao de leitura, fora do snapshot/material assinado:
+  QUITADO, PARCIALMENTE_PAGO, NAO_PAGO, NA_FILA e demais estados de historico.
+  Titulos/lotes quitados nao ficam mais com rotulo fixo `NA FILA`. Lote misto
+  mostra pagamentos parciais e contagens de situacoes, sem alterar sua decisao.
+- `Aguardando aprovacao` consulta decisoes pendentes, incluindo saldo parcial
+  com dossie valido. `Nao pago`/`Na fila` consultam a tentativa atual; pagamento
+  parcial continua visivel no badge financeiro. Um titulo pode estar parcialmente
+  pago e ter sua ultima tentativa marcada nao paga. Quitacao/cancelamento nao
+  sao confundidos com falta de pagamento. Estorno/retorno usam o ultimo ciclo.
+- expira_em permanece metadado legado: nao foi criado prazo ou bloqueio novo.
+  Rejeicoes/invalidacoes/cancelamentos continuam distinguiveis; leitura em PAUSED
+  e bloqueio OFF seguem a politica existente. Nenhuma flag/PILOT muda.
+  Leitura nao consulta passkeys/push a cada pagina; mesma matriz nominal de
+  visualizar/preparar/configurar ou decidir com autorizador ativo preservada.
+- API GET da lista agora retorna `{data,paginacao}` em blocos de 30 (maximo 50),
+  com ordenacao estavel/data+id e contagem completa, sem teto global de 100 lotes.
+  Novos GET `/financeiro/autorizacoes-pagamento/painel/obras` e `/painel/titulos`
+  usam a mesma capacidade nominal de leitura de dossies; nenhum POST de decisao
+  novo. Painel usa somente o dossie mais recente por titulo; por lote mantem o
+  historico. Consulta paginada de documentos retorna apenas metadados, sem presign
+  em massa. Endpoints e cliente usam no-store; service worker nao armazena APIs.
+- Polling serial de 30s somente visivel/aba ativa, backoff de erros, respostas
+  obsoletas ignoradas e retry manual explicito. Sem alterar pool/conexoes.
+  Desktop tem obras/titulos lado a lado. No celular, voltar as obras reabre
+  filtros; a lista de titulos rola sem afastar as acoes por dezenas de telas.
+- Sem nova migration, .env ou operacao de producao. Testes isolados de 1001
+  lotes/650 titulos/150 obras, ACL, estados e UI mobile/desktop registrados no
+  [handoff](../../handoffs/2026-10-17-autorizacoes-obras-status.md). A execucao
+  SQL local usa SQLite em memoria (Node24), nao substitui MySQL/EXPLAIN DEV.
+  Operador pode validar SQL/planos somente no DEV com
+  `node scripts/verificarPainelAutorizacoesDev.js --verificar` (backend).
+
+### Conferencia dos titulos negociados enviados pelo operador
+
+Prints mostram negociacoes #3/#4/#5 e TIT-010879/010885/010890 quitados; SOL-5419
+e pedido PC-00139 aparentam somar duas vezes R$2815,00. Isso NAO prova quais
+registros estao duplicados ou se eram origens selecionadas. Nao excluir titulos
+para esconder a divergencia. Script de operador
+`backend/scripts/auditarNegociacoes20261017.js --verificar` valida UUID/endpoint
+do ambiente e executa somente tres SELECTs do recorte, distinguindo origem do
+acordo, parcela paga e candidato fora dos acordos. Nao repara nem exclui nada.
+Sua implementacao nao significa que o script foi publicado ou executado em
+producao. Reparo exige conferencia dos vinculos e autorizacao especifica.
+
 ## Medicao x valor efetivamente autorizado - 2026-10-16
 
 O ajuste de pagamento de medicao preserva o medido e permite reduzir titulo

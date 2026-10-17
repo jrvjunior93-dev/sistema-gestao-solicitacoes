@@ -1,5 +1,34 @@
 # Ownership Ativo
 
+## Publicacao autorizacoes por obra e auditoria de titulos - 2026-10-17
+
+- Usuario autorizou commit/push somente na refactor/frontend e comandos DEV.
+  Pediu conferir os titulos negociados na main/PROD: auditoria exclusivamente
+  SELECT, sem merge/deploy/reinicio/configuracao ou reparo na producao.
+- Agente unico, reserva do pacote de autorizacoes acima e scripts/docs de
+  validacao/publicacao. Preservar outputs/, main-only TLS e demais worktrees.
+- Separar MySQL/EXPLAIN do painel novo (DEV) da auditoria dos dados reais dos
+  acordos #3/#4/#5 e SOL-5419/PC-00139 (main, codigo fixado lido do Git em memoria).
+
+## Autorizacoes por obra/status financeiros e diagnostico de negociacao - 2026-10-17
+
+- Usuario confirmou implementar na refactor/frontend a proposta do PWA por obra,
+  filtros por vencimento/obra/status e situacao financeira atual. Sem producao.
+- Agente unico; base origin/refactor/frontend fb9a0e89, branch de trabalho
+  codex/autorizacoes-obras-status-20261017 no worktree performance-fila-dp.
+- Reserva: servicos/consulta/status e controller de autorizacao, routes.js,
+  tela/CSS/servico/utilitarios/componentes e testes de autorizacao, diagnostico
+  somente leitura de titulos negociados, docs financeiro/handoff e scripts npm.
+- Preservar permissoes nominais, passkey por lote, snapshots/eventos assinados,
+  PILOT/flags, pagamentos e links. Nenhuma exclusao/reparo de dados em producao.
+- Evidencia enviada: negociacoes #3/#4/#5 com TIT-010879/010885/010890 quitados.
+  Origens da SOL-5419 e pedido PC-00139 aparentam duplicidade; confirmar dados
+  antes de orientar qualquer cancelamento. Sem acesso ao banco real pelo agente.
+- Implementacao local concluida; reserva liberada para revisao/publicacao.
+  Testes finais backend/SQL isolado/UI/PWA/polling/build/docs/diff aprovados.
+  Sem commit/push, migration ou deploy. SQL MySQL/EXPLAIN real ainda exige DEV.
+  Handoff: docs/handoffs/2026-10-17-autorizacoes-obras-status.md.
+
 ## Publicacao boletos e valor autorizado de medicao - 2026-10-16
 
 - Usuario autorizou commit/push para refactor/frontend e comandos de EC2 DEV

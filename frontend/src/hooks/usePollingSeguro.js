@@ -41,10 +41,10 @@ export function iniciarPollingSeguro(consultar, { ativo = true, intervalo = 3000
     };
 }
 
-export default function usePollingSeguro(consultar, { ativo = true, intervalo = 30000, imediato = true, eventos = [] } = {}) {
+export default function usePollingSeguro(consultar, { ativo = true, intervalo = 30000, imediato = true, eventos = [], revisao = 0 } = {}) {
   const callback = useRef(consultar);
   callback.current = consultar;
   const eventosKey = eventos.join('|');
   useEffect(() => iniciarPollingSeguro(() => callback.current(), { ativo, intervalo, imediato,
-    eventos: eventosKey ? eventosKey.split('|') : [] }), [ativo, intervalo, imediato, eventosKey]);
+    eventos: eventosKey ? eventosKey.split('|') : [] }), [ativo, intervalo, imediato, eventosKey, revisao]);
 }

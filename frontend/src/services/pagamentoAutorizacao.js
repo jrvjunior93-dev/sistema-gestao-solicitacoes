@@ -17,7 +17,10 @@ async function request(path, { method = 'GET', body } = {}) {
   return parse(response, 'Não foi possível concluir a operação de autorização.');
 }
 
-export const listarAutorizacoesPagamento = () => request('');
+const consulta = params => { const q = new URLSearchParams(Object.entries(params || {}).filter(([, v]) => v !== '' && v != null)).toString(); return q ? '?' + q : ''; };
+export const listarAutorizacoesPagamento = params => request(consulta(params));
+export const listarObrasAutorizacao = params => request('/painel/obras' + consulta(params));
+export const listarTitulosAutorizacao = params => request('/painel/titulos' + consulta(params));
 export const obterAutorizacaoPagamento = (id) => request(`/${id}`);
 export const criarAutorizacaoPagamento = (tituloIds, idempotencyKey, observacao = null) => request('', { method: 'POST', body: { titulo_ids: tituloIds, idempotency_key: idempotencyKey, observacao } });
 export const obterOpcoesRegistroPasskey = () => request('/passkeys/registro/opcoes', { method: 'POST', body: {} });

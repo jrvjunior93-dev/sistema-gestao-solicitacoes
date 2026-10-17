@@ -26,14 +26,17 @@ import { criarAssinaturaPush, obterAssinaturaPush, suportaWebPush } from '../uti
 import { codigoLoteAutorizacao, motivosAjusteAutorizacao, resumoSolicitacaoAutorizacao } from '../utils/autorizacaoPagamentoResumo';
 import { isAutorizadorPwa } from '../utils/autorizacaoPagamentoPwa';
 import OverlayModal from '../components/ui/OverlayModal';
+import AutorizacoesPorObra from '../components/financeiro/AutorizacoesPorObra';
+import { rotuloSituacao } from '../utils/autorizacaoPagamentoSituacao';
+import usePollingSeguro from '../hooks/usePollingSeguro';
+import { useWorkspaceActive } from '../navigation/WorkspaceContext';
 import '../styles/financeiro-autorizacoes-pagamento.css';
 
 const money = (value) => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const date = (value) => value ? new Date(value).toLocaleString('pt-BR') : '-';
 
 function Status({ value }) {
-  const label = value === 'CONCLUIDO' ? 'NA FILA'
-    : value === 'ENFILEIRADO' ? 'Na fila de pagamento' : String(value || '').replaceAll('_', ' ');
+  const label = rotuloSituacao(value);
   return <span className={`pa-status pa-status--${String(value || '').toLowerCase()}`}>{label}</span>;
 }
 
@@ -45,18 +48,26 @@ export default function FinanceiroAutorizacoesPagamento() {
   const { user, refreshSession } = useAuth();
   const caps = user?.autorizacao_pagamentos || {};
   const compactPwa = isAutorizadorPwa(user);
+  const workspaceAtivo = useWorkspaceActive();
+  const [visao, setVisao] = useWorkspaceState('autorizacoes:visao', caps.can_decide ? 'obras' : 'lotes');
+  const [paginaLotes, setPaginaLotes] = useWorkspaceState('autorizacoes:pagina', 1);
+  const [paginacaoLotes, setPaginacaoLotes] = useState({ total: 0, mais: false });
+  const [revisaoObras, setRevisaoObras] = useState(0);
   const { avisos, avisar, fechar } = useAvisos();
   const [lots, setLots] = useState([]);
   const [selectedId, setSelectedId] = useWorkspaceState('autorizacoes:lote', null);
   const [trabalhoPorLote, setTrabalhoPorLote] = useWorkspaceState('autorizacoes:trabalho', {});
   const mutationRef = useRef(false);
-  const [busy, setBusy] = useState(false);
+  const [operando, setBusy] = useState(false);
+  const [carregandoLotes, setCarregandoLotes] = useState(false);
+  const busy = operando || (visao === 'lotes' && carregandoLotes);
   const [users, setUsers] = useState([]);
   const [authorizers, setAuthorizers] = useState([]);
   const [authorizerUserId, setAuthorizerUserId] = useState('');
   const [pushActive, setPushActive] = useState(false);
   const [passkeys, setPasskeys] = useState([]);
   const listaRequestRef = useRef(0);
+  const vooLotes = useRef(Promise.resolve());
 
   const selected = useMemo(() => lots.find((lot) => Number(lot.id) === Number(selectedId)) || lots[0] || null, [lots, selectedId]);
   const pendingItems = useMemo(() => (selected?.itens || []).filter((item) => item.status === 'PENDENTE'), [selected]);
@@ -129,23 +140,31 @@ export default function FinanceiroAutorizacoesPagamento() {
     setSearchParams(next, { replace: true, state: { ...location.state, modalJustificativa: false } });
   }
 
-  async function carregarLotes() {
+  function carregarLotes() {
     const requestId = ++listaRequestRef.current;
-    try {
-      const response = await listarAutorizacoesPagamento();
+    const tarefa = vooLotes.current.catch(() => {}).then(async () => {
       if (requestId !== listaRequestRef.current) return;
-      const rows = response?.data || [];
-      setLots(rows);
-      setSelectedId((current) => rows.some((row) => Number(row.id) === Number(current)) ? current : rows[0]?.id || null);
-    } catch (error) {
-      if (requestId === listaRequestRef.current) setLots([]);
-      throw error;
-    }
+      setCarregandoLotes(true);
+      try {
+        const response = await listarAutorizacoesPagamento({ pagina: String(paginaLotes), limite: '30' });
+        if (requestId !== listaRequestRef.current) return;
+        const rows = response?.data || [];
+        setLots(rows);
+        setPaginacaoLotes(response?.paginacao || { total: rows.length, mais: false });
+        setSelectedId((current) => rows.some((row) => Number(row.id) === Number(current)) ? current : rows[0]?.id || null);
+      } catch (error) {
+        if (requestId === listaRequestRef.current) setLots([]);
+        throw error;
+      } finally { setCarregandoLotes(false); }
+    });
+    vooLotes.current = tarefa;
+    return tarefa;
   }
 
   async function load() {
     try {
-      await carregarLotes();
+      if (visao === 'lotes') await carregarLotes();
+      else setRevisaoObras(current => current + 1);
       if (caps.can_decide) {
         const passkeyResponse = await listarPasskeysPagamento();
         setPasskeys(passkeyResponse?.data || []);
@@ -160,27 +179,9 @@ export default function FinanceiroAutorizacoesPagamento() {
     }
   }
 
-  useEffect(() => { load(); }, []);
-  useEffect(() => {
-    if (busy) return undefined;
-    let ativo = true, pendente = false;
-    const atualizar = async () => {
-      if (!ativo || pendente || document.visibilityState !== 'visible') return;
-      pendente = true;
-      try { await carregarLotes(); } catch { /* Atualizacao silenciosa; botao permite tentar novamente. */ }
-      finally { pendente = false; }
-    };
-    const timer = window.setInterval(atualizar, 30000);
-    window.addEventListener('focus', atualizar);
-    document.addEventListener('visibilitychange', atualizar);
-    return () => {
-      ativo = false;
-      window.clearInterval(timer);
-      window.removeEventListener('focus', atualizar);
-      document.removeEventListener('visibilitychange', atualizar);
-      listaRequestRef.current++;
-    };
-  }, [busy]);
+  useEffect(() => { load(); return () => { listaRequestRef.current++; }; }, [visao, paginaLotes]);
+  usePollingSeguro(carregarLotes, { ativo: visao === 'lotes' && !busy && workspaceAtivo, imediato: false });
+  useEffect(() => { if (justificativaId || motivoId) setVisao('lotes'); }, [justificativaId, motivoId]);
   useEffect(() => {
     if (!caps.can_decide || !caps.push_available || !suportaWebPush()) {
       setPushActive(false);
@@ -339,13 +340,19 @@ export default function FinanceiroAutorizacoesPagamento() {
       </div>}
       {compactPwa && caps.paused && <p role="status">Novas decisões pausadas.</p>}
 
-      <div className="pa-layout">
+      <div className="pa-visoes" role="group" aria-label="Visualização das autorizações">
+        <button type="button" className="btn btn-outline btn-sm" aria-pressed={visao === 'obras'} disabled={busy} onClick={() => setVisao('obras')}>Por obra</button>
+        <button type="button" className="btn btn-outline btn-sm" aria-pressed={visao === 'lotes'} disabled={busy} onClick={() => setVisao('lotes')}>Por lote / histórico</button>
+      </div>
+      {visao === 'obras' && <AutorizacoesPorObra userId={user?.id} caps={caps} busy={busy} setBusy={setBusy} abrirDocumento={openDocument} revisao={revisaoObras} />}
+      {visao === 'lotes' && <div className="pa-layout">
         <aside className="pa-list" aria-label="Lotes de autorização">
-          <div className="pa-list__head"><strong>Pendências e histórico</strong><span>{lots.length}</span></div>
+          <div className="pa-list__head"><strong>Pendências e histórico</strong><span>{paginacaoLotes.total} lotes</span></div>
+          {carregandoLotes && <p role="status" className="pa-obras-paginacao">Atualizando lotes…</p>}
           {lots.length === 0 && <p className="pa-empty">Nenhum lote disponível.</p>}
           {lots.map((lot) => (
             <button key={lot.id} type="button" className={`pa-lot ${Number(selected?.id) === Number(lot.id) ? 'is-active' : ''}`} onClick={() => setSelectedId(lot.id)}>
-              <span><strong title={lot.codigo}>{codigoLoteAutorizacao(lot)}</strong><Status value={lot.status} /></span>
+              <span><strong title={lot.codigo}>{codigoLoteAutorizacao(lot)}</strong><Status value={lot.situacao_financeira || lot.status} /></span>
               <span>{money(lot.valor_total)} · {lot.quantidade_itens} título(s)</span>
               <small>Criado em {date(lot.createdAt)}</small>
               {motivosAjusteAutorizacao(lot).map(ajuste => <small key={ajuste.id} className="pa-lot-reason">
@@ -353,6 +360,10 @@ export default function FinanceiroAutorizacoesPagamento() {
               </small>)}
             </button>
           ))}
+          <nav className="pa-obras-paginacao" aria-label="Paginação de lotes"><span>Página {paginaLotes}</span>
+            <button type="button" className="btn btn-outline btn-sm" disabled={busy || paginaLotes <= 1} onClick={() => setPaginaLotes(paginaLotes - 1)}>Anterior</button>
+            <button type="button" className="btn btn-outline btn-sm" disabled={busy || !paginacaoLotes.mais} onClick={() => setPaginaLotes(paginaLotes + 1)}>Próxima</button>
+          </nav>
         </aside>
 
         <section className="pa-detail">
@@ -361,7 +372,8 @@ export default function FinanceiroAutorizacoesPagamento() {
               <div><strong title={selected.codigo}>{codigoLoteAutorizacao(selected)}</strong><span>Criado por {selected.criadoPor?.nome || '-'} · hash {String(selected.dossie_hash).slice(0, 12)}…</span>
                 <details className="pa-lot-record"><summary>Registro do lote</summary><small>Criado em {date(selected.createdAt)} · Código registrado: {selected.codigo}</small></details>
               </div>
-              <div><Status value={selected.status} />
+              <div><Status value={selected.situacao_financeira || selected.status} />
+                {selected.resumo_situacoes && <small>{Object.entries(selected.resumo_situacoes).map(([estado, quantidade]) => `${quantidade} ${rotuloSituacao(estado)}`).join(' · ')}</small>}
                 {caps.can_decide && (selected.itens || []).some(item => ['AUTORIZADO', 'ENFILEIRADO'].includes(item.status)) &&
                   <button type="button" className="btn btn-secondary btn-sm" disabled={busy}
                     onClick={() => setRevokeItems((selected.itens || []).filter(item => ['AUTORIZADO', 'ENFILEIRADO'].includes(item.status)).map(item => Number(item.id)))}>Revogar autorizações do lote</button>}
@@ -383,7 +395,8 @@ export default function FinanceiroAutorizacoesPagamento() {
                         {(snapshot.participacoes || []).map((p, i) => <small key={i}>Solicitação #{p.solicitacao_id}{p.pedido_compra_id ? ` · PC-${String(p.pedido_compra_id).padStart(5, '0')}` : ''}<br />{p.obra_nome || `Obra #${p.obra_id}`} · {p.empresa_nome || `Empresa #${p.empresa_id}`} · {money(p.valor)}</small>)}
                       </details>}</td><td>{snapshot.data_vencimento || '-'}</td><td className="num pa-value-column">{money(item.valor_snapshot)}</td>
                     <td><div className="pa-documents">{(item.documentos || []).map((doc) => <button type="button" key={doc.id} onClick={() => openDocument(doc)} title={doc.nome}><HiOutlineDocumentText /><span>{doc.nome}</span></button>)}</div></td>
-                    <td><Status value={item.status} />{item.fila_item_id && <small>Fila #{item.fila_item_id}</small>}
+                    <td><Status value={item.situacao_financeira || item.status} />{item.fila_item_id && <small>Fila #{item.fila_item_id}</small>}
+                      {item.situacao_financeira && ['REJEITADO', 'INVALIDADO', 'CANCELADO'].includes(item.status) && <small>Decisão registrada: {rotuloSituacao(item.status)}</small>}
                       {caps.can_decide && ['AUTORIZADO', 'ENFILEIRADO'].includes(item.status) && item.titulo?.status === 'ABERTO' &&
                         Number(item.titulo?.valor_baixado || 0) === 0 && <button type="button" className="btn btn-secondary btn-sm"
                           disabled={busy} onClick={() => setRevokeItems([Number(item.id)])}>Revogar autorização</button>}
@@ -417,7 +430,7 @@ export default function FinanceiroAutorizacoesPagamento() {
             </div>}
           </>}
         </section>
-      </div>
+      </div>}
 
       {!motivoId && String(textoJustificativa || '').trim() && <OverlayModal rotulo="Justificativa da solicitação"
         largura="680px" onFechar={fecharJustificativa} fecharAoClicarFora>

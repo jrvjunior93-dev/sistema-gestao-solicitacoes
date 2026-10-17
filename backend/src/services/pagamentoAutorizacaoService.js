@@ -28,6 +28,8 @@ const { copyStorageObject, getPresignedUrl } = require('./s3');
 const { saveChallenge, consumeChallenge } = require('./webauthnChallengeStore');
 const { isConfigured: isPushConfigured, saveSubscription, removeSubscription, hasActiveSubscription, sendPendingAuthorizationNotification } = require('./webPushService');
 const { registrarEventoSeguranca } = require('./securityLogService');
+const { projetarLotesAtuais } = require('./pagamentoAutorizacaoSituacao');
+const consultaAutorizacoes = require('./pagamentoAutorizacaoConsultaService');
 
 const PERMISSIONS = Object.freeze({
   VIEW: 'financeiro.autorizacoes_pagamento.visualizar',
@@ -257,9 +259,14 @@ async function createBatch(req, payload = {}) {
 }
 
 async function assertCanRead(user) {
-  const caps = await capabilitiesForUser(user);
-  if (!caps.can_view && !caps.can_decide && !caps.can_configure) throw httpError(403, 'Acesso negado as autorizacoes de pagamento.');
-  return caps;
+  if (!user?.id || env.paymentOwnerApprovalMode === 'OFF') throw httpError(403, 'Acesso negado as autorizacoes de pagamento.');
+  // Mesma politica de capabilitiesForUser, sem consultar passkeys/push em cada
+  // pagina/refresh de leitura. DECIDE sozinho ainda exige autorizador ativo.
+  const [view, prepare, configure, decide] = await Promise.all([
+    hasPermission(user, PERMISSIONS.VIEW), hasPermission(user, PERMISSIONS.PREPARE),
+    hasPermission(user, PERMISSIONS.CONFIGURE), hasPermission(user, PERMISSIONS.DECIDE)
+  ]);
+  if (!view && !prepare && !configure && !(decide && await getAuthorizer(user.id))) throw httpError(403, 'Acesso negado as autorizacoes de pagamento.');
 }
 
 function lotInclude() {
@@ -270,7 +277,7 @@ function lotInclude() {
       { model: PagamentoAutorizacaoDocumento, as: 'documentos', attributes: ['id', 'nome', 'origem_tipo', 'arquivo_hash'] },
       // O defaultScope do titulo filtra deleted_at. Mantem LEFT JOIN para nao
       // eliminar o historico nem mover esta juncao para a subquery dos lotes.
-      { model: TituloFinanceiro, as: 'titulo', attributes: ['id', 'status', 'valor_baixado'], required: false,
+      { model: TituloFinanceiro, as: 'titulo', attributes: ['id', 'status', 'valor_baixado', 'valor_saldo', 'renegociado_por_id'], required: false,
         // Contexto atual, somente leitura, fora do material assinado. Nao
         // modificar snapshots legados nem invalidar autorizacoes existentes.
         include: [{ model: Solicitacao, as: 'solicitacao', attributes: ['id', 'justificativa'], required: false }] }
@@ -282,7 +289,26 @@ async function listBatches(req, query = {}) {
   assertFeatureAvailable({ allowPausedRead: true });
   await assertCanRead(req.user);
   const status = String(query.status || '').trim().toUpperCase();
-  return PagamentoAutorizacaoLote.findAll({ where: status ? { status } : {}, include: lotInclude(), order: [['createdAt', 'DESC']], limit: 100 });
+  if (status && !['AGUARDANDO', 'AUTORIZADO', 'CONCLUIDO', 'REJEITADO', 'CANCELADO'].includes(status)) throw httpError(400, 'Status do lote invalido.');
+  const { pagina, limite } = consultaAutorizacoes.filtros({ pagina: query.pagina, limite: query.limite });
+  const rows = await PagamentoAutorizacaoLote.findAll({ where: status ? { status } : {}, include: lotInclude(),
+    order: [['createdAt', 'DESC'], ['id', 'DESC']], limit: limite, offset: (pagina - 1) * limite });
+  return projetarLotesAtuais(rows, sequelize);
+}
+async function listBatchesPage(req, query = {}) {
+  const rows = await listBatches(req, query);
+  const { pagina, limite } = consultaAutorizacoes.filtros({ pagina: query.pagina, limite: query.limite });
+  const status = String(query.status || '').trim().toUpperCase();
+  const total = Number(await PagamentoAutorizacaoLote.count({ where: status ? { status } : {} }));
+  return { data: rows, paginacao: { pagina, limite, total, mais: pagina * limite < total } };
+}
+async function listWorks(req, query = {}) {
+  assertFeatureAvailable({ allowPausedRead: true }); await assertCanRead(req.user);
+  return consultaAutorizacoes.listarObras(query);
+}
+async function listTitles(req, query = {}) {
+  assertFeatureAvailable({ allowPausedRead: true }); await assertCanRead(req.user);
+  return consultaAutorizacoes.listarTitulos(query);
 }
 
 async function getBatch(req, id) {
@@ -290,7 +316,7 @@ async function getBatch(req, id) {
   await assertCanRead(req.user);
   const lot = await PagamentoAutorizacaoLote.findByPk(id, { include: lotInclude() });
   if (!lot) throw httpError(404, 'Lote de autorizacao nao encontrado.');
-  return lot;
+  return (await projetarLotesAtuais([lot], sequelize))[0];
 }
 
 async function openDocument(req, documentId) {
@@ -638,6 +664,9 @@ module.exports = {
   capabilitiesForUser,
   createBatch,
   listBatches,
+  listBatchesPage,
+  listWorks,
+  listTitles,
   getBatch,
   openDocument,
   registrationOptions,

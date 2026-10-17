@@ -53,8 +53,9 @@ import React from 'react';import{createRoot}from'react-dom/client';import{Memory
 import '/src/index.css';import '/src/styles/design-tokens.css';import '/src/styles/escala.css';import '/src/styles/componentes-padrao.css';import '/src/styles/responsive-system.css';
 import Layout from '/src/layout/Layout.jsx';import Page from '/src/pages/FinanceiroAutorizacoesPagamento.jsx';import{AuthContext,useAuth}from'/src/contexts/AuthContext';import{resolverRotaInicial}from'/src/navigation/telaInicialRoute.js';
 const route='/financeiro/autorizacoes-pagamento';const entry=new URLSearchParams(location.search).get('entry')==='auth'?route:'/';
+window.__qaInitialRoute=resolverRotaInicial(window.__qaUser);
 function Entry(){return React.createElement(Navigate,{to:resolverRotaInicial(window.__qaUser),replace:true})}
-function App(){return React.createElement(AuthContext.Provider,{value:useAuth()},React.createElement(MemoryRouter,{initialEntries:[entry]},React.createElement(Routes,null,React.createElement(Route,{element:React.createElement(Layout)},React.createElement(Route,{index:true,element:React.createElement(Entry)}),React.createElement(Route,{path:route,element:React.createElement(Page)}),React.createElement(Route,{path:'/perfil',element:React.createElement('p',null,'Perfil QA')}),React.createElement(Route,{path:'/modulos',element:React.createElement('p',null,'Módulos QA')})))))}
+function App(){return React.createElement(AuthContext.Provider,{value:useAuth()},React.createElement(MemoryRouter,{initialEntries:[entry==='/'?window.__qaInitialRoute:entry]},React.createElement(Routes,null,React.createElement(Route,{element:React.createElement(Layout)},React.createElement(Route,{index:true,element:React.createElement(Entry)}),React.createElement(Route,{path:route,element:React.createElement(Page)}),React.createElement(Route,{path:'/perfil',element:React.createElement('p',null,'Perfil QA')}),React.createElement(Route,{path:'/modulos',element:React.createElement('p',null,'Módulos QA')})))))}
 createRoot(document.getElementById('root')).render(React.createElement(App));</script></body></html>`));
     });
   }
@@ -74,12 +75,17 @@ try {
       window.matchMedia = q => q === '(display-mode: standalone)' ? { matches: installed && !ios } : original(q);
       if (ios) Object.defineProperty(navigator, 'standalone', { value: true });
     }, { user, installed, ios });
-    const lots = [1, 2, 3, 4, 5].map(id => ({ id, codigo: `AUT-LEGADO-${id}`, status: 'AGUARDANDO', valor_total: 100, quantidade_itens: 1,
+    const lots = Array.from({ length: 151 }, (_, i) => i + 1).map(id => ({ id, codigo: `AUT-LEGADO-${id}`, status: 'AGUARDANDO', valor_total: 100, quantidade_itens: 1,
       createdAt: '2026-10-08T14:00:00Z', dossie_hash: 'qa', itens: [{ id, status: 'PENDENTE', valor_snapshot: 100,
         snapshot_json: { codigo: `TIT-${id}`, solicitacao: { codigo: `SOL-${id}`, descricao: 'Compra Direta: Itens: Cimento' } } }] }));
     await page.route('**/*', route => {
       const url = new URL(route.request().url()), json = data => route.fulfill({ contentType: 'application/json', body: JSON.stringify(data) });
-      if (url.pathname.endsWith('/financeiro/autorizacoes-pagamento')) return json({ data: lots });
+      if (url.pathname.endsWith('/financeiro/autorizacoes-pagamento')) {
+        const pagina = Number(url.searchParams.get('pagina') || 1), limite = Number(url.searchParams.get('limite') || 30);
+        return json({ data: lots.slice((pagina - 1) * limite, pagina * limite), paginacao: { pagina, total: lots.length, mais: pagina * limite < lots.length } });
+      }
+      if (url.pathname.endsWith('/autorizacoes-pagamento/painel/obras')) return json({ data: [{ obra_id: 1, obra_nome: 'Obra QA', quantidade_titulos: 5, valor_total: 500 }], resumo: { quantidade_titulos: 5, valor_total: 500 }, paginacao: { total: 1, mais: false } });
+      if (url.pathname.endsWith('/autorizacoes-pagamento/painel/titulos')) return json({ data: [], paginacao: { total: 0, mais: false } });
       if (url.pathname.endsWith('/autorizacoes-pagamento/passkeys')) return json({ data: [{ id: 1, nome_dispositivo: 'Celular QA' }] });
       if (url.pathname.endsWith('/passkeys/registro/opcoes')) return json({ challenge: 'qa' });
       if (url.pathname.endsWith('/passkeys/registro/verificar')) return json({ ok: true });
@@ -90,15 +96,19 @@ try {
     return { page, errors, unexpected };
   }
   const { page, errors, unexpected } = await scenario();
+  await page.waitForFunction(() => window.__qaInitialRoute);
+  assert.equal(await page.evaluate(() => window.__qaInitialRoute), '/financeiro/autorizacoes-pagamento');
+  await page.locator('.pa-obra').waitFor().catch(async e => { console.error({ errors, unexpected, body: await page.locator('body').innerText() }); throw e; });
+  await page.getByRole('button', { name: 'Por lote / histórico', exact: true }).click();
   await page.getByRole('checkbox').waitFor();
   assert.equal(await page.locator('.fx-topbar').count(), 0);
   assert.equal(await page.locator('[data-qa-tabs]').count(), 0);
   assert.equal(await page.locator('.pa-toolbar').count(), 0);
   assert.equal(await page.locator('[data-qa-guard]').count(), 2, 'Guardas continuam envolvendo o dossie');
   assert.equal(await page.locator('.pa-list strong').nth(1).textContent(), 'LOTE-1');
-  assert(await page.locator('.pa-list').evaluate(el => el.getBoundingClientRect().top < 150), 'Lotes aparecem no topo util');
+  assert(await page.locator('.pa-list').evaluate(el => el.getBoundingClientRect().top < 210), 'Lotes aparecem no topo util, apos seletor de visao');
   assert(await page.locator('.pa-list').evaluate(el => el.clientHeight > 220), 'Lista ampliada no celular');
-  assert(await page.locator('.pa-detail').evaluate(el => el.getBoundingClientRect().top < 500), 'Dossie no primeiro viewport');
+  assert(await page.locator('.pa-detail').evaluate(el => el.getBoundingClientRect().top < 580), 'Dossie no primeiro viewport');
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Sem overflow lateral do shell');
   assert.equal(await page.getByRole('button', { name: 'Adicionar passkey' }).isVisible(), false);
   await page.screenshot({ path: path.join(output, 'pwa-mobile.png'), fullPage: true });
@@ -114,6 +124,11 @@ try {
   await page.screenshot({ path: path.join(output, 'pwa-mobile-dark.png'), fullPage: true });
   await page.locator('.pa-lot-record summary').click();
   assert.equal(await page.getByText(/Código registrado: AUT-LEGADO-1/).isVisible(), true);
+  await page.getByRole('navigation', { name: 'Paginação de lotes' }).getByRole('button', { name: 'Próxima' }).click();
+  await page.locator('.pa-detail__head').getByText('LOTE-31', { exact: true }).waitFor();
+  await page.getByText('151 lotes', { exact: true }).waitFor();
+  await page.getByRole('navigation', { name: 'Paginação de lotes' }).getByRole('button', { name: 'Anterior' }).click();
+  await page.locator('.pa-detail__head').getByText('LOTE-1', { exact: true }).waitFor();
   await page.locator('#pa-dispositivos summary').click();
   await page.getByText(/Celular QA/).waitFor();
   await page.locator('.pa-pwa-shell summary').click();
@@ -125,12 +140,15 @@ try {
   assert.deepEqual(errors, []); assert.deepEqual(unexpected, []); await page.close();
 
   for (const options of [{ installed: false, entry: 'auth' }, { user: { ...owner, autorizacao_pagamentos: { enabled: true, can_prepare: true, can_view: true } }, entry: 'auth' }]) {
-    const qa = await scenario(options); await qa.page.locator('.pa-list').waitFor();
+    const qa = await scenario(options);
+    if (options.user?.autorizacao_pagamentos?.can_decide !== false && !options.user) await qa.page.getByRole('button', { name: 'Por lote / histórico', exact: true }).click();
+    await qa.page.locator('.pa-list').waitFor();
     assert.equal(await qa.page.locator('.fx-topbar').count(), 1);
     assert.equal(await qa.page.locator('.pa-toolbar').count(), 1);
     assert.deepEqual(qa.errors, []); assert.deepEqual(qa.unexpected, []); await qa.page.close();
   }
   const ios = await scenario({ ios: true, user: { ...owner, autorizacao_pagamentos: { ...owner.autorizacao_pagamentos, passkey_count: 0 } } });
+  await ios.page.getByRole('button', { name: 'Por lote / histórico', exact: true }).click();
   await ios.page.locator('.pa-list').waitFor();
   assert.equal(await ios.page.locator('.pa-pwa-shell').count(), 1);
   assert.equal(await ios.page.getByRole('button', { name: 'Cadastrar passkey' }).isVisible(), true);

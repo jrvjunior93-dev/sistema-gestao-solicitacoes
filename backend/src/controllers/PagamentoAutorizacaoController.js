@@ -11,10 +11,22 @@ module.exports = {
     catch (error) { return fail(res, error, 'Erro ao consultar autorizacoes de pagamento'); }
   },
   async index(req, res) {
-    try { return res.json({ data: await service.listBatches(req, req.query || {}) }); }
+    res.set('Cache-Control', 'private, no-store');
+    try { return res.json(await service.listBatchesPage(req, req.query || {})); }
     catch (error) { return fail(res, error, 'Erro ao listar autorizacoes de pagamento'); }
   },
+  async works(req, res) {
+    res.set('Cache-Control', 'private, no-store');
+    try { return res.json(await service.listWorks(req, req.query || {})); }
+    catch (error) { return fail(res, error, 'Erro ao consultar obras das autorizacoes'); }
+  },
+  async titles(req, res) {
+    res.set('Cache-Control', 'private, no-store');
+    try { return res.json(await service.listTitles(req, req.query || {})); }
+    catch (error) { return fail(res, error, 'Erro ao consultar titulos das autorizacoes'); }
+  },
   async show(req, res) {
+    res.set('Cache-Control', 'private, no-store');
     try { return res.json(await service.getBatch(req, req.params.id)); }
     catch (error) { return fail(res, error, 'Erro ao abrir autorizacao de pagamento'); }
   },

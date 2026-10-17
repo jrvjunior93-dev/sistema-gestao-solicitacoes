@@ -103,7 +103,7 @@ const stubs = {
 };
 function load(name) {
   if (services.has(name)) return services.get(name);
-  const sandbox = { module: { exports: {} }, console, Date, Buffer, Uint8Array,
+  const sandbox = { module: { exports: {} }, console, Date, Buffer, Uint8Array, structuredClone,
     __webauthn: {
       generateAuthenticationOptions: async () => ({ challenge: 'qa' }),
       verifyAuthenticationResponse: async () => ({ verified: true, authenticationInfo: { newCounter: 1 } })
@@ -430,6 +430,26 @@ async function testarMedicoesIndependentes() {
   assert.equal(parallel.reduce((sum, value) => sum + value.criados, 0), 2);
   assert.equal(state.PagamentoManualFilaItem.length, 2, 'Chamadas simultaneas com transacoes serializadas nao duplicam');
 
+  // Um titulo agora, outros do MESMO lote depois, inclusive com metadado
+  // expira_em antigo. A projecao financeira nunca fecha a decisao pendente.
+  {
+    reset(); const parcial = await digital.createBatch(req, { titulo_ids: [1, 2] });
+    state.PagamentoAutorizador.push({ id: 1, usuario_id: 31, ativo: true });
+    state.WebauthnCredential.push({ id: 1, usuario_id: 31, credential_id: 'qa-key', public_key: 'AA==', ativo: true, counter: 0 });
+    state.PagamentoAutorizacaoLote[0].expira_em = new Date('2000-01-01T00:00:00Z');
+    const assinaturaOriginal = state.PagamentoAutorizacaoLote[0].dossie_hash;
+    const ator = { user: { id: 31, grants: [DECIDE] }, headers: {} };
+    for (const item_id of [1, 2]) {
+      const decisoesParciais = [{ item_id, decisao: 'AUTORIZAR', motivo: null }];
+      await digital.authenticationOptions(ator, parcial.id, decisoesParciais);
+      await digital.decideBatch(ator, parcial.id, { decisoes: decisoesParciais, credential: { id: 'qa-key' } });
+      assert.equal(state.PagamentoAutorizacaoItem[item_id - 1].status, 'ENFILEIRADO');
+      assert.equal(state.PagamentoAutorizacaoLote[0].dossie_hash, assinaturaOriginal);
+      assert.equal(state.PagamentoManualFilaItem.length, item_id);
+      if (item_id === 1) { assert.equal(state.PagamentoAutorizacaoItem[1].status, 'PENDENTE'); assert.equal(state.PagamentoAutorizacaoLote[0].status, 'AGUARDANDO'); }
+    }
+    assert.equal(state.PagamentoAutorizacaoLote[0].status, 'CONCLUIDO');
+  }
   // Decisao real com biometria/challenge simulados, incluindo ordem dos locks.
   reset(); lote = await digital.createBatch(req, { titulo_ids: [1, 2] });
   state.PagamentoAutorizador.push({ id: 1, usuario_id: 31, ativo: true });

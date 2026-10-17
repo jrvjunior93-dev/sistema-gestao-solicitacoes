@@ -2252,6 +2252,8 @@ router.post('/financeiro/fila-pagamentos/:id/resolver', allowFilaPagamentosResol
 router.post('/financeiro/fila-pagamentos/:id/estornar', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Item da fila'), body: validateManualPaymentQueueReverseBody }), PagamentoManualFilaController.estornar);
 router.get('/financeiro/autorizacoes-pagamento/capabilities', PagamentoAutorizacaoController.capabilities);
 router.get('/financeiro/autorizacoes-pagamento', PagamentoAutorizacaoController.index);
+router.get('/financeiro/autorizacoes-pagamento/painel/obras', PagamentoAutorizacaoController.works);
+router.get('/financeiro/autorizacoes-pagamento/painel/titulos', PagamentoAutorizacaoController.titles);
 router.post('/financeiro/autorizacoes-pagamento', criticalRateLimit, PagamentoAutorizacaoController.create);
 router.get('/financeiro/autorizacoes-pagamento/documentos/:id', validateRequest({ params: validateNumericIdParam('id', 'Documento') }), PagamentoAutorizacaoController.document);
 router.post('/financeiro/autorizacoes-pagamento/passkeys/registro/opcoes', criticalRateLimit, PagamentoAutorizacaoController.registrationOptions);
