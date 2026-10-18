@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { editarDataBR } from '../utils/editarDataBR';
 import { useWorkspaceState, useWorkspaceWork } from '../navigation/WorkspaceContext';
 
 export function formatarDigitosDataBR(valor) {
@@ -62,7 +63,7 @@ export function dataISOParaBR(valor) {
  * perderiam a trava em silencio ao migrar.
  */
 export default function DateInputBR({ name, value, onChange, className = '', min, max,
-  chaveWorkspace, revisaoWorkspace = 0, ...props }) {
+  chaveWorkspace, revisaoWorkspace = 0, edicaoSegmentada = false, ...props }) {
   // Opt-in: somente texto digitado + ISO correspondente, nunca DTO/data do
   // servidor como autoridade. Revisao permite limpar inclusive um parcial
   // cujo ISO externo ja era vazio (sucesso/descarte explicito).
@@ -72,6 +73,7 @@ export default function DateInputBR({ name, value, onChange, className = '', min
   const revisaoRef = useRef(revisaoWorkspace);
   const inputRef = useRef(null);
   const focadoRef = useRef(false);
+  const caret = useRef(null), editarRef = useRef(null), entradaNativa = useRef(null);
   useWorkspaceWork(Boolean(chaveWorkspace && texto !== dataISOParaBR(value)), false, `data:${chaveWorkspace}:work`);
 
   function problemaDoTexto(atual) {
@@ -106,8 +108,7 @@ export default function DateInputBR({ name, value, onChange, className = '', min
     onChange?.({ target: { name, value: valorISO } });
   }
 
-  function atualizar(event) {
-    const proximoTexto = formatarDigitosDataBR(event.target.value);
+  function atualizarTexto(proximoTexto) {
     const completa = proximoTexto.length === 10;
     const valorISO = completa ? dataBRParaISO(proximoTexto) : null;
 
@@ -118,6 +119,66 @@ export default function DateInputBR({ name, value, onChange, className = '', min
     // A API recebe apenas ISO valido. Texto parcial ou invalido limpa imediatamente o valor
     // externo, impedindo que o formulario envie silenciosamente a data anterior.
     emitir(valorISO || '');
+  }
+
+  function atualizar(event) {
+    const entrada = entradaNativa.current; entradaNativa.current = null;
+    if (edicaoSegmentada && entrada && (entrada.tipo.startsWith('delete') || /^\d+$/.test(entrada.dados || ''))) {
+      const resultado = editarDataBR(entrada.texto, entrada.inicio, entrada.fim, entrada.dados,
+        entrada.tipo.startsWith('delete') ? (entrada.tipo.endsWith('Backward') ? 'atras' : 'frente') : '');
+      caret.current = resultado.cursor; atualizarTexto(resultado.texto); return;
+    }
+    atualizarTexto(formatarDigitosDataBR(event.target.value));
+  }
+  function editar(insercao, apagar) {
+    const input = inputRef.current;
+    if (!input || props.disabled || props.readOnly) return;
+    entradaNativa.current = null;
+    const resultado = editarDataBR(texto, input.selectionStart, input.selectionEnd, insercao, apagar);
+    caret.current = resultado.cursor;
+    atualizarTexto(resultado.texto);
+    // Tambem reposiciona quando a edicao nao muda o texto (ex.: limite do ano).
+    queueMicrotask(() => input.setSelectionRange(resultado.cursor, resultado.cursor));
+  }
+  editarRef.current = editar;
+  useLayoutEffect(() => {
+    if (caret.current != null && focadoRef.current) inputRef.current?.setSelectionRange(caret.current, caret.current);
+    caret.current = null;
+  }, [texto]);
+  useEffect(() => {
+    if (!edicaoSegmentada) return undefined;
+    const input = inputRef.current;
+    const beforeInput = event => {
+      entradaNativa.current = { texto: input.value, inicio: input.selectionStart, fim: input.selectionEnd, tipo: event.inputType || '', dados: event.data || '' };
+      if (!event.cancelable || event.isComposing || props.disabled || props.readOnly) return;
+      if (event.inputType === 'insertText' && event.data && /^\d+$/.test(event.data)) {
+        event.preventDefault(); editarRef.current(event.data);
+      } else if (['deleteContentBackward', 'deleteContentForward'].includes(event.inputType)) {
+        event.preventDefault(); editarRef.current('', event.inputType === 'deleteContentBackward' ? 'atras' : 'frente');
+      }
+    };
+    input.addEventListener('beforeinput', beforeInput);
+    return () => input.removeEventListener('beforeinput', beforeInput);
+  }, [edicaoSegmentada, props.disabled, props.readOnly]);
+  function tecla(event) {
+    props.onKeyDown?.(event);
+    if (!edicaoSegmentada || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.isComposing || props.disabled || props.readOnly) return;
+    if (/^\d$/.test(event.key)) { event.preventDefault(); editar(event.key); }
+    else if (['Backspace', 'Delete'].includes(event.key)) { event.preventDefault(); editar('', event.key === 'Backspace' ? 'atras' : 'frente'); }
+    else if (event.key.length === 1) event.preventDefault();
+  }
+  function colar(event) {
+    props.onPaste?.(event);
+    if (!edicaoSegmentada || event.defaultPrevented || props.disabled || props.readOnly) return;
+    event.preventDefault(); editar(event.clipboardData.getData('text').trim());
+  }
+  function recortar(event) {
+    props.onCut?.(event);
+    if (!edicaoSegmentada || event.defaultPrevented || props.disabled || props.readOnly) return;
+    const input = inputRef.current;
+    if (input.selectionStart === input.selectionEnd) return;
+    event.preventDefault(); event.clipboardData.setData('text/plain', texto.slice(input.selectionStart, input.selectionEnd));
+    editar('', 'frente');
   }
 
   function validarAoSair(event) {
@@ -149,6 +210,9 @@ export default function DateInputBR({ name, value, onChange, className = '', min
       onChange={atualizar}
       onFocus={registrarFoco}
       onBlur={validarAoSair}
+      onKeyDown={tecla}
+      onPaste={colar}
+      onCut={recortar}
       pattern="\d{2}/\d{2}/\d{4}"
       title="Informe a data no formato DD/MM/AAAA"
     />

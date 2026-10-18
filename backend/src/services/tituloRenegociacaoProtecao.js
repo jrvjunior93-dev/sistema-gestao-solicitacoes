@@ -6,6 +6,9 @@ const CAMPOS_ORIGEM = ['status','valor_original','valor_bruto','valor_liquido','
   'tipo','origem_titulo','valor_impostos','possui_rateio','juros_renegociacao','multa_renegociacao',...CAMPOS_COBRANCA];
 const CAMPOS_DESTINO = CAMPOS_ORIGEM.filter(k=>!['status','valor_saldo','valor_baixado',...CAMPOS_COBRANCA].includes(k));
 function validar(row,alteracoes,options={}) {
+  if (row.bloqueio_pagamento_proprietario && Number(alteracoes.valor_baixado || 0) > Number(row.valor_baixado || 0)) {
+    require('./tituloBloqueioRetornoObraPolicy').assertTituloDisponivelParaBaixa(row);
+  }
   if (row.medicao_pagamento || row.medicao_pagamento_origem_id) require('./medicaoPagamentoProtecao').validar(row, alteracoes, options);
   require('./tituloCompartilhadoProtecao').validar(row, alteracoes, options);
   if(options.operacaoRenegociacao)return;
@@ -18,7 +21,7 @@ function validar(row,alteracoes,options={}) {
 }
 async function proteger(model,where,alteracoes,options={}) {
   if(options.operacaoRenegociacao||!Object.keys(alteracoes).some(k=>CAMPOS_ORIGEM.includes(k)))return;
-  const rows=await model.unscoped().findAll({where,attributes:[...new Set(['id', ...CAMPOS_ORIGEM])],
+  const rows=await model.unscoped().findAll({where,attributes:[...new Set(['id', 'bloqueio_pagamento_proprietario', ...CAMPOS_ORIGEM])],
     transaction:options.transaction,...(options.transaction?{lock:options.transaction.LOCK.UPDATE}:{})});
   rows.forEach(row=>validar(row,alteracoes,options));
   const baixas = rows.filter(row => row.renegociacao_id && Number(alteracoes.valor_baixado || 0) > Number(row.valor_baixado || 0));

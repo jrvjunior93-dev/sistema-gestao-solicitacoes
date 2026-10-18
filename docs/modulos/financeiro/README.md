@@ -1186,3 +1186,46 @@ Geracao de titulo, baixa, estorno, importacao OFX e conciliacao sao transacionai
   campos em rascunho. Colunas novas usam o mesmo painel/ordem/largura da fila.
 - Mesmas permissoes de leitura, baixa, comprovante e visibilidade anteriores.
   Validar com test:fila-filtros-dp e validarFilaInstrumentosUI.mjs --filtros-dp.
+
+## PWA: datas, rejeicao do saldo em fila e observacoes - 2026-10-18
+
+- Pacote para homologacao na refactor/frontend, sem deploy em producao. A
+  rejeicao em fila depende da migration estrutural
+  `202610180002_bloqueio_pagamento_proprietario.js`, coluna JSON nullable, sem
+  backfill ou alteracao dos valores antigos. Aplicacao deve ocorrer no DEV
+  com backup e identidade conferidos, antes de iniciar a nova versao backend.
+- Datas no painel por obra usam edicao posicional opt-in do DateInputBR:
+  DD/MM/AAAA, ano de quatro digitos, sem deslocar mes/ano ao editar dia.
+  Dois vencimentos validos e ordenados aplicam os filtros com debounce de
+  600 ms. Fim primeiro e datas parciais nao enviam um intervalo invalido.
+  Outros consumidores do componente conservam o modo anterior.
+- Selecao segue global por titulo entre paginas/obras. Total e limpeza ficam
+  junto ao nome da obra. Na lista e no detalhe, a barra tem Anterior,
+  Rejeitar, Autorizar e Proxima; navegar nao decide. Motivo abre sob demanda.
+- Apenas pendentes podem ser autorizados. Autorizados/enfileirados com saldo
+  aberto ou parcial podem ter o saldo rejeitado, com motivo e passkey nominal.
+  Selecao mista e separada por lote/tipo de decisao em confirmacoes distintas.
+  Permissoes, limites nominais, challenge/revisao e bloqueio de Testar usuario
+  continuam vigentes; nao foi concedida permissao a usuario algum.
+- `REJEITAR_FILA` termina o item em REJEITADO, encerra filas abertas como
+  RESOLVIDO e grava bloqueio duravel no titulo, com evento atomico. Preserva
+  valores pagos, movimentos, comprovantes, assinatura e historico originais.
+  Em parcial bloqueia SOMENTE o saldo; nao faz estorno. Banco em andamento,
+  revisao DP, ciclo mais recente ou titulo sem saldo impedem a operacao.
+- O bloqueio vale tambem em PILOT/OFF para envio direto, baixa normal/OFX,
+  baixa em massa e validacoes bancarias, via policy e hooks ORM. Nao pode
+  transformar a divida bloqueada em novos titulos pela negociacao. Ajuste
+  legitimo da medicao pode corrigir o valor, mas conserva o bloqueio.
+- Para liberar: preparar NOVO ciclo de autorizacao do saldo e autorizar com
+  passkey. Preparar/editar/reenviar diretamente nao libera. Nova autorizacao
+  valida remove o bloqueio com evento SALDO_REAUTORIZADO. A funcao REVOGAR
+  legada permanece separada e continua proibindo revogacao de baixas parciais.
+- Modal de criacao na solicitacao: Observacoes do titulo junto ao Total das
+  formas. Nota comum acompanha formas e parcelas sem perder instrucoes
+  existentes; limite combinado validado antes de salvar favorecidos. Em
+  multiplos favorecidos, instrucoes bancarias continuam do snapshot servidor.
+  Coluna Observacoes aparece apos Titulo/documento na fila e no painel de
+  colunas, com expansao de textos longos e preservacao de preferencias antigas.
+- Testes locais: backend `test:pwa-rejeicao-fila`; frontend
+  `test:pwa-rejeicao-datas` e `test:fila-instrumentos-ui`. Simulam modelos,
+  banco, biometria e APIs; nao substituem homologacao com MySQL/passkey no DEV.

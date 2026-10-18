@@ -46,6 +46,7 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
         const paid=window.__paid,receipt=window.__receipt,saldo=window.__saldo||200;
         const row={id:1,status:paid?'BAIXADO':'PENDENTE',movimento_financeiro_id:paid?10:null,valor_informado:paid?200:null,valor_previsto:saldo,juros:window.__juros||0,multa:window.__multa||0,conta_bancaria_id:5,data_baixa:paid?'2026-10-08':null,pendente_comprovante:paid&&!receipt,comprovante_hash:receipt||!window.__receiptScenario?'qa':null,comprovante_url:receipt||!window.__receiptScenario?'qa':null,titulo:{id:1,codigo:'TIT-QA',status:paid?'QUITADO':'ABERTO',valor_saldo:paid?0:saldo,forma_pagamento_id:1,solicitacao_id:100,solicitacao:{id:100,codigo:'SOL-QA'}}};
         row.titulo.descricao='SOL-QA - MEDIÇÃO';
+        row.titulo.observacoes='Entrega conferida. Pagamento conforme combinado.';
         if(new URLSearchParams(location.search).has('arquivos'))row.titulo.solicitacao.boletos=[{id:1,nome:'boleto.PDF',tipo:'BOLETO_COMPRA'},{id:2,nome:'foto.jpeg',tipo:'BOLETO_FRETE'}];
         if(volumeScenario) {
           if(window.__volumeDelay && params.pagina>1) await new Promise(resolve=>setTimeout(resolve,window.__volumeDelay));
@@ -174,6 +175,9 @@ try {
   } else {
   if (process.argv.includes('--filtros-dp')) await validarFiltrosDpFila(page);
   await page.goto('http://127.0.0.1:5308/qa-fila');
+  await page.locator('td[data-coluna="observacoes"]').getByText('Entrega conferida. Pagamento conforme combinado.',{exact:true}).waitFor();
+  const ordemObservacoes=await page.locator('thead th').evaluateAll(nodes=>nodes.map(n=>n.dataset.coluna));
+  assert.equal(ordemObservacoes.indexOf('observacoes'),ordemObservacoes.indexOf('titulo')+1);
   const forma = page.getByLabel('Forma de pagamento de TIT-QA', { exact: true });
   await forma.waitFor();
   const requestLink=page.getByRole('link',{name:'Abrir solicitação SOL-QA',exact:true});
@@ -353,7 +357,7 @@ try {
       assert.equal(await page.getByText(/PIX DADOS_BANCARIOS/).count(),0);
     } else await page.getByText('PIX EMAIL: responsavel@example.test',{exact:true}).waitFor();
     await page.getByText('Ver colaboradores do reembolso',{exact:true}).click();
-    await page.getByText(/Ana QA: R\$ 100,00/).waitFor();
+  await page.locator('td[data-coluna="dados"]').getByText(/Ana QA: R\$ 100,00/).waitFor();
     assert.ok((await page.locator('details[open]').innerText()).includes('Bruno QA: R$ 50,00'));
   }
   await page.goto('http://127.0.0.1:5308/qa-fila?edicao=1');

@@ -212,7 +212,7 @@ async function listarTitulosElegiveis(req, filters = {}) {
 
     if (activeIntent) pendencias.push('Titulo ja possui pagamento ativo.');
     if (tituloEstaBloqueado(plain)) {
-      pendencias.push(plain.bloqueio_retorno_motivo || 'Baixa bloqueada por pedido de retorno da Obra.');
+      pendencias.push(plain.bloqueio_pagamento_proprietario ? 'Saldo rejeitado pelo proprietario; exige nova autorizacao.' : (plain.bloqueio_retorno_motivo || 'Baixa bloqueada por pedido de retorno da Obra.'));
     }
     if (!beneficiary) pendencias.push('Favorecido bancario nao cadastrado.');
     if (beneficiary && (!beneficiary.pix_tipo_chave || !beneficiary.pix_chave)) {

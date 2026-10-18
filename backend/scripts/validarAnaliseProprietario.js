@@ -90,6 +90,7 @@ const stubs = {
   './authorizationService': { getFinanceiroObraScopeIds: async () => scope,
     userHasNominalAreaPermission: async (actor, keys) => keys.every((key) => actor.grants.includes(key)) },
   './tituloFinanceiroService': {}, './tituloBloqueioRetornoObraService': { assertTituloDisponivelParaBaixa(title) {
+    require('../src/services/tituloBloqueioRetornoObraPolicy').assertTituloDisponivelParaBaixa(title);
     if (title.bloqueio_retorno_obra) throw Object.assign(new Error('Retorno pendente'), { statusCode: 409 });
   } }, './s3': {}, './fileAccessService': {},
   './faturaCartaoFinanceiroService': {},
@@ -564,6 +565,61 @@ async function testarMedicoesIndependentes() {
     assert(state.PagamentoAutorizacaoItem.every(item => item.status === 'ENFILEIRADO'), `Atomicidade ${bloqueio}`);
     assert(state.PagamentoManualFilaItem.every(item => item.status === 'PENDENTE'));
   }
+
+  // Rejeicao de saldo em fila: mesma ACL/passkey, sem estornar parciais.
+  const rejeitarFila = async (lot, ids = [1], actor = diretor) => {
+    const decisoes = ids.map(item_id => ({ item_id, decisao: 'REJEITAR_FILA', motivo: 'Saldo nao autorizado' }));
+    await digital.authenticationOptions(actor, lot.id, decisoes);
+    return digital.decideBatch(actor, lot.id, { decisoes, credential: { id: 'qa-key' } });
+  };
+  for (const mode of ['PILOT', 'ENFORCED']) {
+    lote = await prepararRevogacao(); env.paymentOwnerApprovalMode = mode;
+    Object.assign(state.TituloFinanceiro[0], { status: 'PARCIAL', valor_baixado: 30, valor_saldo: 70 });
+    Object.assign(state.PagamentoManualFilaItem[0], { status: 'DIVERGENTE', movimento_financeiro_id: 123, comprovante_url: 'qa.pdf' });
+    await rejeitarFila(lote);
+    let title = state.TituloFinanceiro[0];
+    assert.deepEqual([title.status, title.valor_baixado, title.valor_saldo], ['PARCIAL', 30, 70]);
+    assert.equal(title.bloqueio_pagamento_proprietario.saldo, 70);
+    assert.equal(state.PagamentoAutorizacaoItem[0].status, 'REJEITADO');
+    assert.equal(state.PagamentoAutorizacaoItem[1].status, 'ENFILEIRADO');
+    assert.equal(state.PagamentoManualFilaItem[0].status, 'RESOLVIDO');
+    assert.equal(state.PagamentoManualFilaItem[0].movimento_financeiro_id, 123);
+    assert.equal(state.PagamentoManualFilaItem[0].comprovante_url, 'qa.pdf');
+    assert.equal(state.PagamentoAutorizacaoLote[0].dossie_hash, lote.dossie_hash);
+    assert(state.PagamentoAutorizacaoEvento.some(e => e.tipo === 'ITEM_REJEITADO_NA_FILA'));
+    await assert.rejects(rejeitarFila(lote), { statusCode: 409 });
+    env.paymentOwnerApprovalMode = 'OFF';
+    await assert.rejects(queue.enfileirarTitulos(req, { titulo_ids: [1], idempotency_key: 'bypass-off' }), { code: 'TITULO_REJEITADO_PROPRIETARIO' });
+    title = state.TituloFinanceiro[0]; // O fixture restaura objetos apos rollback.
+    env.paymentOwnerApprovalMode = mode;
+    // Apenas novo material, nova decisao e passkey liberam o saldo, nao preparar.
+    const novo = await digital.createBatch(req, { titulo_ids: [1], idempotency_key: 'novo-saldo' });
+    assert(title.bloqueio_pagamento_proprietario);
+    const novoItem = state.PagamentoAutorizacaoItem.at(-1);
+    const decisoes = [{ item_id: novoItem.id, decisao: 'AUTORIZAR', motivo: null }];
+    await digital.authenticationOptions(diretor, novo.id, decisoes);
+    await digital.decideBatch(diretor, novo.id, { decisoes, credential: { id: 'qa-key' } });
+    assert.equal(title.bloqueio_pagamento_proprietario, null);
+    assert.equal(state.PagamentoManualFilaItem.at(-1).status, 'PENDENTE');
+    assert.equal(state.PagamentoManualFilaItem[0].status, 'RESOLVIDO');
+    assert.equal(title.valor_baixado, 30);
+    assert(state.PagamentoAutorizacaoEvento.some(e => e.tipo === 'SALDO_REAUTORIZADO'));
+  }
+  for (const tipo of ['QUITADO', 'BANCARIO', 'CICLO_RECENTE', 'EDICAO_DP', 'AUDITORIA', 'SEM_PERMISSAO', 'TESTAR']) {
+    lote = await prepararRevogacao();
+    if (tipo === 'QUITADO') Object.assign(state.TituloFinanceiro[1], { status: 'QUITADO', valor_saldo: 0 });
+    if (tipo === 'BANCARIO') state.PaymentIntent.push({ titulo_financeiro_id: 2, status: 'ENVIADO' });
+    if (tipo === 'CICLO_RECENTE') state.PagamentoAutorizacaoItem.push({ id: 9, titulo_financeiro_id: 2, lote_id: 9, status: 'PENDENTE' });
+    if (tipo === 'EDICAO_DP') state.PagamentoManualFilaItem[1].status = 'EM_EDICAO';
+    if (tipo === 'AUDITORIA') eventFails = true;
+    const actor = tipo === 'SEM_PERMISSAO' ? { user: { id: 31, grants: [] } } : tipo === 'TESTAR' ? { ...diretor, dev_user_switch: true } : diretor;
+    const antes = JSON.stringify(state);
+    await assert.rejects(rejeitarFila(lote, [1, 2], actor));
+    assert.equal(JSON.stringify(state), antes, `Rollback integral ${tipo}`);
+  }
+  lote = await prepararRevogacao();
+  await assert.rejects(digital.authenticationOptions(diretor, lote.id, [{ item_id: 1, decisao: 'REJEITAR_FILA', motivo: '' }]), { statusCode: 400 });
+  await assert.rejects(digital.authenticationOptions(diretor, lote.id, [{ item_id: 1, decisao: 'REJEITAR_FILA', motivo: 'x' }, { item_id: 2, decisao: 'AUTORIZAR' }]), { statusCode: 400 });
 
   // Rejeitados sao uma projecao somente leitura, sem criar pagamento executavel.
   reset();

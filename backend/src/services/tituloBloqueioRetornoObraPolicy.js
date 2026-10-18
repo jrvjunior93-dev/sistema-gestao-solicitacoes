@@ -17,11 +17,17 @@ function ehPedidoObraParaSolicitacaoNoFinanceiro(pedido) {
 }
 
 function tituloEstaBloqueado(titulo) {
-  return require('./rhPagamentoRevisaoPolicy').emRevisaoDp(titulo) || titulo?.bloqueado_retorno_obra === true
+  return Boolean(titulo?.bloqueio_pagamento_proprietario) || require('./rhPagamentoRevisaoPolicy').emRevisaoDp(titulo) || titulo?.bloqueado_retorno_obra === true
     || Number(titulo?.bloqueado_retorno_obra) === 1;
 }
 
 function assertTituloDisponivelParaBaixa(titulo) {
+  if (titulo?.bloqueio_pagamento_proprietario) {
+    const error = new Error('Pagamento bloqueado pelo proprietario. O saldo exige nova autorizacao.');
+    error.statusCode = 409;
+    error.code = 'TITULO_REJEITADO_PROPRIETARIO';
+    throw error;
+  }
   require('./rhPagamentoRevisaoPolicy').assertSemRevisaoDp(titulo);
   if (!tituloEstaBloqueado(titulo)) return;
   const error = new Error(titulo.bloqueio_retorno_motivo || MENSAGEM_PADRAO);

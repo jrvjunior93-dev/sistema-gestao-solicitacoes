@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
+    "test:deploy-pwa-saldo-dev": "node scripts/validarDeployPwaSaldoDev.js",
+    "test:pwa-rejeicao-fila": "node scripts/validarBloqueioProprietario.js && node scripts/validarAnaliseProprietario.js",
     "test:deploy-rh-documentos-dev": "node scripts/validarDeployRhDocumentosDev.js",
     "test:rhdp-admissao-documentos": "node scripts/validarRhAdmissaoDiaria.js && node scripts/validarRhColaboradorContatos.js && node scripts/validarRhDocumentosPacote.js && node scripts/validarRhPessoalFluxo.js --transferencias",
     "test:autorizacoes-painel": "node scripts/validarPainelAutorizacoes.js",

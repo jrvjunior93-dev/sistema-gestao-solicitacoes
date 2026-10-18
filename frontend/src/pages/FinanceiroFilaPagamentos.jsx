@@ -100,6 +100,7 @@ const RECEIPT_PREVIEW_COLUMNS = [
 const PAYMENT_QUEUE_COLUMNS = [
   { key: 'selecao', titulo: 'Seleção', size: 'selection', sempreVisivel: true },
   { key: 'titulo', titulo: 'Título / documento', size: 'wider', sempreVisivel: true },
+  { key: 'observacoes', titulo: 'Observações', size: 'wide', antesDe: 'local' },
   { key: 'local', titulo: 'Obra / Centro de Custo', size: 'wide' },
   { key: 'credor', titulo: 'Credor / favorecido', size: 'wide' },
   { key: 'empresa_colaborador', titulo: 'Empresa do colaborador', size: 'wide', antesDe: 'dados' },
@@ -1386,6 +1387,7 @@ export default function FinanceiroFilaPagamentos() {
                   />
                 </ResizableTh>
                 <ResizableTh columnKey="titulo" className="px-3 py-3">Título / documento</ResizableTh>
+                <ResizableTh columnKey="observacoes" className="px-3 py-3">Observações</ResizableTh>
                 <ResizableTh columnKey="local" className="px-3 py-3">Obra / Centro de Custo</ResizableTh>
                 <ResizableTh columnKey="credor" className="px-3 py-3">Credor / favorecido</ResizableTh>
                 <ResizableTh columnKey="empresa_colaborador" className="px-3 py-3">Empresa do colaborador</ResizableTh>
@@ -1516,6 +1518,11 @@ export default function FinanceiroFilaPagamentos() {
                           />
                         </label>
                       ) : null}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <div className="max-w-64 whitespace-pre-wrap break-words text-xs" title={title.observacoes || undefined}>
+                        {title.observacoes?.length > 120 ? <details><summary className="cursor-pointer">{title.observacoes.slice(0, 120)}…</summary><div className="mt-1">{title.observacoes}</div></details> : title.observacoes || '—'}
                       </div>
                     </td>
                     <td className="px-3 py-3 align-top">

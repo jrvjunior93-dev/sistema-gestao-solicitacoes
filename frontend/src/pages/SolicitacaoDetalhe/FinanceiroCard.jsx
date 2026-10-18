@@ -1,5 +1,6 @@
 import useVisualizadorArquivo from '../../hooks/useVisualizadorArquivo';
 import DateInputBR from '../../components/DateInputBR';
+import { adicionarObservacoesTitulo } from '../../utils/observacoesTitulo';
 import { PIX_TIPOS_CHAVE, pixTipoLabel } from '../../utils/pix';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import OverlayModal from '../../components/ui/OverlayModal';
@@ -587,6 +588,7 @@ export function buildDefaultForm(solicitacao, titulosExistentes = []) {
     linha_digitavel: '',
     codigo_barras: '',
     desconto_financeiro: '',
+    observacoes: '',
     considera_dre: true,
     intercompany: false,
     empresa_origem_id: '',
@@ -2226,6 +2228,8 @@ export default function FinanceiroCard({
     try {
       setSaving(true);
       limparAvisos();
+      // Validar antes de salvar favorecidos; preservar instrucoes por forma/parcela.
+      const pagamentosComObservacoes = adicionarObservacoesTitulo(pagamentosPreparados, form.observacoes);
       const impostosPayload = descontoFinanceiro > 0
         ? [{
             tipo_imposto: 'DESCONTO',
@@ -2254,6 +2258,7 @@ export default function FinanceiroCard({
         valor: form.valor,
         valor_bruto: form.valor,
         valor_liquido: formatCurrencyInput(valorLiquidoPrevisto),
+        observacoes: form.observacoes?.trim() || undefined,
         impostos: impostosPayload,
         intercompany: Boolean(form.intercompany),
         empresa_contraparte_id: form.intercompany
@@ -2274,7 +2279,7 @@ export default function FinanceiroCard({
           valor_rateio: rateio.tipo_rateio === 'VALOR' ? rateio.valor_rateio : undefined,
           observacoes: rateio.observacoes || undefined
         })),
-        pagamentos: pagamentosPreparados.map((pagamento) => {
+        pagamentos: pagamentosComObservacoes.map((pagamento) => {
           const forma = getFormaPagamento(pagamento.forma_pagamento_id);
           const usaDetalhe = formaUsaParcelasDetalhadas(forma);
           return {
@@ -3090,6 +3095,12 @@ export default function FinanceiroCard({
                     {!totalBateComSolicitacao && ` (${diferencaPagamentos > 0 ? 'faltam' : 'sobram'} ${formatCurrency(Math.abs(diferencaPagamentos))})`}
                   </div>
                 </div>
+                <label className="text-sm">
+                  <span className="mb-1 block text-[var(--c-muted)]">Observações do título</span>
+                  <textarea aria-label="Observações do título" className="input w-full" rows={2} maxLength={1000} value={form.observacoes || ''} disabled={saving}
+                    onChange={event => setForm(current => ({ ...current, observacoes: event.target.value }))} />
+                  <span className="app-note">Visíveis ao financeiro em todos os títulos gerados. Os dados para pagamento serão preservados.</span>
+                </label>
               </div>
 
               <div className="hidden space-y-2" aria-hidden="true">

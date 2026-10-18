@@ -1,5 +1,32 @@
 # Ownership Ativo
 
+## Publicacao PWA e saldo rejeitado DEV - 2026-10-18
+
+- Usuario autorizou commit/push deste pacote na refactor/frontend e comandos
+  EC2 DEV com migration. Agente unico; reservar runner/aplicador DEV e testes,
+  handoff e pacote PWA/notas ja implementado. Remote conferida em 6cee2949.
+- Excluir correcao OFX independente, textos de outras telas, seus scripts e
+  handoff. Rotulos de autorizacao nos dois componentes PWA acompanham os
+  ajustes de interface/testes deste pacote. Preservar todos os outros locais.
+- Nao executar EC2, DDL real, .env, PM2 ou deploy. Migration nova autorizada no
+  roteiro apenas com identidade DEV, backup confirmado pelo operador e lista
+  pendente restrita a 202610180002. Nenhuma alteracao na main/producao.
+
+## PWA datas, rejeicao em fila e observacoes - 2026-10-18
+
+- Agente unico, mesmo worktree/base publicada RH 6cee2949; preservar todo
+  pacote anterior local de OFX/textos e outputs. Sem commit/push/deploy agora.
+- Usuario pediu datas com edicao por posicao e filtro automatico, decisoes junto
+  a paginacao, total junto ao nome da obra, motivo apos clicar Rejeitar,
+  observacoes no modal de titulos e coluna ao lado de Titulo/Documento.
+- Confirmou rejeitar fila e saldo de parcialmente pagos sem estornar/pagar,
+  preservando historico e exigindo nova autorizacao. Manter passkey, ACL,
+  bloqueio bancario e locks; nao mudar funcao REVOGAR legada silenciosamente.
+- Reserva DateInputBR/modo opt-in e util/testes; autorizacoes por obra/detalhe/
+  situacao/CSS, servico de autorizacao e protecoes de fila/baixa pertinentes;
+  FinanceiroCard, FinanceiroTituloNovo se necessario, fila e payload/testes/docs.
+- Nenhum DB real, PM2, .env, main, producao ou alteracao de permissao individual.
+
 ## Publicacao DEV RH/documentos - 2026-10-18
 
 - Usuario autorizou commit e push do pacote RH/DP na refactor/frontend e

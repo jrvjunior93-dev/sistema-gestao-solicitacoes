@@ -27,7 +27,7 @@ window.qaUser={id:9,perfil:'COMPRAS',areas_permissoes_configuradas:true,areas_pe
 window.qaReads=0;window.qaSends=[];window.qaFail=false;
 window.qaSource={id:10,codigo:'SOL-QA-10',valor:1000,data_vencimento:'2090-01-31',
  tipo:{nome:'DESPESA ADMINISTRATIVA'},obra:{id:2,nome:'Obra QA',empresa_grupo_id:3},
- parceiro:{id:4,nome:'Credor QA',fornecedor:true},forma_pagamento_id:1};
+ parceiro:{id:4,nome:'Credor QA',fornecedor:true},forma_pagamento_id:1,dados_pagamento:'PIX preservado QA'};
 window.qaTitles=[];window.qaTitleReads=0;
 ${freteMode ? `window.qaSource={...window.qaSource,valor:200,tipo:{nome:'COMPRA DIRETA'},
   compra_direta:{id:5,origem:'COMPRA_DIRETA',frete_tipo:'TERCEIRO',frete_valor:50,valor_fechado:150,
@@ -119,6 +119,7 @@ try{
     }
     const open=page.getByRole('button',{name:'Criar Título',exact:true});await open.click();
     const modal=page.getByRole('dialog');await modal.waitFor();
+    await modal.getByLabel('Observações do título',{exact:true}).fill('Conferir entrega e guardar comprovante');
     await modal.getByLabel(/^Forma de pagamento/).selectOption('1');
     await modal.getByLabel('Parcelas',{exact:true}).fill('2');
     const amounts=modal.getByLabel('Valor',{exact:true});
@@ -167,6 +168,7 @@ try{
     assert.match(await amounts.nth(0).inputValue(),/1\.200,00/,'Reabertura usa o valor atualizado');
     await category.fill('Despesa');await modal.getByRole('option',{name:/Despesa QA/}).click();
     await refs.nth(0).fill('preservar-no-erro');
+    await modal.getByLabel('Observações do título',{exact:true}).fill('Observacao enviada ao financeiro');
     await page.evaluate(()=>window.qaFail=true);
     await modal.getByRole('button',{name:'Confirmar',exact:true}).click();
     await page.getByText('Falha de envio simulada',{exact:true}).first().waitFor();
@@ -176,6 +178,11 @@ try{
     await page.waitForFunction(()=>window.qaCreated===true);
     assert.equal(await page.getByRole('dialog').count(),0,'Sucesso fecha formulario');
     assert.equal(await page.evaluate(()=>window.qaSends.length),2);
+    const enviados=await page.evaluate(()=>window.qaSends.at(-1)[1].pagamentos);
+    // O primeiro rascunho foi descartado, a observacao nao pode vazar para outro.
+    assert(enviados.every(p=>!p.observacoes?.includes('Conferir entrega')));
+    assert(enviados.every(p=>p.observacoes.includes('Observacao enviada ao financeiro') && p.observacoes.includes('PIX preservado QA')));
+    assert(enviados.every(p=>!p.parcelas || p.parcelas.every(parcela=>parcela.observacoes.includes('Observacao enviada ao financeiro'))));
     await open.click();assert.equal(await refs.nth(0).inputValue(),'','Sucesso limpa rascunho');
     await refs.nth(0).fill('nao-levar-para-outro-registro');
     await page.evaluate(()=>window.qaReplace({id:11,codigo:'SOL-QA-11',valor:700}));

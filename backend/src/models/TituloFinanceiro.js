@@ -260,6 +260,10 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: true
     },
+    bloqueio_pagamento_proprietario: {
+      type: DataTypes.JSON,
+      allowNull: true
+    },
     bloqueado_retorno_obra: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
@@ -301,18 +305,11 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       async beforeUpdate(titulo, options) {
         await require('../services/tituloRenegociacaoProtecao').proteger(titulo.constructor,{id:titulo.id},
           Object.fromEntries((titulo.changed()||[]).map(k=>[k,titulo.get(k)])),options);
-        if (!titulo.bloqueado_retorno_obra || !titulo.changed('valor_baixado')) return;
+        if (!titulo.changed('valor_baixado')) return;
         const valorAnterior = Number(titulo.previous('valor_baixado') || 0);
         const novoValor = Number(titulo.valor_baixado || 0);
         if (novoValor <= valorAnterior) return;
-
-        const error = new Error(
-          titulo.bloqueio_retorno_motivo
-          || 'Baixa bloqueada: a Obra solicitou o retorno da solicitacao vinculada a este titulo.'
-        );
-        error.statusCode = 409;
-        error.code = 'TITULO_BLOQUEADO_RETORNO_OBRA';
-        throw error;
+        require('../services/tituloBloqueioRetornoObraPolicy').assertTituloDisponivelParaBaixa(titulo);
       },
       async afterUpdate(titulo, options) {
         await require('../services/tituloRenegociacaoSincronizacao').aposAtualizarTitulo(titulo, options);

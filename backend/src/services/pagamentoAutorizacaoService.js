@@ -452,6 +452,9 @@ function normalizeDecisions(decisions) {
   if (result.some(item => item.decisao === 'REVOGAR') && result.some(item => item.decisao !== 'REVOGAR')) {
     throw httpError(400, 'Revogacao nao pode ser combinada com autorizacao ou rejeicao.');
   }
+  if (result.some(item => item.decisao === 'REJEITAR_FILA') && result.some(item => item.decisao !== 'REJEITAR_FILA')) {
+    throw httpError(400, 'Rejeicao de saldo em fila exige confirmacao separada.');
+  }
   return result;
 }
 
@@ -460,11 +463,13 @@ async function authenticationOptions(req, lotId, decisions) {
   await assertActiveAuthorizer(req.user);
   const lot = await PagamentoAutorizacaoLote.findByPk(lotId);
   const normalized = normalizeDecisions(decisions);
-  const revogando = normalized.every(item => item.decisao === 'REVOGAR');
+  // As duas retiradas usam itens autorizados; REVOGAR continua com sua regra
+  // legada (sem baixa). REJEITAR_FILA bloqueia o saldo e termina a decisao.
+  const revogando = normalized.every(item => ['REVOGAR', 'REJEITAR_FILA'].includes(item.decisao));
   if (!lot || (!revogando && lot.status !== 'AGUARDANDO')) throw httpError(409, 'Lote nao esta disponivel para decisao.');
   if (!revogando && Number(lot.criado_por) === Number(req.user.id)) throw httpError(403, 'O preparador nao pode autorizar o proprio lote.');
-  if (normalized.some((item) => !['AUTORIZAR', 'REJEITAR', 'REVOGAR'].includes(item.decisao))) throw httpError(400, 'Decisao invalida.');
-  if (normalized.some((item) => ['REJEITAR', 'REVOGAR'].includes(item.decisao) && !item.motivo)) throw httpError(400, 'Informe o motivo para rejeitar ou revogar um pagamento.');
+  if (normalized.some((item) => !['AUTORIZAR', 'REJEITAR', 'REVOGAR', 'REJEITAR_FILA'].includes(item.decisao))) throw httpError(400, 'Decisao invalida.');
+  if (normalized.some((item) => ['REJEITAR', 'REVOGAR', 'REJEITAR_FILA'].includes(item.decisao) && !item.motivo)) throw httpError(400, 'Informe o motivo para rejeitar ou revogar um pagamento.');
   const availableItems = await PagamentoAutorizacaoItem.count({ where: { lote_id: lotId, id: { [Op.in]: normalized.map((item) => item.item_id) }, status: revogando ? { [Op.in]: ['AUTORIZADO', 'ENFILEIRADO'] } : 'PENDENTE' } });
   if (availableItems !== normalized.length) throw httpError(409, 'Um ou mais itens ja foram decididos ou nao pertencem ao lote.');
   const credentials = await WebauthnCredential.findAll({ where: { usuario_id: req.user.id, ativo: true } });
@@ -481,8 +486,8 @@ async function decideBatch(req, lotId, payload = {}) {
     assertFeatureAvailable(); assertNoDevSwitch(req); assertWebauthnConfig();
     const authorizer = await assertActiveAuthorizer(req.user);
     const decisions = normalizeDecisions(payload.decisoes);
-    const revogando = decisions.every(item => item.decisao === 'REVOGAR');
-    if (decisions.some((item) => !['AUTORIZAR', 'REJEITAR', 'REVOGAR'].includes(item.decisao))) throw httpError(400, 'Decisao invalida.');
+    const revogando = decisions.every(item => ['REVOGAR', 'REJEITAR_FILA'].includes(item.decisao));
+    if (decisions.some((item) => !['AUTORIZAR', 'REJEITAR', 'REVOGAR', 'REJEITAR_FILA'].includes(item.decisao))) throw httpError(400, 'Decisao invalida.');
     stage = 'CHALLENGE_CONSUME';
     const stored = await consumeChallenge({ purpose: 'decide', userId: req.user.id, lotId });
     if (!stored?.challenge || stored.decisions_hash !== sha256(decisions)) throw httpError(409, 'Desafio expirado ou diferente da decisao confirmada.');
@@ -528,7 +533,9 @@ async function decideBatch(req, lotId, payload = {}) {
     if (authorizer.limite_por_lote && decisions.filter((item) => item.decisao === 'AUTORIZAR').reduce((sum, decision) => sum + roundCurrency(items.find((item) => Number(item.id) === decision.item_id)?.valor_snapshot), 0) > Number(authorizer.limite_por_lote)) throw httpError(403, 'O valor autorizado excede o limite nominal deste autorizador.');
     for (const decision of decisions) {
       const item = items.find((candidate) => Number(candidate.id) === decision.item_id);
-      if (decision.decisao === 'REVOGAR') {
+      if (decision.decisao === 'REJEITAR_FILA') {
+        await require('./pagamentoAutorizacaoRejeicaoFila')({ req, lotId, item, motivo: decision.motivo, transaction });
+      } else if (decision.decisao === 'REVOGAR') {
         if (!decision.motivo) throw httpError(400, 'Informe o motivo da revogacao.');
         const title = await TituloFinanceiro.findByPk(item.titulo_financeiro_id, { transaction, lock: transaction.LOCK.UPDATE });
         if (!title || title.status !== 'ABERTO' || Number(title.valor_baixado || 0) > 0 || roundCurrency(title.valor_saldo) <= 0) {
@@ -565,13 +572,19 @@ async function decideBatch(req, lotId, payload = {}) {
           snapshot: title ? buildSnapshot(title) : null,
           documents: currentAttachments.filter((attachment) => attachment.caminho_arquivo).map((attachment) => ({ origem_id: Number(attachment.id), nome: attachment.nome_original || `Documento ${attachment.id}`, origem_tipo: attachment.tipo || 'ANEXO', arquivo_hash: sha256({ source_url: attachment.caminho_arquivo }) }))
         };
-        const stillEligible = title && String(title.tipo).toUpperCase() === 'PAGAR' && ['ABERTO', 'PARCIAL'].includes(String(title.status).toUpperCase()) && roundCurrency(currentMaterial.snapshot.valor_total ?? title.valor_saldo) === roundCurrency(item.valor_snapshot) && sha256(storedMaterial) === sha256(currentMaterial);
+        const bloqueio = title?.bloqueio_pagamento_proprietario;
+        const stillEligible = title && (!bloqueio || Number(item.id) > Number(bloqueio.item_id)) && String(title.tipo).toUpperCase() === 'PAGAR' && ['ABERTO', 'PARCIAL'].includes(String(title.status).toUpperCase()) && roundCurrency(currentMaterial.snapshot.valor_total ?? title.valor_saldo) === roundCurrency(item.valor_snapshot) && sha256(storedMaterial) === sha256(currentMaterial);
         if (!stillEligible) {
           await item.update({ status: 'INVALIDADO', motivo_decisao: 'Titulo ou saldo alterado apos a montagem do dossie.', decidido_em: new Date() }, { transaction });
           await recordEvent({ loteId: lotId, itemId: item.id, userId: req.user.id, type: 'ITEM_INVALIDADO', data: { titulo_id: item.titulo_financeiro_id }, transaction });
           await registrarAnaliseRecusada({ tituloId: item.titulo_financeiro_id, usuarioId: req.user.id,
             motivo: 'Titulo ou saldo alterado apos a montagem do dossie.', resultado: 'INVALIDADO', transaction });
           continue;
+        }
+        if (bloqueio) {
+          await title.update({ bloqueio_pagamento_proprietario: null }, { transaction });
+          await recordEvent({ loteId: lotId, itemId: item.id, userId: req.user.id, type: 'SALDO_REAUTORIZADO',
+            data: { titulo_id: title.id, bloqueio_anterior: bloqueio, saldo: Number(title.valor_saldo) }, transaction });
         }
         await item.update({ status: 'AUTORIZADO', motivo_decisao: decision.motivo, decidido_em: new Date() }, { transaction });
         await recordEvent({ loteId: lotId, itemId: item.id, userId: req.user.id, type: 'ITEM_AUTORIZADO', data: { snapshot_hash: item.snapshot_hash }, transaction });

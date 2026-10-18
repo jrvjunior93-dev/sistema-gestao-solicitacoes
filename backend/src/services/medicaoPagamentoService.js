@@ -93,7 +93,9 @@ async function alterar(req, contratoId, medicaoId, raw) {
     if (['EMITIDO', 'PAGO_BANCO', 'CONCILIADO'].includes(titulo.status_cobranca) || titulo.boleto_emitido_em || titulo.nosso_numero) throw erro('Regularize a cobranca bancaria vinculada antes de ajustar o valor.', 409);
     if (Number(titulo.juros || 0) || Number(titulo.multa || 0) || Number(titulo.valor_impostos || 0)
       || (titulo.valor_bruto != null && centavos(titulo.valor_bruto) !== centavos(titulo.valor_original))) throw erro('Titulo com encargos ou retencoes exige conferencia financeira especifica antes deste ajuste.', 409);
-    require('./tituloBloqueioRetornoObraService').assertTituloDisponivelParaBaixa(titulo);
+    // Correcao nao e baixa: manter o bloqueio do proprietario no titulo enquanto
+    // permite ajustar o valor e montar uma nova autorizacao. Demais travas intactas.
+    require('./tituloBloqueioRetornoObraService').assertTituloDisponivelParaBaixa({ ...plain(titulo), bloqueio_pagamento_proprietario: null });
     if (body.acao === 'LIBERAR_PENDENTE' && (titulo.status !== 'PREVISAO' || !titulo.medicao_pagamento_origem_id)) throw erro('Somente diferenca futura em previsao pode ser liberada.', 409);
     if (body.acao === 'REDUZIR' && titulo.status !== 'ABERTO') throw erro('Somente titulo aberto pode ter valor reduzido.', 409);
     const antes = { valor: titulo.valor_original, status: titulo.status, fatura_cartao_id: titulo.fatura_cartao_id, medicao_pagamento: meta };

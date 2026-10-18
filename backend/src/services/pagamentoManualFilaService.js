@@ -76,7 +76,7 @@ function filaInclude() {
         'forma_pagamento_id', 'empresa_id', 'linha_digitavel', 'codigo_barras',
         'banco_cobranca', 'observacoes', 'solicitacao_id', 'favorecido_pagamento_id',
         'cartao_id', 'fatura_cartao_id', 'origem_titulo', 'status_interno_pagar', 'compartilhamento_id',
-        'medicao_pagamento', 'medicao_pagamento_origem_id'
+        'medicao_pagamento', 'medicao_pagamento_origem_id', 'bloqueio_pagamento_proprietario'
       ],
       include: [
         { model: Parceiro, as: 'parceiro', attributes: ['id', 'nome', 'cpf_cnpj', 'telefone', 'email'] },

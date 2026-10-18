@@ -2814,8 +2814,9 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
   }
   const pagamentosPayload = partesSolicitadas.length ? partesSolicitadas.map((parte, i) => {
     const informado = pagamentosInformados.length === 1 ? pagamentosInformados[0] : pagamentosInformados[i];
-    const observacoes = parte.favorecido_chave_pix ? `PIX: ${parte.favorecido_chave_pix}`
+    const instrucao = parte.favorecido_chave_pix ? `PIX: ${parte.favorecido_chave_pix}`
       : parte.dados_pagamento || (parte.boleto_nomes?.length ? `Boletos: ${parte.boleto_nomes.join(', ')}` : null);
+    const observacoes = require('./tituloObservacoesDomain').comInstrucao(payload.observacoes, instrucao);
     return {
     ...informado,
     // Snapshots servidor: nao permite substituir favorecido/valor/formas por payload.
