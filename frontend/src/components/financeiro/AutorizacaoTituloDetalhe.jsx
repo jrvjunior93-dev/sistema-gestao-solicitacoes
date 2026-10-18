@@ -4,6 +4,7 @@ import ModalPortal from '../ui/ModalPortal';
 import { useWorkspaceActive, useWorkspaceWork } from '../../navigation/WorkspaceContext';
 import { listarTitulosAutorizacao, obterOpcoesDecisaoPasskey, decidirAutorizacaoPagamento } from '../../services/pagamentoAutorizacao';
 import { autenticarComPasskey } from '../../utils/webauthn';
+import { passkeyInterrompida, mensagemPasskeyInterrompida } from '../../utils/passkeyInterrompida';
 import { podeSelecionarAutorizacao, podeDecidirItem, podeAutorizar, podeRejeitarFila, valorSelecionado, assinaturaDecisao, rotuloSituacao } from '../../utils/autorizacaoPagamentoSituacao';
 import { dataISOParaBR } from '../DateInputBR';
 
@@ -106,7 +107,12 @@ export default function AutorizacaoTituloDetalhe({ inicial, filtro, caps, setBus
       // Nao avancar automaticamente nem conservar um badge financeiro obsoleto.
       try { const atual = await consultarAtual(); if (vivo.current) { setItem(atual); setErro(''); } }
       catch { if (vivo.current) setErro('Decisão registrada. Não foi possível atualizar a situação financeira; atualize o título.'); }
-    } catch (e) { if (vivo.current) setErro(e.message || 'Não foi possível confirmar a decisão. Atualize antes de tentar novamente.'); }
+    } catch (e) {
+      if (vivo.current) {
+        if (passkeyInterrompida(e)) { setErro(''); setAviso(mensagemPasskeyInterrompida()); }
+        else setErro(e.message || 'Não foi possível confirmar a decisão. Atualize antes de tentar novamente.');
+      }
+    }
     finally { trava.current = false; setBusy(false); if (vivo.current) { setOperando(false); setConfirmacao(null); corpo.current?.scrollTo(0, 0); } }
   }
   function manterFoco(event) {

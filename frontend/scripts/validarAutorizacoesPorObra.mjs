@@ -14,8 +14,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tag = '\0qa-autorizacoes-obras';
 const server = await createServer({ root, server: { host: '127.0.0.1', port: 5341, strictPort: true, proxy: {} }, plugins: [{
   name: 'qa-autorizacoes-obras', enforce: 'pre',
-  resolveId(source, importer) { if (source.endsWith('/utils/webauthn') && ['/AutorizacoesPorObra.jsx', '/AutorizacaoTituloDetalhe.jsx'].some(p => importer?.endsWith(p))) return tag; },
-  load(id) { if (id === tag) return `export const autenticarComPasskey=async()=>{window.__passkeys=(window.__passkeys||0)+1;return {id:'qa-credential'}};`; },
+  resolveId(source, importer) { if (source === '@simplewebauthn/browser' && importer?.endsWith('/utils/webauthn.js')) return tag; },
+  load(id) { if (id === tag) return `export const browserSupportsWebAuthn=()=>true,startRegistration=async()=>{throw Error('Registro inesperado no QA')},startAuthentication=async()=>{window.__passkeys=(window.__passkeys||0)+1;if(window.__cancelPasskeyAt===window.__passkeys)throw Object.assign(Error('The operation either timed out or was not allowed. See: https://www.w3.org/TR/webauthn-2/'),{name:window.__cancelPasskeyName||'NotAllowedError'});return {id:'qa-credential'}};`; },
   configureServer(s) { s.middlewares.use('/qa-obras', async (_req, res) => {
     res.setHeader('Content-Type', 'text/html'); res.end(await s.transformIndexHtml('/qa-obras', `<html lang="pt-BR"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module">
 import React from 'react';import{createRoot}from'react-dom/client';import{BrowserRouter}from'react-router-dom';import Page from '/src/components/financeiro/AutorizacoesPorObra.jsx';import ModalPortal from '/src/components/ui/ModalPortal.jsx';
@@ -140,6 +140,14 @@ try {
   await limpar(); await page.getByText(/^0 selecionado\(s\)/).waitFor();
   // Aprovar somente um titulo; outro do MESMO lote deve continuar pendente.
   await abrirObra(1); await page.getByLabel('Selecionar TIT-1', { exact: true }).check();
+  await page.evaluate(()=>{window.__cancelPasskeyAt=(window.__passkeys||0)+1;});
+  await page.getByRole('button', { name: 'Autorizar', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirmar autorização com passkey' }).click();
+  await page.getByRole('status').getByText(/Confirmação por passkey não concluída.*Nenhuma decisão foi enviada/).waitFor(); await pronto();
+  assert.equal(decisoes.length,0,'Cancelar passkey nao envia POST de decisao');
+  assert(await page.getByLabel('Selecionar TIT-1',{exact:true}).isChecked(),'Cancelar preserva selecao');
+  assert(await page.getByRole('button',{name:'Autorizar',exact:true}).isEnabled(),'Pode tentar novamente');
+  assert(!/w3\.org|timed out/.test(await page.locator('.pa-obras').innerText()));
   await page.getByRole('button', { name: 'Autorizar', exact: true }).click();
   await page.getByRole('region', { name: 'Conferência da decisão' }).waitFor();
   await page.getByRole('button', { name: 'Confirmar autorização com passkey' }).evaluate(el => { el.click(); el.click(); });
@@ -254,6 +262,13 @@ try {
   assert.equal(decisoes.length,totalDecisoes,'Navegar apos conferir tambem nao decide');
   assert.equal(await detalhe.getByRole('region',{name:'Conferência deste título'}).count(),0);
   await detalhe.getByRole('button',{name:'Próxima',exact:true}).click(); await prontoDetalhe(80);
+  await page.evaluate(()=>{window.__cancelPasskeyAt=window.__passkeys+1;window.__cancelPasskeyName='AbortError';});
+  await detalhe.getByRole('button', { name: 'Autorizar', exact: true }).click();
+  await detalhe.getByRole('button', { name: 'Confirmar aprovação com passkey' }).click();
+  await detalhe.getByRole('status').getByText(/Confirmação por passkey não concluída/).waitFor();
+  assert.equal(decisoes.length,totalDecisoes);
+  assert.equal(await detalhe.getByRole('alert').count(),0,'Cancelamento nao bloqueia o detalhe como erro');
+  assert(await detalhe.getByRole('button',{name:'Autorizar',exact:true}).isEnabled());
   await detalhe.getByRole('button', { name: 'Autorizar', exact: true }).click();
   const decisaoEmVoo = new Promise(resolve => { sinalDecisao = resolve; });
   await detalhe.getByRole('button', { name: 'Confirmar aprovação com passkey' }).evaluate(el=>{el.click();el.click();});
@@ -357,6 +372,20 @@ try {
   await detalhe.getByRole('button', { name:'Confirmar rejeição com passkey' }).click();
   await detalhe.getByText('Somente este título foi rejeitado, com motivo e histórico.').waitFor();
   assert.equal(decisoes.at(-1).body.decisoes[0].decisao,'REJEITAR_FILA');
+  await detalhe.getByRole('button',{name:'Voltar à lista',exact:true}).click(); await pronto();
+  await page.getByRole('button',{name:'Voltar às obras',exact:true}).click(); await pronto();
+  await aplicarStatus('AGUARDANDO'); await abrirObra(1);
+  await page.getByLabel('Selecionar TIT-125',{exact:true}).check();
+  await page.getByLabel('Selecionar TIT-126',{exact:true}).check();
+  await page.evaluate(()=>{window.__cancelPasskeyAt=window.__passkeys+2;window.__cancelPasskeyName='NotAllowedError';});
+  const antesInterromper=decisoes.length;
+  await page.getByRole('button',{name:'Autorizar',exact:true}).click();
+  await page.getByRole('button',{name:'Confirmar autorização com passkey',exact:true}).click();
+  await page.getByRole('status').getByText(/1 título\(s\) já confirmado\(s\); os demais não foram alterados/).waitFor(); await pronto();
+  assert.equal(decisoes.length,antesInterromper+1,'Segundo lote cancelado nao envia decisao');
+  assert.equal(items[124].status,'ENFILEIRADO');assert.equal(items[125].status,'PENDENTE');
+  assert(await page.getByLabel('Selecionar TIT-126',{exact:true}).isChecked());
+  assert(!/Nenhuma decisão foi enviada|w3\.org|timed out/.test(await page.getByRole('status').innerText()),'Nao negar confirmacoes anteriores');
   assert.equal(maxActive, 1, 'Leituras seriais, sem N+1/polling concorrente'); assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
   console.log('UI por obra e titulo fullscreen: desktop/tablet/mobile/escuro, selecao global, lote parcial, cursor entre paginas, Anterior/Proxima sem decidir, aprovar/rejeitar somente o atual, passkey/motivo/revalidacao/duplo clique/INVALIDADO/ACL, anexos empilhados/Escape/foco/root inert e retorno preservado aprovados. APIs isoladas.');
 } finally { liberarDecisao?.(); await page.close(); await browser.close(); await server.close(); }

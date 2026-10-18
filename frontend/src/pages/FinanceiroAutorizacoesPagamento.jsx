@@ -22,6 +22,7 @@ import {
   salvarAutorizadorPagamento
 } from '../services/pagamentoAutorizacao';
 import { autenticarComPasskey, registrarPasskey, suportaPasskeys } from '../utils/webauthn';
+import { passkeyInterrompida, mensagemPasskeyInterrompida } from '../utils/passkeyInterrompida';
 import { criarAssinaturaPush, obterAssinaturaPush, suportaWebPush } from '../utils/webPush';
 import { codigoLoteAutorizacao, motivosAjusteAutorizacao, resumoSolicitacaoAutorizacao } from '../utils/autorizacaoPagamentoResumo';
 import OverlayModal from '../components/ui/OverlayModal';
@@ -252,7 +253,8 @@ export default function FinanceiroAutorizacoesPagamento() {
       await load();
       avisar.sucesso(decision === 'AUTORIZAR' ? 'Pagamentos autorizados e encaminhados à fila.' : 'Pagamentos rejeitados com rastreabilidade.');
     } catch (error) {
-      avisar.erro(error?.message || 'Não foi possível registrar a decisão.');
+      if (passkeyInterrompida(error)) avisar.alerta(mensagemPasskeyInterrompida());
+      else avisar.erro(error?.message || 'Não foi possível registrar a decisão.');
     } finally { mutationRef.current = false; setBusy(false); }
   }
 
@@ -269,7 +271,10 @@ export default function FinanceiroAutorizacoesPagamento() {
       setRevokeItems([]); setRevokeReason('');
       await load();
       avisar.sucesso('Autorização revogada. Os títulos saíram da fila e voltaram para decisão do proprietário.');
-    } catch (error) { avisar.erro(error?.message || 'Não foi possível revogar a autorização.'); }
+    } catch (error) {
+      if (passkeyInterrompida(error)) avisar.alerta(mensagemPasskeyInterrompida());
+      else avisar.erro(error?.message || 'Não foi possível revogar a autorização.');
+    }
     finally { mutationRef.current = false; setBusy(false); }
   }
 

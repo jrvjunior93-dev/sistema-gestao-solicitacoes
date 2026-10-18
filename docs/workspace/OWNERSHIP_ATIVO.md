@@ -1,5 +1,25 @@
 # Ownership Ativo
 
+## Publicacao mensagem passkey - 2026-10-18
+
+- Usuario autorizou commit/push exclusivo da mensagem amigavel na
+  refactor/frontend e comandos DEV para testar passkey e diaria com Luana/Obra.
+- Agente unico; reservar helper/wrapper WebAuthn, dois componentes e pagina
+  de autorizacao, testes e handoff. Base remota conferida em 76b4b907.
+- Nao incluir pacote OFX/textos independente, outputs ou mudancas de permissoes.
+  Correcao da diaria ja esta em 6cee2949, ancestral desta publicacao.
+- Reutilizar roteiro DEV ja testado. Sem migration nova ou operacao real de
+  EC2/banco/PM2/.env/producao pelo agente.
+
+## Passkey interrompida: mensagem amigavel - 2026-10-18
+
+- Pedido atual: tratar voltar/cancelar a confirmacao, sem mensagem tecnica em
+  ingles. Agente unico; reservar utils/webauthn, novo helper puro, componentes
+  de autorizacao por obra/detalhe/pagina, testes e handoff. Base 76b4b907.
+- Somente UX do cancelamento/timeout antes do POST; preservar permissoes,
+  passkey obrigatoria, selecao, resultados parciais e erros reais do servidor.
+- Pacote OFX/textos anterior preservado. Sem commit/push/deploy nesta etapa.
+
 ## Publicacao PWA e saldo rejeitado DEV - 2026-10-18
 
 - Usuario autorizou commit/push deste pacote na refactor/frontend e comandos

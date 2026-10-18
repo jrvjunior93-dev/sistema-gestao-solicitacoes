@@ -4,6 +4,7 @@ import { useWorkspaceActive, useWorkspaceState, useWorkspaceWork } from '../../n
 import usePollingSeguro from '../../hooks/usePollingSeguro';
 import { listarObrasAutorizacao, listarTitulosAutorizacao, obterOpcoesDecisaoPasskey, decidirAutorizacaoPagamento } from '../../services/pagamentoAutorizacao';
 import { autenticarComPasskey } from '../../utils/webauthn';
+import { passkeyInterrompida, mensagemPasskeyInterrompida } from '../../utils/passkeyInterrompida';
 import { SITUACOES_AUTORIZACAO, rotuloSituacao, podeSelecionarAutorizacao, podeDecidirItem, podeAutorizar, valorSelecionado, assinaturaDecisao, selecionarPagina, reconciliarSelecao, agruparDecisoes } from '../../utils/autorizacaoPagamentoSituacao';
 import { resumoSolicitacaoAutorizacao } from '../../utils/autorizacaoPagamentoResumo';
 import AutorizacaoTituloDetalhe from './AutorizacaoTituloDetalhe';
@@ -147,7 +148,8 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
       }
       setMotivo(''); setAviso(`${concluidos} título(s) confirmado(s). ${revisaoDecisao.decisao === 'AUTORIZAR' ? 'Somente os selecionados foram autorizados; os demais continuam pendentes.' : 'Rejeições registradas com histórico.'}`);
     } catch (e) {
-      setAviso(`${concluidos ? `${concluidos} título(s) já confirmado(s). ` : ''}${e.message || 'Não foi possível concluir.'} Os demais não foram confirmados. Atualize e confira antes de tentar novamente.`);
+      setAviso(passkeyInterrompida(e) ? mensagemPasskeyInterrompida(concluidos)
+        : `${concluidos ? `${concluidos} título(s) já confirmado(s). ` : ''}${e.message || 'Não foi possível concluir.'} Os demais não foram confirmados. Atualize e confira antes de tentar novamente.`);
     } finally { setRevisaoDecisao(null); travado.current = false; setBusy(false); atualizar(); }
   }
   const altera = key => event => setRascunho(current => ({ ...current, [key]: event.target.value }));
