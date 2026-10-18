@@ -28,4 +28,9 @@ const grupos=agruparDecisoes([pendente,fila],'REJEITAR','Conferir saldo');
 assert.equal(grupos.length,2); assert(grupos.every(([id])=>id===7));
 assert.deepEqual(grupos.flatMap(([,itens])=>itens.map(i=>i.decisao)).sort(),['REJEITAR','REJEITAR_FILA']);
 assert.throws(()=>agruparDecisoes([fila],'AUTORIZAR',''),/indisponíveis/);
+for(const original of [pendente,fila]){
+  const excluido={...original,exclusao_titulo:{em:'2026-10-18'},situacao_financeira:'EXCLUIDO'};
+  assert(!podeAutorizar(excluido));assert(!podeRejeitarFila(excluido));
+  assert.throws(()=>agruparDecisoes([excluido],'REJEITAR','motivo'),/indisponíveis/);
+}
 console.log('Datas posicionais, limite do ano, observacoes por forma/parcela, selecao parcial e grupos separados aprovados. Sem rede/banco.');

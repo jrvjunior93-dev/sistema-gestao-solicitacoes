@@ -2,8 +2,16 @@
 
 // Projecao de leitura. Nunca grava status no dossie nem altera o material assinado.
 const FILA_ATIVA = ['PENDENTE', 'EM_EDICAO'];
+function exclusaoDoTitulo(row, autores = []) {
+  if (!row?.titulo_excluido_em && row?.titulo_status !== 'EXCLUIDO') return null;
+  const id = Number(row.titulo_excluido_por_id) || null;
+  return { em: row.titulo_excluido_em || null,
+    responsavel: id ? { id, nome: row.titulo_excluido_por_nome || autores.find(a => Number(a.id) === id)?.nome || 'Responsável não disponível' } : null,
+    motivo: row.titulo_excluido_motivo || null };
+}
 function situacaoItem(item) {
   const t = item.titulo, fila = Object.hasOwn(item, 'fila_atual') ? item.fila_atual : item.filaItem;
+  if (item.exclusao_titulo || t?.deleted_at || t?.status === 'EXCLUIDO') return 'EXCLUIDO';
   if (!t) return 'INDISPONIVEL';
   if (['CANCELADO', 'ESTORNADO', 'PREVISAO', 'RENEGOCIADO'].includes(t.status)) return t.status;
   if (t.renegociado_por_id) return 'RENEGOCIADO';
@@ -31,8 +39,13 @@ function situacaoLote(itens, fallback) {
 }
 function projetarLote(lote) {
   const copia = lote.toJSON ? lote.toJSON() : structuredClone(lote);
-  copia.itens = (copia.itens || []).map(item => ({ ...item,
-    situacao_financeira: situacaoItem({ ...item, lote: copia }) }));
+  copia.itens = (copia.itens || []).map(item => {
+    const exclusao = item.exclusao_titulo || exclusaoDoTitulo({ titulo_status:item.titulo?.status,
+      titulo_excluido_em:item.titulo?.deleted_at, titulo_excluido_por_id:item.titulo?.deleted_by,
+      titulo_excluido_motivo:item.titulo?.deleted_reason });
+    return { ...item, ...(exclusao ? {exclusao_titulo:exclusao,titulo:null} : {}),
+      situacao_financeira: situacaoItem({ ...item, exclusao_titulo:exclusao, lote: copia }) };
+  });
   copia.situacao_financeira = situacaoLote(copia.itens, copia.status);
   copia.resumo_situacoes = copia.itens.reduce((acc, i) => {
     acc[i.situacao_financeira] = (acc[i.situacao_financeira] || 0) + 1; return acc;
@@ -53,11 +66,29 @@ async function projetarLotesAtuais(lotes, sequelize) {
       ) atual ON atual.id=f.id`, { replacements: { lotes: ids }, type: require('sequelize').QueryTypes.SELECT });
     const porTitulo = new Map(filas.map(f => [Number(f.titulo_financeiro_id), f]));
     for (const lote of copias) for (const item of lote.itens || []) item.fila_atual = porTitulo.get(Number(item.titulo_financeiro_id)) || null;
+    // Historico autorizado, somente metadados de exclusao por PK. Nunca abrir
+    // o scope operacional do titulo nem devolver um titulo excluido como ativo.
+    const ausentes = [...new Set(copias.flatMap(l => l.itens || []).filter(i => !i.titulo)
+      .map(i => Number(i.titulo_financeiro_id)).filter(id => id > 0))];
+    if (ausentes.length) {
+      const excluidos = await sequelize.query(`SELECT t.id, t.deleted_at titulo_excluido_em,
+        t.deleted_by titulo_excluido_por_id, u.nome titulo_excluido_por_nome,
+        t.deleted_reason titulo_excluido_motivo FROM titulos_financeiros t
+        LEFT JOIN users u ON u.id=t.deleted_by
+        WHERE t.id IN (:titulos_excluidos) AND t.deleted_at IS NOT NULL`,
+      { replacements: { titulos_excluidos: ausentes }, type: require('sequelize').QueryTypes.SELECT });
+      const porId = new Map(excluidos.map(t => [Number(t.id), exclusaoDoTitulo(t)]));
+      for (const lote of copias) for (const item of lote.itens || []) {
+        const exclusao = porId.get(Number(item.titulo_financeiro_id));
+        if (exclusao) { item.exclusao_titulo = exclusao; item.titulo = null; }
+      }
+    }
   }
   return copias.map(projetarLote);
 }
 // Mesma precedencia da funcao pura, sobre colunas explicitas da CTE atuais.
 const SITUACAO_SQL = `CASE
+  WHEN titulo_excluido_em IS NOT NULL OR titulo_status = 'EXCLUIDO' THEN 'EXCLUIDO'
   WHEN titulo_id IS NULL THEN 'INDISPONIVEL'
   WHEN titulo_status IN ('CANCELADO','ESTORNADO','PREVISAO','RENEGOCIADO') THEN titulo_status
   WHEN renegociado_por_id IS NOT NULL THEN 'RENEGOCIADO'
@@ -71,4 +102,4 @@ const SITUACAO_SQL = `CASE
   WHEN status_decisao = 'PENDENTE' THEN 'AGUARDANDO'
   WHEN status_decisao = 'AUTORIZADO' THEN 'AUTORIZADO'
   ELSE 'PENDENTE_FINANCEIRO' END`;
-module.exports = { situacaoItem, situacaoLote, projetarLote, projetarLotesAtuais, SITUACAO_SQL };
+module.exports = { situacaoItem, situacaoLote, projetarLote, projetarLotesAtuais, exclusaoDoTitulo, SITUACAO_SQL };

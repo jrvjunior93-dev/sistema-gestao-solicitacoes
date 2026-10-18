@@ -1,5 +1,45 @@
 # Modulo FINANCEIRO
 
+## Titulos excluidos: consulta historica no PWA - 2026-10-18
+
+- Exclusao logica comprovada agora aparece como Titulo excluido, com data,
+  responsavel e motivo, na lista por obra, detalhe e historico por lote.
+  Registro realmente inexistente e sem evidencia de exclusao segue Indisponivel.
+- Filtro Titulos excluidos - historico permite conferencia separada. Excluidos
+  nao entram em Aguardando aprovacao/Na fila/pendencias e nunca habilitam
+  selecao, aprovacao, rejeicao ou revogacao. Fila antiga PENDENTE nao os reativa.
+- Scope operacional deleted_at=null e rotas de baixa/decisao permanecem iguais.
+  Metadados sao lidos separadamente por PK; DTO historico tem titulo=null e,
+  na fila direta, nenhuma versao de decisao por passkey. Obra historica preservada.
+- Snapshot, valor enviado e documentos assinados nao sao regravados. Exemplo
+  auditado: snapshot2480 e ultimo titulo/fila1240 permanecem distintos; o painel
+  explicita Valor historico enviado, nao saldo disponivel para pagamento.
+- Sem restauracao, encerramento de filas, migration ou operacao em producao.
+  [Handoff e testes](../../handoffs/2026-10-18-pwa-titulos-excluidos-historico.md).
+
+## PWA: remetente por ciclo e filtros automaticos - 2026-10-18
+
+- Estornar a baixa continua devolvendo o saldo a fila, sem nova autorizacao.
+  A projecao do painel preserva remetente/data do envio seguindo exclusivamente
+  os vinculos estorno.reaberto_id, inclusive em cadeias e estornos agrupados.
+- Novo envio apos rejeicao, direto ou autorizado, inicia outra origem: nao se
+  usa a primeira fila do titulo nem se atravessa ciclos sem vinculo de estorno.
+  Pedido ainda pendente de aprovacao mostra criador/data do novo lote, com
+  rotulo Enviado para autorizacao; nao usa remetente de uma fila antiga resolvida.
+  Corrige tambem a leitura do legado, sem regravar selecionado_por/selecionado_em,
+  estornos, valores, decisoes ou historico. Permissoes permanecem inalteradas.
+- Uma consulta adicional em lote busca somente os historicos dos titulos da
+  pagina ja filtrada; totais, cursores, filtros e snapshots assinados nao mudam.
+- Situacao atual aplica imediatamente combinada com obra, tipo de data e
+  periodo. Demais campos aplicam com debounce de 600ms; datas incompletas ou
+  impossiveis nao sao enviadas. Data inicial/final isolada valida e aceita.
+  Sem datas, todo o periodo. Aplicar filtros removido; Limpar filtros mantido,
+  inclusive para limpar texto parcial da data. Selecao entre paginas preservada.
+- Responsividade WEB: filtro ocupa largura util, sem teto global de cadastro
+  de 940px; botoes e configuracao de autorizadores nao quebram em letras.
+  Teste do Pagina/Layout reais cobre 320/390/768/1024/1366/1920.
+- [Handoff e validacoes](../../handoffs/2026-10-18-remetente-fila-filtros-automaticos.md).
+
 ## Dados para autorizacao e obras no titulo rapido OFX - 2026-10-18
 
 - Rotulos da autorizacao agora usam Dados para autorizacao, Valor enviado para

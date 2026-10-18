@@ -4,16 +4,19 @@ export const SITUACOES_AUTORIZACAO = [
   ['REJEITADO', 'Rejeitados'], ['INVALIDADO', 'Invalidados'], ['CANCELADO', 'Cancelados'],
   ['ESTORNADO', 'Estornados'], ['RENEGOCIADO', 'Renegociados'], ['PREVISAO', 'Previsões'],
   ['AUTORIZADO', 'Autorizados — aguardando envio'],
-  ['PENDENTE_FINANCEIRO', 'Pendente no financeiro'], ['INDISPONIVEL', 'Indisponíveis']
+  ['PENDENTE_FINANCEIRO', 'Pendente no financeiro'], ['INDISPONIVEL', 'Indisponíveis'], ['EXCLUIDO', 'Títulos excluídos — histórico']
 ];
 export const rotuloSituacao = value => ({ AGUARDANDO: 'Aguardando aprovação', QUITADO: 'Quitado',
   PARCIALMENTE_PAGO: 'Parcialmente pago', NAO_PAGO: 'Não pago', NA_FILA: 'Na fila', DIVERGENTE: 'Divergente', CONCLUIDO: 'Na fila',
   PENDENTE: 'Aguardando aprovação', ENFILEIRADO: 'Na fila', AUTORIZADO: 'Autorizado — aguardando envio',
   FILA_DIRETA: 'Envio direto à fila',
-  PREVISAO: 'Previsão', INDISPONIVEL: 'Indisponível', MISTO: 'Situações diferentes',
+  PREVISAO: 'Previsão', INDISPONIVEL: 'Indisponível', EXCLUIDO: 'Título excluído', MISTO: 'Situações diferentes',
   PENDENTE_FINANCEIRO: 'Pendente no financeiro'
 }[value] || String(value || '').replaceAll('_', ' '));
+export const tituloExcluido = item => Boolean(item.exclusao_titulo || item.situacao_financeira === 'EXCLUIDO'
+  || item.titulo?.deleted_at || item.titulo?.status === 'EXCLUIDO');
 export function podeAutorizar(item) {
+  if (tituloExcluido(item)) return false;
   if (item.origem_painel === 'FILA_DIRETA' || ['PENDENTE','EM_EDICAO','DIVERGENTE','NAO_PAGO'].includes(item.fila_atual?.status)) return false;
   return item.status === 'PENDENTE'
     && item.lote?.status === 'AGUARDANDO' && item.titulo && ['ABERTO', 'PARCIAL'].includes(item.titulo.status)
@@ -21,6 +24,7 @@ export function podeAutorizar(item) {
     && Math.abs(Number(item.titulo.valor_saldo) - Number(item.snapshot_json?.valor_saldo ?? item.valor_snapshot)) < 0.005;
 }
 export function podeRejeitarFila(item) {
+  if (tituloExcluido(item)) return false;
   const origemValida = item.origem_painel === 'FILA_DIRETA'
     ? item.status === 'FILA_DIRETA' && item.fila_id > 0 && Boolean(item.versao_painel) && ['PENDENTE','NAO_PAGO','DIVERGENTE'].includes(item.fila_atual?.status)
     : ['AUTORIZADO', 'ENFILEIRADO'].includes(item.status);

@@ -1,8 +1,9 @@
 'use strict';
 const { QueryTypes, Op } = require('sequelize');
-const { SITUACAO_SQL } = require('./pagamentoAutorizacaoSituacao');
+const { SITUACAO_SQL, exclusaoDoTitulo } = require('./pagamentoAutorizacaoSituacao');
+const { obterRemetentes } = require('./pagamentoFilaRemetenteService');
 const STATUS = ['AGUARDANDO', 'QUITADO', 'PARCIALMENTE_PAGO', 'NAO_PAGO', 'NA_FILA', 'DIVERGENTE', 'REJEITADO',
-  'INVALIDADO', 'CANCELADO', 'ESTORNADO', 'RENEGOCIADO', 'PREVISAO', 'AUTORIZADO', 'PENDENTE_FINANCEIRO', 'INDISPONIVEL'];
+  'INVALIDADO', 'CANCELADO', 'ESTORNADO', 'RENEGOCIADO', 'PREVISAO', 'AUTORIZADO', 'PENDENTE_FINANCEIRO', 'INDISPONIVEL', 'EXCLUIDO'];
 const erro = message => { throw Object.assign(new Error(message), { statusCode: 400 }); };
 function filtros(query = {}) {
   const scalar = key => { if (query[key] != null && typeof query[key] !== 'string') erro('Filtro invalido: ' + key); return String(query[key] || '').trim(); };
@@ -83,13 +84,15 @@ function consulta(query) {
       CASE WHEN a.id IS NULL THEN 'FILA_DIRETA' ELSE 'AUTORIZACAO' END origem_painel,
       a.status status_decisao, COALESCE(a.valor_snapshot,f.valor_previsto) valor_snapshot,
       l.status lote_status, l.expira_em, t.id titulo_id, t.status titulo_status,
-      t.renegociado_por_id, t.renegociacao_id, t.compartilhamento_id, t.obra_id,
+      t.renegociado_por_id, t.renegociacao_id, t.compartilhamento_id, COALESCE(t.obra_id,h.obra_id) obra_id,
+      h.deleted_at titulo_excluido_em, h.deleted_by titulo_excluido_por_id,
+      h.deleted_reason titulo_excluido_motivo, h.codigo titulo_excluido_codigo, h.descricao titulo_excluido_descricao,
       COALESCE(t.valor_baixado, 0) valor_baixado, COALESCE(t.valor_saldo, 0) valor_saldo,
-      COALESCE(t.data_vencimento, a.vencimento_snapshot) vencimento_atual,
-      t.data_emissao, p.ultima_baixa_periodo, COALESCE(p.pago_no_periodo,0) pago_no_periodo,
+      COALESCE(t.data_vencimento, a.vencimento_snapshot,h.data_vencimento) vencimento_atual,
+      COALESCE(t.data_emissao,h.data_emissao) data_emissao, p.ultima_baixa_periodo, COALESCE(p.pago_no_periodo,0) pago_no_periodo,
       COALESCE(p.quantidade_baixas_periodo,0) quantidade_baixas_periodo,
       CASE WHEN t.bloqueio_pagamento_proprietario IS NULL THEN 0 ELSE 1 END bloqueado_proprietario,
-      ${f.dataTipo === 'EMISSAO' ? 't.data_emissao' : f.dataTipo === 'PAGAMENTO' ? 'p.ultima_baixa_periodo' : 'COALESCE(t.data_vencimento,a.vencimento_snapshot)'} data_referencia,
+      ${f.dataTipo === 'EMISSAO' ? 'COALESCE(t.data_emissao,h.data_emissao)' : f.dataTipo === 'PAGAMENTO' ? 'p.ultima_baixa_periodo' : 'COALESCE(t.data_vencimento,a.vencimento_snapshot,h.data_vencimento)'} data_referencia,
       ${f.dataTipo === 'PAGAMENTO' ? 'COALESCE(p.pago_no_periodo,0)' : 'COALESCE(a.valor_snapshot,f.valor_previsto)'} valor_consulta,
       f.id fila_id, f.status fila_status, f.motivo fila_motivo,
       f.selecionado_por enviado_por_id, f.selecionado_em enviado_em
@@ -97,9 +100,10 @@ function consulta(query) {
     LEFT JOIN pagamento_autorizacao_itens a ON a.id=u.autorizacao_id
     LEFT JOIN pagamento_autorizacao_lotes l ON l.id = a.lote_id
     LEFT JOIN titulos_financeiros t ON t.id = u.titulo_financeiro_id AND t.deleted_at IS NULL
+    LEFT JOIN titulos_financeiros h ON h.id = u.titulo_financeiro_id AND h.deleted_at IS NOT NULL
     LEFT JOIN pagamentos_manuais_fila f ON f.id=u.fila_id
     LEFT JOIN pagos p ON p.titulo_financeiro_id=u.titulo_financeiro_id
-    WHERE a.id IS NOT NULL OR (t.id IS NOT NULL AND t.tipo='PAGAR')
+    WHERE a.id IS NOT NULL OR (t.id IS NOT NULL AND t.tipo='PAGAR') OR (h.id IS NOT NULL AND h.tipo='PAGAR')
   ), situados AS (SELECT atuais.*, ${SITUACAO_SQL} situacao_financeira FROM atuais),
   filtrados AS (SELECT * FROM situados ${where.length ? 'WHERE ' + where.join(' AND ') : ''}),
   pesos AS (
@@ -152,7 +156,7 @@ async function listarTitulos(query = {}, db = require('../models')) {
   const digitais = rows.filter(r => Number(r.id) > 0), diretos = rows.filter(r => Number(r.id) < 0);
   const items = digitais.length ? await db.PagamentoAutorizacaoItem.findAll({ where: { id: { [Op.in]: digitais.map(r => r.id) } },
     include: [
-      { model: db.PagamentoAutorizacaoLote, as: 'lote', attributes: ['id', 'codigo', 'status', 'expira_em'] },
+      { model: db.PagamentoAutorizacaoLote, as: 'lote', attributes: ['id', 'codigo', 'status', 'expira_em', 'criado_por', 'createdAt'] },
       { model: db.PagamentoAutorizacaoDocumento, as: 'documentos', attributes: ['id', 'nome', 'origem_tipo', 'arquivo_hash'] },
       { model: db.TituloFinanceiro, as: 'titulo', required: false, attributes: ['id', 'status', 'valor_baixado', 'valor_saldo', 'renegociado_por_id'],
         include: [{ model: db.Solicitacao, as: 'solicitacao', required: false, attributes: ['id', 'justificativa'] }] }
@@ -175,6 +179,14 @@ async function listarTitulos(query = {}, db = require('../models')) {
     const { versaoFilaDireta, dadosDoTitulo } = require('./pagamentoFilaDiretaDomain');
     for (const r of diretos) {
       const title = titles.find(t => Number(t.id) === Number(r.titulo_financeiro_id)), fila = filas.find(f => Number(f.id) === Number(r.fila_id));
+      if (exclusaoDoTitulo(r) && fila) {
+        mapa.set(Number(r.id), { id: Number(r.id), item_id: null, origem_painel: 'FILA_DIRETA', fila_id: Number(fila.id),
+          titulo_financeiro_id: Number(r.titulo_financeiro_id), lote_id: null, lote: null, status: 'EXCLUIDO',
+          valor_snapshot: Number(fila.valor_previsto), snapshot_hash: null, versao_painel: null, documentos: [], titulo: null,
+          snapshot_json: { titulo_id: Number(r.titulo_financeiro_id), codigo: r.titulo_excluido_codigo || title?.codigo,
+            descricao: r.titulo_excluido_descricao || title?.descricao, data_vencimento: r.vencimento_atual } });
+        continue;
+      }
       if (!title || !fila) continue;
       mapa.set(Number(r.id), { id: Number(r.id), item_id: null, origem_painel: 'FILA_DIRETA', fila_id: Number(fila.id),
         titulo_financeiro_id: Number(title.id), lote_id: null, lote: null, status: title.bloqueio_pagamento_proprietario ? 'REJEITADO' : 'FILA_DIRETA',
@@ -185,15 +197,32 @@ async function listarTitulos(query = {}, db = require('../models')) {
           renegociado_por_id: title.renegociado_por_id, solicitacao: title.solicitacao ? { justificativa: title.solicitacao.justificativa } : null } });
     }
   }
-  const idsAutores = [...new Set(rows.map(r => Number(r.enviado_por_id)).filter(Boolean))];
+  const remetentes = await obterRemetentes(rows, db);
+  const envio = r => {
+    const item = mapa.get(Number(r.id));
+    // Novo pedido de aprovacao ainda nao enfileirado tem remetente proprio.
+    // Uma fila antiga/resolvida do titulo nao pertence a esse novo envio.
+    if (Number(r.id) > 0 && ['PENDENTE', 'AUTORIZADO'].includes(item?.status) && !item.fila_item_id) {
+      return { enviado_por_id: item.lote?.criado_por || null, enviado_em: item.lote?.createdAt || null,
+        destino: 'AUTORIZACAO' };
+    }
+    return { destino: 'FILA', ...(remetentes.get(Number(r.fila_id)) || {
+      enviado_por_id: r.enviado_por_id, enviado_em: r.enviado_em
+    }) };
+  };
+  const idsAutores = [...new Set(rows.flatMap(r => [Number(envio(r).enviado_por_id),Number(r.titulo_excluido_por_id)]).filter(Boolean))];
   const autores = idsAutores.length ? await db.User.findAll({ where: { id: { [Op.in]: idsAutores } }, attributes: ['id','nome'] }) : [];
   return { data: rows.flatMap(r => {
     const item = mapa.get(Number(r.id)); if (!item) return [];
+    const remetente = envio(r);
+    const exclusao = exclusaoDoTitulo(r, autores);
     const fila_atual = r.fila_id ? { id: Number(r.fila_id), status: r.fila_status, motivo: r.fila_motivo } : null;
     const partes = Array.isArray(r.participacoes_no_recorte) ? r.participacoes_no_recorte : JSON.parse(r.participacoes_no_recorte || '[]');
     return [{ ...item, origem_painel: item.origem_painel || 'AUTORIZACAO', fila_atual,
-      enviado_por: r.enviado_por_id ? { id: Number(r.enviado_por_id), nome: autores.find(a => Number(a.id) === Number(r.enviado_por_id))?.nome || 'Usuário não disponível' } : null,
-      enviado_em: r.enviado_em, bloqueado_proprietario: Boolean(Number(r.bloqueado_proprietario)),
+      ...(exclusao ? { exclusao_titulo: exclusao, titulo: null } : {}),
+      enviado_por: remetente.enviado_por_id ? { id: Number(remetente.enviado_por_id), nome: autores.find(a => Number(a.id) === Number(remetente.enviado_por_id))?.nome || 'Usuário não disponível' } : null,
+      enviado_em: remetente.enviado_em, envio_destino: remetente.destino,
+      bloqueado_proprietario: Boolean(Number(r.bloqueado_proprietario)),
       data_referencia: r.data_referencia, data_emissao: r.data_emissao, ultima_baixa_periodo: r.ultima_baixa_periodo,
       pago_no_periodo: Number(r.pago_no_periodo), situacao_financeira: r.situacao_financeira,
       participacoes_no_recorte: partes, valor_no_recorte: Number(r.valor_no_recorte),

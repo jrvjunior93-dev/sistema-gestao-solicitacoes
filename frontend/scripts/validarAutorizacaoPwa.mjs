@@ -70,7 +70,7 @@ try {
   browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH } : {}) });
   const output = path.resolve(root, '../outputs/autorizacao-pwa-20261008');
   await mkdir(output, { recursive: true });
-  async function scenario({ installed = true, ios = false, user = owner, entry = '', realBrowser = false } = {}) {
+  async function scenario({ installed = true, ios = false, user = owner, entry = '', realBrowser = false, excluido = false } = {}) {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
     const errors = [], unexpected = []; page.on('pageerror', e => errors.push(e.message));
     await page.addInitScript(({ user, installed, ios }) => {
@@ -82,6 +82,11 @@ try {
     const lots = Array.from({ length: 151 }, (_, i) => i + 1).map(id => ({ id, codigo: `AUT-LEGADO-${id}`, status: 'AGUARDANDO', valor_total: 100, quantidade_itens: 1,
       createdAt: '2026-10-08T14:00:00Z', dossie_hash: 'qa', itens: [{ id, status: 'PENDENTE', valor_snapshot: 100,
         snapshot_json: { codigo: `TIT-${id}`, solicitacao: { codigo: `SOL-${id}`, descricao: 'Compra Direta: Itens: Cimento' } } }] }));
+    if(excluido) {
+      lots[0].situacao_financeira='EXCLUIDO';
+      Object.assign(lots[0].itens[0],{situacao_financeira:'EXCLUIDO',titulo:null,
+        exclusao_titulo:{em:'2026-10-14T18:00:22Z',responsavel:{id:1,nome:'Operador QA'},motivo:'Exclusao conferida'}});
+    }
     await page.route('**/*', route => {
       const url = new URL(route.request().url()), json = data => route.fulfill({ contentType: 'application/json', body: JSON.stringify(data) });
       if (route.request().isNavigationRequest() && url.origin === 'http://127.0.0.1:5311') return route.continue();
@@ -163,6 +168,21 @@ try {
     const qa = await scenario(options);
     await qa.page.locator('.pa-obra').waitFor();
     assert.equal(await qa.page.getByRole('button', { name: 'Por obra', exact: true }).getAttribute('aria-pressed'), 'true');
+    if (options.user?.perfil === 'SUPERADMIN') {
+      for (const width of [320,390,768,1024,1366,1920]) {
+        await qa.page.setViewportSize({width,height:1000});
+        assert(await qa.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),'Shell WEB sem overflow '+width);
+        assert(await qa.page.locator('.pa-obras-filtros').evaluate(el => {
+          const form=el.getBoundingClientRect(), area=el.closest('.pa-obras').getBoundingClientRect();
+          return form.width >= area.width-2 && form.left >= area.left-1 && form.right <= area.right+1;
+        }),'Filtro ocupa a area util do Pagina real, sem teto de cadastro '+width);
+        for (const selector of ['.pa-obras-filtros>button','.pa-config__form button']) {
+          assert(await qa.page.locator(selector).evaluate(el => getComputedStyle(el).whiteSpace==='nowrap' && el.scrollWidth<=el.clientWidth),'Botao legivel sem quebra de letras '+width);
+        }
+        assert(await qa.page.locator('.pa-config__form select').evaluate(el=>el.getBoundingClientRect().height<60),'Select administrativo nao cresce em coluna mobile '+width);
+        await qa.page.screenshot({path:path.join(output,`web-filtros-${width}.png`),fullPage:false});
+      }
+    }
     await qa.page.getByRole('button', { name: 'Por lote / histórico', exact: true }).click();
     await qa.page.locator('.pa-list').waitFor();
     assert.equal(await qa.page.locator('.fx-topbar').count(), 0);
@@ -179,6 +199,18 @@ try {
   assert.equal(await ios.page.getByRole('button', { name: 'Cadastrar passkey' }).isVisible(), true);
   assert.equal(await ios.page.getByRole('button', { name: /^Autorizar/ }).isDisabled(), true);
   assert.deepEqual(ios.errors, []); assert.deepEqual(ios.unexpected, []); await ios.page.close();
+  const hist=await scenario({excluido:true});
+  await hist.page.getByRole('button',{name:'Por lote / histórico',exact:true}).click();
+  await hist.page.getByRole('note',{name:'Histórico de exclusão do título'}).waitFor();
+  assert.equal(await hist.page.getByRole('checkbox').count(),0,'Pendente historico excluido nao e selecionavel');
+  assert.equal(await hist.page.getByRole('button',{name:/^(Autorizar|Rejeitar|Revogar autorizações|Reprocessar envio)/}).count(),0);
+  assert((await hist.page.getByRole('note').innerText()).includes('Operador QA'));
+  for(const width of [390,1366]){
+    await hist.page.setViewportSize({width,height:900});
+    assert(await hist.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Historico por lote sem overflow '+width);
+    await hist.page.screenshot({path:path.join(output,'excluido-historico-lote-'+width+'.png'),fullPage:false});
+  }
+  assert.deepEqual(hist.errors,[]);assert.deepEqual(hist.unexpected,[]);await hist.page.close();
   // BrowserRouter + Layout/WorkspaceView reais: POP deve permanecer na mesma
   // pagina logica, nao cair no fallback inicial do workspace.
   for (const nativo of [false, true]) {

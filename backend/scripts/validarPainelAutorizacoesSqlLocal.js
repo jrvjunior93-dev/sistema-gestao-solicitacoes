@@ -8,14 +8,15 @@ const { listarObras, listarTitulos, consulta } = require('../src/services/pagame
 const { situacaoItem, projetarLotesAtuais } = require('../src/services/pagamentoAutorizacaoSituacao');
 const sqlite = new DatabaseSync(':memory:'); sqlite.function('NOW', () => '2026-10-17 12:00:00');
 sqlite.exec(`CREATE TABLE pagamento_autorizacao_itens (id INTEGER PRIMARY KEY,lote_id INTEGER,titulo_financeiro_id INTEGER,status TEXT,valor_snapshot REAL,vencimento_snapshot TEXT);
-CREATE TABLE pagamento_autorizacao_lotes (id INTEGER PRIMARY KEY,status TEXT,expira_em TEXT);
-CREATE TABLE titulos_financeiros (id INTEGER PRIMARY KEY,tipo TEXT DEFAULT 'PAGAR',codigo TEXT,descricao TEXT,status TEXT,renegociado_por_id INTEGER,renegociacao_id INTEGER,compartilhamento_id INTEGER,obra_id INTEGER,valor_baixado REAL,valor_saldo REAL,data_vencimento TEXT,data_emissao TEXT,bloqueio_pagamento_proprietario TEXT,deleted_at TEXT);
-CREATE TABLE pagamentos_manuais_fila (id INTEGER PRIMARY KEY,titulo_financeiro_id INTEGER,status TEXT,motivo TEXT,valor_previsto REAL,selecionado_por INTEGER,selecionado_em TEXT);
+CREATE TABLE pagamento_autorizacao_lotes (id INTEGER PRIMARY KEY,status TEXT,expira_em TEXT,criado_por INTEGER,createdAt TEXT);
+CREATE TABLE titulos_financeiros (id INTEGER PRIMARY KEY,tipo TEXT DEFAULT 'PAGAR',codigo TEXT,descricao TEXT,status TEXT,renegociado_por_id INTEGER,renegociacao_id INTEGER,compartilhamento_id INTEGER,obra_id INTEGER,valor_baixado REAL,valor_saldo REAL,data_vencimento TEXT,data_emissao TEXT,bloqueio_pagamento_proprietario TEXT,deleted_at TEXT,deleted_by INTEGER,deleted_reason TEXT);
+CREATE TABLE pagamentos_manuais_fila (id INTEGER PRIMARY KEY,titulo_financeiro_id INTEGER,status TEXT,motivo TEXT,valor_previsto REAL,selecionado_por INTEGER,selecionado_em TEXT,instrumento_pagamento_json TEXT);
 CREATE TABLE movimentos_financeiros (id INTEGER PRIMARY KEY,titulo_financeiro_id INTEGER,status TEXT,tipo_movimento TEXT,valor_quitacao REAL,data_movimento TEXT);
 CREATE TABLE titulos_compartilhados_origens (titulo_financeiro_id INTEGER,obra_id INTEGER,valor REAL);
 CREATE TABLE titulo_renegociacao_alocacoes (titulo_destino_id INTEGER,obra_id INTEGER,valor REAL);
 CREATE TABLE titulos_financeiros_rateios (titulo_financeiro_id INTEGER,obra_id INTEGER,valor_rateio REAL);
-CREATE TABLE obras (id INTEGER PRIMARY KEY,nome TEXT);`);
+CREATE TABLE obras (id INTEGER PRIMARY KEY,nome TEXT);
+CREATE TABLE users (id INTEGER PRIMARY KEY,nome TEXT);`);
 const inserir = (t, o) => sqlite.prepare(`INSERT INTO ${t} (${Object.keys(o)}) VALUES (${Object.keys(o).map(() => '?')})`).run(...Object.values(o));
 const itens = [];
 for (let i = 1; i <= 650; i++) {
@@ -33,6 +34,7 @@ function executar(sql, { replacements = {} } = {}) {
   const params = { ...replacements };
   if (params.ids) { sql = sql.replace(':ids)', params.ids.map((_, i) => ':id_' + i).join(',') + ')'); params.ids.forEach((v, i) => params['id_' + i] = v); delete params.ids; }
   if (params.lotes) { sql = sql.replace(':lotes)', params.lotes.map((_, i) => ':lote_' + i).join(',') + ')'); params.lotes.forEach((v, i) => params['lote_' + i] = v); delete params.lotes; }
+  if (params.titulos_excluidos) { sql=sql.replace(':titulos_excluidos)',params.titulos_excluidos.map((_,i)=>':te_'+i).join(',')+')'); params.titulos_excluidos.forEach((v,i)=>params['te_'+i]=v); delete params.titulos_excluidos; }
   const nomes = [...new Set([...sql.matchAll(/:([a-z_][a-z_0-9]*)/gi)].map(m => m[1]))];
   return sqlite.prepare(sql).all(Object.fromEntries(nomes.map(n => [n, params[n]])));
 }
@@ -40,8 +42,11 @@ const db = { sequelize: { query: async (sql, options) => executar(sql, options) 
   findAll: async options => itens.filter(i => options.where.id[Op.in].includes(i.id))
 } };
 db.TituloFinanceiro = { findAll: async o => sqlite.prepare(`SELECT * FROM titulos_financeiros WHERE id IN (${o.where.id[Op.in].map(() => '?')})`).all(...o.where.id[Op.in]) };
-db.PagamentoManualFilaItem = { findAll: async o => sqlite.prepare(`SELECT * FROM pagamentos_manuais_fila WHERE id IN (${o.where.id[Op.in].map(() => '?')})`).all(...o.where.id[Op.in]) };
-db.User = { findAll: async () => [{ id: 5, nome: 'Financeiro QA' }] };
+db.PagamentoManualFilaItem = { findAll: async o => {
+  const coluna = o.where.id ? 'id' : 'titulo_financeiro_id', ids = o.where[coluna][Op.in];
+  return sqlite.prepare(`SELECT * FROM pagamentos_manuais_fila WHERE ${coluna} IN (${ids.map(() => '?')})`).all(...ids);
+} };
+db.User = { findAll: async () => [{ id: 5, nome: 'Financeiro QA' }, { id:7,nome:'Novo remetente direto' }, { id:8,nome:'Novo remetente digital' }, { id:9,nome:'Novo preparador' }, { id:65,nome:'Operador do estorno' }] };
 (async () => { try {
   const todas = await listarObras({}, db); assert.equal(todas.resumo.quantidade_titulos, 650); assert.equal(todas.resumo.valor_total, 65000); assert.equal(todas.paginacao.total, 150);
   const obras = []; for (let pagina = 1; pagina <= 5; pagina++) obras.push(...(await listarObras({ pagina: String(pagina) }, db)).data);
@@ -144,5 +149,70 @@ db.User = { findAll: async () => [{ id: 5, nome: 'Financeiro QA' }] };
   assert.equal((await listarTitulos({data_tipo:'PAGAMENTO'},db)).paginacao.total,656);
   const cursorDireto = await listarTitulos({sentido:'PROXIMA',cursor_item_id:'-11',cursor_vencimento:'SEM_DATA',limite:'1'},db);
   assert.equal(cursorDireto.data.length,1); assert.notEqual(cursorDireto.data[0].id,-11);
-  console.log('CTE real em SQLite memoria (JSON_ARRAYAGG adaptado): 650 titulos/150 obras + fila direta, 7 pendentes digitais/diretos, emissao/vencimento/pagamento, parcial em dias distintos/estorno/rateios e centavos, sem datas/titulo sem vencimento, cursores assinados e ultimo ciclo sem duplicidade aprovados. Nao substitui MySQL/EXPLAIN DEV.');
+  // Projecao real do remetente: estorno conserva envio/data; rejeicao seguida
+  // de novo envio direto/digital nao herda o remetente do ciclo antigo.
+  const retorna = (antigo, novo, titulo, usuario, quando) => {
+    sqlite.prepare("UPDATE pagamentos_manuais_fila SET status='RESOLVIDO',instrumento_pagamento_json=? WHERE id=?")
+      .run(JSON.stringify({estorno:{reaberto_id:novo}}),antigo);
+    inserir('pagamentos_manuais_fila',{id:novo,titulo_financeiro_id:titulo,status:'PENDENTE',valor_previsto:100,selecionado_por:usuario,selecionado_em:quando});
+  };
+  retorna(10,21,10001,65,'2026-10-20'); retorna(21,22,10001,65,'2026-10-21');
+  let remetente = (await listarTitulos({item_ids:'-22'},db)).data[0];
+  assert.equal(remetente.enviado_por.id,5); assert.equal(remetente.enviado_por.nome,'Financeiro QA');
+  assert.equal(remetente.enviado_em,'2026-10-18'); assert.equal(remetente.fila_atual.id,22);
+  sqlite.prepare("UPDATE pagamentos_manuais_fila SET status='RESOLVIDO',motivo='Rejeitado pelo proprietario' WHERE id=22").run();
+  inserir('pagamentos_manuais_fila',{id:23,titulo_financeiro_id:10001,status:'PENDENTE',valor_previsto:100,selecionado_por:7,selecionado_em:'2026-10-22'});
+  remetente = (await listarTitulos({item_ids:'-23'},db)).data[0];
+  assert.equal(remetente.enviado_por.id,7); assert.equal(remetente.enviado_em,'2026-10-22');
+  sqlite.prepare("UPDATE pagamentos_manuais_fila SET selecionado_por=5,selecionado_em='2026-10-17' WHERE id=2").run();
+  retorna(2,24,3,65,'2026-10-23');
+  remetente = (await listarTitulos({item_ids:'3'},db)).data[0];
+  assert.equal(remetente.enviado_por.id,5); assert.equal(remetente.enviado_em,'2026-10-17');
+  sqlite.prepare("UPDATE pagamentos_manuais_fila SET status='RESOLVIDO' WHERE id=23").run();
+  inserir('pagamento_autorizacao_itens',{id:2001,lote_id:1,titulo_financeiro_id:10001,status:'ENFILEIRADO',valor_snapshot:100});
+  itens.push({...itens[0],id:2001,titulo_financeiro_id:10001,status:'ENFILEIRADO'});
+  inserir('pagamentos_manuais_fila',{id:25,titulo_financeiro_id:10001,status:'PENDENTE',valor_previsto:100,selecionado_por:8,selecionado_em:'2026-10-24'});
+  retorna(25,26,10001,65,'2026-10-25');
+  remetente = (await listarTitulos({item_ids:'2001'},db)).data[0];
+  assert.equal(remetente.enviado_por.id,8); assert.equal(remetente.enviado_em,'2026-10-24');
+  // Novo envio para aprovacao ja mostra o novo preparador antes da decisao,
+  // embora exista a fila resolvida de um ciclo anterior do mesmo titulo.
+  sqlite.prepare("UPDATE pagamentos_manuais_fila SET status='RESOLVIDO' WHERE id=11").run();
+  inserir('pagamento_autorizacao_lotes',{id:3001,status:'AGUARDANDO',criado_por:9,createdAt:'2026-10-26'});
+  inserir('pagamento_autorizacao_itens',{id:3001,lote_id:3001,titulo_financeiro_id:10002,status:'PENDENTE',valor_snapshot:100});
+  itens.push({...itens[0],id:3001,titulo_financeiro_id:10002,status:'PENDENTE',fila_item_id:null,
+    lote:{id:3001,status:'AGUARDANDO',criado_por:9,createdAt:'2026-10-26'}});
+  remetente = (await listarTitulos({item_ids:'3001'},db)).data[0];
+  assert.equal(remetente.enviado_por.id,9); assert.equal(remetente.enviado_em,'2026-10-26');
+  assert.equal(remetente.envio_destino,'AUTORIZACAO');
+  // Exclusao e metadado historico, nao titulo operacional. Inclui digital
+  // pendente, digital enfileirado e fila direta com entrada antiga pendente.
+  inserir('users',{id:5,nome:'Financeiro QA'});
+  for (const id of [1,3,10003]) sqlite.prepare("UPDATE titulos_financeiros SET status='EXCLUIDO',deleted_at='2026-10-18 12:00:00',deleted_by=5,deleted_reason='Cancelamento conferido' WHERE id=?").run(id);
+  sqlite.prepare("UPDATE pagamento_autorizacao_itens SET valor_snapshot=2480 WHERE id=1001").run();
+  itens.find(i=>i.id===1001).valor_snapshot=2480;
+  const excluidos = await listarTitulos({situacao:'EXCLUIDO'},db);
+  assert.equal(excluidos.paginacao.total,3);
+  for (const item of excluidos.data) {
+    assert.equal(item.titulo,null); assert.equal(item.situacao_financeira,'EXCLUIDO');
+    assert.equal(item.exclusao_titulo.responsavel.nome,'Financeiro QA');
+    assert.equal(item.exclusao_titulo.motivo,'Cancelamento conferido');
+  }
+  const historicoSnapshot=excluidos.data.find(i=>i.id===1001);
+  assert.equal(historicoSnapshot.valor_snapshot,2480);
+  const diretoExcluido=excluidos.data.find(i=>i.origem_painel==='FILA_DIRETA');
+  assert.equal(diretoExcluido.versao_painel,null,'Historico nao produz versao para decisao por passkey');
+  assert.equal(diretoExcluido.status,'EXCLUIDO');
+  const resumoExcluido=await listarObras({situacao:'EXCLUIDO'},db);
+  assert.equal(resumoExcluido.resumo.quantidade_titulos,3);
+  assert(resumoExcluido.data.every(o=>o.obra_id>0),'Recuperar obra historica, nao agrupar como sem obra');
+  for(const situacao of ['AGUARDANDO','NA_FILA','NAO_PAGO','DIVERGENTE','PARCIALMENTE_PAGO','PENDENTE_FINANCEIRO']) {
+    const ativos=await listarTitulos({situacao},db);
+    assert(!ativos.data.some(i=>[1,3,10003].includes(i.titulo_financeiro_id)),'Excluido fora das pendencias '+situacao);
+  }
+  const loteExcluido=await projetarLotesAtuais([{id:1,status:'AGUARDANDO',itens:[{...itens[0],titulo:null}]}],db.sequelize);
+  assert.equal(loteExcluido[0].itens[0].situacao_financeira,'EXCLUIDO');
+  assert.equal(loteExcluido[0].itens[0].status,'PENDENTE');
+  assert.equal(loteExcluido[0].itens[0].exclusao_titulo.responsavel.nome,'Financeiro QA');
+  console.log('CTE real em SQLite memoria (JSON_ARRAYAGG adaptado): 650 titulos/150 obras + fila direta, filtros/datas/cursores/rateios, remetente e data originais no estorno e novo remetente apos rejeicao com envio direto/digital aprovados. Nao substitui MySQL/EXPLAIN DEV.');
 } finally { sqlite.close(); } })().catch(e => { console.error(e); process.exitCode = 1; });

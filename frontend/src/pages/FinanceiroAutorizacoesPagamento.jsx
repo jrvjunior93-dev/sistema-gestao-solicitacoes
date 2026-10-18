@@ -27,7 +27,8 @@ import { criarAssinaturaPush, obterAssinaturaPush, suportaWebPush } from '../uti
 import { codigoLoteAutorizacao, motivosAjusteAutorizacao, resumoSolicitacaoAutorizacao } from '../utils/autorizacaoPagamentoResumo';
 import OverlayModal from '../components/ui/OverlayModal';
 import AutorizacoesPorObra from '../components/financeiro/AutorizacoesPorObra';
-import { rotuloSituacao } from '../utils/autorizacaoPagamentoSituacao';
+import { rotuloSituacao, tituloExcluido } from '../utils/autorizacaoPagamentoSituacao';
+import TituloExcluidoAviso from '../components/financeiro/TituloExcluidoAviso';
 import usePollingSeguro from '../hooks/usePollingSeguro';
 import { useWorkspaceActive } from '../navigation/WorkspaceContext';
 import '../styles/financeiro-autorizacoes-pagamento.css';
@@ -69,12 +70,12 @@ export default function FinanceiroAutorizacoesPagamento() {
   const vooLotes = useRef(Promise.resolve());
 
   const selected = useMemo(() => lots.find((lot) => Number(lot.id) === Number(selectedId)) || lots[0] || null, [lots, selectedId]);
-  const pendingItems = useMemo(() => (selected?.itens || []).filter((item) => item.status === 'PENDENTE'), [selected]);
+  const pendingItems = useMemo(() => (selected?.itens || []).filter((item) => item.status === 'PENDENTE' && !tituloExcluido(item)), [selected]);
   const trabalho = trabalhoPorLote[selected?.id] || {};
   const selectedItems = (trabalho.selectedItems || pendingItems.map(item => Number(item.id)))
     .filter(id => pendingItems.some(item => Number(item.id) === id));
   const revokeItems = (trabalho.revokeItems || []).filter(id => (selected?.itens || [])
-    .some(item => Number(item.id) === id && ['AUTORIZADO', 'ENFILEIRADO'].includes(item.status)));
+    .some(item => Number(item.id) === id && !tituloExcluido(item) && ['AUTORIZADO', 'ENFILEIRADO'].includes(item.status)));
   const rejectReason = trabalho.rejectReason || '';
   const revokeReason = trabalho.revokeReason || '';
   const alterarTrabalho = (key, update) => {
@@ -369,9 +370,9 @@ export default function FinanceiroAutorizacoesPagamento() {
               </div>
               <div><Status value={selected.situacao_financeira || selected.status} />
                 {selected.resumo_situacoes && <small>{Object.entries(selected.resumo_situacoes).map(([estado, quantidade]) => `${quantidade} ${rotuloSituacao(estado)}`).join(' · ')}</small>}
-                {caps.can_decide && (selected.itens || []).some(item => ['AUTORIZADO', 'ENFILEIRADO'].includes(item.status)) &&
+                {caps.can_decide && (selected.itens || []).some(item => !tituloExcluido(item) && ['AUTORIZADO', 'ENFILEIRADO'].includes(item.status)) &&
                   <button type="button" className="btn btn-secondary btn-sm" disabled={busy}
-                    onClick={() => setRevokeItems((selected.itens || []).filter(item => ['AUTORIZADO', 'ENFILEIRADO'].includes(item.status)).map(item => Number(item.id)))}>Revogar autorizações do lote</button>}
+                    onClick={() => setRevokeItems((selected.itens || []).filter(item => !tituloExcluido(item) && ['AUTORIZADO', 'ENFILEIRADO'].includes(item.status)).map(item => Number(item.id)))}>Revogar autorizações do lote</button>}
               </div>
             </header>
             <div className="pa-table-wrap">
@@ -380,7 +381,7 @@ export default function FinanceiroAutorizacoesPagamento() {
                 <tbody>{(selected.itens || []).map((item) => {
                   const snapshot = item.snapshot_json || {};
                   return <tr key={item.id}>
-                    <td>{item.status === 'PENDENTE' && <input type="checkbox" checked={selectedItems.includes(Number(item.id))} onChange={(event) => setSelectedItems((current) => event.target.checked ? [...current, Number(item.id)] : current.filter((id) => id !== Number(item.id)))} />}</td>
+                    <td>{item.status === 'PENDENTE' && !tituloExcluido(item) && <input type="checkbox" checked={selectedItems.includes(Number(item.id))} onChange={(event) => setSelectedItems((current) => event.target.checked ? [...current, Number(item.id)] : current.filter((id) => id !== Number(item.id)))} />}</td>
                     <td><strong>{snapshot.solicitacao?.codigo || snapshot.codigo || `#${snapshot.titulo_id}`}</strong>
                       {snapshot.solicitacao?.codigo && <small>Título {snapshot.codigo || `#${snapshot.titulo_id}`}</small>}
                       <small>{resumoSolicitacaoAutorizacao(snapshot)}</small><small className="pa-title-value"><span>Valor do título</span><strong>{money(item.valor_snapshot)}</strong></small></td>
@@ -391,8 +392,9 @@ export default function FinanceiroAutorizacoesPagamento() {
                       </details>}</td><td>{snapshot.data_vencimento || '-'}</td><td className="num pa-value-column">{money(item.valor_snapshot)}</td>
                     <td><div className="pa-documents">{(item.documentos || []).map((doc) => <button type="button" key={doc.id} onClick={() => openDocument(doc)} title={doc.nome}><HiOutlineDocumentText /><span>{doc.nome}</span></button>)}</div></td>
                     <td><Status value={item.situacao_financeira || item.status} />{item.fila_item_id && <small>Fila #{item.fila_item_id}</small>}
+                      <TituloExcluidoAviso exclusao={item.exclusao_titulo} />
                       {item.situacao_financeira && ['REJEITADO', 'INVALIDADO', 'CANCELADO'].includes(item.status) && <small>Decisão registrada: {rotuloSituacao(item.status)}</small>}
-                      {caps.can_decide && ['AUTORIZADO', 'ENFILEIRADO'].includes(item.status) && item.titulo?.status === 'ABERTO' &&
+                      {caps.can_decide && !tituloExcluido(item) && ['AUTORIZADO', 'ENFILEIRADO'].includes(item.status) && item.titulo?.status === 'ABERTO' &&
                         Number(item.titulo?.valor_baixado || 0) === 0 && <button type="button" className="btn btn-secondary btn-sm"
                           disabled={busy} onClick={() => setRevokeItems([Number(item.id)])}>Revogar autorização</button>}
                     </td>
@@ -415,7 +417,7 @@ export default function FinanceiroAutorizacoesPagamento() {
               <div><button type="button" className="btn btn-secondary btn-sm" onClick={() => decide('REJEITAR')} disabled={busy || !selectedItems.length}><HiOutlineXCircle /> Rejeitar</button><button type="button" className="btn btn-primary btn-sm" onClick={() => decide('AUTORIZAR')} disabled={busy || !selectedItems.length || !caps.passkey_count}><HiOutlineCheckCircle /> Autorizar {money(selectedTotal)}</button></div>
               {!caps.passkey_count && <small><HiOutlineLockClosed /> Cadastre uma passkey antes da primeira autorização.</small>}
             </div>}
-            {caps.can_prepare && (selected.itens || []).some((item) => item.status === 'AUTORIZADO') && <div className="pa-retry"><span>A autorização foi registrada, mas há itens ainda não encaminhados.</span><button type="button" className="btn btn-secondary btn-sm" onClick={retryQueue} disabled={busy}>Reprocessar envio à fila</button></div>}
+            {caps.can_prepare && (selected.itens || []).some((item) => item.status === 'AUTORIZADO' && !tituloExcluido(item)) && <div className="pa-retry"><span>A autorização foi registrada, mas há itens ainda não encaminhados.</span><button type="button" className="btn btn-secondary btn-sm" onClick={retryQueue} disabled={busy}>Reprocessar envio à fila</button></div>}
             {caps.can_decide && revokeItems.length > 0 && <div className="pa-decision">
               <label>Motivo da revogação<input value={revokeReason} maxLength={500} onChange={event => setRevokeReason(event.target.value)} /></label>
               <p>{revokeItems.length} título(s) voltarão para autorização. Nenhum pagamento será estornado. Se houver baixa, inclusive parcial, a operação inteira será recusada.</p>

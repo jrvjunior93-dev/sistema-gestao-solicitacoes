@@ -1,5 +1,68 @@
 # Ownership Ativo
 
+## Publicacao DEV: remetente, filtros e titulos excluidos - 2026-10-18
+
+- Usuario autorizou commitar/publicar todo o delta destas tarefas na
+  refactor/frontend e fornecer comandos exclusivos DEV. Agente unico.
+- Reserva temporaria do delta acima, docs/handoffs de publicacao, novo roteiro
+  atualizar-dev-pwa-historico-20261018.sh e seu teste isolado; verificador
+  verificarPainelAutorizacoesDev.js para conferir historico EXCLUIDO por leitura.
+- Remotos conferidos: DEV957ebf85 e main5e9b1ef1. Publicar somente HEAD para
+  refactor/frontend, fast-forward. Preservar main, outros worktrees e outputs/.
+- Sem migration nova, EC2/SSH, banco/Redis reais ou deploy pelo agente. Roteiro
+  nao modifica .env/flags/PILOT/TLS/sessao e reinicia somente backend-dev.
+- QA repetido aprovado: suites backend/SQLite, bloqueio/convergencia/permissoes,
+  UI/shell PWA, polling, build, roteiro isolado/bash -n, docs570/19 e diff.
+  Reserva encerrada e ownership liberado para commit/push exclusivo autorizado.
+  Roteiro e homologacao: docs/handoffs/2026-10-18-publicacao-dev-pwa-historico.md.
+
+## Titulos excluidos no historico de autorizacoes - 2026-10-18
+
+- Agente unico, sem delegacao. Usuario autorizou mostrar Titulo excluido,
+  data/conta/motivo e separar das pendencias, na base refactor/frontend.
+- Preservar integralmente o delta local anterior de remetente/filtros/WEB.
+  Mesma branch isolada codex/remetente-fila-ciclo-20261018; outputs/ preservado.
+- Reservados: pagamentoAutorizacaoConsultaService/Situacao, helper frontend
+  de situacao, novo TituloExcluidoAviso, lista/detalhe/pagina de autorizacoes,
+  CSS desta pagina, fixtures backend SQL/projecao e UI/PWA, scripts npm e docs.
+- Projecao historica somente: manter scope operacional deleted_at=null,
+  snapshots, ACL e rotas de decisao/baixa. Sem restaurar/excluir/reescrever
+  titulos, filas ou autorizacoes. Sem migration, main, commit/push ou producao.
+- Nao acessar EC2: comandos de verificacao serao executados pelo usuario.
+- Implementacao/testes locais concluidos, reserva liberada. Suites de exclusao,
+  painel/SQLite, bloqueio/passkey, convergencia, UI real e shell PWA aprovadas;
+  build/docs/diff conferidos. Handoff:
+  docs/handoffs/2026-10-18-pwa-titulos-excluidos-historico.md.
+
+## Remetente por ciclo de envio da fila - 2026-10-18
+
+- Agente unico, sem delegacao. Usuario autorizou corrigir na refactor/frontend
+  a identificacao do remetente, preservando envio/data no estorno e iniciando
+  novo remetente quando houver novo envio apos rejeicao.
+- Base origin/refactor/frontend957ebf85 em branch local isolada
+  codex/remetente-fila-ciclo-20261018; preservar outputs/ e outros worktrees.
+- Reserva: novo pagamentoFilaRemetenteService, projecao de consulta PWA,
+  testes isolados de remetente/CTE, backend/package.json e handoff do ajuste.
+- Adicao autorizada: situacao atual aplica automaticamente com os demais
+  filtros; retirar Aplicar filtros e manter Limpar filtros. Reservados tambem
+  AutorizacoesPorObra.jsx e seu teste UI. Skill frontend-design usada apenas
+  para interacao compacta/estados de formulario, sem redesenho visual.
+- Reserva adicional: financeiro-autorizacoes-pagamento.css (retirar somente
+  a coluna desktop do botao removido) e docs/modulos/financeiro/README.md.
+- AutorizacaoTituloDetalhe.jsx tambem reservado para identificar o novo pedido
+  ainda aguardando aprovacao, sem apresenta-lo como envio da fila antiga.
+- Adicao: responsividade WEB desta pagina, com teste do shell/Pagina reais em
+  validarAutorizacaoPwa.mjs. Indisponiveis: diagnostico local e comandos somente
+  leitura para o usuario; nao regularizar/excluir/restaurar titulos sem evidencia.
+- Somente projecao de leitura: nao mudar estorno, baixa, permissoes, passkey,
+  ciclos de autorizacao, valores, anexos ou historico persistido. Sem migration,
+  EC2, banco real, commit/push, main ou deploy. EC2 apenas por comandos ao usuario.
+- Implementacao local e suites especificas backend/SQLite/UI/PWA, build,
+  polling e docs aprovados; captura WEB/mobile inspecionada. Reserva liberada.
+  Handoff: docs/handoffs/2026-10-18-remetente-fila-filtros-automaticos.md.
+  Diagnostico dos indisponiveis confirmado por saida do usuario; projecao
+  Titulo excluido autorizada e concluida na secao correspondente acima.
+
 ## Publicacao DEV: PWA periodo/fila direta e RH - 2026-10-18
 
 - Usuario autorizou commit/push dos ajustes locais na refactor/frontend e

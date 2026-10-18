@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { DONO_DETALHE } from '../../hooks/useAutorizacaoHistorico';
 import ModalPortal from '../ui/ModalPortal';
+import TituloExcluidoAviso from './TituloExcluidoAviso';
 import { useWorkspaceActive, useWorkspaceWork } from '../../navigation/WorkspaceContext';
 import { listarTitulosAutorizacao, obterOpcoesDecisaoPasskey, decidirAutorizacaoPagamento, obterOpcoesRejeicaoFilaDireta, rejeitarFilaDireta } from '../../services/pagamentoAutorizacao';
 import { autenticarComPasskey } from '../../utils/webauthn';
@@ -141,8 +142,9 @@ export default function AutorizacaoTituloDetalhe({ inicial, filtro, caps, setBus
         {carregando && <p role="status">Consultando título…</p>}
         {aviso && <p role="status" className="pa-titulo-aviso">{aviso}</p>}
         {erro && <p role="alert" className="pa-obras-erro">{erro}</p>}
-        <div className="pa-titulo-valores"><div><span>{direto ? 'Valor enviado à fila' : 'Valor enviado para autorização'}</span><strong>{moeda(item.valor_snapshot)}</strong></div><div><span>Pago</span><strong>{item.titulo ? moeda(item.titulo.valor_baixado) : '—'}</strong></div><div><span>Saldo atual</span><strong>{item.titulo ? moeda(item.titulo.valor_saldo) : '—'}</strong></div></div>
-        {item.fila_atual && <p>{direto ? 'Envio direto à fila, sem autorização digital anterior.' : 'Enviado à fila.'} Por {item.enviado_por?.nome || 'usuário não disponível'}{item.enviado_em ? ` em ${new Date(item.enviado_em).toLocaleString('pt-BR')}` : ''}.</p>}
+        <TituloExcluidoAviso exclusao={item.exclusao_titulo} />
+        <div className="pa-titulo-valores"><div><span>{item.exclusao_titulo ? 'Valor histórico enviado' : direto ? 'Valor enviado à fila' : 'Valor enviado para autorização'}</span><strong>{moeda(item.valor_snapshot)}</strong></div><div><span>Pago</span><strong>{item.titulo ? moeda(item.titulo.valor_baixado) : '—'}</strong></div><div><span>Saldo atual</span><strong>{item.titulo ? moeda(item.titulo.valor_saldo) : '—'}</strong></div></div>
+        {(item.envio_destino === 'AUTORIZACAO' || item.fila_atual) && <p>{item.envio_destino === 'AUTORIZACAO' ? 'Enviado para autorização.' : direto ? 'Envio direto à fila, sem autorização digital anterior.' : 'Enviado à fila.'} Por {item.enviado_por?.nome || 'usuário não disponível'}{item.enviado_em ? ` em ${new Date(item.enviado_em).toLocaleString('pt-BR')}` : ''}.</p>}
         {filtro.data_tipo === 'PAGAMENTO' && <p>Valor efetivamente pago no período: <strong>{moeda(item.pago_no_periodo)}</strong>. Baixas ativas; estornos desconsiderados.</p>}
         {item.bloqueado_proprietario && <p>Saldo restante bloqueado pelo proprietário até nova autorização.</p>}
         <dl className="pa-titulo-dados">

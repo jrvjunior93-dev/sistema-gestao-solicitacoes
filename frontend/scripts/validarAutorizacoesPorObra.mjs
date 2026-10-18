@@ -88,7 +88,7 @@ await page.route('**/*', async route => {
             data_referencia:dataTipo==='PAGAMENTO'?baixas.at(-1)?.data||null:dataTipo==='EMISSAO'?i.data_emissao||null:i.vencimento_atual};
         });
         const recorte = preparados.filter(i => (!ids || ids.includes(i.id)) && (!p.get('situacao') || p.get('situacao') === i.situacao_financeira
-            || p.get('situacao')==='NA_FILA' && ['PENDENTE','EM_EDICAO'].includes(i.fila_atual?.status) && !i.bloqueado_proprietario)
+            || p.get('situacao')==='NA_FILA' && i.situacao_financeira!=='EXCLUIDO' && ['PENDENTE','EM_EDICAO'].includes(i.fila_atual?.status) && !i.bloqueado_proprietario)
           && (!di || i.data_referencia >= di) && (!df || i.data_referencia && i.data_referencia <= df))
           .map(i => ({ ...i, obras: i.obras.filter(id => (!p.get('obra') || nomes(id).toLowerCase().includes(p.get('obra').toLowerCase())) && (!p.get('obra_id') || Number(p.get('obra_id')) === id)) })).filter(i => i.obras.length);
         const pagina = Number(p.get('pagina') || 1), limite = Number(p.get('limite') || 30), inicio = (pagina - 1) * limite;
@@ -120,20 +120,33 @@ await page.route('**/*', async route => {
 const output = path.resolve(root, '../outputs/autorizacoes-obras-20261017'); fs.mkdirSync(output, { recursive: true });
 const pronto = async () => { await page.waitForFunction(() => ![...document.querySelectorAll('.pa-obras-resumo span')].some(el => el.textContent === 'Atualizando…')); await page.waitForTimeout(30); };
 const abrirObra = async id => { await page.getByRole('button', { name: new RegExp(nomes(id)) }).first().click(); await pronto(); };
-const aplicarStatus = async s => { await page.getByLabel('Situação atual').selectOption(s); await page.getByRole('button', { name: 'Aplicar filtros', exact: true }).click(); await pronto(); };
+const aplicarStatus = async s => {
+  const campo = page.getByLabel('Situação atual');
+  if (await campo.inputValue() !== s) {
+    const resposta = page.waitForResponse(r => r.url().includes('/painel/obras') && (new URL(r.url()).searchParams.get('situacao') || '') === s);
+    await campo.selectOption(s); await resposta;
+  }
+  await pronto();
+};
+const buscarObra = async obra => {
+  const resposta = page.waitForResponse(r => r.url().includes('/painel/obras') && new URL(r.url()).searchParams.get('obra') === obra);
+  await page.getByLabel('Obra / centro de custo').fill(obra); await resposta; await pronto();
+};
 const limpar = () => page.getByRole('button', { name: 'Limpar seleção de todas as páginas' }).click();
 try {
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/qa-obras`);
   await page.locator('.pa-obra').first().waitFor(); await pronto(); assert(chamadas.length > 0);
   const total = await page.locator('.pa-obras-resumo').textContent(); assert(total.includes('304 títulos únicos'), total);
-  // Datas reais: fim primeiro nao consulta periodo invalido; inicio+fim aplicam
+  assert.equal(await page.getByRole('button', {name:'Aplicar filtros',exact:true}).count(),0);
+  // Datas reais: fim primeiro aplica limite unico valido; inicio+fim aplicam
   // automaticamente. Substituicao por segmento, limite do ano e teclado mobile.
   const inicioData = page.getByLabel('Vencimento inicial', { exact: true });
   const fimData = page.getByLabel('Vencimento final', { exact: true });
   const antesData = chamadas.length;
+  const fimPrimeiro = page.waitForResponse(r => r.url().includes('/painel/obras') && r.url().includes('vencimento_fim=2026-10-31') && !r.url().includes('vencimento_inicio='));
   await fimData.pressSequentially('31102026');
   assert.equal(await fimData.inputValue(), '31/10/2026');
-  await page.waitForTimeout(700); assert.equal(chamadas.length, antesData);
+  await fimPrimeiro; await pronto(); assert(chamadas.length > antesData);
   const filtroAutomatico = page.waitForResponse(r => r.url().includes('/painel/obras') && r.url().includes('vencimento_inicio=2026-10-15'));
   await inicioData.pressSequentially('15102026'); await filtroAutomatico; await pronto();
   await inicioData.evaluate(el => { el.focus(); el.setSelectionRange(0, 2); });
@@ -145,9 +158,28 @@ try {
   assert.equal(await fimData.evaluate(el => el.validity.valid), false, 'Data impossivel nao vai para API');
   await page.getByRole('button', { name: 'Limpar filtros', exact: true }).click(); await pronto();
   await inicioData.pressSequentially('31102026'); await fimData.pressSequentially('01102026');
-  await page.getByRole('button', { name: 'Aplicar filtros', exact: true }).click();
   await page.getByRole('status').getByText(/Ajuste as datas/).waitFor();
   await page.getByRole('button', { name: 'Limpar filtros', exact: true }).click(); await pronto();
+  // Situacao aplica o rascunho inteiro, inclusive busca/data ainda em debounce.
+  await page.getByLabel('Obra / centro de custo').fill('Obra 001');
+  await inicioData.pressSequentially('17102026'); await fimData.pressSequentially('17102026');
+  const combinado = page.waitForResponse(r => {
+    const u = new URL(r.url());
+    return u.pathname.endsWith('/painel/obras') && u.searchParams.get('situacao') === 'NA_FILA'
+      && u.searchParams.get('obra') === 'Obra 001' && u.searchParams.get('vencimento_inicio') === '2026-10-17'
+      && u.searchParams.get('vencimento_fim') === '2026-10-17';
+  });
+  await page.getByLabel('Situação atual').selectOption('NA_FILA'); await combinado; await pronto();
+  assert((await page.locator('.pa-obras-resumo').innerText()).includes('1 títulos únicos'));
+  await aplicarStatus('QUITADO'); assert((await page.locator('.pa-obras-resumo').innerText()).includes('1 títulos únicos'));
+  await page.getByRole('button',{name:'Limpar filtros',exact:true}).click(); await pronto();
+  assert.equal(await inicioData.inputValue(),''); assert.equal(await fimData.inputValue(),'');
+  const antesParcial = chamadas.length;
+  await inicioData.pressSequentially('18');
+  await page.getByLabel('Situação atual').selectOption('QUITADO'); await page.waitForTimeout(750);
+  assert.equal(chamadas.length,antesParcial,'Data incompleta nao pode virar consulta de todo periodo ao mudar situacao');
+  await page.getByRole('button',{name:'Limpar filtros',exact:true}).click(); await pronto();
+  assert.equal(await inicioData.inputValue(),'','Limpar remove inclusive texto parcial sem ISO');
   await abrirObra(1);
   await page.getByRole('checkbox', { name: 'Selecionar os disponíveis desta página' }).check();
   await page.getByText(/^50 selecionado\(s\)/).waitFor();
@@ -215,7 +247,7 @@ try {
   // Troca rapida de filtros e tempestade de foco com respostas lentas.
   slow = true;
   for (const busca of ['Obra 001', 'Obra 002', 'Obra 003']) {
-    await page.getByLabel('Obra / centro de custo').fill(busca); await page.getByRole('button', { name: 'Aplicar filtros', exact: true }).click();
+    await page.getByLabel('Obra / centro de custo').fill(busca);
     await page.evaluate(() => { for (let i=0;i<8;i++) window.dispatchEvent(new Event('focus')); });
   }
   await page.getByRole('button', { name: /Obra 003/ }).waitFor(); await pronto(); assert.equal(await page.locator('.pa-obra').count(), 1);
@@ -230,10 +262,11 @@ try {
   await page.screenshot({ path: path.join(output, 'obras-mobile-dark.png'), fullPage: false });
   await page.evaluate(() => document.documentElement.classList.remove('dark'));
   await page.getByRole('button', { name: 'Voltar às obras' }).click(); await pronto();
-  await page.getByLabel('Obra / centro de custo').fill('Obra 999'); await page.getByRole('button', { name: 'Aplicar filtros' }).click(); await pronto();
+  await buscarObra('Obra 999');
   await page.getByText(/Nenhuma obra nesta situação/).waitFor(); await page.screenshot({ path: path.join(output, 'vazio-mobile.png'), fullPage: true });
   // Detalhe de tela inteira: mesma lista/filtros, sem aprovar ao navegar.
   modoDetalhe = true; items.splice(0, items.length, ...structuredClone(originais));
+  Object.assign(items[80], {envio_destino:'AUTORIZACAO',enviado_por:{id:19,nome:'Novo preparador QA'},enviado_em:'2026-10-18T12:00:00Z'});
   await page.getByRole('button', { name: 'Limpar filtros', exact: true }).click(); await pronto();
   assert.equal(await page.getByRole('region', { name: 'Conferência e avisos' }).count(), 0, 'Nao ocupa area com selecao vazia antes de abrir obra');
   await abrirObra(1); await page.getByLabel('Selecionar TIT-130', { exact: true }).check();
@@ -242,6 +275,7 @@ try {
   const detalhe = page.getByRole('dialog', { name: 'Detalhes do título para autorização' });
   const prontoDetalhe = async id => { await detalhe.getByRole('heading', { name: 'SOL-' + id, exact: true }).waitFor(); await detalhe.getByRole('button', { name: 'Próxima', exact: true }).waitFor({ state: 'visible' }); await page.waitForFunction(() => !document.querySelector('.pa-titulo-rodape button')?.disabled); };
   await prontoDetalhe(81);
+  assert((await detalhe.innerText()).includes('Enviado para autorização. Por Novo preparador QA'));
   assert.equal(await detalhe.getByText('Valor enviado para autorização', { exact: true }).count(), 1);
   await detalhe.getByRole('heading', { name: 'Dados para autorização', exact: true }).waitFor();
   await detalhe.getByRole('heading', { name: 'Documentos enviados para autorização', exact: true }).waitFor();
@@ -464,6 +498,46 @@ try {
   await page.getByRole('status').getByText(/3 título\(s\) confirmado/).waitFor();await pronto();
   assert.equal(decisoes.length,antesMisto+2,'Diretos em grupo proprio e digital no lote real');
   assert.equal(decisoes.at(-1).id,'FILA_DIRETA');assert.equal(decisoes.at(-1).body.decisoes.length,2);
+  // Excluidos separados das pendencias: registros/autorizacoes/filas antigas
+  // permanecem no historico e nao habilitam nenhuma decisao.
+  await page.getByRole('button',{name:'Voltar às obras',exact:true}).click();await pronto();
+  const excluidos=[['TIT-009718','SOL-6240',10982.88],['TIT-009810','SOL-6312',2480],['TIT-010187','SOL-6392',2070.79]].map(([codigo,sol,valor],n)=>({
+    ...structuredClone(originais[n]),id:5001+n,titulo_financeiro_id:9001+n,lote_id:500,
+    obras:[1],status:n===2?'PENDENTE':'ENFILEIRADO',situacao_financeira:'EXCLUIDO',titulo:null,
+    valor_snapshot:valor,snapshot_json:{codigo,solicitacao:{codigo:sol},credor:{nome:'Credor historico QA'}},
+    exclusao_titulo:{em:'2026-10-09T16:20:53Z',responsavel:{id:2,nome:'Operadora QA'},motivo:'Exclusao em massa pela tela de contas a pagar/receber'},
+    fila_atual:n===2?null:{id:33+n,status:'PENDENTE'}
+  }));
+  items.splice(0,items.length,...excluidos);
+  const antesHistorico=decisoes.length;
+  await page.getByRole('button',{name:'Limpar filtros',exact:true}).click();await pronto();
+  assert((await page.locator('.pa-obras-resumo').innerText()).includes('0 títulos únicos'));
+  await aplicarStatus('NA_FILA');assert((await page.locator('.pa-obras-resumo').innerText()).includes('0 títulos únicos'));
+  await aplicarStatus('EXCLUIDO');
+  assert((await page.locator('.pa-obras-resumo').innerText()).includes('Valor histórico enviado — não é saldo a pagar'));
+  await abrirObra(1);
+  assert.equal(await page.getByRole('note',{name:'Histórico de exclusão do título'}).count(),3);
+  assert.equal(await page.getByText('Título excluído',{exact:true}).count(),3);
+  assert.equal(await page.getByText(/Pendente de decisão, mas/).count(),0);
+  for(const codigo of ['TIT-009718','TIT-009810','TIT-010187'])
+    assert(await page.getByLabel('Selecionar '+codigo,{exact:true}).isDisabled());
+  assert(await page.getByRole('button',{name:'Autorizar',exact:true}).isDisabled());
+  assert(await page.getByRole('button',{name:'Rejeitar',exact:true}).isDisabled());
+  await page.getByRole('button',{name:'Abrir detalhes de TIT-009810',exact:true}).click();
+  await detalhe.getByRole('heading',{name:'SOL-6312',exact:true}).waitFor();
+  await page.waitForFunction(()=>!document.querySelector('.pa-titulo-rodape button')?.disabled);
+  const historico=detalhe.getByRole('note',{name:'Histórico de exclusão do título'});
+  assert((await historico.innerText()).includes('Operadora QA'));
+  assert((await historico.innerText()).includes('Exclusao em massa pela tela de contas a pagar/receber'));
+  assert((await detalhe.locator('.pa-titulo-valores').innerText()).includes('2.480,00'),'Snapshot historico nao e reescrito');
+  assert(await detalhe.getByRole('button',{name:'Autorizar',exact:true}).isDisabled());
+  assert(await detalhe.getByRole('button',{name:'Rejeitar',exact:true}).isDisabled());
+  for(const width of [320,390,1366]){
+    await page.setViewportSize({width,height:900});
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Historico excluido sem overflow '+width);
+    await page.screenshot({path:path.join(output,'titulo-excluido-'+width+'.png'),fullPage:false});
+  }
+  assert.equal(decisoes.length,antesHistorico,'Consultar excluidos nao executa acao financeira');
   assert.equal(maxActive, 1, 'Leituras seriais, sem N+1/polling concorrente'); assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
   console.log('UI por obra/titulo: desktop/tablet/mobile/escuro, selecao/paginas/cursor/historico, passkey/motivo/revalidacao/duplo clique/ACL, tres bases de data/limpeza automatica/total pago sem estorno, fila direta/autor/parcial/rejeicao e grupos mistos sem lote ficticio aprovados. APIs isoladas.');
 } finally { liberarDecisao?.(); await page.close(); await browser.close(); await server.close(); }

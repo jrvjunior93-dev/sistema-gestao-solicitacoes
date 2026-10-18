@@ -8,6 +8,7 @@ import { passkeyInterrompida, mensagemPasskeyInterrompida } from '../../utils/pa
 import { SITUACOES_AUTORIZACAO, rotuloSituacao, podeSelecionarAutorizacao, podeDecidirItem, podeAutorizar, valorSelecionado, assinaturaDecisao, selecionarPagina, reconciliarSelecao, agruparDecisoes } from '../../utils/autorizacaoPagamentoSituacao';
 import { resumoSolicitacaoAutorizacao } from '../../utils/autorizacaoPagamentoResumo';
 import AutorizacaoTituloDetalhe from './AutorizacaoTituloDetalhe';
+import TituloExcluidoAviso from './TituloExcluidoAviso';
 import useAutorizacaoHistorico from '../../hooks/useAutorizacaoHistorico';
 
 const moeda = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -27,6 +28,7 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
   const workspaceAtivo = useWorkspaceActive();
   const [filtro, setFiltro] = useWorkspaceState(slot + ':filtro', INICIAL);
   const [rascunho, setRascunho] = useState(filtro);
+  const [revisaoFiltros, setRevisaoFiltros] = useState(0);
   const [paginaObras, setPaginaObras] = useWorkspaceState(slot + ':pagina-obras', 1);
   const [paginaTitulos, setPaginaTitulos] = useWorkspaceState(slot + ':pagina-titulos', 1);
   const [selecao, setSelecao] = useWorkspaceState(slot + ':selecao', {});
@@ -87,21 +89,28 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
   }
   usePollingSeguro(carregar, { ativo: !busy && !preparando && !detalhe && workspaceAtivo, eventos: [EVENTO], revisao: `${chave}:${revisao}:${tentativaManual}` });
   useEffect(() => { setRevisaoDecisao(null); }, [chave]);
+  function filtrosProntos() {
+    const form = formularioFiltros.current;
+    return !form || (form.checkValidity() && [...form.querySelectorAll('input[data-filtro-data]')]
+      .every(el => !el.value || /^\d{2}\/\d{2}\/\d{4}$/.test(el.value)));
+  }
   function aplicar(event) {
     event?.preventDefault(); if (busy || preparando) return;
-    if (formularioFiltros.current && !formularioFiltros.current.checkValidity()) return;
+    if (!filtrosProntos()) return;
     if (rascunho.vencimento_inicio && rascunho.vencimento_fim && rascunho.vencimento_inicio > rascunho.vencimento_fim) {
       setAviso('Ajuste as datas: a data final deve ser igual ou posterior à inicial.'); return;
     }
     setFiltro({ ...rascunho, obra: rascunho.obra.trim() }); setPaginaObras(1); setPaginaTitulos(1); voltar(); setRevisaoDecisao(null);
+    setAviso('');
     setTentativaManual(current => current + 1);
   }
   useEffect(() => {
-    const { vencimento_inicio: inicio, vencimento_fim: fim } = rascunho;
-    const semDatas = !inicio && !fim && [...(formularioFiltros.current?.querySelectorAll('input[data-filtro-data]') || [])].every(el => !el.value);
-    if (busy || preparando || (!semDatas && (!inicio || !fim || inicio > fim))
-      || (inicio === filtro.vencimento_inicio && fim === filtro.vencimento_fim && rascunho.data_tipo === filtro.data_tipo)) return undefined;
-    const timer = setTimeout(() => aplicar(), 600);
+    const proximo = { ...rascunho, obra: rascunho.obra.trim() };
+    if (busy || preparando || !filtrosProntos()
+      || Object.keys(INICIAL).every(key => proximo[key] === filtro[key])) return undefined;
+    // Situacao aplica imediatamente com o rascunho completo. Texto/datas
+    // aguardam a digitacao; respostas antigas continuam descartadas por chave.
+    const timer = setTimeout(() => aplicar(), rascunho.situacao !== filtro.situacao ? 0 : 600);
     return () => clearTimeout(timer);
   }, [rascunho, filtro, busy, preparando]);
   useEffect(() => { if (pedindoMotivo) motivoRef.current?.focus(); }, [pedindoMotivo]);
@@ -164,17 +173,16 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
       <label className="pa-obras-data-tipo">Filtrar pela data de<select value={rascunho.data_tipo || 'VENCIMENTO'} onChange={altera('data_tipo')} disabled={busy || preparando}>
         <option value="VENCIMENTO">Vencimento</option><option value="EMISSAO">Emissão do título</option><option value="PAGAMENTO">Pagamento / baixa</option>
       </select></label>
-      <label>{(rascunho.data_tipo || 'VENCIMENTO') === 'VENCIMENTO' ? 'Vencimento inicial' : 'Data inicial'}<DateInputBR data-filtro-data edicaoSegmentada value={rascunho.vencimento_inicio} onChange={altera('vencimento_inicio')} disabled={busy || preparando} /></label>
-      <label>{(rascunho.data_tipo || 'VENCIMENTO') === 'VENCIMENTO' ? 'Vencimento final' : 'Data final'}<DateInputBR data-filtro-data edicaoSegmentada value={rascunho.vencimento_fim} onChange={altera('vencimento_fim')} disabled={busy || preparando} /></label>
+      <label>{(rascunho.data_tipo || 'VENCIMENTO') === 'VENCIMENTO' ? 'Vencimento inicial' : 'Data inicial'}<DateInputBR key={'inicio:' + revisaoFiltros} data-filtro-data edicaoSegmentada value={rascunho.vencimento_inicio} onChange={altera('vencimento_inicio')} disabled={busy || preparando} /></label>
+      <label>{(rascunho.data_tipo || 'VENCIMENTO') === 'VENCIMENTO' ? 'Vencimento final' : 'Data final'}<DateInputBR key={'fim:' + revisaoFiltros} data-filtro-data edicaoSegmentada value={rascunho.vencimento_fim} onChange={altera('vencimento_fim')} disabled={busy || preparando} /></label>
       <label className="pa-obras-busca">Obra / centro de custo<input value={rascunho.obra} onChange={altera('obra')} placeholder="Digite parte do nome da obra" maxLength={120} disabled={busy || preparando} /></label>
       <label className="pa-obras-situacao">Situação atual<select value={rascunho.situacao} onChange={altera('situacao')} disabled={busy || preparando}>
         <option value="">Todas as situações</option>{SITUACOES_AUTORIZACAO.map(([id, nome]) => <option key={id} value={id}>{nome}</option>)}
       </select></label>
-      <button type="submit" className="btn btn-outline btn-sm" disabled={busy || preparando}>Aplicar filtros</button>
-      <button type="button" className="btn btn-outline btn-sm" disabled={busy || preparando} onClick={() => { setRascunho(INICIAL); setFiltro(INICIAL); setPaginaObras(1); setPaginaTitulos(1); voltar(); }}>Limpar filtros</button>
+      <button type="button" className="btn btn-outline btn-sm" disabled={busy || preparando} onClick={() => { setRascunho(INICIAL); setFiltro(INICIAL); setRevisaoFiltros(current => current + 1); setAviso(''); setPaginaObras(1); setPaginaTitulos(1); voltar(); }}>Limpar filtros</button>
     </form>
     <div className="pa-obras-resumo" aria-live="polite"><span>{obras.resumo?.quantidade_titulos || 0} títulos únicos nos filtros</span>
-      <span>{filtro.data_tipo === 'PAGAMENTO' ? 'Valor efetivamente pago no período' : 'Valor das obras filtradas'} <strong>{moeda(obras.resumo?.valor_total)}</strong></span>
+      <span>{filtro.situacao === 'EXCLUIDO' ? 'Valor histórico enviado — não é saldo a pagar' : filtro.data_tipo === 'PAGAMENTO' ? 'Valor efetivamente pago no período' : 'Valor das obras filtradas'} <strong>{moeda(obras.resumo?.valor_total)}</strong></span>
       <span>{carregando ? 'Atualizando…' : !filtro.vencimento_inicio && !filtro.vencimento_fim ? 'Todo o período · situação financeira atual' : 'Período aplicado · situação financeira atual'}</span>
       {filtro.data_tipo === 'PAGAMENTO' && filtro.situacao === 'QUITADO' && <small>Quitados inclui somente títulos totalmente pagos. Para consultar todas as baixas, inclusive parciais, escolha Todas as situações.</small>}
     </div>
@@ -203,15 +211,16 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
                 onChange={e => mudarSelecao(current => selecionarPagina(current, [item], e.target.checked))} /><button type="button" className="pa-titulo-abrir" aria-label={`Abrir detalhes de ${s.codigo || item.titulo_financeiro_id}`} disabled={busy || preparando || carregando}
                   onClick={() => abrirDetalhe({ item, filtro: { ...filtro, obra_id: String(obra.id) } })}>{s.solicitacao?.codigo || s.codigo || `Título #${item.titulo_financeiro_id}`} <span aria-hidden="true">›</span></button></div>
                 <span className={`pa-status pa-status--${item.situacao_financeira?.toLowerCase()}`}>{rotuloSituacao(item.situacao_financeira)}</span></div>
-              {item.status === 'PENDENTE' && (!permitido || item.situacao_financeira !== 'AGUARDANDO') && <small>{permitido ? 'Aguardando aprovação do saldo deste título.' : 'Pendente de decisão, mas o saldo ou vínculo mudou. Confira o financeiro antes de aprovar.'}</small>}
+              <TituloExcluidoAviso exclusao={item.exclusao_titulo} />
+              {!item.exclusao_titulo && item.status === 'PENDENTE' && (!permitido || item.situacao_financeira !== 'AGUARDANDO') && <small>{permitido ? 'Aguardando aprovação do saldo deste título.' : 'Pendente de decisão, mas o saldo ou vínculo mudou. Confira o financeiro antes de aprovar.'}</small>}
               {item.fila_atual?.status === 'NAO_PAGO' && item.situacao_financeira !== 'NAO_PAGO' && <small>Última tentativa na fila: não pago.</small>}
               <div className="pa-obra-titulo__corpo"><div><strong>{s.favorecido_pagamento?.nome || s.credor?.nome || 'Credor não informado'}</strong>
                 <small>{s.codigo} · {item.origem_painel === 'FILA_DIRETA' ? `Envio direto · fila #${item.fila_id}` : item.lote?.codigo || `Lote #${item.lote_id}`}</small><small>{resumoSolicitacaoAutorizacao(s)}</small>
                 <small>Vencimento {dataISOParaBR(item.vencimento_atual || s.data_vencimento) || 'não informado'} · {s.forma_pagamento?.nome || s.favorecido_pagamento?.metodo || 'Forma não informada'}</small>
-                {item.fila_atual && <small>{item.origem_painel === 'FILA_DIRETA' ? 'Envio direto à fila' : 'Enviado à fila'} · {item.enviado_por?.nome || 'Usuário não disponível'}{item.enviado_em ? ` · ${new Date(item.enviado_em).toLocaleString('pt-BR')}` : ''}</small>}
+                {(item.envio_destino === 'AUTORIZACAO' || item.fila_atual) && <small>{item.envio_destino === 'AUTORIZACAO' ? 'Enviado para autorização' : item.origem_painel === 'FILA_DIRETA' ? 'Envio direto à fila' : 'Enviado à fila'} · {item.enviado_por?.nome || 'Usuário não disponível'}{item.enviado_em ? ` · ${new Date(item.enviado_em).toLocaleString('pt-BR')}` : ''}</small>}
                 {filtro.data_tipo === 'PAGAMENTO' && <small>Pago no período: {moeda(item.pago_no_periodo)}</small>}
                 {item.bloqueado_proprietario && <small>Saldo bloqueado pelo proprietário até nova autorização.</small>}</div>
-                <div className="pa-obra-valores"><span>{item.origem_painel === 'FILA_DIRETA' ? 'Valor enviado à fila' : 'Valor enviado para autorização'} <strong>{moeda(item.valor_snapshot)}</strong></span>
+                <div className="pa-obra-valores"><span>{item.exclusao_titulo ? 'Valor histórico enviado' : item.origem_painel === 'FILA_DIRETA' ? 'Valor enviado à fila' : 'Valor enviado para autorização'} <strong>{moeda(item.valor_snapshot)}</strong></span>
                   <span>Pago <strong>{item.titulo ? moeda(item.titulo.valor_baixado) : '—'}</strong> · Saldo <strong>{item.titulo ? moeda(item.titulo.valor_saldo) : '—'}</strong></span>
                   {filtro.data_tipo !== 'PAGAMENTO' && Math.abs(Number(item.valor_no_recorte) - Number(item.valor_snapshot)) > 0.005 && <small>Participação no recorte: {moeda(item.valor_no_recorte)}. A decisão abrange o título inteiro.</small>}</div></div>
               {(item.documentos || []).length > 0 && <div className="pa-obra-documentos">{item.documentos.map(doc => <button type="button" className="btn btn-outline btn-sm" key={doc.id} onClick={() => abrirDocumento(doc)}>{doc.nome}</button>)}</div>}

@@ -9,6 +9,15 @@ function acessos(value, saida = []) {
   }
   return saida;
 }
+function conferirExcluidos(resultado) {
+  for (const item of resultado.data) {
+    if (item.situacao_financeira !== 'EXCLUIDO' || !item.exclusao_titulo || item.titulo
+      || (item.origem_painel === 'FILA_DIRETA' && (item.versao_painel || item.snapshot_hash))) {
+      throw Error('HISTORICO_EXCLUIDO_DIVERGENTE: confira antes do restart DEV.');
+    }
+  }
+  return { total: resultado.paginacao.total, amostra: resultado.data.length };
+}
 async function executar({ db, env, schema, log = console.log }) {
   if (env.deploymentEnvironment !== 'development' || Number(env.port) !== 8001
     || env.dbHost !== 'fluxy-staging.cn820k66sdx7.us-east-2.rds.amazonaws.com'
@@ -34,6 +43,9 @@ async function executar({ db, env, schema, log = console.log }) {
   }
   const hoje=new Date().toISOString().slice(0,10);
   await listarObras({data_tipo:'PAGAMENTO',data_inicio:hoje,data_fim:hoje,limite:'1'},db);
+  const historico = await listarTitulos({ situacao:'EXCLUIDO', limite:'5' }, db);
+  log(JSON.stringify({ dev:true, historico_excluido:conferirExcluidos(historico) }));
+  // Zero e valido: nao criar/excluir dados no DEV para fabricar uma amostra.
   log(JSON.stringify({duracao_ms:Date.now()-inicio}));
   log('SQL/EXPLAIN do painel conferidos no DEV. Somente leitura; nenhum registro, configuracao, migration ou processo alterado.');
 }
@@ -45,4 +57,4 @@ if (require.main === module) {
       .catch(e => { console.error(e.message); process.exitCode = 1; }).finally(() => db.sequelize.close());
   }
 }
-module.exports = { executar, acessos };
+module.exports = { executar, acessos, conferirExcluidos };

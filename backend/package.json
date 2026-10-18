@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
+    "test:pwa-titulos-excluidos": "node scripts/validarTitulosExcluidosAutorizacao.js && node scripts/validarPainelAutorizacoesSqlLocal.js",
+    "test:fila-remetente": "node scripts/validarFilaRemetente.js && node scripts/validarPainelAutorizacoesSqlLocal.js",
     "test:deploy-pwa-saldo-dev": "node scripts/validarDeployPwaSaldoDev.js",
     "test:pwa-rejeicao-fila": "node scripts/validarBloqueioProprietario.js && node scripts/validarAnaliseProprietario.js",
     "test:deploy-rh-documentos-dev": "node scripts/validarDeployRhDocumentosDev.js",
