@@ -6,6 +6,7 @@
   "scripts": {
     "test:pwa-rejeicao-datas": "node scripts/validarDatasObservacoesAutorizacao.mjs && node scripts/validarAutorizacoesPorObra.mjs && node scripts/validarTituloSolicitacaoAtualizacao.mjs",
     "test:rhdp-admissao-documentos": "node scripts/validarRhColaboradorContatos.mjs && node scripts/validarRhDocumentosPacote.mjs",
+    "test:ofx-obras": "node scripts/validarOfxObrasFinanceiro.mjs",
     "test:autorizacoes-obras": "node scripts/validarAutorizacoesPorObra.mjs",
     "test:medicao-valor-pagamento": "node scripts/validarMedicaoValorPagamento.mjs",
     "test:boletos-pedido": "node scripts/validarArquivosSolicitacaoFila.mjs && node scripts/validarBoletosPedidoHistorico.mjs && node scripts/validarFilaInstrumentosUI.mjs --boletos-pedido",

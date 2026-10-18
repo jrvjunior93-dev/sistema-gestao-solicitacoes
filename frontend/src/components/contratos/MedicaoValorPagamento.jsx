@@ -40,7 +40,7 @@ export default function MedicaoValorPagamento({ contratoId, medicaoId, onMudou }
       const { ok } = await confirmar({ titulo: form.acao === 'REDUZIR' ? 'Ajustar valor para pagamento' : 'Liberar diferença futura',
         mensagem: `${alvo.titulo.codigo || alvo.titulo.id}: ${form.acao === 'REDUZIR'
           ? `${moeda(alvo.titulo.valor)} → ${moeda(valor)}. Diferença: ${form.destino === 'FUTURO' ? 'previsão para pagamento futuro' : 'abatimento definitivo'}.`
-          : `${moeda(alvo.titulo.valor)} ficará disponível para novo envio.`} A medição não muda. Dossiê anterior será invalidado e a fila sem baixa encerrada. É necessário reenviar para autorização/pagamento pelas regras atuais.${form.desvincular ? ' A previsão de cartão será desvinculada se ainda não houver pagamento.' : ''}`,
+          : `${moeda(alvo.titulo.valor)} ficará disponível para novo envio.`} A medição não muda. Os dados enviados para autorização serão invalidados e a fila sem baixa encerrada. É necessário reenviar para autorização/pagamento pelas regras atuais.${form.desvincular ? ' A previsão de cartão será desvinculada se ainda não houver pagamento.' : ''}`,
         rotuloConfirmar: 'Confirmar ajuste', rotuloCancelar: 'Voltar' });
       if (!ok || geracao.current !== atual || mutex.current !== token) return;
       await ajustarPagamentoMedicao(alvo.contratoId, alvo.medicaoId, payload);

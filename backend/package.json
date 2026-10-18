@@ -7,6 +7,7 @@
     "test:pwa-rejeicao-fila": "node scripts/validarBloqueioProprietario.js && node scripts/validarAnaliseProprietario.js",
     "test:deploy-rh-documentos-dev": "node scripts/validarDeployRhDocumentosDev.js",
     "test:rhdp-admissao-documentos": "node scripts/validarRhAdmissaoDiaria.js && node scripts/validarRhColaboradorContatos.js && node scripts/validarRhDocumentosPacote.js && node scripts/validarRhPessoalFluxo.js --transferencias",
+    "test:ofx-obras": "node scripts/validarOfxObrasFinanceiro.js",
     "test:autorizacoes-painel": "node scripts/validarPainelAutorizacoes.js",
     "test:auditoria-negociacoes-20261017": "node scripts/validarAuditoriaNegociacoes20261017.js",
     "test:autorizacoes-painel-sql-local": "node scripts/validarPainelAutorizacoesSqlLocal.js",

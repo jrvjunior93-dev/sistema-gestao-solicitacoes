@@ -2015,7 +2015,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
       const { ok } = await confirmar({
         titulo: requerAutorizacao ? 'Enviar para autorização?' : 'Enviar títulos para pagamento?',
         mensagem: requerAutorizacao
-          ? `${tituloIds.length} título(s), no total de ${formatCurrency(selectedSaldo)}, serão reunidos em um dossiê para decisão do proprietário.`
+          ? `${tituloIds.length} título(s), no total de ${formatCurrency(selectedSaldo)}, terão seus dados preparados para autorização do proprietário.`
           : `${tituloIds.length} título(s), no total de ${formatCurrency(selectedSaldo)}, ficarão disponíveis na Fila de Pagamentos.`,
         rotuloConfirmar: requerAutorizacao ? 'Solicitar autorização' : 'Enviar para pagamento'
       });
@@ -3236,7 +3236,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                 className="btn btn-outline btn-sm"
                 onClick={() => enviarSelecionadosParaPagamento('AUTORIZACAO')}
                 disabled={!autorizacaoDigitalDisponivel || selectedTitulosBaixaveis.length === 0 || savingBaixaMassa || sendingFilaPagamentos}
-                title={autorizacaoDigitalDisponivel ? 'Preparar dossiê digital para análise do proprietário'
+                title={autorizacaoDigitalDisponivel ? 'Preparar dados para autorização do proprietário'
                   : 'A autorização digital está desativada ou pausada. O envio autorizado em papel é independente.'}
               >
                 Solicitar autorização

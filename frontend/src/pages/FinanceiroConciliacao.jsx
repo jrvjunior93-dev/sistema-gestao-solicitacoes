@@ -616,6 +616,9 @@ function NovoTituloRapidoModal({ item, contas, onClose, onConciliar }) {
   });
   const [categorias, setCategorias] = useState([]);
   const [obras, setObras] = useState([]);
+  const [carregandoBase, setCarregandoBase] = useState(true);
+  const [erroBase, setErroBase] = useState('');
+  const [tentativaBase, setTentativaBase] = useState(0);
   const [parceiros, setParceiros] = useState([]);
   const [buscaParceiro, setBuscaParceiro] = useState('');
   const [saving, setSaving] = useState(false);
@@ -623,16 +626,24 @@ function NovoTituloRapidoModal({ item, contas, onClose, onConciliar }) {
   const buscaTimeout = useRef(null);
 
   useEffect(() => {
+    let ativo = true;
+    setCarregandoBase(true); setErroBase('');
     Promise.all([
-      getCategoriasFinanceiras().catch(() => []),
-      getMinhasObras({ escopo: 'TODOS' }).catch(() => [])
+      getCategoriasFinanceiras(),
+      // Mesmo escopo do cadastro normal de titulos: inclui obras e centros
+      // sem exigir vinculo UsuarioObra, mediante a ACL financeira existente.
+      getMinhasObras({ modo: 'FINANCEIRO', escopo: 'TODOS' })
     ]).then(([cats, obs]) => {
+      if (!ativo) return;
       const catList = Array.isArray(cats) ? cats : [];
       const obraList = Array.isArray(obs) ? obs : [];
       setCategorias(catList);
       setObras(obraList);
-    });
-  }, []);
+    }).catch(error => {
+      if (ativo) setErroBase(`Não foi possível carregar obras/centros de custo e categorias. ${error?.message || 'Tente novamente.'}`);
+    }).finally(() => { if (ativo) setCarregandoBase(false); });
+    return () => { ativo = false; };
+  }, [tentativaBase]);
 
   useEffect(() => {
     clearTimeout(buscaTimeout.current);
@@ -663,7 +674,7 @@ function NovoTituloRapidoModal({ item, contas, onClose, onConciliar }) {
 
   async function handleSalvar(e) {
     e.preventDefault();
-    if (saving) return;
+    if (saving || carregandoBase || erroBase) return;
     setErro('');
     if (!form.descricao.trim()) { setErro('Informe a descrição do título.'); return; }
     const valor = parseCurrencyInput(form.valor);
@@ -731,11 +742,12 @@ function NovoTituloRapidoModal({ item, contas, onClose, onConciliar }) {
             </label>
             <label className="app-filter-field">
               <span className="app-filter-label">Obra / Centro de Custo *</span>
-              <select className="input w-full" value={form.obra_id}
+              <select className="input w-full" value={form.obra_id} disabled={saving || carregandoBase || Boolean(erroBase)}
                 onChange={(e) => setForm((c) => ({ ...c, obra_id: e.target.value }))}>
-                <option value="">Selecione</option>
+                <option value="">{carregandoBase ? 'Carregando…' : 'Selecione'}</option>
                 {obras.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}
               </select>
+              {!carregandoBase && !erroBase && !obras.length && <span className="text-xs text-[var(--c-muted)]">Nenhuma obra ou centro de custo disponível para este usuário.</span>}
             </label>
           </div>
 
@@ -821,13 +833,16 @@ function NovoTituloRapidoModal({ item, contas, onClose, onConciliar }) {
             )}
           </div>
 
+          {erroBase && <div role="alert" className="rounded-xl border border-[var(--sem-danger-border)] bg-[var(--sem-danger-bg)] px-3 py-2 text-sm text-[var(--sem-danger)]">
+            {erroBase} <button type="button" className="btn btn-outline btn-sm" disabled={saving || carregandoBase} onClick={() => setTentativaBase(value => value + 1)}>Tentar novamente</button>
+          </div>}
           {erro && (
             <div className="rounded-xl border border-[var(--sem-danger-border)] bg-[var(--sem-danger-bg)] px-3 py-2 text-sm text-[var(--sem-danger)]">{erro}</div>
           )}
 
           <div className="flex justify-end gap-2 pt-1">
             <button type="button" className="btn btn-outline" onClick={onClose}>Cancelar</button>
-            <button type="submit" className="btn btn-primary" disabled={saving}>
+            <button type="submit" className="btn btn-primary" disabled={saving || carregandoBase || Boolean(erroBase) || !obras.length}>
               {saving ? 'Salvando...' : 'Criar, baixar e conciliar'}
             </button>
           </div>

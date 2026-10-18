@@ -58,8 +58,7 @@ export async function getMinhasObras(params = {}) {
   const res = await fetch(url, {
     headers: authHeaders()
   });
-  if (!res.ok) throw new Error('Erro ao buscar obras do usu????rio');
-  return res.json();
+  return handleJsonResponse(res, 'Erro ao buscar obras do usuário');
 }
 
 export async function criarObra(data) {

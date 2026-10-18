@@ -1,5 +1,29 @@
 # Modulo FINANCEIRO
 
+## Dados para autorizacao e obras no titulo rapido OFX - 2026-10-18
+
+- Rotulos da autorizacao agora usam Dados para autorizacao, Valor enviado para
+  autorizacao e Documentos enviados para autorizacao. Dialogos de envio e
+  ajuste de medicao tambem usam linguagem de autorizacao, sem mudar decisao.
+  Campos tecnicos snapshot_json/dossie_hash, valores, hashes e historico nao
+  foram renomeados nem regravados. Dossie de RH/Juridico nao pertence a esta troca.
+- O modal Novo titulo + baixa, em Conferir manualmente do OFX, passou a usar
+  getMinhasObras com modo FINANCEIRO e escopo TODOS, igual ao cadastro normal
+  de titulos. Isso inclui todas as obras e centros de custo para usuarios
+  com acesso financeiro atual, sem exigir vinculo UsuarioObra.
+- Causa: a consulta anterior omitia modo, caindo na lista por UsuarioObra.
+  SUPERADMIN usava um caminho proprio, por isso nao apresentava o problema.
+  catch vazio tambem escondia erros de consulta como se nao houvesse obras.
+- Nenhuma ACL de backend alterada: modo FINANCEIRO continua dependendo de
+  canAccessFinanceiro. Usuarios sem esse acesso conservam apenas seus vinculos;
+  nao ganham acesso geral a solicitacoes. Criacao/baixa/conciliacao permanecem
+  no POST e transacao atuais, com conta, empresa, sinal, valor, parceiro e DRE.
+- Loading bloqueia selecao/envio; falha exibe motivo sanitizado e retry;
+  lista vazia e sinalizada; respostas apos fechar/recarregar sao descartadas.
+- npm run test:ofx-obras em backend e frontend usa models/HTTP isolados.
+  Sem migration nova, alteracao de cadastro da Helida ou operacao em producao.
+- [Handoff](../../handoffs/2026-10-18-autorizacao-textos-ofx-obras.md).
+
 ## Autorizar no celular: retorno e area util - 2026-10-17
 
 - Voltar do navegador/PWA e botao nativo respeitam detalhe do titulo -> titulos
