@@ -1303,3 +1303,10 @@ Geracao de titulo, baixa, estorno, importacao OFX e conciliacao sao transacionai
   COMMAND INFO e RP/origens HTTPS; nao altera nenhuma chave/configuracao.
   Biometria/passkey real deve ser testada manualmente no PWA DEV, com usuario
   nominal, nunca Testar usuario. Roteiro nao aplica migration nem promove main.
+
+- Promocao main do pacote957ebf85 homologado: roteiro separado
+  `ops/deploy/atualizar-producao-pwa-periodo-20261018.sh` exige backup/timer,
+  identidade/TLS/PM2/schema produtivos e zero alteracao funcional do pacote.
+  `verificarPwaPeriodoProducao.js --verificar` e somente leitura, inclusive
+  inspecao Redis/RP/origens. Sem novas migrations ou mudanca de flags/.env;
+  restart somente backend-solicitacoes, sem --update-env. DEV nao e alterado.

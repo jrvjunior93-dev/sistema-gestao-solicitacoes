@@ -1,5 +1,19 @@
 # Ownership Ativo
 
+## Promocao MAIN: PWA periodo/fila direta e RH - 2026-10-18
+
+- Usuario autorizou promover957ebf85 e confirmou todos os testes DEV (MySQL,
+  Redis, passkey nominal, RH), backup cifrado conferido e timer ativo.
+- Agente unico. Reservar roteiro de producao sem DDL, preflight Redis/RP
+  somente leitura, QA de isolamento/guardas, package scripts e handoff.
+- Main762370cf e refactor/frontend957ebf85, arvore rastreada limpa. Preservar
+  outputs e os ajustes homologados exatamente; nada de novas regras funcionais.
+- Publicar somente main; nao atualizar DEV/refactor nem executar EC2, banco,
+  Redis, .env ou PM2 reais. Sem migrations novas, flags/TLS/sessao12h preservados.
+- Guardas PROD/DEV, TLS e suites PWA/RH aprovadas; documentacao568/19,
+  bash -n, diff --check e ausencia de delta funcional957 conferidos. Reserva
+  liberada para commit/push main autorizados e entrega do roteiro ao operador.
+
 ## Publicacao DEV: PWA periodo/fila direta e RH - 2026-10-18
 
 - Usuario autorizou commit/push dos ajustes locais na refactor/frontend e
