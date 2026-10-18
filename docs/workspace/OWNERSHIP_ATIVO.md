@@ -1,5 +1,20 @@
 # Ownership Ativo
 
+## Promocao integral main - 2026-10-18
+
+- Agente unico, sem delegacao. Usuario confirmou backup cifrado/timer ativo,
+  homologacao manual passkey/diaria Luana/Obra e autorizou promover tudo,
+  incluindo OFX/textos locais. Reservar esse delta, scripts/testes de deploy
+  produtivo e handoff desta promocao. outputs/ permanece fora do Git.
+- Base publicada refactor/frontend 12c13ec8 e main 8f1b2c85. Preservar ACL,
+  PILOT, TLS, sessao e demais configuracoes. Apenas duas migrations aditivas
+  202610180001/002, sem backfill ou regularizacao de titulos reais.
+- Publicar Git e fornecer comandos ao operador; nao executar EC2, banco real,
+  .env, PM2 ou S3. Roteiro exige identidade produtiva, whitelist e backup.
+- Revisao/testes locais, UI, build, documentacao e guardas de deploy concluidos.
+  Reserva encerrada e ownership liberado para publicacao integral autorizada.
+  Execucao produtiva pendente do operador, detalhada no handoff desta promocao.
+
 ## Publicacao mensagem passkey - 2026-10-18
 
 - Usuario autorizou commit/push exclusivo da mensagem amigavel na
