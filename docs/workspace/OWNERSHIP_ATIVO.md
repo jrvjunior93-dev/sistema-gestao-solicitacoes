@@ -13,6 +13,11 @@
   comandos. Nao modificar origin/refactor/frontend, outros worktrees ou outputs/.
 - Branch local codex/promocao-pwa-historico-main-20261018. Publicar main apenas
   apos integracao/QA; deploy real da EC2 e executado pelo usuario.
+- Integracao concluida, conflito documental resolvido mantendo os dois lados.
+  QA backend/SQLite/PWA/build/guards produtivos/bash -n/docs572/19 aprovado.
+  Produto e dependencias conferidos contra2e146629; reserva encerrada,
+  ownership liberado para commit/push main autorizados. Roteiro e limites em
+  docs/handoffs/2026-10-18-promocao-main-pwa-historico.md.
 
 ## Publicacao DEV: remetente, filtros e titulos excluidos - 2026-10-18
 
@@ -76,6 +81,20 @@
   Handoff: docs/handoffs/2026-10-18-remetente-fila-filtros-automaticos.md.
   Diagnostico dos indisponiveis confirmado por saida do usuario; projecao
   Titulo excluido autorizada e concluida na secao correspondente acima.
+
+## Promocao MAIN: PWA periodo/fila direta e RH - 2026-10-18
+
+- Usuario autorizou promover957ebf85 e confirmou todos os testes DEV (MySQL,
+  Redis, passkey nominal, RH), backup cifrado conferido e timer ativo.
+- Agente unico. Reservar roteiro de producao sem DDL, preflight Redis/RP
+  somente leitura, QA de isolamento/guardas, package scripts e handoff.
+- Main762370cf e refactor/frontend957ebf85, arvore rastreada limpa. Preservar
+  outputs e os ajustes homologados exatamente; nada de novas regras funcionais.
+- Publicar somente main; nao atualizar DEV/refactor nem executar EC2, banco,
+  Redis, .env ou PM2 reais. Sem migrations novas, flags/TLS/sessao12h preservados.
+- Guardas PROD/DEV, TLS e suites PWA/RH aprovadas; documentacao568/19,
+  bash -n, diff --check e ausencia de delta funcional957 conferidos. Reserva
+  liberada para commit/push main autorizados e entrega do roteiro ao operador.
 
 ## Publicacao DEV: PWA periodo/fila direta e RH - 2026-10-18
 

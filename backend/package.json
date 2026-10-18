@@ -13,6 +13,7 @@
     "test:autorizacoes-painel": "node scripts/validarPainelAutorizacoes.js",
     "test:pwa-periodo-fila-direta": "node scripts/validarPainelAutorizacoes.js && node scripts/validarPainelAutorizacoesSqlLocal.js && node scripts/validarFilaDiretaProprietario.js && node scripts/validarBloqueioProprietario.js",
     "test:deploy-pwa-periodo-dev": "node scripts/validarDeployPwaPeriodoDev.js",
+    "test:deploy-pwa-periodo-producao": "node scripts/validarDeployPwaPeriodoProducao.js",
     "test:auditoria-negociacoes-20261017": "node scripts/validarAuditoriaNegociacoes20261017.js",
     "test:autorizacoes-painel-sql-local": "node scripts/validarPainelAutorizacoesSqlLocal.js",
     "test:tls-producao-20261016": "node scripts/validarTlsProducao20261016.js",
