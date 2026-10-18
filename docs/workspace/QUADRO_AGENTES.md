@@ -1,5 +1,47 @@
 # Quadro de Agentes
 
+## Promocao main Compra Direta/admissao - 2026-10-15
+
+- Integracao autorizada main1341e1a3/devd72a9c93, sem delegacao; backup/timer
+  e schema real de producao confirmados. Tres conflitos apenas documentais.
+- Runtime homologado preservado, validacoes integradas aprovadas, ownership
+  liberado para PR/merge. Sem EC2, banco, migration ou restart pelo agente.
+- Handoff: docs/handoffs/2026-10-15-promocao-compra-direta-admissao-main.md.
+
+## Promocao main cadastro no pagamento RH - 2026-10-15
+
+- Sessao codex-promocao-rh-cadastro-main-20261015: finalizado, sem delegacao,
+  ownership liberado para publicacao autorizada. Usuario aprovou dev/backup/timer.
+- Main 6af7b192 + dev b9ef16e4; schema real producao conferido sem pendencias.
+- Snapshot/bundle verificado, historicos preservados, conflitos apenas documentais;
+  backend/ACL/UI/workspace/50%/navegacao/build/docs/scripts de deploy aprovados.
+- Sem banco/EC2/migrations/flags alterados. Operador executa deploy exclusivo
+  backend-solicitacoes8000; handoff 2026-10-15-promocao-rh-cadastro-main.md.
+
+## Promocao DP global e salario - 2026-10-14
+
+- Sessao codex-promocao-dp-global-salario-main-20261014: finalizado, sem delegacao,
+  ownership liberado; testes backend/ACL, UI desktop/mobile, build e docs aprovados.
+- Plano: preservar main 4fd60afc e incorporar refactor/frontend 208ae8e2;
+  revalidar consulta/salario/hub, ACL e fluxos RH; publicar PR e comandos EC2.
+- Backup/timer e homologacao dev confirmados pelo usuario. Sem banco/migrations
+  ou deploy pelo agente; caixa/obra ainda local e outputs/ nao incluidos.
+- Handoff: docs/handoffs/2026-10-14-promocao-dp-global-salario-main.md.
+
+## Promocao operacional para main em 08/10/2026
+
+- Sessao: codex-promocao-operacional-main-20261008; status: finalizado;
+  ownership liberado para publicacao Git autorizada.
+- Plano: integrar main 0c164d7c e refactor/frontend 27220d13 preservando
+  vigencia contratual e ambos os historicos documentais. Conflitos previstos
+  somente nos registros; codigo de contratos identico entre as duas pontas.
+- Backup de producao confirmado pelo usuario; snapshot Git local completo
+  verificado. Integracao validada: backend financeiro/retorno/contratos,
+  UI de fila/justificativa/vinculos/pop-up/contratos, PWA, navegacao e build.
+- Registros dos dois agentes preservados; contratos e demais arquivos de
+  runtime conferidos sem diferenca contra suas bases corretas.
+- Sem banco, migration aplicada ou deploy; publicar somente Git autorizado.
+- Handoff: docs/handoffs/2026-10-08-promocao-operacional-main.md.
 ## DP cancelamento/comprovantes - 2026-10-15
 
 - Agente unico, sem delegacao; implementacao e testes locais concluidos.
@@ -378,6 +420,15 @@ Nao ha nova implementacao planejada aguardando inicio nesta sessao.
     - Commit e validacao visual no ambiente dev.
   validacao:
     - Ver `docs/handoffs/PROJECAO_REAJUSTE_PARCELAS_MEDICAO_2026-08-31.md`.
+
+## Promocao isolada da vigencia - 2026-10-08
+
+- Sessao: codex-contrato-vigencia-main; estado: em_andamento; worktree compras-criacao-main, branch codex/contrato-vigencia-main.
+- Base: origin/main ba8c9816. Origem da correcao: f5ba51f3, sem incorporar seu pai financeiro 3a470ece.
+- Arquivos reservados: ContratoController.js, operationalValidators.js, contratoVigenciaEdicao.js, validarContratoVigenciaEdicao.js, GestaoContratos.jsx, validarContratoVigenciaEdicao.mjs, docs/modulos/contratos/README.md e docs/handoffs/2026-10-08-edicao-vigencia-contrato.md.
+- Somente edicao da vigencia, testes e documentacao. Usuario autorizou integrar isoladamente na main. Nenhum acesso a EC2/banco ou deploy backend.
+
+Sessao codex-contrato-vigencia-main: finalizado; testes backend/UI, build e documentacao aprovados na base isolada da main. Ownership liberado. Handoff: docs/handoffs/2026-10-08-edicao-vigencia-contrato.md. Sem EC2/banco; somente publicacao Git autorizada.
 
 ## Edicao de vigencia contratual - 2026-10-08
 

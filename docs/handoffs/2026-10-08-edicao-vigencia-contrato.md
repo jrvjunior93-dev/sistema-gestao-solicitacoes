@@ -61,3 +61,24 @@ Outro agente atuou em autorizacao/fila de pagamentos no mesmo checkout; seus
 arquivos nao foram editados. routes.js e package.json tambem ficaram fora do escopo.
 Durante a tarefa, HEAD avancou por trabalho externo; apenas os arquivos listados
 acima integram o commit desta entrega. Ownership liberado ao concluir a revisao.
+
+## Promocao isolada para main em 08/10/2026
+
+Pedido explicito do usuario: levar somente esta correcao para main, mantendo fora
+as novas alteracoes de autorizacao e fila de pagamentos do outro agente.
+
+- Base congelada: `ba8c9816ff7cbf34b5a95e9c5d3ca0c444c219b8` (origin/main).
+- Correcao original: `f5ba51f3d0ea54fa335ddbc45454e092481da953`.
+- Branch de integracao: `codex/contrato-vigencia-main`, criada diretamente da main.
+- Aplicado apenas o delta dos oito arquivos funcionais/testes/documentacao acima;
+  registros de colaboracao desta promocao acrescentados separadamente.
+- O commit financeiro `3a470ece` nao integra a ancestralidade desta promocao.
+  Seus arquivos de runtime, migration, dependencias, testes e documentacao financeira
+  permanecem identicos a base main. Nenhum merge da refactor/frontend foi feito.
+- Snapshot Git completo da main salvo e verificado fora da EC2, em
+  `C:/Fluxy-refactor-frontend/outputs/main-antes-vigencia-20261008.bundle`.
+- No worktree isolado foram repetidos os testes de vigencia, aditivo, gestao
+  operacional, permissoes de API/interface, UI com HTTP simulado, documentacao e
+  build Vite. Todos aprovados; nenhum banco acessado.
+- Sem migrations novas, acesso a EC2 ou reinicio de backend. A atualizacao do
+  backend de producao permanece a cargo do usuario, em pedido separado.

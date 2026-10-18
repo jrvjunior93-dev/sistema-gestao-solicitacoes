@@ -11,6 +11,7 @@ test "$(git branch --show-current)" = main
 test -z "$(git status --porcelain --untracked-files=no)"
 exec 9>"$(git rev-parse --git-path fluxy-prod-deploy.lock)"
 flock -n 9
+systemctl is-active --quiet fluxy-prod-db-backup.timer
 
 # Conferir antes de substituir arquivos: watch nao pode reiniciar o backend
 # automaticamente enquanto o codigo novo ainda aguarda schema.

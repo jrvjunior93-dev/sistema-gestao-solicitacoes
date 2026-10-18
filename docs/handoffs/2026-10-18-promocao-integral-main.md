@@ -13,6 +13,11 @@
   publicados ate 12c13ec8, mais OFX/textos e protecoes deste roteiro.
 - Agente unico; outputs preservados e excluidos do Git. Nao operar EC2,
   MySQL real, PM2, .env, S3 ou permissoes individuais durante a publicacao.
+- Historicos main/DEV divergentes: integrar origin/main antes de publicar,
+  sem sobrescrever main com a arvore DEV. Preservado verifyIdentity:true do
+  adaptador TLS produtivo e todos helpers/releases/historicos exclusivos.
+  Conflitos somente em package.json (uniao dos testes) e ownership (ambos
+  registros conservados). Nenhum conflito funcional e nenhuma reversao TLS.
 
 ## Conteudo funcional
 
@@ -47,6 +52,7 @@ para avaliar o ponto exato e retomar somente pelo runner restrito.
 - ops/deploy/atualizar-producao-20261018.sh recebe SHA40 publicado na main.
 - Exige CONFIRM_PROD_BACKUP=SIM e CONFIRM_PROD_BACKUP_TIMER=SIM; branch main,
   caminho fisico produtivo, tracked clean, flock e fast-forward ate SHA exato.
+- Confere tambem systemctl is-active do timer fluxy-prod-db-backup.timer.
 - Conferencia de PM2/porta/watch antes de atualizar arquivos; nao usar pull
   sem pinagem, force, reset, stash automatico ou migracao generica.
 - Instala dependencias pelo lock, executa testes isolados e preflight produtivo.
@@ -79,6 +85,8 @@ para avaliar o ponto exato e retomar somente pelo runner restrito.
   medicao; build 619 modulos. Avisos preexistentes Browserslist/chunks grandes.
 - Bash -n e diff --check. Nao executar npm audit fix/force nesta promocao.
   Vulnerabilidades apontadas no npm ci do DEV exigem trabalho independente.
+- Depois da integracao main: suite TLS ativa, release anterior, deploy novo,
+  cartao opcional, comprovantes pendentes, backend/RH/PWA e docs repetidos.
 
 ## Conferencia funcional apos atualizar
 

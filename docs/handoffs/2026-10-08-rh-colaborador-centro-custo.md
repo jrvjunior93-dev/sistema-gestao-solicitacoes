@@ -72,3 +72,29 @@ antes da promocao. Nenhuma migration nova ou alteracao de backend nesta tarefa.
   backup/timer atual; reconsultar refs, publicar snapshot, integrar a partir
   de origin/main, validar, publicar main e fornecer SHA final para EC2.
 - Reserva documental encerrada; ownership liberado. Sem deploy/banco real.
+
+## Retomada apos resposta "Feito"
+
+Fetch confirmou origin/refactor/frontend=c7e3d31a8f69bc2caf638e5bbd947d5a3fc4a44f
+e origin/main=2fee98ae96e201ecdf856e3611ed6aadb140024d. A resposta do usuario
+ao pedido de push e confirmacao backup/timer foi "Feito"; considerada aceite
+das duas etapas, sem verificacao direta da EC2 pelo agente.
+Autenticacao nao interativa do agente continua bloqueando pushes, inclusive
+da tag de snapshot. Nao alegar main publicada.
+
+Integracao local em codex/promocao-rh-centros-main-20261008, criada da main
+congelada; merge sem conflitos preserva todo o historico/documentacao de main.
+Delta integrado somente nos seis arquivos da tarefa RH; nenhuma alteracao
+de backend, migration, dependencias, contratos, GEO ou financeiro.
+
+Proximo passo: publicar tag de snapshot e branch de integracao em main usando
+push atomico pelo terminal autenticado do usuario. Depois atualizar checkout
+EC2 via fast-forward com SHA exato. Como o delta e apenas frontend/documentacao,
+nao precisa npm ci, migration ou reinicio PM2 nesta janela; frontend e Vercel.
+Se a EC2 estiver atrasada e houver delta backend, interromper esse bloco e
+avaliar as pendencias separadamente. Sem deploy ou escrita de dados pelo agente.
+
+Validacao do merge: teste da tela RH, primeira lotacao, escopo usuario OBRA,
+documentacao (442 Markdown/19 canonicos), diff e build frontend aprovados.
+Snapshot main revalidado pelo bundle/hash. Ownership documental liberado;
+merge local pronto para publicacao manual, sem mudanca na main remota pelo agente.

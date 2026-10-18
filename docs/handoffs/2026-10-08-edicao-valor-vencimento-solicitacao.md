@@ -64,6 +64,18 @@ isso e explicado no modal e nenhuma parcela e alterada.
 
 Homologar como superadmin e usuario com apenas uma das duas permissoes.
 Testar uma solicitacao comum e uma medicao com data efetiva derivada.
+Origem publicada na refactor/frontend: 397868009f8bb7409905af5d0ec11f0eff922d26.
+Integracao por cherry-pick isolado na codex/solicitacao-edicao-main, baseada
+na main 119e426e96502f5e94b687da133249a51893539c. Conflitos somente em
+ownership e frontend/package.json: incluir apenas esta tarefa e seu teste,
+sem o teste/implementacao de Pessoal do commit 118209c0.
+
+Testes offline de edicao e vencimento, UI real simulada, navegacao, abas,
+documentacao e build aprovados novamente na integracao. Codigo funcional
+de Solicitacoes identico ao commit de origem; arquivos funcionais RH_DP e
+backend/package.json identicos a main base. Usuario confirmou backup
+conferido no Drive cifrado e timer ativo nesta publicacao. Publicar a main
+por fast-forward, sem merge integral da refactor. Deploy EC2 nao foi pedido.
 Publicar este commit na refactor/frontend e integrar por cherry-pick isolado
 em branch baseada na main (base remota conferida: 119e426e). Resolver somente
 contextos de documentacao/package.json, preservando as implantacoes DP fora

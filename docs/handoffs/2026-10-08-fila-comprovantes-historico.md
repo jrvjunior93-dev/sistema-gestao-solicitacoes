@@ -57,6 +57,14 @@ Homologar no dev, incluindo visualizar/download do PDF no historico.
 Publicacao autorizada; manter commit isolado sem DP (118209c0).
 Base remota main conferida: 9358a692. Backup/timer requerem confirmacao
 atual antes da publicacao. Validar novamente no resultado da integracao.
+Origem publicada: b7964a95611b0b9ab1c7d5792f664dd2b1424f8d. Integracao
+isolada por cherry-pick sobre 9358a692, sem conflitos. Usuario confirmou
+backup conferido no Drive cifrado e timer ativo. Bundle da base verificado
+fora da EC2: outputs/main-pre-fila-historico-20261008-9358a692.bundle.
+Testes de comprovantes/instrumentos/remocao/acesso/documentacao e build
+aprovados novamente. Frontend, migrations, package.json e codigo RH_DP
+preservados iguais a main anterior. Publicar por fast-forward, sem merge
+integral da refactor. Nenhuma reconciliacao executada pelo agente.
 Depois de o codigo estar no ambiente alvo, conferir os antigos:
 
 ```bash

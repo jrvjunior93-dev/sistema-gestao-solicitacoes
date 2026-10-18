@@ -131,3 +131,36 @@ normais permanecem validas. Nao remover a protecao contra token MFA no rollback.
 Backup/timer e janela devem ser conferidos antes da ativacao real. Auditoria nao
 e garantia absoluta de ausencia de vazamento; testes locais nao substituem smoke
 autenticado e verificacao do ambiente implantado.
+
+## Promocao para main autorizada e homologada - 2026-10-13
+
+Usuario confirmou teste dev bem-sucedido em d17c3aa7 e autorizou promover a
+troca de usuario para main, fornecendo comandos para habilitar em producao
+somente SUPERADMIN. Backup recente no Drive cifrado e timer ativo confirmados.
+Base main 50e08848 preservada na tag
+backup/main-pre-troca-usuario-20261013-50e08848 e bundle completo local
+tmp/main-code-backup-20261013-troca-usuario/main-50e08848.bundle verificado.
+
+Integracao seletiva: os 13 arquivos funcionais/testes/catalogo sao identicos
+ao commit homologado em dev; apenas documentacao conciliada com main.
+Ticket/estorno independentes de dev nao promovidos nesta tarefa. Nao houve
+alteracao de migrations, dependencias, regras de visibilidade ou endpoints.
+
+Testes repetidos na base main: HTTP de producao isolado, flags, acesso direto
+(2304 comparacoes), hardening e auditoria aprovados. Troca/retorno/rascunho/SSE
+e regressao do modal de titulo aprovados em desktop/celular; navegacao/abas
+aprovadas, build com 586 modulos em 10,06s. Avisos preexistentes de
+Browserslist/chunk >500 kB mantidos. Publicacao via PR, com SHA verificado.
+
+EC2 sera atualizada pelo usuario, nao pelo agente. Nenhuma migration/seed ou
+escrita de negocio deve ser executada no deploy; preflight do schema somente
+leitura antes do restart. Persistir somente as tres flags acima no .env de
+producao, preservar todas as demais e aplicar overrides explicitos somente
+no restart backend-solicitacoes --update-env. Conferir flags efetivas sem
+imprimir segredos e health local/publico. Nao reiniciar backend-dev.
+
+A conclusao da publicacao nao comprova ativacao na EC2: falta executar o
+deploy e smoke autenticado de producao. Lista autorizada permanece obrigatoria
+e nao deve ser copiada automaticamente de dev. Se vazia, configurar como
+SUPERADMIN original em Usuarios para Teste Rapido. Troca pode executar acoes
+reais e mantem auditoria e permissoes do alvo; nao testar com pagamentos reais.

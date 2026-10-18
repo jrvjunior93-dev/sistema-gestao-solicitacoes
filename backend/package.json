@@ -11,6 +11,8 @@
     "test:autorizacoes-painel": "node scripts/validarPainelAutorizacoes.js",
     "test:auditoria-negociacoes-20261017": "node scripts/validarAuditoriaNegociacoes20261017.js",
     "test:autorizacoes-painel-sql-local": "node scripts/validarPainelAutorizacoesSqlLocal.js",
+    "test:tls-producao-20261016": "node scripts/validarTlsProducao20261016.js",
+    "test:release-producao-20261016": "node scripts/validarReleaseProducao20261016.js",
     "test:deploy-medicao-pagamento-dev": "node scripts/validarDeployMedicaoPagamentoDev.js",
     "test:medicao-valor-pagamento": "node scripts/validarMedicaoValorPagamento.js",
     "test:boletos-pedido": "node scripts/validarPedidoBoletoOpcional.js && node scripts/validarFilaPagamentoSolicitacaoAcesso.js && node scripts/validarPedidoCompraFinanceiroGeo.js && node scripts/validarPedidoDocumentoRemocao.js",

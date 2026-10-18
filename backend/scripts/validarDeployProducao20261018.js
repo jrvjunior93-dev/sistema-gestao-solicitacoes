@@ -114,6 +114,7 @@ async function testar(alterar = () => {}) {
   r = await testar(({ state }) => { state.falha = true; }); assert(r.erro); assert.equal(r.migrations, 1); assert.equal(r.schema, 0);
   const shell = fs.readFileSync(path.resolve(__dirname, '../../ops/deploy/atualizar-producao-20261018.sh'), 'utf8');
   assert.match(shell, /git merge --ff-only/); assert.match(shell, /fluxy-prod-deploy.lock/);
+  assert.match(shell, /systemctl is-active --quiet fluxy-prod-db-backup.timer/);
   assert.match(shell, /pm2 restart backend-solicitacoes\n/);
   assert(!/pm2\s+(?:restart|reload|delete|stop|save)\s+(?:all|backend-dev)/.test(shell));
   assert(!/pm2 restart backend-solicitacoes --update-env/.test(shell));

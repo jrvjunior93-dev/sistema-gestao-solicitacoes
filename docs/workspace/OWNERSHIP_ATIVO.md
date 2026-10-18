@@ -14,6 +14,9 @@
 - Revisao/testes locais, UI, build, documentacao e guardas de deploy concluidos.
   Reserva encerrada e ownership liberado para publicacao integral autorizada.
   Execucao produtiva pendente do operador, detalhada no handoff desta promocao.
+- Integracao main necessaria antes do push: reservar resolucao de scripts npm
+  e uniao documental, preservar verifyIdentity TLS e releases exclusivos main.
+  Sem outros agentes, mudancas de regras ou escrita em ambientes reais.
 
 ## Publicacao mensagem passkey - 2026-10-18
 
@@ -200,6 +203,270 @@
   Sem commit/push, migration ou deploy. SQL MySQL/EXPLAIN real ainda exige DEV.
   Handoff: docs/handoffs/2026-10-17-autorizacoes-obras-status.md.
 
+## TLS de producao e retomada do release - 2026-10-16
+
+- Usuario autorizou persistir TLS ja testado (TLSv1.3), com backup, mantendo
+  PILOT e demais configuracoes, concluir migrations/sessao12h sem alterar DEV.
+- Agente unico, reserva: helper/teste TLS PROD, release/teste de 16/10,
+  ops de producao, adaptador SSL (verifyIdentity), scripts npm e handoff.
+- Base main 5bb0618a, EC2 ja atualizada mas parada antes de migrations/restart;
+  tres migrations pendentes e health8000=200 informados pelo operador. Nenhuma
+  execucao de EC2/RDS/PM2/.env real pelo agente. Publicar somente retomada PROD;
+  refactor/frontend, frontend e regras financeiras permanecem intactos.
+- Implementacao e suites isoladas de TLS/release/PILOT, seguranca e regressoes
+  aprovadas; handoff em docs/handoffs/2026-10-16-tls-producao-retomada.md.
+  Reserva de implementacao concluida, publicacao e comandos ao operador pendentes.
+
+## Promocao de todas as pendencias homologadas para main - 2026-10-16
+
+- Usuario aprovou todos os ajustes publicados em DEV e solicitou promocao
+  integral; backup de producao no Drive cifrado conferido e timer ativo
+  confirmados nesta janela. Agente unico, sem delegacao.
+- Reservados integracao main 7e1015ab + refactor/frontend fb9a0e89, helper/testes
+  e script de deploy PROD, docs/handoff/ownership. Preservar correcoes e arquivos
+  exclusivos da main, em especial preservacao de PILOT e protecoes de producao.
+- Tres migrations novas de estrutura: contrato medicao encerramento,
+  titulos compartilhados e medicao pagamento autorizado. Nao executar banco,
+  .env, PM2 ou EC2 pelo agente. Entregar comandos protegidos ao operador;
+  somente backend-solicitacoes/8000, sem tocar DEV. Sessao12h conforme homologado,
+  sem alterar inatividade, autorizacao do proprietario ou demais flags.
+- Integracao e validacoes concluidas; reserva liberada para publicacao/merge
+  autorizado. Runtime, migrations e lockfiles iguais a DEV homologada; 27
+  arquivos exclusivos de main preservados. Testes backend/UI/650 titulos,
+  release/PILOT/12h/schema, build, docs e Bash aprovados. Backup remoto de codigo:
+  backup/main-pre-pendencias-20261016-7e1015ab. Sem operacao na EC2/banco.
+  Handoff: docs/handoffs/2026-10-16-promocao-todas-pendencias-main.md.
+
+## Correcao do deploy PROD com PILOT existente - 2026-10-15
+
+- Reserva do agente unico: script atualizar-prod-fila-dp-20261015.sh, seu teste
+  isolado e handoff da promocao. Correcao operacional do deploy ja autorizado.
+- Operador confirmou codigo dbf5acea em disco, testes aprovados, parada antes
+  do restart. PAYMENT_OWNER_APPROVAL_MODE=PILOT tanto carregado quanto PM2;
+  terminal ausente. Preservar esse estado, nao desligar nem ativar autorizacoes.
+- Sem alterar runtime, permissoes, .env, flags, dados, migrations ou refactor;
+  nenhuma execucao de EC2/banco/PM2 pelo agente. Outputs/ preservado.
+- Matriz de quatro modos estaveis/transicoes negadas/invalidos, guardas e
+  regressoes backend aprovadas, Bash/docs/diff validados. Ownership liberado
+  para publicar correcao operacional na main e retomar o deploy autorizado.
+
+## Promocao fila/recebimento DP para main - 2026-10-15
+
+- Reserva temporaria do agente unico: integracao main + da9cf569, script/teste
+  exclusivo PROD e handoff desta promocao. Sem delegacao ou mudanca funcional.
+- Usuario aprovou em dev, autorizou promocao e confirmou backup Drive cifrado
+  conferido/timer ativo. EC2 main=41e154f4, identidade de producao e schema sem
+  pendencias confirmados pelo usuario. Nenhuma nova migration no delta.
+- Preservar arquivos de auditoria nao rastreados da EC2 e historico exclusivo
+  de main; nao executar EC2/banco/PM2, nem alterar flags ou refactor/frontend.
+- Integracao e regressoes backend/UI desktop-mobile, build/navegacao/docs e
+  novo script PROD sem migrations aprovados. Ownership liberado para PR/merge
+  autorizado; handoff 2026-10-15-promocao-fila-dp-main.md. Outputs/ fora do Git.
+
+## Promocao das pendencias para main - 2026-10-15
+
+- Agente unico desta conversa, sem delegacao. Reserva temporaria: integracao
+  main8ecde6ff/refactor10c58364, quatro registros workspace com conflitos
+  documentais, handoff desta promocao, script exclusivo PROD e seu teste isolado.
+- Homologacao dev, backup/timer e inventario real das duas migrations confirmados
+  pelo usuario. Preservar todos os hotfixes de main; sem EC2/banco/reinicio pelo agente.
+- Handoff: docs/handoffs/2026-10-15-promocao-pendencias-main.md.
+- Integracao, testes backend/ACL/UI, build, navegacao/docs e script PROD
+  aprovados; reserva encerrada e ownership liberado para PR/merge autorizado.
+  Sem EC2, banco real, migrations ou reinicios executados pelo agente.
+
+## Promocao main Compra Direta e admissao - 2026-10-15
+
+- Usuario homologou d72a9c93 em dev e autorizou promocao para main/comandos EC2
+  producao. Backup cifrado recente/timer ativo confirmados nesta janela.
+- Preflight real do operador: producao 1341e1a352be4f6882278f60867e4f9c2408d372,
+  UUID 5ed4b970-009f-11f1-809c-0ad0e0c90c53, sem migration pendente.
+- Reserva exclusiva de integracao dos 28 arquivos do commit homologado,
+  registros workspace, novo handoff de promocao e script/teste de deploy prod.
+- Branch codex/promocao-compra-direta-admissao-main-20261015 a partir de main;
+  preservar historicos/hotfixes, outputs/ e demais checkouts. Sem delegacao.
+- Sem banco real, migration, mudanca de flags, EC2 ou restart pelo agente.
+- Integracao validada: runtime igual ao dev, tres conflitos documentais
+  resolvidos preservando ambos os lados; testes/build/navegacao/docs/ACL e
+  script producao com negativas aprovados. Ownership de edicao liberado para
+  PR/merge autorizado. Handoff 2026-10-15-promocao-compra-direta-admissao-main.
+
+## Promocao main cadastro no pagamento RH - 2026-10-15
+
+- Sessao codex-promocao-rh-cadastro-main-20261015, sem delegacao. Usuario
+  homologou dev b9ef16e4, autorizou main e confirmou backup/timer ativos.
+- Operador comprovou EC2 main 6af7b192, UUID/banco de producao corretos e zero
+  migrations pendentes. Inventario de migrations/dependencias/env nao muda.
+- Base main preservada com tag/bundle completo fora da EC2; branch criada de
+  origin/main. Reserva: conflitos documentais da integracao, script/teste de
+  deploy exclusivo producao sem migrations, este registro e handoff da promocao.
+- Sem alterar runtime homologado, .env/flags, permissoes, banco real ou EC2.
+  Outputs/ e outros checkouts preservados; merge/PR sem reset ou force-push.
+- Integracao e testes backend/ACL/UI desktop-mobile/workspace/50%/navegacao/build,
+  scripts de deploy/flags/health, docs/diff aprovados; ownership de edicao
+  liberado para publicacao autorizada. Handoff:
+  docs/handoffs/2026-10-15-promocao-rh-cadastro-main.md.
+
+## Promocao main: RH/DP e Treinamento homologados - 2026-10-14
+
+- Usuario aprovou dev e autorizou promocao completa destes ajustes/main e
+  comandos EC2 producao, incluindo somente migration estrutural de rastreio.
+  Backup recente no Drive cifrado e timer ativo confirmados nesta janela.
+- Consulta real do operador: EC2 b3a602fe, UUID/banco producao conferidos;
+  unica pendente 202610140003_treinamento_video_rastreio.js. Sem seeds/backfills.
+- Integracao a partir de origin/main b3a602fe com refactor/frontend 8cb03a02;
+  snapshot/tag e bundle local verificado, fora da EC2. Reservar apenas eventuais
+  conflitos desta integracao, novo script/teste de deploy producao, documentacao
+  e handoff. Sem modificar runtime fora dos commits aprovados.
+- Sem banco, EC2, restart ou migration executados pelo agente. outputs/ e caixa
+  de outro worktree fora do release. Preservar hotfixes exclusivos de main.
+- Reserva adicional: validarReleaseProducao20261013.js somente fixture do teste
+  historico, usando inventario congelado e negativa para migrations novas;
+  helper operacional/allowlist antiga permanecem imutaveis.
+- Integracao e validacoes backend/ACL/UI/build/docs/sintaxe/Bash/diff concluidas;
+  somente conflito documental com ambos os lados preservados. Runtime igual ao
+  homologado, hotfixes main mantidos. Ownership liberado para publicacao/PR.
+  Handoff: docs/handoffs/2026-10-14-promocao-rhdp-treinamento-main.md.
+
+## Promocao cadastro DP salario lotacao e centros para main - 2026-10-14
+
+- Sessao codex-promocao-cadastro-dp-main-20261014, sem delegacao.
+- Usuario autorizou promocao de 1b9101df, confirmou dev aprovado e backup
+  recente no Drive cifrado conferido/timer ativo. Main base 218cc4dd.
+- Reserva documental: conflito de OWNERSHIP_ATIVO e handoff desta promocao.
+  Integrar por merge preservando ambos os historicos e hotfixes de producao.
+- Sem nova migration/dependencia/flag, .env, banco real, usuarios/configuracoes,
+  execucao EC2 ou reinicio pelo agente. Caixa nao commitada e outputs/ excluidos.
+- Publicacao por PR apos testes; comandos somente para backend-solicitacoes,
+  com branch/SHA/UUID/schema/ambiente/porta/processo conferidos pelo usuario.
+- Integracao/testes concluidos, ownership liberado. Conflito apenas documental,
+  ambos os historicos preservados; runtime identico ao homologado em dev.
+  Handoff: docs/handoffs/2026-10-14-promocao-cadastro-dp-main.md.
+
+## Promocao saldo contratual e transferencia OBRA para main - 2026-10-14
+
+- Sessao codex-promocao-saldo-transferencia-main-20261014, sem delegacao.
+- Usuario autorizou promocao e confirmou homologacao em dev, backup conferido
+  no Drive cifrado e timer ativo. Main c5beb5b9, refactor homologada 9bc50308.
+- Reserva: conflito documental de OWNERSHIP_ATIVO e handoff desta promocao;
+  incorporar commit homologado sem remover hotfixes/scripts/evidencias da main.
+- Sem schema/dependencia/flag nova, .env, banco real, EC2 ou reinicio pelo agente.
+  Caixa nao commitado em outro worktree e outputs/ continuam fora do release.
+- Tag/bundle do codigo anterior, testes do candidato, PR para main e comandos
+  guardados ao usuario, reiniciando somente backend-solicitacoes.
+- Integracao e validacoes concluidas; ownership liberado para publicacao autorizada.
+  Conflito somente documental, ambas as evidencias preservadas. Runtime igual
+  a refactor homologada; handoff 2026-10-14-promocao-saldo-transferencia-main.md.
+
+## Promocao DP global e salario para main - 2026-10-14
+
+- Sessao codex-promocao-dp-global-salario-main-20261014, sem delegacao.
+- Usuario autorizou promocao dos commits publicados, confirmou backup cifrado,
+  timer ativo e homologacao em dev. Reserva documental e de conflitos da integracao:
+  README RH/DP, handoffs, quadro, sessoes, ownership e catalogo backend gerado.
+- Partir da main 4fd60afc e integrar refactor/frontend 208ae8e2 preservando
+  hotfixes, historico e scripts de producao; sem .env, banco, migration ou EC2.
+- Caixa/obra ainda local em outro worktree e outputs/ ficam fora do release.
+- Publicacao por PR e comandos para reiniciar apenas backend-solicitacoes
+  apos UUID/schema/processo/porta conferidos pelo usuario. Estado: finalizado,
+  ownership liberado; validacoes no handoff da promocao DP global/salario.
+
+## Promocao DP transferencias para main - 2026-10-14
+
+- Responsavel: agente desta conversa, sem delegacao; candidato validado e ownership liberado.
+- Usuario confirmou backup recente no Drive cifrado/timer ativo e homologacao dev.
+- Base main 5936d3fb; commit homologado 3a1b2300 na refactor/frontend.
+- Reservados: integracao seletiva dos sete arquivos DP desse commit,
+  OWNERSHIP_ATIVO e novo handoff de promocao. Sem alterar fluxo adicional.
+- Obra obrigatoria em caixa permanece nao commitada no worktree anterior,
+  fora da promocao. Adiantamento para Obra ainda nao implementado.
+- Sem migration/dependencia nova, EC2, banco real ou reinicio pelo agente.
+- Snapshot de codigo preservado em tag/bundle fora da EC2, verificado.
+- Evidencias e proximo passo: docs/handoffs/2026-10-14-promocao-dp-main.md.
+
+## Promocao incremental para main - 2026-10-13
+
+- Agente desta conversa, sem delegacao. Reserva: conflitos da integracao,
+  runner restrito de schema/release, testes do runner e handoff da promocao.
+- Main congelada em 0efa82ce; refactor/frontend em 447a1dca. Preservar ambos
+  os historicos e as evidencias outputs/ fora do commit.
+- Usuario confirmou backup conferido/timer ativo, homologacao dos fluxos em
+  dev e autorizou apenas as duas migrations estruturais de 20261013.
+- Nenhuma EC2/banco/reinicio sera executado pelo agente. Publicar candidato
+  primeiro; promover main/frontend somente apos schema/backend/health de
+  producao conferidos pelo usuario. Sem copiar flags/configuracoes de dev.
+- Integracao resolvida; runtime igual ao alvo aprovado. Testes focados,
+  runner restrito, UI desktop/mobile e build aprovados; ownership local
+  liberado ao publicar candidato, sem mover main. Handoff de continuidade:
+  docs/handoffs/2026-10-13-promocao-incremental-main.md.
+
+## Promocao completa incluindo DP — 2026-10-12
+
+- Agente desta conversa, sem delegacao, em checkout isolado; integra todos os
+  commits publicados de refactor/frontend, preservando hotfixes da main.
+- Main congelada: 528e8c838a383c71be76f00b21fa8fe54d6c4e8d. Alvo:
+  1d7951b9da9abf41c0b7dfab0b685ae55b76b53c.
+- Reserva: arquivos com conflitos backend/frontend/testes/documentacao deste
+  merge, e docs/handoffs/2026-10-12-promocao-completa-main.md.
+- Backup no Drive/timer confirmado pelo usuario. Consulta na producao valida:
+  inicialmente 264 migrations no alvo, 259 registradas, cinco novas pendentes;
+  usuario aplicou as cinco, preflight zero e health OK em 29ba2031 na EC2.
+- Sem executar migration, restart ou deploy EC2; publicar main somente apos
+  schema/backend compativeis e testes. Arquivos de auditoria/outputs preservados.
+- Integracao resolvida/validada; ownership funcional liberado no commit.
+  Reserva documental deste handoff e do registro continua para evidencias da
+  janela. Dois testes isolados atualizados para novas dependencias; sem mudar
+  runtime do alvo. Staging confirmado pelo usuario: UUID distinto de producao,
+  264 migrations registradas/zero pendentes e backend identico ao alvo.
+- Evidencia EC2 registrada; reservas de arquivos encerradas no commit.
+  Publicacao main por PR liberada, preservando historias; smoke autenticado
+  apos Vercel continua pendente. Agente nao executou DDL/restart na EC2.
+
+## Promocao isolada aviso de entregas - 2026-10-09
+
+- Responsavel: agente desta conversa, sem delegacao; estado: integracao validada,
+  ownership liberado para publicacao autorizada.
+- Usuario autorizou migrar para main sem Pessoal/DP e confirmou novamente
+  backup recente conferido no Drive cifrado e timer ativo nesta janela.
+- Base main 17be4609; refactor/frontend abcfe89b. Apenas abcfe89b selecionado;
+  ajustes de medicao/recarga ja incorporados, DP 118209c0 continua excluido.
+- Reservados: os arquivos do commit abcfe89b e handoff de promocao; resolver
+  conflitos preservando implementacoes e historico documental da main.
+- Branch codex/promocao-aviso-entregas-main-20261009 criada da main atual.
+- Sem banco, migration, restart ou deploy EC2; outputs/ fora dos commits.
+- Commit abcfe89b incorporado com -x como 7059c880; conflito somente neste
+  documento, resolvido preservando as duas linhas de historico.
+- Arquivos do pacote DP identicos a main anterior; delta funcional contra
+  refactor/frontend contem somente os 11 arquivos de RH/DP excluidos.
+- Tag publicada backup/main-pre-aviso-entregas-20261009-17be4609 e bundle
+  completo verificado fora da EC2. Testes backend, UI, build e docs aprovados.
+- Handoff: docs/handoffs/2026-10-09-promocao-isolada-aviso-entregas-main.md.
+
+## Promocao isolada medicao e recarga - 2026-10-09
+
+- Responsavel: agente desta conversa, sem delegacao; estado: integracao validada,
+  ownership liberado para publicacao autorizada.
+- Usuario confirmou backup recente no Drive cifrado/timer ativo e reiterou
+  exclusao de Pessoal/DP 118209c0. Sem acesso a EC2/banco ou deploy executado.
+- Main congelada a06bdfdc; refactor/frontend f7f91559. Selecionados somente
+  c75fc396, a3ab0dec, 6e2e859f, 14421ece e f7f91559, em ordem de dependencia.
+- Edicao de valor/vencimento, comprovantes e encargos ja publicados na main:
+  preservar suas implementacoes e auditoria, sem reaplicar entregas antigas.
+- Reservados: arquivos tocados pelos cinco commits de medicao/recarga e seus
+  testes/documentos; conflitos resolvidos somente no escopo de integracao.
+  Reserva documental adicional do handoff de promocao e deste registro.
+- Snapshot main: tag backup/main-pre-medicao-recarga-20261009-a06bdfdc e bundle
+  completo verificado em outputs/main-pre-medicao-recarga-20261009-a06bdfdc.bundle
+  fora da EC2. Tag publicada sem mover main; outputs/ excluido de commits.
+  SHA256 E8DD8AB089661EFFFD410316153EE1C886012F0B73D634EF3F1D4D6995E42CD9.
+- Branch de integracao codex/promocao-medicao-recarga-main-20261009 baseada
+  na main. Preservar todos os demais worktrees e excluir arquivos de RH/DP.
+- Conflitos apenas neste documento; registros de ambas as branches preservados.
+  Arquivos funcionais iguais a refactor/frontend exceto Pessoal/DP, que continua
+  identico a main anterior. Sem migrations/lockfiles/env novos.
+- Testes backend/visibilidade, UI desktop/mobile com APIs simuladas, build,
+  sintaxe e documentacao aprovados. Handoff:
+  docs/handoffs/2026-10-09-promocao-isolada-medicao-recarga-main.md.
 ## Publicacao boletos e valor autorizado de medicao - 2026-10-16
 
 - Usuario autorizou commit/push para refactor/frontend e comandos de EC2 DEV
@@ -2096,6 +2363,9 @@ documental encerrada; ownership liberado para commit/push autorizado.
   com recorte, hash de conferencia, opt-in, superadmin e auditoria atomica.
 - Publicacao autorizada: backup conferido no Drive cifrado e timer ativo
   confirmados pelo usuario. Testes offline aprovados; sem acesso a producao.
+- Integracao isolada sobre 9358a692 concluida, ownership liberado: testes
+  de comprovantes/instrumentos/remocao/acesso/documentacao e build aprovados.
+  Frontend, migrations e RH_DP preservados iguais a main anterior.
 - Handoff: docs/handoffs/2026-10-08-fila-comprovantes-historico.md.
 
 ## Edicao de valor e vencimento de solicitacoes - 2026-10-08
@@ -2113,10 +2383,32 @@ documental encerrada; ownership liberado para commit/push autorizado.
   rateios, schema ou regras do backend. Preservar outputs/ fora do Git.
 - Commit/promocao autorizados. Publicacao main condicionada a confirmacao
   de backup recente conferido e timer ativo; sem EC2, migration ou banco.
+- Usuario confirmou backup conferido e timer ativo nesta publicacao.
+- Integracao isolada concluida, ownership liberado: testes offline, UI,
+  navegacao, documentacao e build aprovados sobre a main. Nenhum arquivo
+  funcional RH_DP ou backend/package.json incorporado do commit 118209c0.
 - Reserva adicional: teste backend offline das rotas existentes e script
   em frontend/package.json. Nenhuma regra do controller sera modificada.
 - Handoff: docs/handoffs/2026-10-08-edicao-valor-vencimento-solicitacao.md.
 
+## Promocao operacional para main em 08/10/2026
+
+- Sessao: codex-promocao-operacional-main-20261008; status: finalizado;
+  ownership liberado para publicacao Git autorizada.
+- Checkout: C:/Fluxy-refactor-frontend; branch de integracao criada de origin/main.
+- Reserva: referencias desta integracao, docs/workspace/OWNERSHIP_ATIVO.md,
+  QUADRO_AGENTES.md, SESSOES_ATIVAS.md, HANDOFF_GLOBAL.md e os handoffs
+  2026-10-08-promocao-operacional-main.md e 2026-10-08-edicao-vigencia-contrato.md.
+- Pedido: integrar pendencias da refactor/frontend sem perder a promocao
+  isolada de contratos ja publicada na main. Sem nova implementacao funcional.
+- Bases: main 0c164d7c; refactor/frontend 27220d13. Usuario confirmou backup
+  recente cifrado no Drive e timer ativo. Bundle completo da main verificado
+  fora da EC2 em outputs/main-pre-promocao-20261008-0c164d7c.bundle.
+- Sem banco real, aplicacao de migration, EC2 ou reinicio nesta sessao.
+  Preservar outputs/ fora do Git e registros dos dois agentes.
+- Integracao e conflitos documentais conciliados; codigo igual a origem e
+  contratos iguais a main anterior. Backend, UI, PWA, navegacao, build e
+  documentacao aprovados novamente. Handoff de promocao atualizado.
 ## Pessoal por obra e conferencia por solicitacao - 2026-10-08
 
 - Responsavel: agente desta conversa, sem delegacao; estado: implementacao
@@ -4359,6 +4651,15 @@ validados. Handoff atualizado; nenhum arquivo de runtime alterado.
 - Escopo: alinhar campos do modal e da rota exclusiva de Compra Direta; preservar cadastro financeiro, contratos, permissoes e validacoes de documento/duplicidade. Sem banco real, migration, commit, push ou deploy.
 - Estado: implementacao e validacoes locais concluidas; ownership liberado. Handoff em docs/handoffs/2026-10-08-credor-compra-direta.md. Homologacao pela interface real pendente; sem commit, push ou deploy.
 
+## Promocao isolada da vigencia - 2026-10-08
+
+- Sessao: codex-contrato-vigencia-main; estado: em_andamento; worktree compras-criacao-main, branch codex/contrato-vigencia-main.
+- Base: origin/main ba8c9816. Origem da correcao: f5ba51f3, sem incorporar seu pai financeiro 3a470ece.
+- Arquivos reservados: ContratoController.js, operationalValidators.js, contratoVigenciaEdicao.js, validarContratoVigenciaEdicao.js, GestaoContratos.jsx, validarContratoVigenciaEdicao.mjs, docs/modulos/contratos/README.md e docs/handoffs/2026-10-08-edicao-vigencia-contrato.md.
+- Somente edicao da vigencia, testes e documentacao. Usuario autorizou integrar isoladamente na main. Nenhum acesso a EC2/banco ou deploy backend.
+
+Sessao codex-contrato-vigencia-main: finalizado; testes backend/UI, build e documentacao aprovados na base isolada da main. Ownership liberado. Handoff: docs/handoffs/2026-10-08-edicao-vigencia-contrato.md. Sem EC2/banco; somente publicacao Git autorizada.
+
 ## Rotulo de lote na fila 2026-10-08
 
 - Responsavel: agente desta conversa, sem delegacao.
@@ -4447,6 +4748,104 @@ publicacao e promocao aguardam login GitHub e confirmacao backup/timer.
 Reserva documental encerrada; ownership liberado. Proximo passo detalhado no
 handoff RH desta tarefa. Sem deploy ou acesso ao banco real.
 
+Retomada da promocao RH: push refactor/frontend confirmado em c7e3d31a;
+usuario respondeu "Feito" ao pedido de push e confirmacao backup/timer.
+Reserva documental temporaria para registrar integracao a partir da main
+2fee98ae. Autenticacao nao interativa continua bloqueando publicacao; main
+remota permanece intacta. Preparar merge local validado e comando de push
+para o terminal Windows do usuario, sem credenciais no chat.
+
+Integracao RH local validada sem conflitos; seis arquivos no delta da main,
+sem backend/migrations/dependencias. Testes RH, documentacao e build aprovados.
+Reserva documental encerrada e ownership liberado. Publicacao remota depende
+do comando de push atomico no terminal autenticado do usuario; sem deploy.
+
+## Promocao seletiva do modal de titulo - 2026-10-13
+
+- Responsavel: agente desta conversa, sem delegacao; reserva concluida e liberada.
+- Arquivos: FinanceiroCard.jsx, validarTituloSolicitacaoAtualizacao.mjs,
+  handoff desta promocao e este registro.
+- Base: origin/main fe6d9c5c. Origem homologada: e5dd4c9f, somente correcao
+  do rascunho durante SSE/fallback. Nao incluir a promocao Ticket/estorno pendente.
+- Backup/timer confirmados pelo usuario nesta janela. Tag/bundle da mesma main
+  conferidos localmente; sem EC2, banco, migrations ou reinicio pelo agente.
+- Testes do modal/formas/negociacao, seguranca de acesso direto e build aprovados.
+  Falha anterior da tabela de rotas financeiras registrada no handoff
+  docs/handoffs/2026-10-13-promocao-modal-titulo-main.md. Publicacao seletiva via PR.
+
+## Promocao troca de usuario homologada - 2026-10-13
+
+- Responsavel: agente desta conversa, sem delegacao; reserva documental ativa.
+- Usuario homologou d17c3aa7 em dev e autorizou promover esta correcao para main
+  e comandos para habilitar somente SUPERADMIN em producao. Backup recente no
+  Drive cifrado conferido e timer ativo confirmados nesta janela.
+- Base main 50e08848. Integracao seletiva dos 15 arquivos da troca de usuario,
+  testes e handoff; nao incluir Ticket/estorno independentes da branch dev.
+- Reservados: arquivos da troca ja homologados, OWNERSHIP_ATIVO.md e handoff.
+- Sem EC2, banco real, migration, seeds ou reinicio pelo agente. Publicacao
+  com snapshot de codigo, testes repetidos e verificacao dos deploys Vercel.
+
+## Troca de usuario em producao exclusiva do SUPERADMIN - 2026-10-13
+
+- Responsavel: agente desta conversa, sem delegacao; reserva concluida e liberada.
+- Base: origin/main 50e08848. Usuario autorizou recurso em producao e acoes reais
+  com permissoes do usuario assumido. Sem permissao administrativa herdada.
+- Reservados: env.js/.env.example, devUserSwitchService/Controller, auth.js,
+  validarDevUserSwitch.js e novo teste HTTP isolado, DevUserSwitcher,
+  ConfiguracaoUsuariosTesteRapido, navigationConfig, LiveUpdatesContext,
+  teste frontend de isolamento e handoff desta tarefa.
+- Catalogo backend gerado pela compilacao tambem reservado: somente descricao
+  do destino de configuracao, sem mudanca de regra/menu/permissao.
+- Produção requer flag propria, desligada por padrao. Nao disfarcar producao
+  como dev. Validar token de MFA, SUPERADMIN real/ativo, CSRF, revogacao,
+  restauracao, auditoria e reconexao SSE ao trocar identidade.
+- Sem EC2, banco real, migration ou reinicio; outputs/ preservado e fora do Git.
+- Implementacao/testes locais concluidos; reserva liberada. Publicacao/ativacao
+  pendentes. Proximo passo em docs/handoffs/2026-10-13-troca-usuario-producao-segura.md.
+
+Publicacao dev autorizada em 13/10/2026: reserva documental temporaria para
+commit, integracao seletiva, repeticao dos testes e push na refactor/frontend.
+Main e producao nao serao alteradas; sem EC2, banco ou reinicio pelo agente.
+
+Integracao seletiva em e5dd4c9f e testes repetidos aprovados; apenas conflito
+documental resolvido preservando Ticket/estorno. Reserva documental encerrada
+e ownership liberado para publicacao dev. outputs/ permanece fora do commit.
+
+Promocao main: integracao seletiva e testes de seguranca/UI/navegacao/build
+aprovados; reserva documental encerrada e ownership liberado para publicacao.
+Snapshot tag/bundle de 50e08848 verificado. Usuario homologou dev e confirmou
+backup/timer nesta janela. Sem EC2, banco ou reinicio pelo agente; ativacao
+real ainda depende do deploy pelo usuario e smoke de producao.
+
+## Consolidacao main com checkout EC2 - 2026-10-13
+
+- Responsavel: agente desta conversa, sem delegacao; reserva ativa.
+- Usuario autorizou consolidar f123f9f0 (Ticket conta/estorno ja na EC2) e
+  main 4f8f02f1 (modal/troca de usuario), preservando os quatro fluxos.
+- Backup/timer confirmados nesta mesma janela. Sem EC2, banco, migrations ou
+  reinicio pelo agente; comandos de deploy serao executados pelo usuario.
+- Reservados: conflito documental OWNERSHIP_ATIVO.md, novo handoff desta
+  consolidacao e testes de integracao/permissoes se precisarem alinhar fixtures.
+- Manter os dois ancestrais no historico remoto: nao squash nem reset, para
+  permitir fast-forward seguro do checkout f123f9f0 da EC2 para main consolidada.
+## Promocao Ticket por conta e estorno independente - 2026-10-13
+
+- Responsavel: agente desta conversa, sem delegacao; estado: candidato integrado; aguarda preflight/health de producao.
+- Reservados: este registro, novo handoff de promocao e eventuais conflitos
+  documentais da integracao. Sem alteracao funcional adicional.
+- Base main fe6d9c5c, origem homologada refactor/frontend 31490a0d. Preservar
+  hotfixes, scripts de release e historias exclusivas da main.
+- Usuario confirmou backup recente conferido no Drive cifrado e timer ativo;
+  Ticket por Conta testado em dev. Sem novas migrations ou dependencias.
+- Snapshot local em tag backup/main-pre-ticket-conta-20261013-fe6d9c5c e bundle
+  verificado tmp/main-code-backup-20261013-ticket-conta/main-fe6d9c5c.bundle,
+  fora da EC2. SHA256: 7B48375479EF49113EEEA9C20AE98ADF01C23DFD57CABF1D741E37B19CE1C150.
+- Publicar candidato/PR draft; main/Vercel somente apos usuario conferir schema
+  somente leitura, atualizar backend-solicitacoes e retornar health de producao.
+- Nenhum banco real, migration, restart ou EC2 sera executado pelo agente.
+- Ownership liberado apos validacoes e publicacao do candidato. Continuidade:
+  docs/handoffs/2026-10-13-promocao-ticket-conta-estorno-main.md.
+
 ## Estorno da fila independente de resolver divergencias - 2026-10-13
 
 - Responsavel: agente desta conversa, sem delegacao; estado: concluido, ownership liberado.
@@ -4479,6 +4878,12 @@ handoff RH desta tarefa. Sem deploy ou acesso ao banco real.
   deploy/EC2 ou escrita em banco pelo agente. outputs/ fora do commit.
 - Validacoes locais repetidas para publicacao; reserva documental encerrada,
   ownership liberado. Atualizacao da EC2 sera executada pelo usuario.
+
+Consolidacao main/EC2: suites de Ticket/estorno/troca/modal, seguranca, escopo
+RH, navegacao, UI desktop/mobile e build aprovadas. Nenhum conflito funcional
+ou mudanca de migration/dependencia. Reserva encerrada e ownership liberado;
+publicar mantendo f123 e 4f8f02f1 como ancestrais, sem reset ou squash.
+Handoff: docs/handoffs/2026-10-13-consolidacao-main-ec2.md.
 
 ## Troca de usuario em producao exclusiva do SUPERADMIN - 2026-10-13
 

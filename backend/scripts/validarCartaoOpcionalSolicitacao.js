@@ -89,6 +89,14 @@ const dependencies = {
   './conciliacaoEstornoService': { reabrirConciliacoesPorMovimentos: async () => [] },
   './tituloBloqueioRetornoObraService': require('../src/services/tituloBloqueioRetornoObraPolicy'),
   './rhPagamentoRevisaoPolicy': require('../src/services/rhPagamentoRevisaoPolicy'),
+  // Este teste cobre pagamentos antigos sem divisao nem adiantamento.
+  // Os fluxos novos possuem suites proprias; impedir acesso a models reais.
+  './solicitacaoFavorecidosService': { listarFavorecidos: async (id) => {
+    assert.equal(Number(id), 100); return [];
+  } },
+  './adiantamentoService': { ehAdiantamento: async (registro) => {
+    assert.equal(Number(registro.id), 100); return false;
+  } },
   '../utils/tituloFinanceiroStatusFilter': {},
   './comercialService': { sincronizarContratoComercialPorTituloFinanceiro: async () => {} }
 };
@@ -102,6 +110,11 @@ dependencies['./tituloCompartilhadoLeitura'] = { anexarParticipacoes: async titu
   assert(titulos.every(titulo => !titulo.compartilhamento_id));
 } };
 dependencies['./pagamentoFilaValoresDomain'] = require('../src/services/pagamentoFilaValoresDomain');
+const instrucaoModule = { exports: {} };
+vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/instrucaoFinanceiraFavorecidoService.js'), 'utf8'), {
+  module: instrucaoModule, require(id) { if (!(id in dependencies)) throw Error(`Dependencia de instrucao nao isolada: ${id}`); return dependencies[id]; }
+});
+dependencies['./instrucaoFinanceiraFavorecidoService'] = instrucaoModule.exports;
 // Esta fixture cobre titulo avulso/cartao; medicao aprovada e exercitada pela
 // suite dedicada. Nao dispensar o bloqueio em nenhum titulo daquele dominio.
 dependencies['./medicaoPagamentoVinculoService'] = { impedirValorGenerico: async titulo => {

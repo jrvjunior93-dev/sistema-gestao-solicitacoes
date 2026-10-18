@@ -111,6 +111,8 @@ function load(name) {
   return module.exports;
 }
 deps['./pagamentoFilaHistoricoService'] = load('pagamentoFilaHistoricoService');
+// Helper real, models simulados: filas antigas nao possuem divisao de favorecidos.
+deps['./instrucaoFinanceiraFavorecidoService'] = load('instrucaoFinanceiraFavorecidoService');
 deps['./tituloSolicitacaoContratoService'] = load('tituloSolicitacaoContratoService');
 const fila = load('pagamentoManualFilaService'), pdf = load('pagamentoComprovantePdfService');
 const recon = load('pagamentoFilaHistoricoReconService');

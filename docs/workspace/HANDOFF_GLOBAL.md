@@ -1,5 +1,39 @@
 # Handoff Global
 
+## Promocao main cadastro no pagamento RH - 2026-10-15
+
+- Usuario homologou dev e autorizou main; backup/timer conferidos. EC2 main
+  6af7b192 e schema real sem pendencias confirmados pelo operador.
+- Integracao de b9ef16e4 preserva main e snapshots enviados; runtime homologado,
+  dependencias/env/migrations inalterados. Conflitos apenas documentais resolvidos
+  preservando ambos os lados. Testes backend/ACL/UI/workspace/50%/build aprovados.
+- Script producao sem migrations, validacao semantica de flags sem alterar valores,
+  restart apenas backend-solicitacoes8000 e health. Sem EC2 pelo agente.
+- Ownership liberado; docs/handoffs/2026-10-15-promocao-rh-cadastro-main.md.
+
+## Promocao DP global e salario - 2026-10-14
+
+- codex-promocao-dp-global-salario-main-20261014: finalizado, ownership liberado.
+- Main 4fd60afc + refactor/frontend 208ae8e2 integradas preservando hotfixes,
+  scripts e ambos os historicos. Backup/timer e dev confirmados pelo usuario.
+- Consulta global/rascunhos, card global e fluxo por local, salario SUPERADMIN
+  homologados; backend/ACL, UI desktop/mobile, build e docs aprovados.
+- Sem schema/dependencias/flags novos, banco, EC2 ou reinicio pelo agente.
+- Publicacao via PR autorizada; usuario atualiza apenas backend-solicitacoes.
+- Evidencias e rollback: docs/handoffs/2026-10-14-promocao-dp-global-salario-main.md.
+
+## Promocao operacional para main em 08/10/2026
+
+- Sessao codex-promocao-operacional-main-20261008 finalizada; ownership liberado.
+- Integracao da refactor/frontend 27220d13 sobre main 0c164d7c autorizada.
+  Vigencia contratual e registros dos dois agentes preservados; conflitos
+  somente documentais, sem nova alteracao de codigo de contratos.
+- Backend, UI, PWA, navegacao, build e documentacao aprovados novamente.
+- Usuario confirmou backup recente cifrado no Drive e timer ativo; bundle
+  completo da main anterior verificado fora da EC2 e mantido fora do Git.
+- Somente publicacao Git. EC2/schema ainda exigem preflight e procedimento
+  de deploy; inclui 202610080001_fila_pagamentos_instrumento.js nao aplicada.
+- Handoff: docs/handoffs/2026-10-08-promocao-operacional-main.md.
 ## DP: cancelamento e comprovante compartilhado - 2026-10-15
 
 - Concluido local, sem publicacao. Remover colaborador/cancelar pagamento inteiro
@@ -281,5 +315,7 @@ Quando houver uma sessao explicitamente autorizada, registrar data, repositorios
 - Validacoes: 438 Markdown sem links locais quebrados, `npm run test:docs` aprovado
   com 19 canonicos e `git diff --check` aprovado.
 - Ambientes externos: nenhum banco, migration, deploy, API ou processo PM2 acionado.
+
+Sessao codex-contrato-vigencia-main: finalizado; testes backend/UI, build e documentacao aprovados na base isolada da main. Ownership liberado. Handoff: docs/handoffs/2026-10-08-edicao-vigencia-contrato.md. Sem EC2/banco; somente publicacao Git autorizada.
 
 Sessao codex-contrato-vigencia-2026-10-08: finalizado. Edicao e validacoes locais concluidas; ownership integralmente liberado. Handoff: docs/handoffs/2026-10-08-edicao-vigencia-contrato.md. Sem banco real, EC2, commit, push ou deploy desta tarefa. Autorizacao/fila de pagamentos preservadas.

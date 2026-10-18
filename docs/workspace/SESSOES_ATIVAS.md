@@ -1,5 +1,24 @@
 # Sessoes Ativas
 
+- codex-promocao-compra-direta-admissao-main-20261015: integracao validada,
+  ownership liberado para PR/merge autorizado. Main1341e1a3/devd72a9c93;
+  backup/timer e schema real confirmados. Sem migration, EC2 ou banco pelo agente.
+  Handoff 2026-10-15-promocao-compra-direta-admissao-main.md.
+
+- codex-promocao-rh-cadastro-main-20261015: finalizado, sem delegacao, ownership
+  liberado; promocao autorizada main6af7b192/devb9ef16e4, backup/timer e schema
+  real producao conferidos. Sem banco/EC2/migration; scripts/testes aprovados.
+
+- codex-promocao-dp-global-salario-main-20261014: finalizado, ownership liberado;
+  promocao autorizada
+  4fd60afc + 208ae8e2, backup/timer e dev confirmados; sem banco/EC2/delegacao.
+
+Sessao codex-promocao-operacional-main-20261008: finalizado no checkout
+C:/Fluxy-refactor-frontend, branch codex/promocao-operacional-main-20261008.
+Integracao autorizada de refactor/frontend na main, preservando contratos e
+registros de ambos os agentes. Ownership documental liberado, integracao
+validada e publicacao Git autorizada; sem banco, EC2, aplicacao de migration
+ou reinicio. Backup confirmado pelo usuario.
 - codex-dp-cancelamento-comprovante-lote-20261015: concluida localmente, ownership
   liberado. Testes transacionais/ACL/UI/build/navegacao aprovados; migration de
   comprovante compartilhado criada, nao aplicada. Sem publicacao/EC2/banco real.
@@ -137,6 +156,15 @@ Sessao `codex-autorizacao-proprietario-pagamentos-2026-09-30` concluida localmen
 Implementacao inativa da PWA/passkeys/push e gate anterior a fila validada; feature flag
 permanece `OFF`. Nenhum ambiente externo foi alterado e o conjunto aguarda eventual
 commit/publicacao mediante pedido do usuario.
+
+## Promocao isolada da vigencia - 2026-10-08
+
+- Sessao: codex-contrato-vigencia-main; estado: em_andamento; worktree compras-criacao-main, branch codex/contrato-vigencia-main.
+- Base: origin/main ba8c9816. Origem da correcao: f5ba51f3, sem incorporar seu pai financeiro 3a470ece.
+- Arquivos reservados: ContratoController.js, operationalValidators.js, contratoVigenciaEdicao.js, validarContratoVigenciaEdicao.js, GestaoContratos.jsx, validarContratoVigenciaEdicao.mjs, docs/modulos/contratos/README.md e docs/handoffs/2026-10-08-edicao-vigencia-contrato.md.
+- Somente edicao da vigencia, testes e documentacao. Usuario autorizou integrar isoladamente na main. Nenhum acesso a EC2/banco ou deploy backend.
+
+Sessao codex-contrato-vigencia-main: finalizado; testes backend/UI, build e documentacao aprovados na base isolada da main. Ownership liberado. Handoff: docs/handoffs/2026-10-08-edicao-vigencia-contrato.md. Sem EC2/banco; somente publicacao Git autorizada.
 
 Sessao codex-contrato-vigencia-2026-10-08: em_andamento; edicao cadastral da vigencia. Arquivos em OWNERSHIP_ATIVO.md. Autorizacao/fila de pagamentos fora do escopo.
 
