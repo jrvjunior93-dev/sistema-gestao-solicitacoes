@@ -285,6 +285,7 @@ function formularioVazio(tipo) {
     cargo: '',
     tipo_vinculo: 'CLT',
     data_admissao: '',
+    data_inicio_efetivo_obra: '',
     salario_base: '',
     forma_calculo_gerencial: 'MENSAL',
     valor_diaria: '',
@@ -461,7 +462,7 @@ export default function RhDpPessoal() {
       rotulo: 'Colaboradores',
       apoio: 'Quem está na obra hoje, com o que cada um tem em curso.'
     },
-    { id: 'transferencias', rotulo: 'Transferências entre obras', apoio: 'Consulta global e transferências aprovadas pelos responsáveis das obras, sem passar pelo DP.' },
+    { id: 'transferencias', rotulo: 'Transferências entre obras', apoio: 'Consulta e transferências aprovadas pelos responsáveis das obras ou pelo DP.' },
     ...(podeVerEventosRecorrentes ? [{
       id: 'eventos-recorrentes',
       rotulo: 'Eventos recorrentes',
@@ -836,10 +837,11 @@ export default function RhDpPessoal() {
         ),
         tipo_vinculo: f.tipo_vinculo,
         data_admissao: f.data_admissao || undefined,
-        salario_base: normalizeCurrencyTyping(f.salario_base) || undefined,
+        data_inicio_efetivo_obra: f.data_inicio_efetivo_obra || undefined,
+        salario_base: parseCurrencyInput(f.salario_base) || undefined,
         forma_calculo_gerencial: f.forma_calculo_gerencial,
         valor_diaria: f.forma_calculo_gerencial === 'DIARIA'
-          ? normalizeCurrencyTyping(f.valor_diaria) || undefined
+          ? parseCurrencyInput(f.valor_diaria) || undefined
           : undefined,
         pagamento_automatico_40_60: f.forma_calculo_gerencial === 'MENSAL'
           ? Boolean(f.pagamento_automatico_40_60)
@@ -1558,9 +1560,7 @@ export default function RhDpPessoal() {
         Montadas so quando a aba esta ativa: cada uma carrega obras, empresas e a propria lista, e
         deixa-las montadas em segundo plano faria tres telas buscarem dados a cada visita.
       */}
-      {abaAtiva === 'transferencias' && localSelecionado?.tipo_centro_custo === 'CENTRO_CUSTO'
-        ? <p className="app-note">Transferências disponíveis somente entre obras.</p>
-        : abaAtiva === 'transferencias' ? <RhDpTransferencias key={`transfer-${localId}`} obraId={localSelecionado?.id}
+      {abaAtiva === 'transferencias' ? <RhDpTransferencias key={`transfer-${localId}`} obraId={localSelecionado?.id}
         onNotificacoesLidas={limparNotificacoesTransferencia}
       /> : null}
       {abaAtiva === 'eventos-recorrentes' && podeVerEventosRecorrentes ? (
@@ -1780,6 +1780,11 @@ export default function RhDpPessoal() {
                     onChange={(e) => setFormulario({ ...formulario, data_admissao: e.target.value })} required />
                 </label>
 
+                <label className="form-field">
+                  <span className="form-label">Início efetivo na obra (informativo)</span>
+                  <DateInputBR className="form-control" value={formulario.data_inicio_efetivo_obra || ''}
+                    onChange={(e) => setFormulario({ ...formulario, data_inicio_efetivo_obra: e.target.value })} />
+                </label>
                 <label className="form-field">
                   <span className="form-label">Salario</span>
                   <input className="form-control" inputMode="decimal" value={formulario.salario_base}

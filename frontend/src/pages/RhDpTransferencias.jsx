@@ -376,6 +376,7 @@ export default function RhDpTransferencias({ onNotificacoesLidas, obraId }) {
         <p><strong>{aberta.colaborador?.nome}</strong> · {aberta.obra?.nome || nomeObra(aberta.obra_id)} → {nomeObra(aberta.obra_destino_id)}</p>
         <p>{aberta.situacao} · Aprovação: {aberta.aprovacao_automatica ? 'Automática' : nomeObra(aberta.obra_aprovadora_id)}{aberta.data_vigencia ? ` · Vigência: ${dataDia(aberta.data_vigencia)}` : ''}</p>
         <p>{aberta.justificativa}</p>
+        {aberta.impedimento_decisao && <p className="app-note" role="status">{aberta.impedimento_decisao}</p>}
         <ul className="rh-pessoal-historico">{(aberta.historicos || []).map(h => <li key={h.id}><small>{data(h.createdAt)} · Usuário #{h.usuario_id} · {h.setor}</small><div>{h.descricao}</div></li>)}</ul>
         <label className="form-field"><span className="form-label">Comentário / motivo da rejeição</span><textarea className="form-control" aria-label="Comentário / motivo da rejeição" maxLength={2000} value={comentario} onChange={e => setComentario(e.target.value)} /></label>
         <div className="app-page-actions">

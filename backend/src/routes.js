@@ -2092,6 +2092,7 @@ router.patch('/rh/empresas-grupo/:id', allowRhDpEmpresasManage, criticalRateLimi
 router.get('/rh/relatorios/operacional', allowRhDpDashboardRead, validateRequest({ query: validateRhRelatorioOperacionalQuery }), RhRelatorioController.operacional);
 router.get('/rh/relatorios/titulos-enviados', allowRhDpDashboardRead, RhRelatorioController.titulosEnviados);
 router.get('/rh/colaboradores', allowRhDpColaboradoresRead, validateRequest({ query: validateRhColaboradorQuery }), RhColaboradorController.index);
+router.get('/rh/colaboradores/empresas-consulta', allowRhDpColaboradoresRead, RhEmpresaGrupoController.catalogoConsulta);
 router.get('/rh/colaboradores/exportar-xlsx', allowRhDpColaboradoresRead, auditSuccess({ eventType: 'RH_COLABORADORES_EXPORTED', resourceType: 'RH_COLABORADOR', description: 'Cadastro de colaboradores exportado para XLSX' }), RhColaboradorController.exportarPlanilha);
 router.get('/rh/colaboradores/modelo-xlsx', allowRhDpColaboradoresWrite, auditSuccess({ eventType: 'RH_COLABORADORES_EXPORTED', resourceType: 'RH_COLABORADOR', description: 'Modelo preenchido de colaboradores exportado para XLSX' }), RhColaboradorController.modeloPlanilha);
 router.get('/rh/colaboradores/:id', allowRhDpColaboradoresRead, validateRequest({ params: validateNumericIdParam('id', 'Colaborador RH/DP') }), RhColaboradorController.show);
@@ -2178,6 +2179,9 @@ router.get('/rh/apuracao-eventos/:id/itens', allowRhDpSolicitacaoVer, validateRe
 router.get('/rh/colaboradores/:id/historico-vinculo', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Colaborador RH/DP') }), RhJornadaController.historicoDeVinculo);
 router.get('/rh/colaboradores/:id/historico-salario', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Colaborador RH/DP') }), RhJornadaController.historicoDeSalario);
 router.get('/rh/documentos/tipos', allowRhDpDocumentosRead, validateRequest({ query: validateRhDocumentoTipoQuery }), RhDocumentoController.listarTipos);
+router.get('/rh/documentos/empresas-consulta', allowRhDpDocumentosRead, RhEmpresaGrupoController.catalogoConsulta);
+router.get('/rh/documentos/exportacao', allowRhDpDocumentosRead, criticalRateLimit, RhDocumentoController.prepararExportacao);
+router.get('/rh/documentos/exportacao/zip', allowRhDpDocumentosRead, criticalRateLimit, RhDocumentoController.exportarZip);
 router.get('/rh/documentos', allowRhDpDocumentosRead, validateRequest({ query: validateRhDocumentoQuery }), RhDocumentoController.index);
 router.get('/rh/colaboradores/:colaboradorId/dossie', allowRhDpDocumentosRead, validateRequest({ params: validateNumericIdParam('colaboradorId', 'Colaborador RH/DP') }), RhDocumentoController.dossie);
 router.get('/rh/colaboradores/:colaboradorId/dossie/:origem/:arquivoId/link', allowRhDpDocumentosRead, RhDocumentoController.obterLinkDossie);

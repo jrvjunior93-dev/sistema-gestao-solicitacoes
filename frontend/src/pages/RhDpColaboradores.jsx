@@ -1,4 +1,5 @@
 import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
+import RhDocumentosExportacao from '../components/rh/RhDocumentosExportacao';
 import { Fragment, useEffect, useRef, useState, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { HiOutlineEye, HiOutlinePencilSquare, HiOutlineTicket } from 'react-icons/hi2';
@@ -35,7 +36,7 @@ import {
   getRhDocumentoLink,
   getRhDocumentos,
   getRhDocumentoTipos,
-  getRhEmpresasGrupo,
+  getRhEmpresasConsulta,
   getRhCategoriasFinanceiras,
   getRhTicketStatus,
   gerarLoteRhTicket,
@@ -87,6 +88,7 @@ function emptyForm() {
     tipo_vinculo: 'CLT',
     data_inicio: '',
     data_admissao: '',
+    data_inicio_efetivo_obra: '',
     data_demissao: '',
     data_nascimento: '',
     status: 'ATIVO',
@@ -196,6 +198,7 @@ function toFormData(data) {
     tipo_vinculo: data?.tipo_vinculo || 'CLT',
     data_inicio: data?.data_inicio || data?.data_admissao || '',
     data_admissao: data?.data_admissao || data?.data_inicio || '',
+    data_inicio_efetivo_obra: data?.data_inicio_efetivo_obra || '',
     data_demissao: data?.data_demissao || '',
     data_nascimento: data?.data_nascimento || '',
     status: data?.status || 'ATIVO',
@@ -244,6 +247,7 @@ function buildPayload(form) {
     tipo_vinculo: form.tipo_vinculo,
     data_inicio: form.data_admissao || undefined,
     data_admissao: form.data_admissao || undefined,
+    data_inicio_efetivo_obra: form.data_inicio_efetivo_obra || null,
     data_demissao: form.data_demissao || undefined,
     data_nascimento: form.data_nascimento || undefined,
     status: form.status,
@@ -505,15 +509,16 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
   async function carregarBase() {
     try {
       setCarregando(true);
-      const [listaEmpresas, listaObras, listaSetores] = await Promise.all([
-        getRhEmpresasGrupo({ ativo: true }),
+      const resultados = await Promise.allSettled([
+        getRhEmpresasConsulta('colaboradores'),
         getObras({ escopo: 'TODOS' }),
         getSetores()
       ]);
-
-      setEmpresas(Array.isArray(listaEmpresas) ? listaEmpresas : []);
-      setObras(Array.isArray(listaObras) ? listaObras : []);
-      setSetores(Array.isArray(listaSetores) ? listaSetores : []);
+      [setEmpresas, setObras, setSetores].forEach((setLista, i) => {
+        setLista(resultados[i].status === 'fulfilled' && Array.isArray(resultados[i].value) ? resultados[i].value : []);
+      });
+      const falhas = resultados.filter(r => r.status === 'rejected');
+      if (falhas.length) avisar.erro(falhas.map(r => r.reason?.message || 'Falha ao carregar opções RH/DP').join(' · '));
 
       const colaboradorId = Number(comoEditor ? editorId : searchParams.get('colaborador_id'));
       if (Number.isInteger(colaboradorId) && colaboradorId > 0) {
@@ -1379,6 +1384,11 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
                     disabled={!podeEditar}
                   />
                 </CampoForm>
+                <CampoForm label="Início efetivo na obra" hint="Informativo; não altera folha ou diária.">
+                  <DateInputBR className="form-control" value={form.data_inicio_efetivo_obra}
+                    onChange={(e) => setForm((prev) => ({ ...prev, data_inicio_efetivo_obra: e.target.value }))}
+                    disabled={!podeEditar} />
+                </CampoForm>
                 <CampoForm label="Data de demissão">
                   <DateInputBR
                     className="form-control"
@@ -1848,6 +1858,7 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
                   <div className="mt-4 space-y-3">
                     <div>
                       <h3 className="form-section-legenda">Dossiê: solicitações e pagamentos</h3>
+                      <RhDocumentosExportacao colaboradorId={form.id} />
                       <p className="app-note">
                         Arquivos enviados nas solicitações e comprovantes anexados na Fila de Pagamentos.
                         Documentos já validados pelo DP permanecem na tabela de arquivos oficiais acima.

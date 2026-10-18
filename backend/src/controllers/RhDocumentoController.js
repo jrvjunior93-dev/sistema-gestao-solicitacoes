@@ -14,6 +14,33 @@ const {
 const { responderErroController } = require('../utils/controllerError');
 
 module.exports = {
+  async prepararExportacao(req, res) {
+    try {
+      const data = await require('../services/rhDocumentosExportacaoService').prepararExportacao(req.query || {}, req.user);
+      res.setHeader('Cache-Control', 'no-store');
+      return res.json(data);
+    } catch (error) {
+      return responderErroController(res, error, 'Erro ao preparar documentos RH/DP');
+    }
+  },
+  async exportarZip(req, res) {
+    // ZIP interrompido emite close, nao finish: nao auditar falha como sucesso.
+    res.once('finish', () => {
+      if (res.statusCode === 200 && String(res.getHeader('Content-Type')).includes('application/zip')) {
+        void require('../services/securityLogService').registrarEventoSeguranca({ req,
+          usuarioId: req.user?.id, tipoEvento: 'RH_DOCUMENTOS_EXPORTED', recursoTipo: 'RH_DOCUMENTO',
+          status: 'SUCCESS', descricao: 'Documentacao RH exportada em ZIP',
+          metadata: { empresa_id: req.query.empresa_id || null, colaborador_id: req.query.colaborador_id || null,
+            obra_id: req.query.obra_id || null, modo: req.query.modo,
+            quantidade: Number(res.getHeader('X-RH-Quantidade-Colaboradores')) } });
+      }
+    });
+    try {
+      await require('../services/rhDocumentosExportacaoService').exportarZip(req.query || {}, req.user, res);
+    } catch (error) {
+      if (!res.headersSent && !res.destroyed) return responderErroController(res, error, 'Erro ao exportar documentos RH/DP');
+    }
+  },
   async listarTipos(req, res) {
     try {
       const data = await listarTiposDocumentoRh(req.query || {});

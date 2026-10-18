@@ -62,6 +62,8 @@ function carregar(nome) {
 }
 const cadastro = carregar('rhService.js'), admissao = carregar('rhSolicitacaoService.js');
 const base = { nome: 'Contato QA', cpf: '52998224725', empresa_grupo_id: 1, obra_id: 7,
+  forma_calculo_gerencial: 'DIARIA', valor_diaria: 'R$ 150,50',
+  data_admissao: '2026-10-15', data_inicio_efetivo_obra: '2026-10-01',
   tipo_vinculo: 'CLT', telefone: '(27) 99999-1234', telefone_secundario: '27988884321',
   endereco: 'Rua A', numero: '10', municipio: 'Vitória', estado: 'es',
   endereco_secundario: 'Rua B', numero_secundario: '20', municipio_secundario: 'Serra', estado_secundario: 'es' };
@@ -71,6 +73,10 @@ const base = { nome: 'Contato QA', cpf: '52998224725', empresa_grupo_id: 1, obra
   assert.throws(() => validators.validateRhColaboradorCreateBody({ ...base, endereco_secundario: 'a'.repeat(256) }), /tamanho/);
   assert.throws(() => validators.validateRhColaboradorCreateBody({ ...base, admin: true }), /nao permitidos/);
   const criado = await cadastro.criarColaboradorRh(validators.validateRhColaboradorCreateBody(base), { id: 3 });
+  assert.equal(criado.valor_diaria, 150.5);
+  assert.equal(criado.data_inicio_efetivo_obra, '2026-10-01');
+  assert.equal(criado.data_admissao, '2026-10-15');
+  assert.equal(vinculos[0].vigenciaInicio, '2026-10-15', 'Data informativa nao muda lotacao/calculos');
   assert.equal(criado.telefone_secundario, base.telefone_secundario);
   assert.equal(criado.endereco_secundario, 'Rua B'); assert.equal(criado.estado_secundario, 'ES');
   await assert.rejects(cadastro.atualizarColaboradorRh(criado.id,

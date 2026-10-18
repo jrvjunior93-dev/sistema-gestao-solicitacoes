@@ -1,5 +1,62 @@
 # Ownership Ativo
 
+## Publicacao DEV RH/documentos - 2026-10-18
+
+- Usuario autorizou commit e push do pacote RH/DP na refactor/frontend e
+  roteiro EC2 DEV com migration. Agente unico; reservar handoffs, scripts de
+  preflight/migration/deploy DEV e seus testes. Nao incluir outputs existentes.
+- Remote conferida em 96483366; main somente consultada, nunca publicar nela.
+- Nenhuma operacao real EC2/DB/PM2/S3 ou configuracao/permissao individual.
+  Backup DEV deve ser conferido pelo operador antes da aplicacao estrutural.
+- Usuario testara a conta da Luana em producao para reproduzir o bloqueio
+  atual. Isto nao autoriza deploy, migration ou alteracao de permissao la.
+- Publicar somente RH/DP desta solicitacao. Textos de autorizacao e OFX,
+  anteriores e ainda locais, continuam preservados sem entrar neste commit.
+
+## RH/DP: diaria, filtros e documentos - 2026-10-18
+
+- Agente unico no worktree performance-fila-dp, preservando o pacote local
+  anterior de textos de autorizacao e OFX, outputs e branch/base existentes.
+- Reserva inicial: rhSolicitacaoService.js, RhDpPessoal.jsx, testes isolados
+  da admissao e handoff. Corrigir conversao BRL da diaria sem remover validacao,
+  checklist, transacao, auditoria ou bloqueio de aprovacao repetida.
+- Investigar filtros/transferencias da Luana sem alterar cadastro/permissoes.
+  Usuario esclareceu: DP pode aprovar; manter trava de aprovacao propria.
+- Data efetiva independente e apenas informativa, ao lado de admissao/demissao.
+  Aguardar confirmacao do pacote maior (campo/migration e exportacao por
+  empresa/colaborador) antes de implementa-lo.
+- Nao operar producao/DEV, dados reais, .env, PM2 ou S3; sem commit/push/deploy.
+- Pacote maior confirmado. Reserva adicional: model/validators/rhService,
+  migration aditiva, catalogo de consulta/rotas, rhDossieService, exportacao ZIP
+  com storage controlado, formularios/servicos RH, testes e documentacao.
+  Downloads limitados e seriais; nunca buscar URLs arbitrarias ou tudo em RAM.
+- Implementacao local concluida; reserva liberada. Testes backend/UI RH,
+  regressao por local e build616 aprovados; migration nao aplicada. Handoff:
+  docs/handoffs/2026-10-18-rh-admissao-filtros-documentos.md. Aguardar
+  autorizacao para commit/publicacao e homologacao DEV com Luana/MySQL/S3.
+
+## Autorizacoes: textos claros e diagnostico OFX - 2026-10-18
+
+- Agente unico neste worktree, branch codex/autorizacoes-textos-ofx-diagnostico-20261018,
+  base publicada refactor/frontend 96483366. Outputs preexistentes preservados.
+- Usuario autorizou substituir termos visiveis de autorizacao: dossie por
+  Dados para autorizacao e Valor do dossie por Valor enviado para autorizacao.
+  Reserva componentes/paginas financeiros afetados, testes UI e documentacao.
+- OFX: somente diagnostico do acesso a obras/centros no Novo titulo + baixa,
+  em Conferir manualmente. Leitura de Conciliacao, ObraController e ACLs/testes;
+  nao alterar permissoes, escopo, usuario, dados ou implementar fix sem pedido.
+- Diagnostico: falta modo FINANCEIRO no modal OFX; SUPERADMIN usa bypass ja
+  existente, demais usuarios caem em UsuarioObra. Usuario confirmou Helida
+  Pirovani/producao e autorizou alinhar ao cadastro financeiro e listar TODAS
+  obras/centros nesse cadastro, com falha explicita. Reserva FinanceiroConciliacao,
+  services/obras.js e testes isolados de consulta/ACL. Nao operar producao.
+- Sem commit/push, migrations, .env, EC2/PM2 ou operacao em producao nesta tarefa.
+- Implementacao local concluida; reserva liberada. test:ofx-obras em ambos
+  runtimes, autorizacoes-obras320/390/768/1366, PWA, medicao-valor-pagamento,
+  build614 e docs541/19 aprovados. Handoff:
+  docs/handoffs/2026-10-18-autorizacao-textos-ofx-obras.md. Aguardando pedido
+  para commitar/publicar na refactor/frontend e depois homologar no DEV.
+
 ## Autorizacoes: voltar do aparelho - 2026-10-17
 
 - Agente unico, branch local codex/autorizacoes-voltar-aparelho-20261017,

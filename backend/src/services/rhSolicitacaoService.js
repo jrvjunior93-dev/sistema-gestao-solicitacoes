@@ -190,6 +190,38 @@ async function registrarHistorico(solicitacao, dados, transaction) {
   );
 }
 
+// O formulario usa moeda brasileira; clientes antigos ainda podem enviar BRL.
+// Normalizar tambem na aprovacao evita gravar texto formatado no DECIMAL de
+// pedidos antigos. Nao altera o JSON original nem os demais tipos de pedido.
+function normalizarValoresAdmissao(tipo, dados = {}) {
+  if (tipo !== 'ADMISSAO') return dados;
+  const resultado = { ...dados };
+  if (dados.data_inicio_efetivo_obra) {
+    const dia = String(dados.data_inicio_efetivo_obra);
+    const data = new Date(`${dia}T00:00:00Z`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dia) || !Number.isFinite(data.getTime()) || data.toISOString().slice(0, 10) !== dia) {
+      throw new ValidationError('Inicio efetivo na obra invalido.');
+    }
+  }
+  for (const [campo, nome] of [['salario_base', 'Salario base'], ['valor_diaria', 'Valor da diaria']]) {
+    const valor = dados[campo];
+    if (valor == null || (typeof valor === 'string' && !valor.trim())) continue;
+    if (!['string', 'number'].includes(typeof valor)) throw new ValidationError(`${nome} invalido.`);
+    const texto = String(valor).trim().replace(/^R\$\s*/i, '');
+    const brasileiro = /^(?:\d+|\d{1,3}(?:\.\d{3})+),\d{1,2}$/;
+    const decimal = /^\d+(?:\.\d+)?$/;
+    if (!brasileiro.test(texto) && !decimal.test(texto)) throw new ValidationError(`${nome} invalido.`);
+    const numero = Number(texto.includes(',') ? texto.replace(/\./g, '').replace(',', '.') : texto);
+    if (!Number.isFinite(numero) || numero < 0) throw new ValidationError(`${nome} invalido.`);
+    resultado[campo] = numero;
+  }
+  if (String(dados.forma_calculo_gerencial || 'MENSAL').toUpperCase() === 'DIARIA'
+      && !(Number(resultado.valor_diaria) > 0)) {
+    throw new ValidationError('Informe o valor da diaria do colaborador.');
+  }
+  return resultado;
+}
+
 /**
  * Valida o que cada tipo exige. Fica em um lugar so para que abrir e reenviar cobrem o mesmo —
  * senao o reenvio vira a porta para gravar um pedido que a abertura recusaria.
@@ -445,7 +477,7 @@ async function abrirSolicitacao(payload = {}, contexto = {}) {
     const tipo = String(payload.tipo || '').trim().toUpperCase();
     const subtipo = payload.subtipo ? String(payload.subtipo).trim().toUpperCase() : null;
     const colaboradorId = payload.colaborador_id ? Number(payload.colaborador_id) : null;
-    const dados = payload.dados || {};
+    const dados = normalizarValoresAdmissao(tipo, payload.dados || {});
 
     validarPedido(tipo, dados, colaboradorId, subtipo);
     await validarEnderecosDaAdmissao(tipo, dados, contexto);
@@ -770,7 +802,7 @@ async function aplicarEfeito(solicitacao, contexto, transaction) {
   // O EFEITO, e nao o tipo cru: MOVIMENTACAO absorveu TROCA_OBRA e ALTERACAO_SALARIAL, e os
   // registros gravados com os tipos antigos precisam continuar produzindo o mesmo resultado.
   const efeito = efeitoDoPedido(solicitacao);
-  const dados = dadosDo(solicitacao);
+  const dados = normalizarValoresAdmissao(solicitacao.tipo, dadosDo(solicitacao));
 
   if (efeito === 'ADMISSAO') {
     const contatos = normalizarContatos(dados);
@@ -789,6 +821,7 @@ async function aplicarEfeito(solicitacao, contexto, transaction) {
         tipo_vinculo: dados.tipo_vinculo || 'CLT',
         data_admissao: paraDataIso(dados.data_admissao) || hojeIso(),
         data_inicio: paraDataIso(dados.data_admissao) || hojeIso(),
+        data_inicio_efetivo_obra: dados.data_inicio_efetivo_obra || null,
         salario_base: dados.salario_base || null,
         forma_calculo_gerencial: dados.forma_calculo_gerencial || 'MENSAL',
         valor_diaria: dados.valor_diaria || null,
@@ -1239,7 +1272,7 @@ async function reenviarSolicitacao(id, payload = {}, contexto = {}) {
       throw new ValidationError('So uma solicitacao devolvida pode ser reenviada.');
     }
 
-    const dados = payload.dados ? payload.dados : dadosDo(solicitacao);
+    const dados = normalizarValoresAdmissao(solicitacao.tipo, payload.dados ? payload.dados : dadosDo(solicitacao));
     // A classificação de primeira lotação vem do servidor e não pode ser alterada no reenvio.
     if (dadosDo(solicitacao).primeira_lotacao === true) dados.primeira_lotacao = true;
     // O subtipo entra aqui tambem: sem ele, o reenvio viraria a porta para gravar um pedido que a

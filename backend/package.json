@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
+    "test:deploy-rh-documentos-dev": "node scripts/validarDeployRhDocumentosDev.js",
+    "test:rhdp-admissao-documentos": "node scripts/validarRhAdmissaoDiaria.js && node scripts/validarRhColaboradorContatos.js && node scripts/validarRhDocumentosPacote.js && node scripts/validarRhPessoalFluxo.js --transferencias",
     "test:autorizacoes-painel": "node scripts/validarPainelAutorizacoes.js",
     "test:auditoria-negociacoes-20261017": "node scripts/validarAuditoriaNegociacoes20261017.js",
     "test:autorizacoes-painel-sql-local": "node scripts/validarPainelAutorizacoesSqlLocal.js",
@@ -150,6 +152,7 @@
     "@aws-sdk/client-s3": "^3.888.0",
     "@aws-sdk/s3-request-presigner": "^3.888.0",
     "@simplewebauthn/server": "13.3.3",
+    "archiver": "5.3.2",
     "bcryptjs": "^3.0.3",
     "bwip-js": "^4.10.1",
     "cookie-parser": "^1.4.7",

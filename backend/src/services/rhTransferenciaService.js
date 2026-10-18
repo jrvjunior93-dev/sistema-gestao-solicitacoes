@@ -184,6 +184,10 @@ function resumo(s, ids, usuarioId, bypass = false) {
     justificativa: s.justificativa, motivo_rejeicao: s.motivo_rejeicao,
     createdAt: s.createdAt, updatedAt: s.updatedAt, decidida_em: s.decidida_em,
     pode_decidir: s.situacao === 'ABERTA' && (bypass || ids.includes(ladoAprovador(s))) && Number(s.criada_por) !== Number(usuarioId),
+    impedimento_decisao: s.situacao === 'ABERTA' && Number(s.criada_por) === Number(usuarioId)
+      ? 'A transferencia deve ser aprovada por outra pessoa do DP ou responsavel da obra; o solicitante nao pode aprovar o proprio pedido.'
+      : s.situacao === 'ABERTA' && !bypass && !ids.includes(ladoAprovador(s))
+        ? 'A aprovacao exige acesso do DP ou responsabilidade vigente no local aprovador.' : null,
     pode_cancelar: ['ABERTA', 'RASCUNHO'].includes(s.situacao)
       && (ids.includes(Number(d.obra_solicitante_id || s.obra_id)) || Number(s.criada_por) === Number(usuarioId)),
     pode_enviar: s.situacao === 'RASCUNHO' && (ids.includes(Number(d.obra_solicitante_id || s.obra_id)) || Number(s.criada_por) === Number(usuarioId)) };

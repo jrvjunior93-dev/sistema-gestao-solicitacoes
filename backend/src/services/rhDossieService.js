@@ -11,6 +11,20 @@ const {
 } = require('../models');
 const { ValidationError } = require('../middlewares/validation');
 const { getPresignedUrl } = require('./s3');
+const { Op } = require('sequelize');
+const { titulosAdicionaisDoColaborador } = require('./rhDossieVinculosService');
+
+async function filasAdicionais(colaboradorId) {
+  const ids = await titulosAdicionaisDoColaborador(colaboradorId);
+  if (!ids.length) return [];
+  return PagamentoManualFilaItem.findAll({ where: { titulo_financeiro_id: { [Op.in]: ids } },
+    attributes: ['id', 'titulo_financeiro_id', 'status', 'comprovante_nome', 'comprovante_url', 'comprovante_hash', 'comprovante_vinculado_em', 'updatedAt'],
+    include: [{ model: PagamentoManualFilaComprovante, as: 'comprovantes', separate: true,
+      attributes: ['id', 'nome', 'hash', 'vinculado_em'], order: [['id', 'DESC']] },
+    { model: TituloFinanceiro, as: 'titulo', attributes: ['id', 'descricao'], required: true }],
+    order: [['id', 'DESC']]
+  });
+}
 
 function normalizarComprovantesFila(fila) {
   const itens = [];
@@ -153,14 +167,20 @@ async function listarDossieColaboradorRh(colaboradorId) {
     }));
   });
 
+  const novasFilas = await filasAdicionais(colaborador.id);
+  const adicionais = novasFilas.flatMap(f => normalizarComprovantesFila(f.get ? f.get({ plain: true }) : f));
+  const unicos = new Map();
+  for (const item of [...arquivosSolicitacao, ...comprovantes, ...adicionais]) {
+    unicos.set(`${item.origem}:${item.fila_id || ''}:${item.arquivo_id}:${Boolean(item.legado)}`, item);
+  }
   return {
     colaborador: { id: colaborador.id, nome: colaborador.nome },
-    itens: [...arquivosSolicitacao, ...comprovantes]
+    itens: [...unicos.values()]
       .sort((a, b) => new Date(b.data || 0) - new Date(a.data || 0))
   };
 }
 
-async function obterLinkArquivoDossieRh(colaboradorId, origem, arquivoId, filaId = null) {
+async function obterArquivoDossieRh(colaboradorId, origem, arquivoId, filaId = null) {
   const colaborador = await RhColaborador.findByPk(colaboradorId, { attributes: ['id'] });
   if (!colaborador) throw new ValidationError('Colaborador nao encontrado.', 404);
 
@@ -179,7 +199,7 @@ async function obterLinkArquivoDossieRh(colaboradorId, origem, arquivoId, filaId
     if (!anexo?.arquivo_url) throw new ValidationError('Arquivo da solicitacao nao encontrado.', 404);
     return {
       nome: anexo.nome_original,
-      url: await getPresignedUrl(anexo.arquivo_url, 300, { strict: true })
+      url: anexo.arquivo_url
     };
   }
 
@@ -187,7 +207,7 @@ async function obterLinkArquivoDossieRh(colaboradorId, origem, arquivoId, filaId
     throw new ValidationError('Origem de arquivo invalida.');
   }
 
-  const fila = await PagamentoManualFilaItem.findOne({
+  let fila = await PagamentoManualFilaItem.findOne({
     where: { id: filaId || arquivoId },
     attributes: ['id', 'comprovante_nome', 'comprovante_url'],
     include: [{
@@ -210,6 +230,12 @@ async function obterLinkArquivoDossieRh(colaboradorId, origem, arquivoId, filaId
       }]
     }]
   });
+  if (!fila) {
+    const candidata = await PagamentoManualFilaItem.findByPk(filaId || arquivoId, {
+      attributes: ['id', 'titulo_financeiro_id', 'comprovante_nome', 'comprovante_url']
+    });
+    if (candidata && (await titulosAdicionaisDoColaborador(colaborador.id)).includes(Number(candidata.titulo_financeiro_id))) fila = candidata;
+  }
   if (!fila) throw new ValidationError('Comprovante de pagamento nao encontrado.', 404);
 
   if (filaId) {
@@ -220,18 +246,24 @@ async function obterLinkArquivoDossieRh(colaboradorId, origem, arquivoId, filaId
     if (!comprovante?.url) throw new ValidationError('Comprovante de pagamento nao encontrado.', 404);
     return {
       nome: comprovante.nome,
-      url: await getPresignedUrl(comprovante.url, 300, { strict: true })
+      url: comprovante.url
     };
   }
 
   if (!fila.comprovante_url) throw new ValidationError('Comprovante de pagamento nao encontrado.', 404);
   return {
     nome: fila.comprovante_nome || 'Comprovante de pagamento',
-    url: await getPresignedUrl(fila.comprovante_url, 300, { strict: true })
+    url: fila.comprovante_url
   };
+}
+
+async function obterLinkArquivoDossieRh(...args) {
+  const arquivo = await obterArquivoDossieRh(...args);
+  return { ...arquivo, url: await getPresignedUrl(arquivo.url, 300, { strict: true }) };
 }
 
 module.exports = {
   listarDossieColaboradorRh,
+  obterArquivoDossieRh,
   obterLinkArquivoDossieRh
 };

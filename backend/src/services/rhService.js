@@ -1242,6 +1242,7 @@ async function atualizarColaboradorRh(id, data, user) {
         tipo_vinculo: data.tipo_vinculo,
         data_inicio: data.data_inicio || data.data_admissao,
         data_admissao: data.data_admissao,
+        data_inicio_efetivo_obra: data.data_inicio_efetivo_obra,
         data_demissao: data.data_demissao,
         data_nascimento: data.data_nascimento,
         status: data.status,

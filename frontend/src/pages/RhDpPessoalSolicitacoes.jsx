@@ -128,6 +128,7 @@ function chipDaSituacao(situacao) {
 }
 
 const ROTULO_DADO = {
+  data_inicio_efetivo_obra: 'Início efetivo na obra (informativo)',
   data_inicial: 'Data inicial',
   data_final: 'Data final',
   data_vigencia: 'Vigência',

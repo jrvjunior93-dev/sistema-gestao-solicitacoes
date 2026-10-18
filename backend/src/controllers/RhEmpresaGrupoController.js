@@ -6,6 +6,15 @@ const {
 const { responderErroController } = require('../utils/controllerError');
 
 module.exports = {
+  async catalogoConsulta(req, res) {
+    try {
+      const data = await require('../services/rhCatalogoConsultaService').empresasConsulta(req.user);
+      res.setHeader('Cache-Control', 'no-store');
+      return res.json(data);
+    } catch (error) {
+      return responderErroController(res, error, 'Erro ao carregar empresas do filtro RH/DP');
+    }
+  },
   async index(req, res) {
     try {
       const data = await listarEmpresasGrupoRh(req.query || {});

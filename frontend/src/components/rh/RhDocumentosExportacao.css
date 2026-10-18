@@ -1,0 +1,13 @@
+.rh-documentos-exportacao .app-page-actions {
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.rh-documentos-exportacao .form-field {
+  flex: 1 1 18rem;
+  min-width: 0;
+  max-width: 26rem;
+}
+.rh-documentos-exportacao .form-control {
+  min-width: 0;
+  width: 100%;
+}

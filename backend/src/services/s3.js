@@ -309,4 +309,27 @@ async function getPresignedUrl(urlOrKey, expiresIn = 300, options = {}) {
   return getSignedUrl(getS3Client(), command, { expiresIn });
 }
 
-module.exports = { uploadToS3, copyStorageObject, getPresignedUrl, shouldForceAttachmentForTarget, isStorageOfflineMode };
+// Leitura direta e controlada para exportacao; nao faz fetch de URL arbitraria.
+async function abrirStreamStorage(urlOrKey, { signal, maxBytes = 128 * 1024 * 1024 } = {}) {
+  if (signal?.aborted) throw Error('Exportacao cancelada.');
+  if (String(urlOrKey).startsWith('/uploads/')) {
+    const raiz = await fs.promises.realpath(path.resolve(__dirname, '..', '..', 'uploads'));
+    const key = normalizeStorageKey(String(urlOrKey).slice('/uploads/'.length), { strict: true });
+    const candidato = path.resolve(raiz, ...key.split('/'));
+    if (!candidato.startsWith(`${raiz}${path.sep}`)) throw createPresignTargetError('Arquivo local fora do storage permitido.');
+    const arquivo = await fs.promises.realpath(candidato);
+    if (!arquivo.startsWith(`${raiz}${path.sep}`)) throw createPresignTargetError('Arquivo local fora do storage permitido.');
+    const stat = await fs.promises.stat(arquivo);
+    if (!stat.isFile() || stat.size > maxBytes) throw Error('Arquivo excede o limite de exportacao (128 MiB).');
+    return { stream: fs.createReadStream(arquivo, { signal }), tamanho: stat.size };
+  }
+  const target = getStorageTarget(urlOrKey, { strict: true });
+  if (!target?.key || !target.bucket) throw createPresignTargetError('Arquivo fora do storage configurado.');
+  const objeto = await getS3Client().send(new GetObjectCommand({ Bucket: target.bucket, Key: target.key }), { abortSignal: signal });
+  if (!objeto.Body || Number(objeto.ContentLength) > maxBytes) {
+    objeto.Body?.destroy(); throw Error('Arquivo excede o limite de exportacao (128 MiB).');
+  }
+  return { stream: objeto.Body, tamanho: Number(objeto.ContentLength) || null };
+}
+
+module.exports = { uploadToS3, copyStorageObject, getPresignedUrl, shouldForceAttachmentForTarget, isStorageOfflineMode, abrirStreamStorage };

@@ -72,6 +72,10 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       type: DataTypes.DATEONLY,
       allowNull: true
     },
+    data_inicio_efetivo_obra: {
+      type: DataTypes.DATEONLY,
+      allowNull: true
+    },
     data_admissao: {
       type: DataTypes.DATEONLY,
       allowNull: true

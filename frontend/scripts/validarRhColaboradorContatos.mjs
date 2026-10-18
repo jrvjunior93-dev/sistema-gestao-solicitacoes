@@ -19,6 +19,8 @@ const cadastro = { id: 91, nome: 'Contato QA', cpf: '52998224725', empresa_grupo
 const overrides = {
   getRhColaboradores: 'async()=>[window.cadastro]', getRhColaborador: 'async()=>{if(window.negado)throw new Error("Cadastro QA negado");return window.cadastro}',
   getRhEmpresasGrupo: `async()=>[{id:1,nome:'Empresa QA'}]`,
+  getRhEmpresasConsulta: `async()=>[{id:1,nome:'Empresa QA'}]`,
+  getRhEmpresasAdmissao: `async()=>[{id:1,nome:'Empresa QA'}]`,
   criarRhColaborador: 'async p=>{window.salvos.push(structuredClone(p));Object.assign(window.cadastro,p);return window.cadastro}',
   atualizarRhColaborador: 'async(id,p)=>{window.salvos.push(structuredClone(p));Object.assign(window.cadastro,p);return window.cadastro}',
   abrirRhSolicitacao: `async p=>{window.admissoes.push(structuredClone(p));return {id:55,tipo:'ADMISSAO',situacao:'RASCUNHO',dados_json:p.dados}}`,
@@ -75,6 +77,8 @@ try {
   await page.goto(base);
   await page.getByRole('button', { name: 'Editar colaborador Contato QA', exact: true }).click();
   const modal = page.getByRole('dialog', { name: 'Detalhe do colaborador', exact: true });
+  await modal.getByLabel(/^Início efetivo na obra/).fill('01/08/2026');
+  assert.equal(await modal.getByLabel('Data de admissão', { exact: true }).inputValue(), '01/09/2026');
   const primeiro = modal.getByRole('group', { name: 'Endereço', exact: true });
   const segundo = modal.getByRole('group', { name: 'Segundo endereço', exact: true });
   assert.equal(await segundo.getByLabel('Logradouro', { exact: true }).inputValue(), 'Rua B');
@@ -114,6 +118,9 @@ try {
   await adm.getByLabel(/^Empresa do grupo/).selectOption('1');
   await adm.getByLabel(/^Obra \/ Centro de Custo/).selectOption('7');
   await adm.getByLabel('Data de admissao', { exact: true }).fill('11/10/2026');
+  await adm.getByLabel('Início efetivo na obra (informativo)', { exact: true }).fill('01/10/2026');
+  await adm.getByLabel(/^Forma de calculo gerencial/).selectOption('DIARIA');
+  await adm.getByLabel('Valor da diaria', { exact: true }).fill('150,50');
   await adm.getByLabel('Telefone', { exact: true }).fill('(27) 99999-1234');
   await adm.getByLabel('E-mail', { exact: true }).fill('qa@example.invalid');
   await adm.getByLabel('Nome da mae', { exact: true }).fill('Mãe QA');
@@ -149,6 +156,9 @@ try {
   await adm.getByRole('button', { name: 'Criar rascunho', exact: true }).click();
   await page.waitForFunction(() => window.admissoes.length === 1);
   const dados = (await page.evaluate(() => window.admissoes[0])).dados;
+  assert.equal(dados.valor_diaria, 150.5, 'DP envia valor numerico, nao BRL');
+  assert.equal(dados.data_inicio_efetivo_obra, '2026-10-01');
+  assert.equal(dados.data_admissao, '2026-10-11');
   assert.equal(dados.endereco_secundario, dados.endereco); assert.equal(dados.numero_secundario, '31');
   assert.equal(dados.telefone_secundario.replace(/\D/g, ''), '27988884321'); assert.equal(dados.mesmo_endereco, undefined);
   await page.goto(base + '?admissao=1&obra=1&local_id=7&aba=colaboradores');
@@ -162,6 +172,8 @@ try {
   await adm.getByLabel(/^Empresa do grupo/).selectOption('1');
   await adm.getByLabel(/^Obra \/ Centro de Custo/).selectOption('7');
   await adm.getByLabel('Data de admissao', { exact: true }).fill('11/10/2026');
+  await adm.getByLabel(/^Forma de calculo gerencial/).selectOption('DIARIA');
+  await adm.getByLabel('Valor da diaria', { exact: true }).fill('180,00');
   await adm.getByLabel('Telefone', { exact: true }).fill('27999991234');
   await adm.getByLabel('E-mail', { exact: true }).fill('obra@example.invalid');
   await adm.getByLabel('Nome da mae', { exact: true }).fill('Mãe QA');
@@ -185,6 +197,7 @@ try {
   await adm.getByRole('button', { name: 'Criar rascunho', exact: true }).click();
   await page.waitForFunction(() => window.admissoes.length === 1);
   assert.equal((await page.evaluate(() => window.admissoes[0])).dados.numero_secundario, '41');
+  assert.equal((await page.evaluate(() => window.admissoes[0])).dados.valor_diaria, 180, 'Obra envia diaria numerica');
   await page.goto(base + '?readonly=1');
   await page.getByRole('button', { name: 'Ver colaborador Contato QA', exact: true }).click();
   assert.equal(await modal.getByLabel('Segundo telefone', { exact: true }).isDisabled(), true);

@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:rhdp-admissao-documentos": "node scripts/validarRhColaboradorContatos.mjs && node scripts/validarRhDocumentosPacote.mjs",
     "test:autorizacoes-obras": "node scripts/validarAutorizacoesPorObra.mjs",
     "test:medicao-valor-pagamento": "node scripts/validarMedicaoValorPagamento.mjs",
     "test:boletos-pedido": "node scripts/validarArquivosSolicitacaoFila.mjs && node scripts/validarBoletosPedidoHistorico.mjs && node scripts/validarFilaInstrumentosUI.mjs --boletos-pedido",

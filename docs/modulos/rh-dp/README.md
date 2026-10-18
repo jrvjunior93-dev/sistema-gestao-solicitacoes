@@ -1,5 +1,51 @@
 # Modulo RH/DP
 
+## Admissao, filtros e pasta documental - 2026-10-18
+
+- Admissao envia salario/diaria numericos; backend tambem interpreta BRL de
+  clientes/pedidos antigos antes de abrir, reenviar ou aprovar. Diaria continua
+  obrigatoria e positiva no regime DIARIA; checklist, auditoria e transacao
+  permanecem. Nao regrava pedidos antigos em lote.
+- Inicio efetivo na obra e informativo, independente de admissao/demissao.
+  Migration `202610180001_rh_inicio_efetivo_obra.js` adiciona DATEONLY anulavel,
+  sem backfill. Nao muda data_inicio, vinculos, vigencias ou calculos de folha.
+- Catalogos minimos de empresas para filtros de Colaboradores/Documentos
+  usam permissao de leitura da propria tela, nao gerenciamento de empresas.
+  Escopo de Obra continua restrito; falha de um seletor nao apaga os demais.
+- Transferencias: backend ja admite DP/SUPERADMIN sem responsabilidade na obra,
+  preservando escopo estrito e recusa de aprovacao propria. Retirado bloqueio
+  visual legado para centros de custo, ja suportados pelo servico. Motivo de
+  impedimento agora aparece no detalhe. Nenhum cadastro de usuario alterado.
+- Dossie individual inclui comprovantes do pagamento por solicitacao e ticket,
+  alem do fechamento anterior; acesso a arquivo exige vinculo persistido entre
+  titulo e colaborador. Documento oficial continua separado dos anexos pendentes.
+- Em Documentos, selecionar uma empresa e usar Baixar ZIP; no cadastro do
+  colaborador, a mesma acao exporta somente sua pasta. Modos: somente
+  comprovantes ou documentacao completa (oficiais, versoes anteriores, anexos
+  de solicitacoes e comprovantes disponiveis). Manifesto preserva IDs/status e
+  datas; nao certifica que toda documentacao externa esteja presente.
+- Exportacao por empresa considera local atual e inclui desligados. Outros
+  filtros da tabela nao mudam o ZIP; escopo explicitado na interface. Lotes
+  de 10 colaboradores por cursor; Baixar proximo lote ate o ultimo. Nao ha
+  limite global de 100 lotes nem carregamento de todos os PDFs em memoria.
+- Storage serial, ZIP sem compressao, limite 1000 arquivos/256 MiB por lote,
+  128 MiB por arquivo e 240 s. Maximo 2 exportacoes por processo e 1 por usuario.
+  Se exceder, exportar por colaborador. Falha/cancelamento nao avanca cursor;
+  cursor retornado pelo ZIP efetivo prevalece sobre a preparacao. Auditoria de
+  sucesso apenas no finish, nao em download interrompido. Nao cria copia S3.
+- Comprovantes compartilhados podem aparecer em mais de uma pasta, mantendo
+  o arquivo original; o manifesto avisa essa condicao. Leitura documental
+  continua exigida no backend; nao amplia acesso financeiro nem libera Obra.
+- Testes: `npm run test:rhdp-admissao-documentos` nos dois runtimes. Backend
+  usa modelos/storage simulados e gerador SQL MySQL sem conexao; browser usa
+  HTTP isolado. Ainda requer migration e homologacao MySQL/S3 no DEV.
+- Roteiro DEV: `ops/deploy/atualizar-dev-rh-documentos-20261018.sh SHA_COMPLETO`,
+  com `CONFIRM_DEV_BACKUP=SIM` somente apos conferir o backup DEV. Aplica
+  exclusivamente 202610180001; pendencia diferente bloqueia. Confere JSON
+  MySQL com dados sinteticos em SELECT, coluna DATE anulavel, schema e sessao
+  12h. Preserva PILOT/flags/configuracoes; reinicia somente backend-dev.
+  Teste isolado do roteiro: `npm run test:deploy-rh-documentos-dev` no backend.
+
 ## Movimentacoes documentais e comunicacao de acidente - 2026-10-16
 
 - Em Colaboradores > Movimentacoes, novos subtipos: Contra-cheque

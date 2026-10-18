@@ -1,4 +1,5 @@
 import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
+import RhDocumentosExportacao from '../components/rh/RhDocumentosExportacao';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useWorkspaceState, useWorkspaceWork } from '../navigation/WorkspaceContext';
 import useQueryRevision from '../navigation/useQueryRevision';
@@ -22,7 +23,7 @@ import {
   getRhDocumentoLink,
   getRhDocumentos,
   getRhDocumentoTipos,
-  getRhEmpresasGrupo,
+  getRhEmpresasConsulta,
   substituirRhDocumento
 } from '../services/rhDp';
 import { canManageRhDpDocumentos } from '../utils/acessoProduto';
@@ -164,16 +165,18 @@ export default function RhDpDocumentos({ obraId, comoAba = false } = {}) {
   async function carregarBase() {
     const token = baseQuery.begin();
     try {
-      const [listaEmpresas, listaObras, listaTipos] = await Promise.all([
-        getRhEmpresasGrupo({ ativo: true }),
+      const resultados = await Promise.allSettled([
+        getRhEmpresasConsulta('documentos'),
         getObras({ escopo: 'TODOS' }),
         getRhDocumentoTipos({ ativo: true })
       ]);
 
       if (!baseQuery.isCurrent(token)) return;
-      setEmpresas(Array.isArray(listaEmpresas) ? listaEmpresas : []);
-      setObras(Array.isArray(listaObras) ? listaObras : []);
-      setTipos(Array.isArray(listaTipos) ? listaTipos : []);
+      [setEmpresas, setObras, setTipos].forEach((setLista, i) => {
+        setLista(resultados[i].status === 'fulfilled' && Array.isArray(resultados[i].value) ? resultados[i].value : []);
+      });
+      const falhas = resultados.filter(r => r.status === 'rejected');
+      if (falhas.length) avisar.erro(falhas.map(r => r.reason?.message || 'Falha ao carregar opções documentais').join(' · '));
     } catch (error) {
       if (!baseQuery.isCurrent(token)) return;
       setEmpresas([]); setObras([]); setTipos([]);
@@ -370,6 +373,7 @@ export default function RhDpDocumentos({ obraId, comoAba = false } = {}) {
           visibilidade={visibilidadeFiltros}
         />
 
+        <RhDocumentosExportacao empresaId={valorUnico('empresa_grupo_id')} obraId={obraId || valorUnico('obra_id')} />
         <TabelaPadrao
           chaveWorkspace="rh-documentos:tabela"
           consultaWorkspace={`${obraId || ''}|${busca}|${JSON.stringify(Object.entries(ativos).map(([key,value])=>[key,Array.from(value)]))}`}

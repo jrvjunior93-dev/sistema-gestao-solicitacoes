@@ -119,6 +119,15 @@ function parseDateOnly(value, fieldName, { required = false } = {}) {
   return normalized;
 }
 
+function parseInicioEfetivo(value) {
+  if (value === null) return null;
+  const dia = parseDateOnly(value, 'Inicio efetivo na obra');
+  if (dia && new Date(`${dia}T00:00:00Z`).toISOString().slice(0, 10) !== dia) {
+    throw new ValidationError('Inicio efetivo na obra invalido.');
+  }
+  return dia;
+}
+
 function parseCompetencia(value, fieldName, { required = false } = {}) {
   if (isBlank(value)) {
     if (required) {
@@ -399,6 +408,7 @@ function validateRhColaboradorCreateBody(body = {}) {
       'tipo_vinculo',
       'data_inicio',
       'data_admissao',
+      'data_inicio_efetivo_obra',
       'data_demissao',
       'data_nascimento',
       'status',
@@ -429,6 +439,7 @@ function validateRhColaboradorCreateBody(body = {}) {
     tipo_vinculo: parseEnum(body.tipo_vinculo, 'Tipo de vinculo', RH_TIPOS_VINCULO, { required: true }),
     data_inicio: parseDateOnly(body.data_inicio, 'Data de inicio'),
     data_admissao: parseDateOnly(body.data_admissao, 'Data de admissao'),
+    data_inicio_efetivo_obra: parseInicioEfetivo(body.data_inicio_efetivo_obra),
     data_demissao: parseDateOnly(body.data_demissao, 'Data de demissao'),
     data_nascimento: parseDateOnly(body.data_nascimento, 'Data de nascimento'),
     status: parseEnum(body.status, 'Status', RH_STATUS_COLABORADOR) || 'ATIVO',
@@ -466,6 +477,7 @@ function validateRhColaboradorUpdateBody(body = {}) {
       'tipo_vinculo',
       'data_inicio',
       'data_admissao',
+      'data_inicio_efetivo_obra',
       'data_demissao',
       'data_nascimento',
       'status',
@@ -501,6 +513,7 @@ function validateRhColaboradorUpdateBody(body = {}) {
     tipo_vinculo: parseEnum(body.tipo_vinculo, 'Tipo de vinculo', RH_TIPOS_VINCULO),
     data_inicio: parseDateOnly(body.data_inicio, 'Data de inicio'),
     data_admissao: parseDateOnly(body.data_admissao, 'Data de admissao'),
+    data_inicio_efetivo_obra: parseInicioEfetivo(body.data_inicio_efetivo_obra),
     data_demissao: parseDateOnly(body.data_demissao, 'Data de demissao'),
     data_nascimento: parseDateOnly(body.data_nascimento, 'Data de nascimento'),
     status: parseEnum(body.status, 'Status', RH_STATUS_COLABORADOR),

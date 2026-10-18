@@ -69,6 +69,7 @@ const overrides = {
   conferirRhApuracao: `async()=>{window.chamadas.push(['conferir']);window.apuracao.status='CONFERIDA';return structuredClone(window.apuracao);}`,
   fecharRhApuracao: `async(id,p)=>{window.chamadas.push(['fechar',id,p]);await new Promise(ok=>setTimeout(ok,150));if(window.apuracao.fechamentoRh)throw new Error('Ja fechada');const f={id:77,...p,total_titulos:2,total_valor:2000,titulos:[{id:1,titulo_financeiro_id:701,tipo_titulo:'SALARIO',valor_gerado:1000,tituloFinanceiro:{codigo:'TIT-QA-701'}}]};window.apuracao.fechamentoRh=f;return f;}`,
   getRhEmpresasGrupo: `async()=>[{id:3,nome:'Empresa QA'}]`,
+  getRhEmpresasConsulta: `async()=>[{id:3,nome:'Empresa QA'}]`,
   getRhEmpresasAdmissao: `async()=>{window.chamadas.push(['catalogo-admissao']);return [{id:3,nome:'Empresa QA',cnpj:'111'},{id:4,nome:'Outra empresa QA',cnpj:'222'}];}`,
   rhTransferencias: `async(p,o)=>{window.chamadas.push(['transferencias',p,o]);return p==='/configuracao'?{obras:window.locais,obras_responsavel_ids:[7]}:{itens:[],total:0,total_paginas:1,pagina:1};}`
 };
@@ -318,7 +319,9 @@ try {
   await dpLocais.getByRole('tab', { name: 'Documentos', exact: true }).click();
   await dpLocais.getByText('Documento Caio QA', { exact: true }).waitFor();
   await dpLocais.getByRole('tab', { name: 'Transferências entre obras', exact: true }).click();
-  await dpLocais.getByText('Transferências disponíveis somente entre obras.', { exact: true }).waitFor();
+  await dpLocais.getByRole('tab', { name: 'Transferências deste local', exact: true }).waitFor();
+  await dpLocais.waitForFunction(()=>window.chamadas.some(c=>c[0]==='transferencias'&&Number(c[2]?.params?.obra_id)===51));
+  assert.equal(await dpLocais.getByText('Transferências disponíveis somente entre obras.', { exact: true }).count(), 0);
   const documentosGlobais = await abrir('?dp=1&global=docs');
   await documentosGlobais.getByText('Documento Caio QA', { exact: true }).waitFor();
   await documentosGlobais.getByText('Documento Ana QA', { exact: true }).waitFor();

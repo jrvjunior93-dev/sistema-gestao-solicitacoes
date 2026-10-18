@@ -66,6 +66,29 @@ export async function getRhEmpresasAdmissao() {
   return parseJson(response, 'Erro ao carregar empresas para o pedido de admissão');
 }
 
+export async function getRhEmpresasConsulta(contexto = 'colaboradores') {
+  const rota = contexto === 'documentos' ? 'documentos' : 'colaboradores';
+  const response = await fetch(`${API_URL}/rh/${rota}/empresas-consulta`, { headers: authHeaders() });
+  return parseJson(response, 'Erro ao carregar empresas do filtro RH/DP');
+}
+
+export async function prepararExportacaoRhDocumentos(params, signal) {
+  const response = await fetch(`${API_URL}/rh/documentos/exportacao?${buildQuery(params)}`, { headers: authHeaders(), signal });
+  return parseJson(response, 'Erro ao preparar documentos para download');
+}
+
+export async function baixarZipRhDocumentos(params, signal) {
+  const response = await fetch(`${API_URL}/rh/documentos/exportacao/zip?${buildQuery(params)}`, { headers: authHeaders(), signal });
+  if (!response.ok) throw new Error(mensagemDeErro(await response.text(), 'Erro ao baixar documentos', response.status));
+  const proximo = response.headers.get('X-RH-Proximo-Cursor');
+  const quantidade = Number(response.headers.get('X-RH-Quantidade-Colaboradores'));
+  if ((proximo !== 'FIM' && !/^[1-9]\d*$/.test(proximo || '')) || quantidade < 1 || quantidade > 10) {
+    throw new Error('Metadados do download indisponíveis. Confira a atualização do backend e tente novamente.');
+  }
+  const filename = response.headers.get('Content-Disposition')?.match(/filename="?([^";]+)"?/i)?.[1] || 'rh-documentos.zip';
+  return { blob: await response.blob(), filename, quantidade, proximo_cursor: proximo === 'FIM' ? null : Number(proximo) };
+}
+
 export async function criarRhEmpresaGrupo(data) {
   const response = await fetch(`${API_URL}/rh/empresas-grupo`, {
     method: 'POST',
