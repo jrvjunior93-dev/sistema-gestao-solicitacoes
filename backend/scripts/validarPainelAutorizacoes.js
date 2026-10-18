@@ -9,11 +9,14 @@ for (const [alterar, esperado] of [
   [i => i.titulo = null, 'INDISPONIVEL'], [i => i.titulo.status = 'QUITADO', 'QUITADO'],
   [i => i.titulo.status = 'PARCIAL', 'PARCIALMENTE_PAGO'], [i => i.titulo.valor_baixado = 1, 'PARCIALMENTE_PAGO'],
   [i => i.filaItem.status = 'NAO_PAGO', 'NAO_PAGO'], [i => {}, 'NA_FILA'],
-  [i => { i.status = 'PENDENTE'; i.filaItem.status = 'NAO_PAGO'; }, 'AGUARDANDO'],
-  [i => { i.status = 'PENDENTE'; i.lote.expira_em = '2000-01-01'; }, 'AGUARDANDO'],
+  [i => { i.status = 'PENDENTE'; i.filaItem.status = 'NAO_PAGO'; }, 'NAO_PAGO'],
+  [i => { i.status = 'PENDENTE'; i.filaItem = null; i.lote.expira_em = '2000-01-01'; }, 'AGUARDANDO'],
   [i => { i.filaItem.status = 'RESOLVIDO'; }, 'PENDENTE_FINANCEIRO'],
   [i => { i.filaItem = null; i.status = 'AUTORIZADO'; }, 'AUTORIZADO'],
-  [i => { i.status = 'INVALIDADO'; }, 'INVALIDADO'], [i => i.status = 'REJEITADO', 'REJEITADO'],
+  [i => { i.status = 'INVALIDADO'; i.filaItem = null; }, 'INVALIDADO'],
+  [i => { i.status = 'REJEITADO'; i.filaItem = null; }, 'REJEITADO'],
+  [i => { i.status = 'INVALIDADO'; }, 'NA_FILA'],
+  [i => { i.titulo.bloqueio_pagamento_proprietario = { item_id:0 }; }, 'REJEITADO'],
   ...['CANCELADO', 'ESTORNADO', 'PREVISAO', 'RENEGOCIADO'].map(s => [i => i.titulo.status = s, s]),
   [i => { i.titulo.renegociado_por_id = 3; }, 'RENEGOCIADO'],
   [i => { i.titulo.status = 'QUITADO'; i.filaItem.status = 'NAO_PAGO'; }, 'QUITADO']
@@ -40,7 +43,11 @@ assert.equal(filtros({ sentido: 'PROXIMA', cursor_item_id: '1', cursor_venciment
 const sql = consulta({ situacao: 'QUITADO', obra: "Obra_%' OR 1=1 --", vencimento_inicio: '2026-10-01', pagina: '20' });
 assert(!sql.cte.includes("OR 1=1 --")); assert.equal(sql.replacements.obra, "%Obra!_!%' OR 1=1 --%"); assert.equal(sql.replacements.offset, 570);
 assert(sql.cte.indexOf('situacao_financeira = :situacao') < sql.cte.indexOf('pesos AS'));
-assert(sql.cte.includes('n.id > a.id')); assert(sql.cte.includes('MAX(f2.id)')); assert(sql.cte.includes('t.deleted_at IS NULL'));
+assert(sql.cte.includes('MAX(id) autorizacao_id')); assert(sql.cte.includes('MAX(id) fila_id')); assert(sql.cte.includes('t.deleted_at IS NULL'));
+assert(sql.cte.includes('WHERE 1=0'), 'Sem filtro por pagamento nao varrer movimentos');
+assert.equal(filtros({ data_tipo:'PAGAMENTO',data_inicio:'2026-10-18' }).dataTipo,'PAGAMENTO');
+assert.equal(filtros({ item_ids:'-11,5',sentido:'' }).ids[0],-11);
+for(const q of [{ data_tipo:'MOVIMENTO' }, { data_inicio:'2026-02-30' }, { item_ids:'-9007199254740992' }]) assert.throws(()=>filtros(q));
 assert(!/\b(UPDATE|INSERT|DELETE|ALTER|CREATE|DROP)\s/i.test(consulta({}).cte));
 
 // Servico ativo em VM, ACL nominal e paginacao real dos lotes sem teto 100.

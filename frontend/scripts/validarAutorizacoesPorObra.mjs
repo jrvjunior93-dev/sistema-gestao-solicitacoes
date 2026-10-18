@@ -50,6 +50,16 @@ await page.route('**/*', async route => {
   const url = new URL(route.request().url()), p = url.searchParams;
   const json = (v, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(v) });
   if (url.pathname.includes('/autorizacoes-pagamento/')) {
+    if(url.pathname.includes('/painel/fila-direta/')) {
+      const body=route.request().postDataJSON();
+      assert(body.decisoes.every(d=>d.fila_id>0 && d.titulo_id>0 && !('item_id' in d) && d.motivo.trim() && d.versao));
+      if(url.pathname.endsWith('/opcoes'))return json({challenge:'qa-direta'});
+      assert.equal(body.credential.id,'qa-credential');decisoes.push({id:'FILA_DIRETA',body});
+      const itens=[];
+      for(const d of body.decisoes){const i=items.find(i=>i.fila_id===d.fila_id);assert.equal(i.titulo_financeiro_id,d.titulo_id);
+        i.status=i.situacao_financeira='REJEITADO';i.bloqueado_proprietario=true;i.fila_atual.status='RESOLVIDO';i.motivo_decisao=d.motivo;itens.push(i);}
+      return json({itens});
+    }
     const idLote = url.pathname.match(/\/(\d+)\/(autenticacao\/opcoes|decidir)$/);
     if (idLote) {
       const id = Number(idLote[1]), body = route.request().postDataJSON();
@@ -71,25 +81,32 @@ await page.route('**/*', async route => {
         if (slow) await new Promise(ok => setTimeout(ok, 180));
         if (fail) return await json({ message: 'Consulta indisponível em QA' }, 500);
         const ids = p.get('item_ids')?.split(',').map(Number);
-        const recorte = items.filter(i => (!ids || ids.includes(i.id)) && (!p.get('situacao') || p.get('situacao') === i.situacao_financeira)
-          && (!p.get('vencimento_inicio') || i.vencimento_atual >= p.get('vencimento_inicio')) && (!p.get('vencimento_fim') || i.vencimento_atual <= p.get('vencimento_fim')))
+        const dataTipo=p.get('data_tipo')||'VENCIMENTO',di=p.get('vencimento_inicio'),df=p.get('vencimento_fim');
+        const preparados=items.map(i=>{
+          const baixas=(i.baixas_qa||[]).filter(b=>b.status==='ATIVO'&&(!di||b.data>=di)&&(!df||b.data<=df));
+          return {...i,pago_no_periodo:baixas.reduce((s,b)=>s+b.valor,0),ultima_baixa_periodo:baixas.at(-1)?.data||null,
+            data_referencia:dataTipo==='PAGAMENTO'?baixas.at(-1)?.data||null:dataTipo==='EMISSAO'?i.data_emissao||null:i.vencimento_atual};
+        });
+        const recorte = preparados.filter(i => (!ids || ids.includes(i.id)) && (!p.get('situacao') || p.get('situacao') === i.situacao_financeira
+            || p.get('situacao')==='NA_FILA' && ['PENDENTE','EM_EDICAO'].includes(i.fila_atual?.status) && !i.bloqueado_proprietario)
+          && (!di || i.data_referencia >= di) && (!df || i.data_referencia && i.data_referencia <= df))
           .map(i => ({ ...i, obras: i.obras.filter(id => (!p.get('obra') || nomes(id).toLowerCase().includes(p.get('obra').toLowerCase())) && (!p.get('obra_id') || Number(p.get('obra_id')) === id)) })).filter(i => i.obras.length);
         const pagina = Number(p.get('pagina') || 1), limite = Number(p.get('limite') || 30), inicio = (pagina - 1) * limite;
         if (url.pathname.endsWith('/painel/obras')) {
           const obras = new Map();
           for (const i of recorte) for (const id of i.obras) {
             const o = obras.get(id) || { obra_id: id, obra_nome: nomes(id), quantidade_titulos: 0, valor_total: 0 };
-            o.quantidade_titulos++; o.valor_total += i.valor_snapshot / (i.id === 1 ? 2 : 1); obras.set(id, o);
+            o.quantidade_titulos++; o.valor_total += (dataTipo==='PAGAMENTO'?i.pago_no_periodo:i.valor_snapshot) / (i.id === 1 ? 2 : 1); obras.set(id, o);
           }
           const data = [...obras.values()].sort((a,b) => a.obra_id - b.obra_id);
           return await json({ data: data.slice(inicio, inicio + limite), resumo: { quantidade_titulos: recorte.length, valor_total: data.reduce((s,o)=>s+o.valor_total,0) },
             paginacao: { pagina, total: data.length, mais: inicio + limite < data.length } });
         }
         let navegaveis = recorte;
-        if (modoDetalhe || p.has('sentido')) navegaveis = [...recorte].sort((a,b) => a.vencimento_atual.localeCompare(b.vencimento_atual) || b.id-a.id);
+        if (modoDetalhe || p.has('sentido')) navegaveis = [...recorte].sort((a,b) => (a.data_referencia||'').localeCompare(b.data_referencia||'') || b.id-a.id);
         if (p.has('sentido')) {
           const referencia = { id: Number(p.get('cursor_item_id')), vencimento_atual: p.get('cursor_vencimento') }, proxima = p.get('sentido') === 'PROXIMA';
-          navegaveis = navegaveis.filter(i => { const ordem = i.vencimento_atual.localeCompare(referencia.vencimento_atual) || referencia.id-i.id; return proxima ? ordem > 0 : ordem < 0; });
+          navegaveis = navegaveis.filter(i => { const ordem = (i.data_referencia||'').localeCompare(referencia.vencimento_atual==='SEM_DATA'?'':referencia.vencimento_atual) || referencia.id-i.id; return proxima ? ordem > 0 : ordem < 0; });
           if (!proxima) navegaveis.reverse();
         }
         return await json({ data: navegaveis.slice(inicio, inicio + limite).map(i => ({ ...i, obras_nomes: i.obras.map(nomes).join(' / '), valor_no_recorte: i.valor_snapshot * i.obras.length / (i.id === 1 ? 2 : 1) })),
@@ -386,6 +403,67 @@ try {
   assert.equal(items[124].status,'ENFILEIRADO');assert.equal(items[125].status,'PENDENTE');
   assert(await page.getByLabel('Selecionar TIT-126',{exact:true}).isChecked());
   assert(!/Nenhuma decisão foi enviada|w3\.org|timed out/.test(await page.getByRole('status').innerText()),'Nao negar confirmacoes anteriores');
+  // Novo universo: digitais + diretos, inclusive saldo parcial. Nenhum lote
+  // ficticio e nenhum ID de fila enviado como item_id digital.
+  await limpar();await page.getByRole('button',{name:'Voltar às obras',exact:true}).click();await pronto();
+  const digital=structuredClone(originais[6]);digital.fila_atual={id:7,status:'PENDENTE'};
+  const diretos=[1,2,3].map(n=>({ ...structuredClone(originais[6]),id:-n,lote_id:null,lote:null,origem_painel:'FILA_DIRETA',fila_id:n,
+    titulo_financeiro_id:1000+n,status:'FILA_DIRETA',situacao_financeira:n===1?'PARCIALMENTE_PAGO':'NA_FILA',
+    versao_painel:'a'.repeat(64),snapshot_hash:null,documentos:[],fila_atual:{id:n,status:'PENDENTE'},
+    enviado_por:{id:20,nome:'Financeiro QA'},enviado_em:'2026-10-18T12:00:00Z',data_emissao:'2026-01-01',
+    titulo:{id:1000+n,status:n===1?'PARCIAL':'ABERTO',valor_baixado:n===1?30:0,valor_saldo:n===1?70:100},
+    snapshot_json:{codigo:'TIT-D'+n,solicitacao:{codigo:'SOL-D'+n},credor:{nome:'Fornecedor direto'}},
+    baixas_qa:n===1?[{data:'2026-10-18',valor:30,status:'ATIVO'},{data:'2026-10-18',valor:500,status:'ESTORNADO'}]:[] }));
+  items.splice(0,items.length,digital,...diretos);
+  await page.getByRole('button',{name:'Limpar filtros',exact:true}).click();await pronto();await aplicarStatus('NA_FILA');
+  assert((await page.locator('.pa-obras-resumo').innerText()).includes('4 títulos únicos'));
+  assert((await page.locator('.pa-obras-resumo').innerText()).includes('Todo o período'));
+  await page.getByLabel('Filtrar pela data de').selectOption('EMISSAO');
+  const di=page.getByLabel('Data inicial',{exact:true}),df=page.getByLabel('Data final',{exact:true});
+  await df.pressSequentially('01012026');await di.pressSequentially('01012026');
+  await page.waitForResponse(r=>r.url().includes('/painel/obras')&&r.url().includes('data_tipo=EMISSAO')&&r.url().includes('vencimento_inicio=2026-01-01'));await pronto();
+  assert((await page.locator('.pa-obras-resumo').innerText()).includes('3 títulos únicos'));
+  // Limpar as duas datas autoaplica todo periodo, sem clique escondido.
+  await di.fill('');await df.fill('');
+  await page.waitForResponse(r=>r.url().includes('/painel/obras')&&r.url().includes('data_tipo=EMISSAO')&&!r.url().includes('vencimento_inicio'));await pronto();
+  assert((await page.locator('.pa-obras-resumo').innerText()).includes('4 títulos únicos'));
+  await page.getByLabel('Filtrar pela data de').selectOption('PAGAMENTO');
+  await df.pressSequentially('18102026');await di.pressSequentially('18102026');
+  await page.waitForResponse(r=>r.url().includes('/painel/obras')&&r.url().includes('data_tipo=PAGAMENTO')&&r.url().includes('vencimento_inicio=2026-10-18'));await pronto();
+  assert((await page.locator('.pa-obras-resumo').innerText()).includes('Valor efetivamente pago no período'));
+  assert((await page.locator('.pa-obras-resumo').innerText()).includes('30,00'));
+  for(const width of [320,390,768,1366]){
+    await page.setViewportSize({width,height:900});
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Filtro de pagamento sem corte '+width);
+    await page.screenshot({path:path.join(output,'filtro-pagamento-'+width+'.png'),fullPage:true});
+  }
+  await page.setViewportSize({width:390,height:900});
+  await abrirObra(1);await page.getByRole('button',{name:'Abrir detalhes de TIT-D1',exact:true}).click();
+  await detalhe.getByRole('heading',{name:'SOL-D1',exact:true}).waitFor();await page.waitForFunction(()=>!document.querySelector('.pa-titulo-rodape button')?.disabled);
+  assert((await detalhe.innerText()).includes('Financeiro QA'));assert(!/Lote #null/.test(await detalhe.innerText()));
+  assert((await detalhe.getByText(/Valor efetivamente pago no período:/).innerText()).includes('30,00'),'Revalidacao do detalhe preserva periodo');
+  assert(await detalhe.getByRole('button',{name:'Autorizar',exact:true}).isDisabled());
+  const antesDireto=decisoes.length;
+  await detalhe.getByRole('button',{name:'Rejeitar',exact:true}).click();await detalhe.getByLabel('Motivo da rejeição').fill('Bloquear apenas o saldo');
+  await detalhe.getByRole('button',{name:'Conferir rejeição',exact:true}).click();
+  await page.evaluate(()=>{window.__cancelPasskeyAt=window.__passkeys+1;});
+  await detalhe.getByRole('button',{name:'Confirmar rejeição com passkey',exact:true}).click();
+  await detalhe.getByRole('status').getByText(/Confirmação por passkey não concluída/).waitFor();assert.equal(decisoes.length,antesDireto);
+  await detalhe.getByRole('button',{name:'Rejeitar',exact:true}).click();await detalhe.getByRole('button',{name:'Conferir rejeição',exact:true}).click();
+  await detalhe.getByRole('button',{name:'Confirmar rejeição com passkey',exact:true}).evaluate(el=>{el.click();el.click();});
+  await detalhe.getByText('Somente este título foi rejeitado, com motivo e histórico.').waitFor();
+  assert.equal(decisoes.length,antesDireto+1);assert.equal(decisoes.at(-1).id,'FILA_DIRETA');
+  assert.deepEqual([diretos[0].titulo.valor_baixado,diretos[0].titulo.valor_saldo],[30,70]);
+  await detalhe.getByRole('button',{name:'Voltar à lista',exact:true}).click();await pronto();
+  await page.getByRole('button',{name:'Voltar às obras',exact:true}).click();await pronto();
+  await page.getByRole('button',{name:'Limpar filtros',exact:true}).click();await pronto();await aplicarStatus('NA_FILA');await abrirObra(1);
+  await page.getByRole('checkbox',{name:'Selecionar os disponíveis desta página'}).check();
+  await page.getByRole('button',{name:'Rejeitar',exact:true}).click();await page.getByLabel('Motivo para rejeição').fill('Conferir envios selecionados');
+  await page.getByRole('button',{name:'Conferir rejeição',exact:true}).click();
+  const antesMisto=decisoes.length;await page.getByRole('button',{name:'Confirmar rejeição com passkey',exact:true}).click();
+  await page.getByRole('status').getByText(/3 título\(s\) confirmado/).waitFor();await pronto();
+  assert.equal(decisoes.length,antesMisto+2,'Diretos em grupo proprio e digital no lote real');
+  assert.equal(decisoes.at(-1).id,'FILA_DIRETA');assert.equal(decisoes.at(-1).body.decisoes.length,2);
   assert.equal(maxActive, 1, 'Leituras seriais, sem N+1/polling concorrente'); assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
-  console.log('UI por obra e titulo fullscreen: desktop/tablet/mobile/escuro, selecao global, lote parcial, cursor entre paginas, Anterior/Proxima sem decidir, aprovar/rejeitar somente o atual, passkey/motivo/revalidacao/duplo clique/INVALIDADO/ACL, anexos empilhados/Escape/foco/root inert e retorno preservado aprovados. APIs isoladas.');
+  console.log('UI por obra/titulo: desktop/tablet/mobile/escuro, selecao/paginas/cursor/historico, passkey/motivo/revalidacao/duplo clique/ACL, tres bases de data/limpeza automatica/total pago sem estorno, fila direta/autor/parcial/rejeicao e grupos mistos sem lote ficticio aprovados. APIs isoladas.');
 } finally { liberarDecisao?.(); await page.close(); await browser.close(); await server.close(); }

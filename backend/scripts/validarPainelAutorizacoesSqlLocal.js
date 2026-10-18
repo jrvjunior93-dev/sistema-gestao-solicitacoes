@@ -9,8 +9,9 @@ const { situacaoItem, projetarLotesAtuais } = require('../src/services/pagamento
 const sqlite = new DatabaseSync(':memory:'); sqlite.function('NOW', () => '2026-10-17 12:00:00');
 sqlite.exec(`CREATE TABLE pagamento_autorizacao_itens (id INTEGER PRIMARY KEY,lote_id INTEGER,titulo_financeiro_id INTEGER,status TEXT,valor_snapshot REAL,vencimento_snapshot TEXT);
 CREATE TABLE pagamento_autorizacao_lotes (id INTEGER PRIMARY KEY,status TEXT,expira_em TEXT);
-CREATE TABLE titulos_financeiros (id INTEGER PRIMARY KEY,status TEXT,renegociado_por_id INTEGER,renegociacao_id INTEGER,compartilhamento_id INTEGER,obra_id INTEGER,valor_baixado REAL,valor_saldo REAL,data_vencimento TEXT,deleted_at TEXT);
-CREATE TABLE pagamentos_manuais_fila (id INTEGER PRIMARY KEY,titulo_financeiro_id INTEGER,status TEXT,motivo TEXT);
+CREATE TABLE titulos_financeiros (id INTEGER PRIMARY KEY,tipo TEXT DEFAULT 'PAGAR',codigo TEXT,descricao TEXT,status TEXT,renegociado_por_id INTEGER,renegociacao_id INTEGER,compartilhamento_id INTEGER,obra_id INTEGER,valor_baixado REAL,valor_saldo REAL,data_vencimento TEXT,data_emissao TEXT,bloqueio_pagamento_proprietario TEXT,deleted_at TEXT);
+CREATE TABLE pagamentos_manuais_fila (id INTEGER PRIMARY KEY,titulo_financeiro_id INTEGER,status TEXT,motivo TEXT,valor_previsto REAL,selecionado_por INTEGER,selecionado_em TEXT);
+CREATE TABLE movimentos_financeiros (id INTEGER PRIMARY KEY,titulo_financeiro_id INTEGER,status TEXT,tipo_movimento TEXT,valor_quitacao REAL,data_movimento TEXT);
 CREATE TABLE titulos_compartilhados_origens (titulo_financeiro_id INTEGER,obra_id INTEGER,valor REAL);
 CREATE TABLE titulo_renegociacao_alocacoes (titulo_destino_id INTEGER,obra_id INTEGER,valor REAL);
 CREATE TABLE titulos_financeiros_rateios (titulo_financeiro_id INTEGER,obra_id INTEGER,valor_rateio REAL);
@@ -38,6 +39,9 @@ function executar(sql, { replacements = {} } = {}) {
 const db = { sequelize: { query: async (sql, options) => executar(sql, options) }, PagamentoAutorizacaoItem: {
   findAll: async options => itens.filter(i => options.where.id[Op.in].includes(i.id))
 } };
+db.TituloFinanceiro = { findAll: async o => sqlite.prepare(`SELECT * FROM titulos_financeiros WHERE id IN (${o.where.id[Op.in].map(() => '?')})`).all(...o.where.id[Op.in]) };
+db.PagamentoManualFilaItem = { findAll: async o => sqlite.prepare(`SELECT * FROM pagamentos_manuais_fila WHERE id IN (${o.where.id[Op.in].map(() => '?')})`).all(...o.where.id[Op.in]) };
+db.User = { findAll: async () => [{ id: 5, nome: 'Financeiro QA' }] };
 (async () => { try {
   const todas = await listarObras({}, db); assert.equal(todas.resumo.quantidade_titulos, 650); assert.equal(todas.resumo.valor_total, 65000); assert.equal(todas.paginacao.total, 150);
   const obras = []; for (let pagina = 1; pagina <= 5; pagina++) obras.push(...(await listarObras({ pagina: String(pagina) }, db)).data);
@@ -99,5 +103,46 @@ const db = { sequelize: { query: async (sql, options) => executar(sql, options) 
   assert.equal(loteAtual[0].itens[0].fila_atual.id, 2, 'Historico por lote tambem usa ultimo ciclo, nao a fila antiga');
   assert.equal(loteAtual[0].itens[0].fila_item_id, 1);
   assert.equal((await listarTitulos({ pagina: '99' }, db)).paginacao.total, 650);
-  console.log('CTE real em SQLite memoria (JSON_ARRAYAGG adaptado): 650 titulos/150 obras, paginas/filtros, cursor Anterior/Proxima com datas/null e pagina reduzida apos 50 quitacoes, pagamentos/estorno/ultima fila, dossie mais recente, rateios/renegociados/compartilhados e centavos sem duplicidade aprovados. Nao substitui MySQL/EXPLAIN DEV.');
+  // Reproduz 7 na fila: um digital e seis diretos sem lote/item de autorizacao.
+  for (let i=0;i<6;i++) {
+    inserir('titulos_financeiros', { id:10001+i, codigo:'TIT-D'+i, status:'ABERTO', tipo:'PAGAR', valor_baixado:0, valor_saldo:100,
+      obra_id:7, data_emissao:'2026-01-01', data_vencimento:'2026-10-17' });
+    inserir('pagamentos_manuais_fila', { id:10+i, titulo_financeiro_id:10001+i, status:'PENDENTE', valor_previsto:100, selecionado_por:5, selecionado_em:'2026-10-18' });
+  }
+  const sete = await listarTitulos({ situacao:'NA_FILA' },db);
+  assert.equal(sete.paginacao.total,7); assert.equal(sete.data.filter(i=>i.origem_painel==='FILA_DIRETA').length,6);
+  assert(sete.data.filter(i=>i.origem_painel==='FILA_DIRETA').every(i=>i.lote_id===null && i.id<0 && i.enviado_por.nome==='Financeiro QA' && i.versao_painel.length===64));
+  sqlite.prepare("UPDATE pagamentos_manuais_fila SET status='DIVERGENTE' WHERE id=15").run();
+  assert.equal((await listarTitulos({situacao:'NA_FILA'},db)).paginacao.total,6);
+  assert.equal((await listarTitulos({situacao:'DIVERGENTE'},db)).paginacao.total,1);
+  assert.equal((await listarTitulos({data_tipo:'EMISSAO',data_inicio:'2026-01-01',data_fim:'2026-01-01'},db)).paginacao.total,6);
+  assert.equal((await listarTitulos({data_tipo:'VENCIMENTO',data_inicio:'2026-01-01',data_fim:'2026-01-01'},db)).paginacao.total,0);
+  // Duas baixas em periodos diferentes e uma estornada; nao somar titulo inteiro.
+  sqlite.prepare("UPDATE titulos_financeiros SET status='QUITADO',valor_baixado=100,valor_saldo=0 WHERE id=10001").run();
+  for (const [id,data,valor,status] of [[1,'2026-10-18',30,'ATIVO'],[2,'2026-10-19',70,'ATIVO'],[3,'2026-10-18',500,'ESTORNADO']])
+    inserir('movimentos_financeiros',{id,titulo_financeiro_id:10001,tipo_movimento:'BAIXA',status,valor_quitacao:valor,data_movimento:data});
+  const pg = await listarObras({situacao:'QUITADO',data_tipo:'PAGAMENTO',data_inicio:'2026-10-18',data_fim:'2026-10-18'},db);
+  assert.equal(pg.resumo.quantidade_titulos,1); assert.equal(pg.resumo.valor_total,30);
+  const todosPagos = await listarObras({situacao:'QUITADO',data_tipo:'PAGAMENTO'},db); assert.equal(todosPagos.resumo.valor_total,100);
+  assert.equal((await listarTitulos({data_tipo:'PAGAMENTO',data_inicio:'2026-10-19',data_fim:'2026-10-19'},db)).data[0].pago_no_periodo,70);
+  // Pagamento parcial em titulo compartilhado conserva rateio e centavos;
+  // duas obras nao multiplicam o pagamento efetivo.
+  inserir('movimentos_financeiros',{id:4,titulo_financeiro_id:4,tipo_movimento:'BAIXA',status:'ATIVO',valor_quitacao:33.33,data_movimento:'2026-10-18'});
+  const pagoRateado=await listarObras({data_tipo:'PAGAMENTO',data_inicio:'2026-10-18',data_fim:'2026-10-18',item_ids:'4'},db);
+  assert.equal(pagoRateado.resumo.quantidade_titulos,1);assert.equal(pagoRateado.resumo.valor_total,33.33);
+  assert.equal((await listarObras({data_tipo:'PAGAMENTO',data_inicio:'2026-10-18',data_fim:'2026-10-18',item_ids:'4',obra_id:'1'},db)).resumo.valor_total,16.66);
+  sqlite.prepare("UPDATE titulos_financeiros SET status='PARCIAL',valor_baixado=10,valor_saldo=90 WHERE id=10003").run();
+  inserir('movimentos_financeiros',{id:5,titulo_financeiro_id:10003,tipo_movimento:'BAIXA',status:'ATIVO',valor_quitacao:10,data_movimento:'2026-10-18'});
+  const porBaixa={data_tipo:'PAGAMENTO',data_inicio:'2026-10-18',data_fim:'2026-10-18',cursor_item_id:'-10',cursor_vencimento:'2026-10-18',limite:'1'};
+  assert.equal((await listarTitulos({...porBaixa,sentido:'PROXIMA'},db)).data[0].id,-12);
+  assert.equal((await listarTitulos({...porBaixa,sentido:'ANTERIOR'},db)).data[0].id,4);
+  const porEmissao={data_tipo:'EMISSAO',cursor_item_id:'-11',cursor_vencimento:'2026-01-01',limite:'1'};
+  assert.equal((await listarTitulos({...porEmissao,sentido:'PROXIMA'},db)).data[0].id,-12);
+  assert.equal((await listarTitulos({...porEmissao,sentido:'ANTERIOR'},db)).data[0].id,-10);
+  // Sem datas nao excluir fila direta sem vencimento nem pagamentos.
+  sqlite.prepare('UPDATE titulos_financeiros SET data_vencimento=NULL WHERE id=10002').run();
+  assert.equal((await listarTitulos({data_tipo:'PAGAMENTO'},db)).paginacao.total,656);
+  const cursorDireto = await listarTitulos({sentido:'PROXIMA',cursor_item_id:'-11',cursor_vencimento:'SEM_DATA',limite:'1'},db);
+  assert.equal(cursorDireto.data.length,1); assert.notEqual(cursorDireto.data[0].id,-11);
+  console.log('CTE real em SQLite memoria (JSON_ARRAYAGG adaptado): 650 titulos/150 obras + fila direta, 7 pendentes digitais/diretos, emissao/vencimento/pagamento, parcial em dias distintos/estorno/rateios e centavos, sem datas/titulo sem vencimento, cursores assinados e ultimo ciclo sem duplicidade aprovados. Nao substitui MySQL/EXPLAIN DEV.');
 } finally { sqlite.close(); } })().catch(e => { console.error(e); process.exitCode = 1; });

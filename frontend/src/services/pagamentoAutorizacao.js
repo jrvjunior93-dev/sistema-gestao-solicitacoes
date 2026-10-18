@@ -31,6 +31,8 @@ export const assinarNotificacoesPagamento = (subscription) => request('/push/ass
 export const removerNotificacoesPagamento = (endpoint) => request('/push/remover', { method: 'POST', body: { endpoint } });
 export const obterOpcoesDecisaoPasskey = (id, decisoes) => request(`/${id}/autenticacao/opcoes`, { method: 'POST', body: { decisoes } });
 export const decidirAutorizacaoPagamento = (id, decisoes, credential) => request(`/${id}/decidir`, { method: 'POST', body: { decisoes, credential } });
+export const obterOpcoesRejeicaoFilaDireta = decisoes => request('/painel/fila-direta/autenticacao/opcoes', { method: 'POST', body: { decisoes } });
+export const rejeitarFilaDireta = (decisoes, credential) => request('/painel/fila-direta/rejeitar', { method: 'POST', body: { decisoes, credential } });
 export const reenviarAutorizacaoParaFila = (id) => request(`/${id}/enfileirar`, { method: 'POST', body: {} });
 export const listarAutorizadoresPagamento = () => request('/autorizadores');
 export const salvarAutorizadorPagamento = (payload) => request('/autorizadores', { method: 'PUT', body: payload });

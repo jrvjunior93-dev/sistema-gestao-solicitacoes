@@ -196,11 +196,12 @@ async function registrarHistorico(solicitacao, dados, transaction) {
 function normalizarValoresAdmissao(tipo, dados = {}) {
   if (tipo !== 'ADMISSAO') return dados;
   const resultado = { ...dados };
-  if (dados.data_inicio_efetivo_obra) {
-    const dia = String(dados.data_inicio_efetivo_obra);
+  for (const [campo, nome] of [['data_inicio_efetivo_obra', 'Inicio efetivo na obra'], ['data_admissao', 'Data de admissao']]) {
+    if (dados[campo] == null || dados[campo] === '') continue;
+    const dia = String(dados[campo]);
     const data = new Date(`${dia}T00:00:00Z`);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dia) || !Number.isFinite(data.getTime()) || data.toISOString().slice(0, 10) !== dia) {
-      throw new ValidationError('Inicio efetivo na obra invalido.');
+      throw new ValidationError(`${nome} invalido.`);
     }
   }
   for (const [campo, nome] of [['salario_base', 'Salario base'], ['valor_diaria', 'Valor da diaria']]) {
@@ -249,6 +250,7 @@ function validarPedido(tipo, dados = {}, colaboradorId, subtipo = null) {
     if (!String(dados.nome || '').trim()) throw new ValidationError('Informe o nome do colaborador a admitir.');
     if (!String(dados.cpf || '').trim()) throw new ValidationError('Informe o CPF do colaborador a admitir.');
     if (!dados.obra_id) throw new ValidationError('Informe a obra da admissao.');
+    if (!dados.data_inicio_efetivo_obra) throw new ValidationError('Informe o inicio efetivo na obra.');
     normalizarContatos(dados);
 
     /**
@@ -819,7 +821,9 @@ async function aplicarEfeito(solicitacao, contexto, transaction) {
         cargo_id: dados.cargo_id || null,
         carga_horaria_semanal: dados.carga_horaria_semanal || null,
         tipo_vinculo: dados.tipo_vinculo || 'CLT',
-        data_admissao: paraDataIso(dados.data_admissao) || hojeIso(),
+        // Admissao formal pode ser informada depois. Nao inventar data nem
+        // copiar inicio efetivo (que continua informativo para calculos).
+        data_admissao: paraDataIso(dados.data_admissao),
         data_inicio: paraDataIso(dados.data_admissao) || hojeIso(),
         data_inicio_efetivo_obra: dados.data_inicio_efetivo_obra || null,
         salario_base: dados.salario_base || null,
@@ -1412,6 +1416,23 @@ function vinculoDoPedidoOuColaborador(solicitacao, colaborador) {
   return normalizar(dadosDo(solicitacao).tipo_vinculo) || normalizar(colaborador && colaborador.tipo_vinculo);
 }
 
+// Catalogo de classificacao nao e checklist: sem exigencias configuradas o
+// usuario ainda pode classificar um anexo com um tipo ativo compativel.
+async function tiposDocumentoDoPedido(solicitacaoId) {
+  const pedido = await RhSolicitacao.findByPk(solicitacaoId);
+  if (!pedido) throw new ValidationError('Solicitacao de pessoal nao encontrada.', 404);
+  const vinculo = vinculoDoPedidoOuColaborador(pedido, await colaboradorDo(pedido));
+  const where = { ativo: true };
+  if (vinculo) where[Op.or] = [{ tipo_vinculo: null }, { tipo_vinculo: vinculo }];
+  const [tipos, checklist] = await Promise.all([
+    RhDocumentoTipo.findAll({ where, attributes: ['id', 'codigo', 'nome', 'tipo_vinculo'], order: [['nome', 'ASC'], ['id', 'ASC']] }),
+    checklistDoPedido(pedido.tipo, pedido.subtipo)
+  ]);
+  const obrigatorios = new Set(checklist.filter(item => item.nivel === 'OBRIGATORIO').map(item => Number(item.documento_tipo_id)));
+  return tipos.map(tipo => ({ id: tipo.id, codigo: tipo.codigo, nome: tipo.nome,
+    obrigatorio: obrigatorios.has(Number(tipo.id)) }));
+}
+
 /**
  * Anexa um documento ao pedido.
  *
@@ -1811,6 +1832,7 @@ module.exports = {
   pedidosAbertosPorColaborador,
   detalharSolicitacao,
   anexarNoPedido,
+  tiposDocumentoDoPedido,
   obterLinkAnexoDoPedido,
   conferirDocumentacao,
   validarAnexo,

@@ -83,6 +83,40 @@ const payload = valor => ({ tipo: 'ADMISSAO', dados: { nome: 'Pessoa de teste', 
   const mensal = payload(undefined); mensal.dados.forma_calculo_gerencial = 'MENSAL';
   await assert.rejects(service.abrirSolicitacao({ ...mensal, dados: { ...mensal.dados, data_inicio_efetivo_obra: '2026-02-30' } }), /invalido/);
   assert.equal((await service.abrirSolicitacao(mensal)).dados_json.valor_diaria, undefined);
+  for (const setor of ['OBRA', 'DP', 'SUPERADMIN']) {
+    for (const admissao of [undefined, '', null]) {
+      const dados = { ...payload('R$ 100,00').dados, data_admissao: admissao };
+      const pedido = await service.abrirSolicitacao({ tipo: 'ADMISSAO', dados }, { setor });
+      assert.equal(pedido.dados_json.data_admissao, admissao, 'Nao preencher data ausente no pedido');
+      pedido.situacao = 'ABERTA';
+      await service.aprovarSolicitacao(pedido.id, { setor: 'DP' });
+      assert.equal(colaboradores.at(-1).data_admissao, null, 'Aprovacao sem admissao nao inventa data');
+      assert.equal(colaboradores.at(-1).data_inicio_efetivo_obra, '2026-10-01');
+      assert.equal(colaboradores.at(-1).data_inicio, new Date().toISOString().slice(0, 10), 'Inicio operacional anterior preservado, nao usar inicio efetivo nos calculos');
+    }
+  }
+  for (const data of [undefined, null, '', ' ', '01/10/2026', '2026-02-30', true, {}]) {
+    const antes = pedidos.length;
+    await assert.rejects(service.abrirSolicitacao({ ...mensal, dados: { ...mensal.dados, data_inicio_efetivo_obra: data } }), /inicio efetivo|Inicio efetivo/);
+    assert.equal(pedidos.length, antes);
+  }
+  for (const data of [' ', '01/10/2026', '2026-02-30', '20261-01-01', {}, true]) {
+    await assert.rejects(service.abrirSolicitacao({ ...mensal, dados: { ...mensal.dados, data_admissao: data } }), /Data de admissao/);
+  }
+  const corrigir = await service.abrirSolicitacao({ ...mensal, dados: { ...mensal.dados, data_admissao: null } });
+  corrigir.situacao = 'REJEITADA';
+  await assert.rejects(service.reenviarSolicitacao(corrigir.id, { dados: { ...mensal.dados, data_inicio_efetivo_obra: '' } }), /inicio efetivo/);
+  assert.equal(corrigir.situacao, 'REJEITADA');
+  await service.reenviarSolicitacao(corrigir.id, { dados: { ...mensal.dados, data_admissao: '' } });
+  assert.equal(corrigir.dados_json.data_admissao, '');
+  // Pedidos historicos nao ganham datas inferidas e continuam aprovaveis.
+  const legado = await service.abrirSolicitacao(mensal);
+  delete legado.dados_json.data_inicio_efetivo_obra;
+  delete legado.dados_json.data_admissao;
+  legado.situacao = 'ABERTA';
+  await service.aprovarSolicitacao(legado.id);
+  assert.equal(colaboradores.at(-1).data_admissao, null);
+  assert.equal(colaboradores.at(-1).data_inicio_efetivo_obra, null);
   assert.equal(historico.filter(h => h.acao === 'APROVACAO').length, colaboradores.length);
   const front = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/RhDpPessoal.jsx'), 'utf8');
   assert.match(front, /salario_base: parseCurrencyInput\(f.salario_base\)/);

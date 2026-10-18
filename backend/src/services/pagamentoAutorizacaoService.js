@@ -25,7 +25,7 @@ const { marcarAnaliseProprietario, registrarAnaliseRecusada } = require('./anali
 const { enfileirarTitulosAutorizados } = require('./pagamentoManualFilaService');
 const { sha256, recordEvent } = require('./pagamentoAutorizacaoEventosService');
 const { copyStorageObject, getPresignedUrl } = require('./s3');
-const { saveChallenge, consumeChallenge } = require('./webauthnChallengeStore');
+const { saveChallenge, consumeChallenge, consumeChallengeAtomic } = require('./webauthnChallengeStore');
 const { isConfigured: isPushConfigured, saveSubscription, removeSubscription, hasActiveSubscription, sendPendingAuthorizationNotification } = require('./webPushService');
 const { registrarEventoSeguranca } = require('./securityLogService');
 const { projetarLotesAtuais } = require('./pagamentoAutorizacaoSituacao');
@@ -480,6 +480,51 @@ async function authenticationOptions(req, lotId, decisions) {
   return options;
 }
 
+async function directQueueOptions(req, payload = {}) {
+  assertFeatureAvailable(); assertNoDevSwitch(req); assertWebauthnConfig();
+  await assertActiveAuthorizer(req.user);
+  const domain = require('./pagamentoFilaDiretaRejeicao'), db = require('../models');
+  const decisions = domain.normalizar(payload.decisoes);
+  await domain.conferir(db, decisions);
+  const credentials = await WebauthnCredential.findAll({ where: { usuario_id: req.user.id, ativo: true } });
+  if (!credentials.length) throw httpError(409, 'Cadastre uma passkey antes de decidir.');
+  const { generateAuthenticationOptions } = await webauthnLib();
+  const options = await generateAuthenticationOptions({ rpID: env.webauthnRpId, userVerification: 'required',
+    allowCredentials: credentials.map(c => ({ id: c.credential_id, transports: c.transports || undefined })) });
+  await saveChallenge({ purpose: 'reject-direct-queue', userId: req.user.id, lotId: 'direct' },
+    { challenge: options.challenge, decisions_hash: sha256(decisions) });
+  return options;
+}
+
+async function rejectDirectQueue(req, payload = {}) {
+  assertFeatureAvailable(); assertNoDevSwitch(req); assertWebauthnConfig();
+  await assertActiveAuthorizer(req.user);
+  const domain = require('./pagamentoFilaDiretaRejeicao'), db = require('../models');
+  const decisions = domain.normalizar(payload.decisoes);
+  const stored = await consumeChallengeAtomic({ purpose: 'reject-direct-queue', userId: req.user.id, lotId: 'direct' });
+  if (!stored?.challenge || stored.decisions_hash !== sha256(decisions)) throw httpError(409, 'Confirmacao expirada ou diferente da rejeicao conferida.');
+  return sequelize.transaction(async transaction => {
+    const credential = await WebauthnCredential.findOne({ where: { usuario_id: req.user.id, credential_id: payload.credential?.id, ativo: true },
+      transaction, lock: transaction.LOCK.UPDATE });
+    if (!credential) throw httpError(403, 'Passkey nao reconhecida para este autorizador.');
+    const { verifyAuthenticationResponse } = await webauthnLib();
+    let verification;
+    try {
+      verification = await verifyAuthenticationResponse({ response: payload.credential, expectedChallenge: stored.challenge,
+        expectedOrigin: env.webauthnOrigins, expectedRPID: env.webauthnRpId, credential: credentialForLibrary(credential), requireUserVerification: true });
+    } catch (error) {
+      logWebauthnVerificationFailure({ req, error });
+      throw httpError(403, 'Nao foi possivel validar a passkey. Tente novamente.', 'PAYMENT_OWNER_WEBAUTHN_VERIFICATION_FAILED');
+    }
+    if (!verification.verified) throw httpError(403, 'Confirmacao biometrica invalida.');
+    const checked = await domain.conferir(db, decisions, transaction);
+    const itens = [];
+    for (const row of checked) itens.push(await domain.aplicar(db, req, row, transaction));
+    await credential.update({ counter: Number(verification.authenticationInfo.newCounter || credential.counter), ultimo_uso_em: new Date() }, { transaction });
+    return { itens };
+  });
+}
+
 async function decideBatch(req, lotId, payload = {}) {
   let stage = 'PRECONDITIONS';
   try {
@@ -673,6 +718,8 @@ async function unsubscribePush(req, payload = {}) {
 }
 
 module.exports = {
+  directQueueOptions,
+  rejectDirectQueue,
   PERMISSIONS,
   capabilitiesForUser,
   createBatch,

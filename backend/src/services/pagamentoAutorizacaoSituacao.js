@@ -1,7 +1,7 @@
 'use strict';
 
 // Projecao de leitura. Nunca grava status no dossie nem altera o material assinado.
-const FILA_ATIVA = ['PENDENTE', 'EM_EDICAO', 'DIVERGENTE'];
+const FILA_ATIVA = ['PENDENTE', 'EM_EDICAO'];
 function situacaoItem(item) {
   const t = item.titulo, fila = Object.hasOwn(item, 'fila_atual') ? item.fila_atual : item.filaItem;
   if (!t) return 'INDISPONIVEL';
@@ -9,11 +9,13 @@ function situacaoItem(item) {
   if (t.renegociado_por_id) return 'RENEGOCIADO';
   if (t.status === 'QUITADO') return 'QUITADO';
   if (t.status === 'PARCIAL' || Number(t.valor_baixado || 0) > 0) return 'PARCIALMENTE_PAGO';
-  if (['REJEITADO', 'INVALIDADO', 'CANCELADO', 'REVOGADO'].includes(item.status)) return item.status;
+  if (t.bloqueio_pagamento_proprietario || item.bloqueado_proprietario) return 'REJEITADO';
   // expira_em e metadado legado: nao criar prazo/bloqueio novo nesta projecao.
-  if (item.status === 'PENDENTE') return 'AGUARDANDO';
   if (fila?.status === 'NAO_PAGO') return 'NAO_PAGO';
+  if (fila?.status === 'DIVERGENTE') return 'DIVERGENTE';
   if (FILA_ATIVA.includes(fila?.status)) return 'NA_FILA';
+  if (['REJEITADO', 'INVALIDADO', 'CANCELADO', 'REVOGADO'].includes(item.status)) return item.status;
+  if (item.status === 'PENDENTE') return 'AGUARDANDO';
   if (item.status === 'AUTORIZADO') return 'AUTORIZADO';
   return 'PENDENTE_FINANCEIRO';
 }
@@ -61,10 +63,12 @@ const SITUACAO_SQL = `CASE
   WHEN renegociado_por_id IS NOT NULL THEN 'RENEGOCIADO'
   WHEN titulo_status = 'QUITADO' THEN 'QUITADO'
   WHEN titulo_status = 'PARCIAL' OR valor_baixado > 0 THEN 'PARCIALMENTE_PAGO'
+  WHEN bloqueado_proprietario = 1 THEN 'REJEITADO'
+  WHEN fila_status = 'NAO_PAGO' THEN 'NAO_PAGO'
+  WHEN fila_status = 'DIVERGENTE' THEN 'DIVERGENTE'
+  WHEN fila_status IN ('PENDENTE','EM_EDICAO') THEN 'NA_FILA'
   WHEN status_decisao IN ('REJEITADO','INVALIDADO','CANCELADO','REVOGADO') THEN status_decisao
   WHEN status_decisao = 'PENDENTE' THEN 'AGUARDANDO'
-  WHEN fila_status = 'NAO_PAGO' THEN 'NAO_PAGO'
-  WHEN fila_status IN ('PENDENTE','EM_EDICAO','DIVERGENTE') THEN 'NA_FILA'
   WHEN status_decisao = 'AUTORIZADO' THEN 'AUTORIZADO'
   ELSE 'PENDENTE_FINANCEIRO' END`;
 module.exports = { situacaoItem, situacaoLote, projetarLote, projetarLotesAtuais, SITUACAO_SQL };

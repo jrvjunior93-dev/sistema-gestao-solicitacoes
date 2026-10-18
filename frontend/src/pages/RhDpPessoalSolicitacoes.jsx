@@ -45,7 +45,7 @@ import {
   reenviarRhSolicitacao,
   rejeitarRhSolicitacao,
   validarAnexoRhSolicitacao,
-  getRhChecklistDoTipo,
+  getRhSolicitacaoTiposDocumento,
   getRhSolicitacaoAnexoLink,
   enviarRhSolicitacao
 } from '../services/rhDp';
@@ -128,7 +128,8 @@ function chipDaSituacao(situacao) {
 }
 
 const ROTULO_DADO = {
-  data_inicio_efetivo_obra: 'Início efetivo na obra (informativo)',
+  data_admissao: 'Data de admissão',
+  data_inicio_efetivo_obra: 'Início efetivo na obra',
   data_inicial: 'Data inicial',
   data_final: 'Data final',
   data_vigencia: 'Vigência',
@@ -245,10 +246,15 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
   const [comentando, setComentando] = useState(false);
   const travaComentario = useRef(false);
   const detalheAtual = useRef(null);
+  const detalheVersao = useRef(0);
   const conferenciaOcupada = useRef(false);
   const [anexos, setAnexos] = useState([]);
   const [conferencia, setConferencia] = useState(null);
   const [tiposDocumento, setTiposDocumento] = useState([]);
+  const [carregandoTipos, setCarregandoTipos] = useState(false);
+  const [erroTipos, setErroTipos] = useState('');
+  const travaEnvioDocumento = useRef(false);
+  const arquivoDocumentoRef = useRef(null);
   const [envio, setEnvio] = useState({ tipo: '', arquivo: null, enviando: false });
   useWorkspaceWork(Object.values(comentarios).some(Boolean), comentando || envio.enviando, 'rhSolicitacoes:work');
   // Evita que uma resposta de listagem iniciada antes da abertura do modal
@@ -330,16 +336,22 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
   }, [filtroSituacao]);
 
   async function abrirDetalhe(solicitacao) {
+    const versao = ++detalheVersao.current;
+    const mudouPedido = detalheAtual.current !== solicitacao.id;
     conferenciaOcupada.current = false;
     limpar();
     detalheAtual.current = solicitacao.id;
     setAberta(solicitacao);
     setAnexos([]);
     setConferencia(null);
+    setTiposDocumento([]);
+    setErroTipos('');
+    setCarregandoTipos(true);
+    if (mudouPedido) setEnvio({ tipo: '', arquivo: null, enviando: false });
     try {
       const pagamento = await getRhSolicitacao(solicitacao.id);
       if (pagamento.dados_json?.fluxo_pagamento === 'PAGAMENTO_POR_SOLICITACAO') {
-        if (detalheAtual.current !== solicitacao.id) return;
+        if (detalheAtual.current !== solicitacao.id || detalheVersao.current !== versao) return;
         setAberta(pagamento);
         setSolicitacoes(lista => lista.map(s => s.id === solicitacao.id ? { ...s, nao_lida: false } : s));
         if (solicitacao.nao_lida) aoMarcarVisualizada?.();
@@ -350,7 +362,7 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
         conferirDocumentacaoRhSolicitacao(solicitacao.id),
         Promise.resolve(pagamento)
       ]);
-      if (detalheAtual.current !== solicitacao.id) return;
+      if (detalheAtual.current !== solicitacao.id || detalheVersao.current !== versao) return;
       const ultimoHistorico = (detalhe.historicos || []).reduce(
         (maior, historico) => Math.max(maior, Number(historico.id || 0)),
         0
@@ -361,14 +373,9 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
       if (solicitacao.nao_lida) aoMarcarVisualizada?.();
       setAnexos(Array.isArray(listaAnexos) ? listaAnexos : []);
       setConferencia(conferido);
-      const checklist = await getRhChecklistDoTipo(detalhe.tipo, detalhe.subtipo || undefined)
-        .catch(() => ({ itens: [] }));
-      setTiposDocumento((checklist?.itens || []).map((item) => ({
-        id: item.documento_tipo_id,
-        nome: item.nome,
-        obrigatorio: item.nivel === 'OBRIGATORIO'
-      })));
+      await carregarTiposDocumento(solicitacao.id, versao);
     } catch (error) {
+      if (detalheAtual.current !== solicitacao.id || detalheVersao.current !== versao) return;
       avisar.erro(error.message || 'Nao foi possivel abrir a solicitacao.');
       if (detalheAtual.current === solicitacao.id) {
         detalheAtual.current = null;
@@ -379,6 +386,26 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
           return proximos;
         }, { replace: true });
       }
+    }
+  }
+
+  async function carregarTiposDocumento(id, versao = detalheVersao.current) {
+    const atual = () => detalheAtual.current === id && detalheVersao.current === versao;
+    if (!atual()) return;
+    setCarregandoTipos(true);
+    setErroTipos('');
+    try {
+      const tipos = await getRhSolicitacaoTiposDocumento(id);
+      if (!atual()) return;
+      if (!Array.isArray(tipos)) throw new Error('Resposta inválida ao consultar os tipos de documento.');
+      setTiposDocumento(tipos);
+    } catch (error) {
+      if (atual()) {
+        setTiposDocumento([]);
+        setErroTipos(error.message || 'Não foi possível carregar os tipos de documento.');
+      }
+    } finally {
+      if (atual()) setCarregandoTipos(false);
     }
   }
 
@@ -395,10 +422,11 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
   }
 
   function fecharDetalhe() {
-    if (conferenciaOcupada.current) {
+    if (conferenciaOcupada.current || travaEnvioDocumento.current) {
       avisar.alerta('Salve os ajustes pendentes ou aguarde a gravação antes de fechar.'); return;
     }
     detalheAtual.current = null;
+    detalheVersao.current++;
     setAberta(null);
     setParametros((atuais) => {
       const proximos = new URLSearchParams(atuais);
@@ -477,6 +505,7 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
 
   async function enviarDocumento(evento) {
     evento.preventDefault();
+    if (travaEnvioDocumento.current || carregandoTipos || erroTipos) return;
     limpar();
 
     if (!envio.arquivo) {
@@ -484,20 +513,27 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
       return;
     }
 
+    const solicitacaoId = aberta.id;
+    travaEnvioDocumento.current = true;
     setEnvio((atual) => ({ ...atual, enviando: true }));
     try {
       await anexarNaRhSolicitacao(
-        aberta.id,
+        solicitacaoId,
         { documento_tipo_id: envio.tipo || undefined },
         envio.arquivo
       );
+      if (detalheAtual.current !== solicitacaoId) return;
+      if (arquivoDocumentoRef.current) arquivoDocumentoRef.current.value = '';
       setEnvio({ tipo: '', arquivo: null, enviando: false });
       await abrirDetalhe(aberta);
       // Depois do recarregamento, pelo mesmo motivo de `decidirAnexo`.
       avisar.sucesso('Documento enviado. Ele vai para a pasta depois que o DP atestar.');
     } catch (error) {
+      if (detalheAtual.current !== solicitacaoId) return;
       avisar.erro(error.message || 'Nao foi possivel enviar o documento.');
       setEnvio((atual) => ({ ...atual, enviando: false }));
+    } finally {
+      travaEnvioDocumento.current = false;
     }
   }
 
@@ -927,7 +963,9 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
                 <span className="form-label">Tipo do documento</span>
                 <select
                   className="form-control"
+                  aria-label="Tipo do documento"
                   value={envio.tipo}
+                  disabled={envio.enviando || carregandoTipos || Boolean(erroTipos)}
                   onChange={(e) => setEnvio({ ...envio, tipo: e.target.value })}
                 >
                   {/*
@@ -942,17 +980,24 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
                     </option>
                   ))}
                 </select>
+                {carregandoTipos ? <small>Carregando tipos de documento…</small> : null}
+                {!carregandoTipos && !erroTipos && !tiposDocumento.length ? <small>Nenhum tipo ativo compatível cadastrado. Consulte o DP para conferir o catálogo.</small> : null}
+                {erroTipos ? <div role="alert"><span>{erroTipos}</span>{' '}
+                  <button type="button" className="btn btn-outline btn-sm" onClick={() => carregarTiposDocumento(aberta.id)}>Tentar novamente</button>
+                </div> : null}
               </label>
 
               <label className="form-field">
                 <span className="form-label">Arquivo</span>
                 <input
                   type="file"
+                  ref={arquivoDocumentoRef}
+                  disabled={envio.enviando}
                   className="form-control"
                   onChange={(e) => setEnvio({ ...envio, arquivo: e.target.files?.[0] || null })}
                 />
               </label>
-              <button type="submit" className="btn btn-primary" disabled={envio.enviando}>
+              <button type="submit" className="btn btn-primary" disabled={envio.enviando || carregandoTipos || Boolean(erroTipos)}>
                 {envio.enviando ? 'Enviando...' : 'Enviar documento'}
               </button>
             </form>

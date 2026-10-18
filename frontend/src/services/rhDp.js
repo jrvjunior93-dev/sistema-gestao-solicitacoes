@@ -768,6 +768,11 @@ export async function getRhChecklistDoTipo(tipo, subtipo = null) {
   return json;
 }
 
+export async function getRhSolicitacaoTiposDocumento(solicitacaoId) {
+  const response = await fetch(`${API_URL}/rh/solicitacoes/${solicitacaoId}/tipos-documento`, { headers: authHeaders() });
+  return parseJson(response, 'Erro ao carregar tipos de documento do pedido');
+}
+
 /**
  * RASCUNHO -> ABERTA. E aqui que o Departamento Pessoal passa a enxergar o pedido.
  *

@@ -593,6 +593,9 @@ async function testarMedicoesIndependentes() {
     title = state.TituloFinanceiro[0]; // O fixture restaura objetos apos rollback.
     env.paymentOwnerApprovalMode = mode;
     // Apenas novo material, nova decisao e passkey liberam o saldo, nao preparar.
+    // Bloqueio novo da fila direta nao possui item digital anterior (id=0),
+    // mas deve exigir o mesmo ciclo real para liberar, sem bypass pelo envio.
+    if(mode==='ENFORCED') Object.assign(title.bloqueio_pagamento_proprietario,{origem:'FILA_DIRETA',item_id:0,lote_id:null});
     const novo = await digital.createBatch(req, { titulo_ids: [1], idempotency_key: 'novo-saldo' });
     assert(title.bloqueio_pagamento_proprietario);
     const novoItem = state.PagamentoAutorizacaoItem.at(-1);

@@ -6,6 +6,14 @@ function fail(res, error, fallback) {
 }
 
 module.exports = {
+  async directQueueOptions(req, res) {
+    try { return res.json(await service.directQueueOptions(req, req.body || {})); }
+    catch (error) { return fail(res, error, 'Erro ao iniciar rejeicao de fila direta'); }
+  },
+  async rejectDirectQueue(req, res) {
+    try { return res.json(await service.rejectDirectQueue(req, req.body || {})); }
+    catch (error) { return fail(res, error, 'Erro ao rejeitar saldo da fila direta'); }
+  },
   async capabilities(req, res) {
     try { return res.json(await service.capabilitiesForUser(req.user)); }
     catch (error) { return fail(res, error, 'Erro ao consultar autorizacoes de pagamento'); }

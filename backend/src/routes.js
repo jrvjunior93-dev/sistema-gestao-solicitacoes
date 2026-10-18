@@ -2115,6 +2115,7 @@ router.get('/rh/solicitacoes/empresas-admissao', allowRhDpSolicitacaoAbrir, RhAd
 router.get('/rh/solicitacoes/:id', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.show);
 router.get('/rh/solicitacoes/:id/jornada', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.jornada);
 router.get('/rh/solicitacoes/:id/conferencia', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.conferencia);
+router.get('/rh/solicitacoes/:id/tipos-documento', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.tiposDocumento);
 router.post('/rh/solicitacoes', allowRhDpSolicitacaoAbrir, criticalRateLimit, RhSolicitacaoController.create);
 // A autorizacao fina continua no controller: somente DP ou usuario vinculado a obra da solicitacao
 // passa. A permissao de visualizacao e a correta para a colaboracao no detalhe; exigir "abrir"
@@ -2258,6 +2259,8 @@ router.get('/financeiro/autorizacoes-pagamento/capabilities', PagamentoAutorizac
 router.get('/financeiro/autorizacoes-pagamento', PagamentoAutorizacaoController.index);
 router.get('/financeiro/autorizacoes-pagamento/painel/obras', PagamentoAutorizacaoController.works);
 router.get('/financeiro/autorizacoes-pagamento/painel/titulos', PagamentoAutorizacaoController.titles);
+router.post('/financeiro/autorizacoes-pagamento/painel/fila-direta/autenticacao/opcoes', criticalRateLimit, PagamentoAutorizacaoController.directQueueOptions);
+router.post('/financeiro/autorizacoes-pagamento/painel/fila-direta/rejeitar', criticalRateLimit, PagamentoAutorizacaoController.rejectDirectQueue);
 router.post('/financeiro/autorizacoes-pagamento', criticalRateLimit, PagamentoAutorizacaoController.create);
 router.get('/financeiro/autorizacoes-pagamento/documentos/:id', validateRequest({ params: validateNumericIdParam('id', 'Documento') }), PagamentoAutorizacaoController.document);
 router.post('/financeiro/autorizacoes-pagamento/passkeys/registro/opcoes', criticalRateLimit, PagamentoAutorizacaoController.registrationOptions);

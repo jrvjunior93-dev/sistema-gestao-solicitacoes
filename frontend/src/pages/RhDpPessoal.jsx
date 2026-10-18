@@ -1775,15 +1775,15 @@ export default function RhDpPessoal() {
                 </label>
 
                 <label className="form-field">
-                  <span className="form-label form-label--required">Data de admissao</span>
+                  <span className="form-label">Data de admissao (opcional)</span>
                   <DateInputBR className="form-control" value={formulario.data_admissao}
-                    onChange={(e) => setFormulario({ ...formulario, data_admissao: e.target.value })} required />
+                    onChange={(e) => setFormulario({ ...formulario, data_admissao: e.target.value })} />
                 </label>
 
                 <label className="form-field">
-                  <span className="form-label">Início efetivo na obra (informativo)</span>
+                  <span className="form-label form-label--required">Início efetivo na obra</span>
                   <DateInputBR className="form-control" value={formulario.data_inicio_efetivo_obra || ''}
-                    onChange={(e) => setFormulario({ ...formulario, data_inicio_efetivo_obra: e.target.value })} />
+                    onChange={(e) => setFormulario({ ...formulario, data_inicio_efetivo_obra: e.target.value })} required />
                 </label>
                 <label className="form-field">
                   <span className="form-label">Salario</span>

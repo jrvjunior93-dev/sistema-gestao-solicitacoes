@@ -33,4 +33,14 @@ async function consumeChallenge(context) {
   try { return JSON.parse(challenge); } catch (_) { return { challenge }; }
 }
 
-module.exports = { saveChallenge, consumeChallenge };
+async function consumeChallengeAtomic(context) {
+  const redis = await getRedisClient();
+  if (!redis?.getDel) {
+    throw Object.assign(new Error('Armazenamento atomico de desafios indisponivel.'), { statusCode: 503 });
+  }
+  const value = await redis.getDel(keyFor(context));
+  if (!value) return null;
+  try { return JSON.parse(value); } catch { return null; }
+}
+
+module.exports = { saveChallenge, consumeChallenge, consumeChallengeAtomic };

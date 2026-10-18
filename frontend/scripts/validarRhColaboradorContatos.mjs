@@ -117,8 +117,9 @@ try {
   await adm.getByLabel('CPF', { exact: true }).fill('52998224725');
   await adm.getByLabel(/^Empresa do grupo/).selectOption('1');
   await adm.getByLabel(/^Obra \/ Centro de Custo/).selectOption('7');
-  await adm.getByLabel('Data de admissao', { exact: true }).fill('11/10/2026');
-  await adm.getByLabel('Início efetivo na obra (informativo)', { exact: true }).fill('01/10/2026');
+  assert.equal(await adm.getByLabel('Data de admissao (opcional)', { exact: true }).evaluate(el => el.required), false);
+  assert.equal(await adm.getByLabel('Início efetivo na obra', { exact: true }).evaluate(el => el.required), true);
+  await adm.getByLabel('Início efetivo na obra', { exact: true }).fill('01/10/2026');
   await adm.getByLabel(/^Forma de calculo gerencial/).selectOption('DIARIA');
   await adm.getByLabel('Valor da diaria', { exact: true }).fill('150,50');
   await adm.getByLabel('Telefone', { exact: true }).fill('(27) 99999-1234');
@@ -153,12 +154,16 @@ try {
     assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width + 1, 'Endereco cabe no viewport');
     await page.screenshot({ path: path.join(output, `admissao-${width}.png`) });
   }
+  await adm.getByLabel('Início efetivo na obra', { exact: true }).fill('');
+  await adm.getByRole('button', { name: 'Criar rascunho', exact: true }).click();
+  assert.equal(await page.evaluate(() => window.admissoes.length), 0, 'Sem inicio efetivo nao enviar');
+  await adm.getByLabel('Início efetivo na obra', { exact: true }).fill('01/10/2026');
   await adm.getByRole('button', { name: 'Criar rascunho', exact: true }).click();
   await page.waitForFunction(() => window.admissoes.length === 1);
   const dados = (await page.evaluate(() => window.admissoes[0])).dados;
   assert.equal(dados.valor_diaria, 150.5, 'DP envia valor numerico, nao BRL');
   assert.equal(dados.data_inicio_efetivo_obra, '2026-10-01');
-  assert.equal(dados.data_admissao, '2026-10-11');
+  assert.equal(dados.data_admissao, undefined, 'Admissao pode ser informada depois');
   assert.equal(dados.endereco_secundario, dados.endereco); assert.equal(dados.numero_secundario, '31');
   assert.equal(dados.telefone_secundario.replace(/\D/g, ''), '27988884321'); assert.equal(dados.mesmo_endereco, undefined);
   await page.goto(base + '?admissao=1&obra=1&local_id=7&aba=colaboradores');
@@ -171,7 +176,8 @@ try {
   await adm.getByLabel('CPF', { exact: true }).fill('52998224725');
   await adm.getByLabel(/^Empresa do grupo/).selectOption('1');
   await adm.getByLabel(/^Obra \/ Centro de Custo/).selectOption('7');
-  await adm.getByLabel('Data de admissao', { exact: true }).fill('11/10/2026');
+  await adm.getByLabel('Data de admissao (opcional)', { exact: true }).fill('11/10/2026');
+  await adm.getByLabel('Início efetivo na obra', { exact: true }).fill('01/10/2026');
   await adm.getByLabel(/^Forma de calculo gerencial/).selectOption('DIARIA');
   await adm.getByLabel('Valor da diaria', { exact: true }).fill('180,00');
   await adm.getByLabel('Telefone', { exact: true }).fill('27999991234');

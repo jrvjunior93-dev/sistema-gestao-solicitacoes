@@ -1,5 +1,63 @@
 # Ownership Ativo
 
+## Publicacao DEV: PWA periodo/fila direta e RH - 2026-10-18
+
+- Usuario autorizou commit/push dos ajustes locais na refactor/frontend e
+  roteiro exclusivo EC2 DEV, com homologacao MySQL/Redis/passkey.
+- Agente unico. Reservar delta PWA/RH existente, verificacao Redis/passkey DEV,
+  roteiro de deploy/teste, scripts npm e handoff de publicacao. Excluir outputs.
+- Base/remotos main e refactor/frontend conferidos em762370cf. Publicar por
+  fast-forward somente no destino refactor/frontend; nao promover main.
+- Nenhuma nova migration; verificadores de ambiente/schema/SQL/Redis somente
+  leitura, sem alterar .env/PILOT/12h/ACL. Passkey real e teste do operador.
+- Nao executar EC2, MySQL ou Redis reais; somente publicar e fornecer comandos.
+- QA backend/PWA/RH/deploy, UI real com APIs simuladas, build619modulos,
+  documentacao567/19, bash -n e diff conferidos. Reserva de edicao encerrada
+  para commit/publicacao exclusiva autorizada. Handoff publicacao deste dia.
+
+## PWA financeiro completo e rejeicao de fila direta - 2026-10-18
+
+- Agente unico; usuario confirmou pacote completo local para refactor/frontend:
+  alinhar status, datas por emissao/vencimento/pagamento, periodo inteiro sem
+  datas e valor efetivamente pago no periodo sem estornos; incluir fila direta
+  com quem enviou e rejeicao do saldo com motivo/passkey nominal.
+- Reserva: consulta/projecao/controller/servico de autorizacoes, novo dominio
+  de leitura/rejeicao direta, rotas, cliente/helper/componentes PWA/CSS, testes
+  isolados backend/UI/SQL e documentos/handoff correspondentes. Preservar delta
+  RH anterior, seus arquivos/testes, outputs e demais alteracoes locais.
+- Inclui webauthnChallengeStore (consumo atomico isolado do novo challenge),
+  verificador MySQL DEV somente leitura e scripts npm do pacote de testes.
+- Sem fabricar lote/dossie ou aprovacoes para fila direta; separar IDs/DTOs e
+  challenges; preservar ACL, titulos pagos, bloqueios bancarios/DP, snapshots,
+  transacoes, auditoria, idempotencia e envio digital existente.
+- Nenhum commit/push, migration real, EC2/PM2/.env ou operacao de producao.
+- Implementacao e testes locais backend/SQL/UI/build/documentacao concluidos;
+  reserva liberada para entrega local. Sem publicacao automatica. Homologacao
+  MySQL/Redis/passkey real pendente no DEV; registrar no handoff PWA deste dia.
+
+## Datas no pedido de admissao - 2026-10-18
+
+- Agente unico; usuario pediu admissao opcional e inicio efetivo obrigatorio no
+  modal de pedido. Reservar RhDpPessoal.jsx, rhSolicitacaoService.js, testes
+  backend/UI de admissao, README RH e handoff desta tarefa. Base 762370cf.
+- Manter cadastro direto, permissoes, diaria, checklist, auditoria e transacao.
+  Inicio efetivo nao substitui automaticamente admissao nem recalcula folha.
+- Consulta ao usuario sobre aprovacao sem admissao: hoje usa data do dia.
+  Nao decidir nova politica de aprovacao sem esclarecimento.
+- Usuario confirmou manter admissao vazia e informar depois; retirar somente
+  o preenchimento automatico de data_admissao, preservando inicio operacional.
+- Pedido adicional: tipos de documento ausentes no detalhe do pedido. Reservar
+  controller/servico/rota/cliente RH e modal de solicitacoes, testes isolados.
+  Catalogo minimo ativo/compativel sob escopo atual do pedido; nao confundir
+  ausencia de exigencias com ausencia de tipos. Nao ampliar ACL documental.
+- Trabalho somente local para refactor/frontend; sem commit/push, migration,
+  EC2, banco real, .env/PM2 ou operacao em producao.
+- Reservar tambem os scripts npm de teste dos dois runtimes para incluir o
+  novo ensaio de catalogo na suite de admissao/documentos existente.
+- Implementacao/testes backend/UI/build/docs concluidos localmente; ownership
+  liberado. Sem commit/push ou deploy. Handoff:
+  docs/handoffs/2026-10-18-rh-datas-admissao-tipos-documento.md.
+
 ## Promocao integral main - 2026-10-18
 
 - Agente unico, sem delegacao. Usuario confirmou backup cifrado/timer ativo,

@@ -1,5 +1,32 @@
 # Modulo RH/DP
 
+## Datas do pedido de admissao e classificacao dos anexos - 2026-10-18
+
+- No pedido de admissao, Data de admissao e opcional; Inicio efetivo na obra
+  e obrigatorio no formulario e na abertura/reenvio pela API. Datas informadas
+  precisam ser ISO validas; diaria e demais campos mantem regras anteriores.
+- Usuario confirmou que a aprovacao sem admissao deve preservar NULL para
+  preenchimento posterior no cadastro autorizado, sem inferir a data do dia
+  nem copiar o inicio efetivo. Pedidos ja aprovados nao sao regravados.
+- Inicio efetivo continua apenas informativo para calculos. data_inicio e
+  a vigencia operacional conservam a regra anterior (admissao informada ou
+  dia da aprovacao); nao iniciar retroativamente folha pela data efetiva.
+- Detalhe da solicitacao lista tipos de documento pelo catalogo ativo e
+  compativel com vinculo, independentemente de haver exigencias no checklist.
+  Checklist continua definindo obrigatoriedade e conferencia; nao e substituido
+  pelo campo obrigatorio generico do catalogo nem por novos seeds.
+- GET /rh/solicitacoes/:id/tipos-documento exige permissao de visualizar
+  pedidos e mesmo escopo do detalhe. Retorna somente id/codigo/nome e indicador
+  de obrigatoriedade. Nao libera leitura geral de documentos nem altera Luana.
+- Falhas sao explicitas com retry; loading bloqueia envio; catalogo realmente
+  vazio e identificado. Sem classificacao continua opcao valida com aviso de
+  que nao entra na pasta. Upload com tipo conserva ateste/aprovacao existentes.
+- Respostas anteriores ao fechamento/reabertura sao descartadas; envio tem
+  mutex, bloqueio de botao e limpeza do arquivo apos sucesso. Sem migration,
+  backfill, mudanca de permissao ou operacao em banco real.
+- Testes novos integram test:rhdp-admissao-documentos nos dois runtimes.
+- [Handoff](../../handoffs/2026-10-18-rh-datas-admissao-tipos-documento.md).
+
 ## Admissao, filtros e pasta documental - 2026-10-18
 
 - Admissao envia salario/diaria numericos; backend tambem interpreta BRL de

@@ -1253,3 +1253,53 @@ Geracao de titulo, baixa, estorno, importacao OFX e conciliacao sao transacionai
 - Testes locais: backend `test:pwa-rejeicao-fila`; frontend
   `test:pwa-rejeicao-datas` e `test:fila-instrumentos-ui`. Simulam modelos,
   banco, biometria e APIs; nao substituem homologacao com MySQL/passkey no DEV.
+
+## PWA: periodo, situacao atual e envios diretos - 2026-10-18
+
+- Implementacao local para posterior publicacao/homologacao na refactor/frontend;
+  sem nova migration. Depende do schema existente (incluindo 202610180002).
+- Antes das datas, escolher Vencimento (padrao anterior), Emissao do titulo ou
+  Pagamento/baixa. Sem limites de data: todo o periodo do universo do painel.
+  Limpar ambas as datas tambem autoaplica; texto parcial/invalido nao consulta.
+  Inicio/fim isolado valido pode ser aplicado explicitamente. Datas nao mudam
+  o estado financeiro: os filtros de situacao mostram o estado ATUAL do titulo.
+- Pagamento usa movimentos BAIXA/ATIVO por data_movimento, inclusive parciais.
+  O total e valor_quitacao realmente pago no periodo, com juros/multa/desconto;
+  exclui movimentos estornados. Varios pagamentos de um titulo nao duplicam sua
+  contagem. Rateios/compartilhados distribuem os centavos entre obras, sem
+  multiplicar o total. O detalhe preserva a mesma base de data ao revalidar.
+- Uma linha por titulo: ultimo item digital e ultima fila. Quem nunca teve item
+  digital tambem aparece pela fila direta, com autor/data do envio (nao da baixa).
+  Na fila corresponde a PENDENTE/EM_EDICAO; DIVERGENTE tem filtro proprio;
+  NAO_PAGO consulta a ultima tentativa. Saldo parcial conserva o badge parcial e
+  pode pertencer ao filtro da tentativa/Na fila. Bloqueados nao voltam a Na fila.
+- Envio direto nao cria lote, snapshot assinado ou aprovacao ficticia. Identidade
+  negativa existe somente na leitura/cursor; item_id digital continua positivo.
+  Dados atuais minimos, sem liberar anexos genericos/conversas ou dados bancarios.
+  Documentos digitais existentes permanecem sob as permissoes/origens anteriores.
+- Saldo direto pode ser rejeitado com motivo e passkey do autorizador nominal.
+  Contrato/challenge separado, hash de titulos/filas/versoes/motivo, consumo
+  atomico Redis GETDEL (Redis 6.2+), locks canonicos, revalidacao e auditoria
+  SecurityEventLog obrigatoria na mesma transacao. Se indisponivel, nao decide.
+  Grupo direto: maximo50; selecao mista pede confirmacoes separadas do digital.
+- Rejeitar direto encerra filas abertas em RESOLVIDO e bloqueia apenas o saldo,
+  preservando pagamentos/comprovantes/status financeiro. Sem estorno. Revisao
+  DP, banco ativo, saldo quitado ou novo ciclo impedem rejeicao obsoleta. Nova
+  autorizacao digital REAL e valida e necessaria para liberar (item anterior0).
+  OFF/PAUSED/Testar usuario nao autorizam nova rejeicao; ACL nao foi ampliada.
+- Consulta agrega os ultimos IDs por titulo uma vez; nao usa subquery correlata
+  por ciclo nem varre movimentos quando a base escolhida nao e pagamento.
+- Testes: backend `test:pwa-periodo-fila-direta`, `test:pwa-rejeicao-fila`;
+  frontend `test:autorizacoes-obras`. SQLite em memoria executa CTE real com
+  JSON_ARRAYAGG adaptado; nao substitui o plano MySQL real. O operador pode usar
+  `node scripts/verificarPainelAutorizacoesDev.js --verificar`, somente SELECT/
+  EXPLAIN com identidade DEV, para tres bases de data e cursores digitais/diretos.
+  Nao operar producao para homologar este pacote.
+
+- Publicacao/homologacao DEV: roteiro `ops/deploy/atualizar-dev-pwa-periodo-20261018.sh`
+  recebe SHA completo publicado, valida caminho/branch/PM2/watch/UUID/schema e
+  sessao12h, confere MySQL e Redis antes de reiniciar somente backend-dev.
+  `verificarRedisPasskeyDev.js --verificar` inspeciona suporte GETDEL com
+  COMMAND INFO e RP/origens HTTPS; nao altera nenhuma chave/configuracao.
+  Biometria/passkey real deve ser testada manualmente no PWA DEV, com usuario
+  nominal, nunca Testar usuario. Roteiro nao aplica migration nem promove main.

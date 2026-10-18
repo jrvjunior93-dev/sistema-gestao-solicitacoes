@@ -6,6 +6,7 @@ const {
   cancelarSolicitacao,
   detalharSolicitacao,
   anexarNoPedido,
+  tiposDocumentoDoPedido,
   obterLinkAnexoDoPedido,
   conferirDocumentacao,
   validarAnexo,
@@ -124,6 +125,14 @@ async function exigirSolicitacaoNoEscopoDoUsuario(req, solicitacaoId) {
 }
 
 module.exports = {
+  async tiposDocumento(req, res) {
+    try {
+      await exigirSolicitacaoNoEscopoDoUsuario(req, req.params.id);
+      return res.json(await tiposDocumentoDoPedido(req.params.id));
+    } catch (error) {
+      return responderErroController(res, error, 'Erro ao carregar tipos de documento do pedido');
+    }
+  },
   async index(req, res) {
     try {
       const where = {};

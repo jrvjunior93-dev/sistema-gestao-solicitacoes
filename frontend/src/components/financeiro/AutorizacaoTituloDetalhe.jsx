@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { DONO_DETALHE } from '../../hooks/useAutorizacaoHistorico';
 import ModalPortal from '../ui/ModalPortal';
 import { useWorkspaceActive, useWorkspaceWork } from '../../navigation/WorkspaceContext';
-import { listarTitulosAutorizacao, obterOpcoesDecisaoPasskey, decidirAutorizacaoPagamento } from '../../services/pagamentoAutorizacao';
+import { listarTitulosAutorizacao, obterOpcoesDecisaoPasskey, decidirAutorizacaoPagamento, obterOpcoesRejeicaoFilaDireta, rejeitarFilaDireta } from '../../services/pagamentoAutorizacao';
 import { autenticarComPasskey } from '../../utils/webauthn';
 import { passkeyInterrompida, mensagemPasskeyInterrompida } from '../../utils/passkeyInterrompida';
 import { podeSelecionarAutorizacao, podeDecidirItem, podeAutorizar, podeRejeitarFila, valorSelecionado, assinaturaDecisao, rotuloSituacao } from '../../utils/autorizacaoPagamentoSituacao';
@@ -11,8 +11,8 @@ import { dataISOParaBR } from '../DateInputBR';
 const moeda = value => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const mesmaVersao = (a, b) => assinaturaDecisao(a) === assinaturaDecisao(b);
 
-// Dossie de leitura, nao o formulario editavel da solicitacao. Todos os POSTs
-// continuam no contrato nominal/passkey existente, sempre com UM item explicito.
+// Dados de leitura, nao o formulario editavel da solicitacao. POSTs digitais e
+// diretos usam contratos separados, com passkey nominal e UM titulo explicito.
 export default function AutorizacaoTituloDetalhe({ inicial, filtro, caps, setBusy, abrirDocumento, onFechar, onDecidido, onOcupado }) {
   const [item, setItem] = useState(inicial), [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(''), [aviso, setAviso] = useState('');
@@ -21,6 +21,7 @@ export default function AutorizacaoTituloDetalhe({ inicial, filtro, caps, setBus
   const vivo = useRef(true), trava = useRef(false), painel = useRef(null), corpo = useRef(null), motivoRef = useRef(null);
   const ativo = useWorkspaceActive();
   const s = item.snapshot_json || {};
+  const direto = item.origem_painel === 'FILA_DIRETA';
   const bloqueado = carregando || operando;
   useLayoutEffect(() => { onOcupado?.(bloqueado); return () => onOcupado?.(false); }, [bloqueado, onOcupado]);
   const podeDecidir = caps.can_decide && caps.passkey_count && !caps.paused && podeSelecionarAutorizacao(item) && !erro;
@@ -47,7 +48,11 @@ export default function AutorizacaoTituloDetalhe({ inicial, filtro, caps, setBus
   useEffect(() => { if (pedindoMotivo) motivoRef.current?.focus(); }, [pedindoMotivo]);
 
   async function consultarAtual(alvo = item) {
-    const resposta = await listarTitulosAutorizacao({ item_ids: String(alvo.id), limite: '1' });
+    // Revalidar sem status/obra (uma decisao pode retirar o titulo do filtro),
+    // mantendo a mesma base de data/valor e cursor do periodo que foi aberto.
+    const resposta = await listarTitulosAutorizacao({ data_tipo: filtro.data_tipo,
+      vencimento_inicio: filtro.vencimento_inicio, vencimento_fim: filtro.vencimento_fim,
+      item_ids: String(alvo.id), limite: '1' });
     if (!resposta.data?.[0]) throw Error('Os dados para autorização foram substituídos ou ficaram indisponíveis. Volte à lista e atualize.');
     return resposta.data[0];
   }
@@ -62,8 +67,9 @@ export default function AutorizacaoTituloDetalhe({ inicial, filtro, caps, setBus
     if (trava.current) return;
     trava.current = true; setCarregando(true); setConfirmacao(null); setAviso('');
     try {
+      const referencia = Object.hasOwn(item, 'data_referencia') ? item.data_referencia : item.vencimento_atual;
       const resposta = await listarTitulosAutorizacao({ ...filtro, limite: '1', sentido,
-        cursor_item_id: String(item.id), cursor_vencimento: item.vencimento_atual ? String(item.vencimento_atual).slice(0, 10) : 'SEM_DATA' });
+        cursor_item_id: String(item.id), cursor_vencimento: referencia ? String(referencia).slice(0, 10) : 'SEM_DATA' });
       if (!vivo.current) return;
       if (!resposta.data?.[0]) { setAviso(sentido === 'PROXIMA' ? 'Último título deste filtro na obra.' : 'Primeiro título deste filtro na obra.'); return; }
       setItem(resposta.data[0]); setMotivo(''); setPedindoMotivo(false); setErro(''); corpo.current?.scrollTo(0, 0);
@@ -91,12 +97,13 @@ export default function AutorizacaoTituloDetalhe({ inicial, filtro, caps, setBus
     trava.current = true; setOperando(true); setBusy(true); setAviso('');
     try {
       const decisao = confirmacao.decisao === 'REJEITAR' && podeRejeitarFila(item) ? 'REJEITAR_FILA' : confirmacao.decisao;
-      const decisoes = [{ item_id: Number(item.id), decisao, motivo: confirmacao.motivo }];
-      const opcoes = await obterOpcoesDecisaoPasskey(item.lote_id, decisoes);
+      const decisoes = direto ? [{ fila_id: item.fila_id, titulo_id: item.titulo_financeiro_id, versao: item.versao_painel, motivo: confirmacao.motivo }]
+        : [{ item_id: Number(item.id), decisao, motivo: confirmacao.motivo }];
+      const opcoes = direto ? await obterOpcoesRejeicaoFilaDireta(decisoes) : await obterOpcoesDecisaoPasskey(item.lote_id, decisoes);
       if (!vivo.current) return;
       const credential = await autenticarComPasskey(opcoes);
       if (!vivo.current) return;
-      const resultado = await decidirAutorizacaoPagamento(item.lote_id, decisoes, credential);
+      const resultado = direto ? await rejeitarFilaDireta(decisoes, credential) : await decidirAutorizacaoPagamento(item.lote_id, decisoes, credential);
       if (!vivo.current) return;
       const registro = resultado?.itens?.find(i => Number(i.id) === Number(item.id));
       if (registro && registro.status !== 'PENDENTE') onDecidido(item.titulo_financeiro_id);
@@ -125,7 +132,7 @@ export default function AutorizacaoTituloDetalhe({ inicial, filtro, caps, setBus
   return <ModalPortal onClose={fechar} historyOwner={DONO_DETALHE}>
     <section ref={painel} role="dialog" aria-modal="true" aria-label="Detalhes do título para autorização" className="pa-titulo-tela" onKeyDown={manterFoco}>
       <header className="pa-titulo-cabecalho">
-        <div><h2 tabIndex={-1}>{s.solicitacao?.codigo || s.codigo || `Título #${item.titulo_financeiro_id}`}</h2><span>{s.codigo} · {item.lote?.codigo || `Lote #${item.lote_id}`}</span></div>
+        <div><h2 tabIndex={-1}>{s.solicitacao?.codigo || s.codigo || `Título #${item.titulo_financeiro_id}`}</h2><span>{s.codigo} · {direto ? `Envio direto · fila #${item.fila_id}` : item.lote?.codigo || `Lote #${item.lote_id}`}</span></div>
         <button type="button" className="btn btn-outline btn-sm" disabled={bloqueado} onClick={fechar}>Voltar à lista</button>
       </header>
       <div ref={corpo} className="pa-titulo-corpo" aria-busy={bloqueado}>
@@ -134,12 +141,17 @@ export default function AutorizacaoTituloDetalhe({ inicial, filtro, caps, setBus
         {carregando && <p role="status">Consultando título…</p>}
         {aviso && <p role="status" className="pa-titulo-aviso">{aviso}</p>}
         {erro && <p role="alert" className="pa-obras-erro">{erro}</p>}
-        <div className="pa-titulo-valores"><div><span>Valor enviado para autorização</span><strong>{moeda(item.valor_snapshot)}</strong></div><div><span>Pago</span><strong>{item.titulo ? moeda(item.titulo.valor_baixado) : '—'}</strong></div><div><span>Saldo atual</span><strong>{item.titulo ? moeda(item.titulo.valor_saldo) : '—'}</strong></div></div>
+        <div className="pa-titulo-valores"><div><span>{direto ? 'Valor enviado à fila' : 'Valor enviado para autorização'}</span><strong>{moeda(item.valor_snapshot)}</strong></div><div><span>Pago</span><strong>{item.titulo ? moeda(item.titulo.valor_baixado) : '—'}</strong></div><div><span>Saldo atual</span><strong>{item.titulo ? moeda(item.titulo.valor_saldo) : '—'}</strong></div></div>
+        {item.fila_atual && <p>{direto ? 'Envio direto à fila, sem autorização digital anterior.' : 'Enviado à fila.'} Por {item.enviado_por?.nome || 'usuário não disponível'}{item.enviado_em ? ` em ${new Date(item.enviado_em).toLocaleString('pt-BR')}` : ''}.</p>}
+        {filtro.data_tipo === 'PAGAMENTO' && <p>Valor efetivamente pago no período: <strong>{moeda(item.pago_no_periodo)}</strong>. Baixas ativas; estornos desconsiderados.</p>}
+        {item.bloqueado_proprietario && <p>Saldo restante bloqueado pelo proprietário até nova autorização.</p>}
         <dl className="pa-titulo-dados">
           <div><dt>Credor / favorecido</dt><dd>{s.favorecido_pagamento?.nome || s.credor?.nome || 'Não informado'}</dd><dd>{s.favorecido_pagamento?.documento_mascarado || s.credor?.documento_mascarado}</dd></div>
           <div><dt>Obra / centro de custo</dt><dd>{item.obras_nomes || s.obra?.nome || 'Não informado'}</dd></div>
           <div><dt>Empresa devedora</dt><dd>{s.empresa?.nome || (s.participacoes?.length ? 'Confira as participações' : 'Não informada')}</dd></div>
           <div><dt>Vencimento</dt><dd>{dataISOParaBR(item.vencimento_atual || s.data_vencimento) || 'Não informado'}</dd></div>
+          <div><dt>Emissão</dt><dd>{dataISOParaBR(item.data_emissao || s.data_emissao) || 'Não informada'}</dd></div>
+          {filtro.data_tipo === 'PAGAMENTO' && <div><dt>Última baixa no período consultado</dt><dd>{dataISOParaBR(item.ultima_baixa_periodo) || 'Sem baixa no período'}</dd></div>}
           <div><dt>Forma de pagamento</dt><dd>{s.forma_pagamento?.nome || s.favorecido_pagamento?.metodo || 'Não informada'}</dd></div>
           <div><dt>Descrição do título</dt><dd>{s.descricao || 'Não informada'}</dd></div>
         </dl>
@@ -156,7 +168,7 @@ export default function AutorizacaoTituloDetalhe({ inicial, filtro, caps, setBus
         {pedindoMotivo && caps.can_decide && podeSelecionarAutorizacao(item) && <form className="pa-titulo-motivo" onSubmit={e => { e.preventDefault(); conferir('REJEITAR'); }}><label>Motivo da rejeição<textarea ref={motivoRef} rows={2} maxLength={500} required value={motivo} disabled={bloqueado} onChange={e => { setMotivo(e.target.value); setConfirmacao(null); }} /></label>{podeRejeitarFila(item) && <p>Bloqueia somente o saldo restante até nova autorização, sem estorno dos valores já pagos.</p>}<div className="pa-obras-acoes"><button type="button" className="btn btn-outline btn-sm" disabled={bloqueado} onClick={() => setPedindoMotivo(false)}>Cancelar rejeição</button><button type="submit" className="btn btn-primary btn-sm" disabled={bloqueado || !motivo.trim()}>Conferir rejeição</button></div></form>}
         {confirmacao && <section className="pa-titulo-conferencia" aria-label="Conferência deste título">
           <h3>{confirmacao.decisao === 'AUTORIZAR' ? 'Aprovar' : 'Rejeitar'} somente {s.codigo || `título #${item.titulo_financeiro_id}`}?</h3>
-          <p>{moeda(valorSelecionado(item))} · Os demais títulos do lote permanecem como estão.</p>
+          <p>{moeda(valorSelecionado(item))} · Os demais títulos permanecem como estão.</p>
           {confirmacao.motivo && <p>Motivo: {confirmacao.motivo}</p>}
           <div className="pa-obras-acoes"><button type="button" className="btn btn-outline btn-sm" disabled={bloqueado} onClick={() => setConfirmacao(null)}>Voltar à conferência</button><button type="button" className="btn btn-primary btn-sm" disabled={bloqueado || !podeDecidir} onClick={confirmar}>Confirmar {confirmacao.decisao === 'AUTORIZAR' ? 'aprovação' : 'rejeição'} com passkey</button></div>
         </section>}
