@@ -1,5 +1,19 @@
 # Ownership Ativo
 
+## Promocao MAIN: remetente, filtros e historico excluido - 2026-10-18
+
+- Usuario homologou2e146629 no DEV, autorizou promover para main e confirmou
+  backup recente cifrado no Drive conferido e timer ativo. Agente unico.
+- Reserva: integracao de origin/main5e9b1ef1 com DEV2e146629 sem perder commits,
+  novo roteiro atualizar-producao-pwa-historico-20261018.sh/teste isolado,
+  docs/handoffs de promocao, README financeiro e resolucoes documentais/npm.
+- Produto deve permanecer identico ao homologado2e146629. Preservar scripts
+  produtivos de main. Nenhuma migration nova, flag, permissao ou dependencia.
+- Nao acessar EC2/SSH, MySQL, Redis ou PM2 reais pelo agente; somente fornecer
+  comandos. Nao modificar origin/refactor/frontend, outros worktrees ou outputs/.
+- Branch local codex/promocao-pwa-historico-main-20261018. Publicar main apenas
+  apos integracao/QA; deploy real da EC2 e executado pelo usuario.
+
 ## Publicacao DEV: remetente, filtros e titulos excluidos - 2026-10-18
 
 - Usuario autorizou commitar/publicar todo o delta destas tarefas na
