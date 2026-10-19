@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { Op } = require('sequelize');
 const {
   CartaoFinanceiro,
+  CartaoBaixaParcela,
   Anexo,
   ChequeTerceiro,
   ChequeTerceiroMovimento,
@@ -482,7 +483,7 @@ async function resolverFormaPagamentoBaixa(payload = {}, options = {}) {
   return { formaPagamento, formaPagamentoId, formaRecebimento };
 }
 
-async function resolverCartaoBaixa({ formaRecebimento, cartaoId, conta, empresaBaixaId, dataMovimento, usuarioId, transaction, novaCompraFila = false }) {
+async function resolverCartaoBaixa({ formaRecebimento, cartaoId, conta, empresaBaixaId, dataMovimento, usuarioId, transaction, novaCompraFila = false, semFatura = false }) {
   if (String(formaRecebimento || '').toUpperCase() !== 'CARTAO') {
     if (cartaoId) {
       throw createHttpError(400, 'Cartao deve ser informado apenas quando a forma de recebimento for CARTAO.');
@@ -502,7 +503,8 @@ async function resolverCartaoBaixa({ formaRecebimento, cartaoId, conta, empresaB
 
   const cartao = await CartaoFinanceiro.findByPk(cartaoId, {
     include: [{ model: ContaBancaria, as: 'contaBancaria' }],
-    transaction
+    transaction,
+    ...(semFatura ? { lock: transaction.LOCK.UPDATE } : {})
   });
 
   if (!cartao || cartao.ativo === false) {
@@ -536,7 +538,7 @@ async function resolverCartaoBaixa({ formaRecebimento, cartaoId, conta, empresaB
     };
   }
 
-  const { fatura } = await obterOuCriarFaturaCartao({
+  const { fatura } = semFatura ? { fatura: null } : await obterOuCriarFaturaCartao({
     cartaoId: cartao.id,
     dataCompra: dataMovimento,
     usuarioId,
@@ -1161,6 +1163,8 @@ function buildTituloInclude({ includeMovimentos = false } = {}) {
       model: MovimentoFinanceiro,
       as: 'movimentos',
       include: [
+        { model: CartaoBaixaParcela, as: 'parcelasCartao', include: [{ model: FaturaCartaoFinanceiro, as: 'fatura',
+          attributes: ['id', 'competencia', 'data_vencimento', 'status'] }] },
         {
           model: FormaPagamentoFinanceira,
           as: 'formaPagamento',
@@ -3978,6 +3982,22 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
       autorizadoPorFilaPagamento: options.autorizadoPorFilaPagamento === true,
       autorizadoInternamente: options.autorizadoInternamente === true
     });
+    let compraConfig, compraHash;
+    if (payload.parcelamento_cartao) {
+      const domain = require('./cartaoParcelamentoDomain');
+      compraConfig = domain.validarParcelamentoCartao(payload.parcelamento_cartao, { exigirChave: true });
+      if (compraConfig.quantidade_parcelas > 1 && formaBaixa.formaPagamento?.permite_parcelamento === false) throw createHttpError(400, 'A forma efetiva de pagamento nao permite parcelamento. Confira o cadastro financeiro.');
+      payload = { ...payload, parcelamento_cartao: compraConfig };
+      compraHash = domain.hashCompra(req, tituloId, payload, options);
+      const existente = await MovimentoFinanceiro.findOne({ where: { cartao_baixa_chave: compraConfig.chave_idempotencia }, transaction, lock: transaction.LOCK.UPDATE });
+      if (existente) {
+        if (existente.cartao_baixa_hash !== compraHash || Number(existente.titulo_financeiro_id) !== Number(titulo.id) || existente.status !== 'ATIVO') throw createHttpError(409, 'Chave de baixa do cartao ja utilizada ou estornada. Atualize o titulo antes de tentar novamente.');
+        if (ownTransaction) await transaction.commit();
+        return { id: titulo.id, status: titulo.status, valor_baixado: titulo.valor_baixado, valor_saldo: titulo.valor_saldo,
+          movimento_financeiro_id: existente.id, movimento: existente, idempotente: true };
+      }
+      if (formaRecebimento !== 'CARTAO') throw createHttpError(400, 'Parcelamento permitido somente para baixa no cartao.');
+    }
     const statusAtual = String(titulo.status || '').trim().toUpperCase();
 
     if (!['ABERTO', 'PARCIAL'].includes(statusAtual)) {
@@ -4027,8 +4047,12 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
       dataMovimento: payload.data_movimento,
       usuarioId: req.user?.id || null,
       transaction,
-      novaCompraFila: options.autorizadoPorFilaPagamento === true
+      novaCompraFila: options.autorizadoPorFilaPagamento === true,
+      semFatura: Boolean(compraConfig)
     });
+    const parcelasCompra = compraConfig ? await require('./cartaoParcelamentoService').prepararParcelas({
+      cartao: cartaoBaixa.cartao, titulo, config: compraConfig, total: valorQuitacao,
+      usuarioId: req.user.id, transaction }) : null;
     const contaMovimento = cartaoBaixa.conta || conta;
     const formaMovimento = cartaoBaixa.formaRecebimento;
     const chequeTerceiroSemMovimentoBancario = isChequeFormaRecebimento(formaMovimento)
@@ -4055,6 +4079,7 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
       : null;
     const movimento = await MovimentoFinanceiro.create({
       titulo_financeiro_id: titulo.id,
+      ...(compraConfig ? { cartao_baixa_chave: compraConfig.chave_idempotencia, cartao_baixa_hash: compraHash } : {}),
       conta_bancaria_id: contaEfetivaMovimento?.id || null,
       ...(options.filaLiquidacaoId ? { fila_liquidacao_id: options.filaLiquidacaoId } : {}),
       baixa_grupo_id: payload.baixa_grupo_id || null,
@@ -4084,6 +4109,8 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
       criado_por: req.user?.id || null
     }, { transaction });
 
+    if (parcelasCompra) await require('./cartaoParcelamentoService').registrarParcelas({ parcelas: parcelasCompra,
+      config: compraConfig, titulo, movimento, usuarioId: req.user.id, transaction });
     if (formaMovimento==='PERMUTA') await SecurityEventLog.create({usuario_id:req.user?.id||null,
       tipo_evento:'FINANCIAL_PERMUTA_SETTLED',recurso_tipo:'MOVIMENTO_FINANCEIRO',recurso_id:String(movimento.id),
       status:'SUCCESS',descricao:'Permuta registrada na baixa',metadata:{titulo_id:titulo.id,valor:valorQuitacao,empresa_id:empresaBaixaId}}, {transaction});
@@ -4166,7 +4193,7 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
         usuario_responsavel_id: req.user?.id || null,
         setor: getSetorUsuario(req),
         acao: 'TITULO_FINANCEIRO_BAIXADO',
-        observacao: `Baixa de ${formatCurrency(valorBaixa)} registrada no titulo financeiro #${titulo.id}`
+        observacao: `Baixa de ${formatCurrency(valorBaixa)} registrada no titulo financeiro #${titulo.id}${compraConfig ? `; cartao #${cartaoBaixa.cartao.id}, ${compraConfig.quantidade_parcelas} parcela(s), compra em ${compraConfig.data_compra}, total nas faturas ${formatCurrency(valorQuitacao)}` : ''}`
       }, { transaction });
     }
 
@@ -4186,6 +4213,8 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
           movimento_id: movimento.id,
           conta_bancaria_id: contaEfetivaMovimento?.id || null,
           cartao_id: cartaoBaixa.cartao?.id || null,
+          ...(compraConfig ? { parcelamento_cartao: { data_compra: compraConfig.data_compra, quantidade_parcelas: compraConfig.quantidade_parcelas,
+            fatura_ids: parcelasCompra.map(item => item.fatura.id) } } : {}),
           fatura_cartao_id: cartaoBaixa.fatura?.id || null,
           empresa_baixa_id: empresaBaixaId,
           intercompany_group_id: movimentoIntercompanyFields.intercompany_group_id || null,
@@ -4800,6 +4829,8 @@ async function estornarMovimentoTitulo(req, tituloId, movimentoId, payload = {},
     }
 
     let faturaEstornoFila;
+    if (movimento.cartao_baixa_chave) await require('./cartaoParcelamentoService').estornarParcelas({ movimento,
+      usuarioId: req.user.id, transaction });
     if (internalOptions.estornoFila && movimento.fatura_cartao_id) {
       faturaEstornoFila = await FaturaCartaoFinanceiro.findByPk(movimento.fatura_cartao_id,
         { transaction, lock: transaction.LOCK.UPDATE });

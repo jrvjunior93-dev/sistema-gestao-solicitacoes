@@ -1395,6 +1395,62 @@ Geracao de titulo, baixa, estorno, importacao OFX e conciliacao sao transacionai
 - Sem migration nova. Testes `test:titulo-cancelamento` em backend e frontend.
   Handoff: `docs/handoffs/2026-10-19-cancelamento-titulo-financeiro.md`.
 
+## Parcelamento do cartao na baixa (19/10/2026)
+
+- Na fila e no modal Registrar baixa do titulo a pagar, selecionar credito e
+  cartao, informar data real da compra/quantidade (1 a 60) e valor efetivo.
+  Ver parcelas abre o OverlayModal amplo do sistema, apenas para conferencia.
+  Voltar/Fechar/Escape mantem o preenchimento e nao registra baixa. Registrar
+  baixa/Confirmar baixa continuam sendo as acoes de efetivacao e usam as mesmas
+  permissoes atuais. Debito nao oferece parcelamento mensal nas faturas.
+  A configuracao da forma efetiva que desabilita parcelas continua respeitada.
+  Mudanca de fechamento/vencimento desde a consulta exige atualizar e conferir
+  a previa novamente, sem lancamento silencioso em outra competencia.
+- Cada baixa gera um movimento no titulo. As parcelas, com divisao exata dos
+  centavos e encargos/desconto, alimentam as faturas mensais conforme fechamento
+  e vencimento do cartao. Nao cria novos titulos, nao repete a despesa, nao altera
+  vencimento/valor original do titulo nem registra saida da conta bancaria real
+  antes de pagar a fatura. A conta de controle do cartao segue a regra existente.
+- Mais de um cartao pode ter parcelamentos independentes. A liquidacao e o
+  estorno do grupo continuam atomicos e com as protecoes/permissoes existentes.
+  Baixa em massa preserva a configuracao comum/de cada cartao do lote; a previa
+  soma os centavos das alocacoes de cada titulo, como as faturas efetivas.
+  A restricao atual de credito integral/sem baixa anterior da fila foi mantida;
+  no detalhe, a baixa parcial conserva o saldo do titulo e parcela somente o
+  valor efetivo registrado. Nao amplia o fluxo de Multiplas Fontes para credito.
+- Todas as faturas sao revalidadas com locks na confirmacao; fatura fechada,
+  paga, conciliada ou com pagamento ativo bloqueia a operacao inteira. Estorno
+  confere todas as parcelas/faturas antes de qualquer alteracao e preserva as
+  alocacoes como ESTORNADA. Historico do titulo e detalhe da fatura mostram as
+  parcelas; pagamentos de fatura nao baixam o titulo novamente.
+- Integracao legada continua disponivel sem o campo novo. Um titulo com
+  parcelas ativas nao pode voltar a vincular seu valor integral a outra fatura.
+  Previsao antiga no detalhe precisa do fluxo existente de regularizacao antes
+  de mudar o parcelamento; na fila a previsao e revalidada/corrigida atomicamente.
+  Nenhum valor, parcela ou pagamento da SOL-6104 e corrigido automaticamente.
+- Migration estrutural/idempotente: 202610190001_cartao_parcelamento_baixa.js.
+  Cria financeiro_cartao_baixa_parcelas com FKs/indices e adiciona chave/hash
+  de idempotencia nullable ao movimento. Nao possui backfill ou mudanca de dados
+  antigos. O roteiro DEV anterior nao aplica esta migration; usar o novo
+  `ops/deploy/atualizar-dev-cartao-parcelamento-20261019.sh` com SHA publicado
+  e `--backup-dev-conferido`, somente depois de conferir backup do banco DEV.
+  Confere host/UUID/porta/processo/watch/sessao/flags, atualiza por fast-forward,
+  testa e autoriza exclusivamente esta migration; outra pendencia interrompe.
+  A flag de schema fica apenas no processo de migration, nunca no .env/PM2.
+  Reinicia somente backend-dev, sem importar variaveis do terminal.
+- `backend/scripts/verificarCartaoParcelamentoMySqlDev.js --verificar` executa
+  SELECT/EXPLAIN com transacao READ ONLY, limite de tempo e rollback final.
+  Confere colunas, FKs, indices, alocacoes por movimento/fatura/titulo e soma
+  das parcelas contra o valor da baixa, sem criar titulos ou pagamentos. Sem
+  amostra, aprova schema/SQL mas nao substitui teste humano de baixa/estorno.
+  Pode repetir apos homologacao, a partir de backend no checkout DEV.
+- `backend/scripts/validarDeployCartaoParcelamentoDev.js` testa os guardas e
+  caminhos de falha/repeticao com fixtures, sem conexao externa ou deploy.
+- Testes: npm run test:cartao-parcelamento-baixa em backend/frontend. Banco e
+  transporte isolados, calendario comparado entre frontend/backend em UTC/BR/NZ.
+  Homologacao em MySQL DEV e operacao manual com cartao real ainda necessarias
+  apos publicar/aplicar schema. Nunca testar essas escritas em producao.
+
 ## Pacote DEV financeiro/compras de 19/10/2026
 
 - Inclui multiplas fontes na fila, cancelamento e compras em Centros de Custo

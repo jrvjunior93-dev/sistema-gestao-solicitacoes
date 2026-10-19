@@ -373,14 +373,15 @@ export default function FinanceiroFaturaCartaoDetalhe() {
               rotuloRolagem="Titulos da fatura"
             />
           </BlocoConteudo>
-          {Boolean(fatura.compras_rateadas?.length) && <BlocoConteudo titulo="Compras rateadas nesta fatura"
-            descricao="Somente a parte paga neste cartão. O título pode ter outras partes em outros instrumentos.">
+          {Boolean(fatura.compras_rateadas?.length) && <BlocoConteudo titulo="Compras e parcelas nesta fatura"
+            descricao="Valores desta fatura, sem repetir o total do título em cada parcela.">
             <TabelaPadrao colunas={[
               { id: 'titulo', titulo: 'Título', tipo: 'codigo', render: item => item.titulo?.codigo || `#${item.titulo_financeiro_id}` },
               { id: 'descricao', titulo: 'Descrição', render: item => item.titulo?.descricao || '—' },
               { id: 'parceiro', titulo: 'Parceiro', tipo: 'identidade', render: item => item.titulo?.parceiro?.nome || '—' },
-              { id: 'data', titulo: 'Data da compra', tipo: 'data', render: item => formatDate(item.data_movimento) },
-              { id: 'valor', titulo: 'Valor neste cartão', tipo: 'valor', render: item => formatCurrency(item.valor_quitacao) }
+              { id: 'data', titulo: 'Data da compra', tipo: 'data', render: item => formatDate(item.data_compra || item.data_movimento) },
+              { id: 'parcela', titulo: 'Parcela', render: item => item.numero_parcela ? `${item.numero_parcela}/${item.quantidade_parcelas}` : '—' },
+              { id: 'valor', titulo: 'Valor nesta fatura', tipo: 'valor', render: item => formatCurrency(item.valor_quitacao) }
             ]} itens={fatura.compras_rateadas} vazio="Nenhuma compra rateada." storageKey="tabela:fatura-cartao-detalhe:rateios"
               chaveWorkspace="fatura:rateios" rotuloRolagem="Compras rateadas nesta fatura" />
           </BlocoConteudo>}

@@ -53,6 +53,7 @@ import DadosPagamentoFila from '../components/financeiro/DadosPagamentoFila';
 import BaixaMassaFilaModal from '../components/financeiro/BaixaMassaFilaModal';
 import BaixaCompostaModal from '../components/financeiro/BaixaCompostaModal';
 import InstrumentoPagamentoFila, { payloadInstrumentoFila, tipoInstrumentoFila } from '../components/financeiro/InstrumentoPagamentoFila';
+import { previaParcelasCartao } from '../utils/parcelamentoCartao.mjs';
 import { ResizableTable, ResizableTh } from '../components/ResizableTable';
 import { listarComprovantesFila } from '../utils/comprovantesFila';
 import useRolagemModal from '../hooks/useRolagemModal';
@@ -927,6 +928,14 @@ export default function FinanceiroFilaPagamentos() {
       const forma = instrumentos.formas.find(item => Number(item.id) === Number(draft.forma_pagamento_id));
       if (!forma) return { mensagem: 'Selecione uma forma de pagamento ativa.', correcao: 'Informe a forma efetivamente utilizada na linha.', filaId: row.id, campo: 'forma_pagamento_id' };
       const tipo = tipoInstrumentoFila(forma);
+      const cartoesConferir = instrumentosLote?.tipo === 'CARTAO' ? instrumentosLote.componentes
+        : draft.parcelas_cartao?.length ? draft.parcelas_cartao : [{ ...draft }];
+      try {
+        for (const parte of cartoesConferir) if (parte.parcelamento_cartao) {
+          previaParcelasCartao(instrumentos.cartoes.find(card => Number(card.id) === Number(parte.cartao_id)),
+            parte.parcelamento_cartao, parte.valor_pago);
+        }
+      } catch (error) { return { mensagem: error.message, correcao: 'Confira a data da compra e as parcelas do cartão.', filaId: row.id, campo: 'forma_pagamento_id' }; }
       const partePermuta=valorEmCentavos(draft.valor_permuta||0);
       if(partePermuta && (tipo!=='CONTA'||instrumentosLote||draft.parcelas_cheque?.length||draft.parcelas_cartao?.length||partePermuta<0||partePermuta>=valorEmCentavos(draft.valor_pago)||partePermuta>=valorEmCentavos(draft.valor_pago)+valorEmCentavos(draft.desconto||0)-valorEmCentavos(draft.juros||0)-valorEmCentavos(draft.multa||0))) return {mensagem:'Confira a parte em permuta.',correcao:'Informe um valor menor que o principal e o total. Para permuta integral, selecione PERMUTA.',filaId:row.id,campo:'forma_pagamento_id'};
       if (!instrumentosLote && tipo === 'CARTAO' && !draft.cartao_id && !draft.parcelas_cartao?.length) return { mensagem: 'Informe o cartão utilizado.', correcao: 'Selecione o cartão na linha; a conta vinculada será preenchida.', filaId: row.id, campo: 'forma_pagamento_id' };

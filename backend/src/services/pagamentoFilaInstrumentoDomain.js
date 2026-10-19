@@ -1,5 +1,5 @@
 'use strict';
-const INSTRUMENT_FIELDS = ['forma_pagamento_id', 'cartao_id', 'usar_cheque_terceiro', 'cheque_terceiro_id',
+const INSTRUMENT_FIELDS = ['forma_pagamento_id', 'cartao_id', 'parcelamento_cartao', 'usar_cheque_terceiro', 'cheque_terceiro_id',
   'cheque_numero', 'cheque_emitente', 'titular_documento', 'cheque_banco', 'cheque_agencia',
   'cheque_conta', 'data_emissao', 'data_vencimento', 'parcelas_cheque',
   'valor_permuta', 'empresa_permuta_id', 'documento_referencia', 'categoria_bem', 'descricao_bem'];

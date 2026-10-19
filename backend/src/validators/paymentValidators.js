@@ -251,7 +251,7 @@ function validateManualPaymentQueueProcessBody(payload = {}) {
   const ids = new Set();
   const itens = payload.itens.map((item, index) => {
     ensureAllowedKeys(item, ['fila_id', 'data_baixa', 'conta_bancaria_id', 'valor_pago', 'desconto', 'juros', 'multa', 'motivo',
-      'forma_pagamento_id', 'cartao_id', 'usar_cheque_terceiro', 'cheque_terceiro_id',
+      'forma_pagamento_id', 'cartao_id', 'parcelamento_cartao', 'usar_cheque_terceiro', 'cheque_terceiro_id',
       'cheque_numero', 'cheque_emitente', 'titular_documento', 'cheque_banco', 'cheque_agencia',
       'cheque_conta', 'data_emissao', 'data_vencimento', 'parcelas_cheque', 'parcelas_cartao',
       'valor_permuta','empresa_permuta_id','documento_referencia','categoria_bem','descricao_bem'], `Item ${index + 1}`);
@@ -269,6 +269,7 @@ function validateManualPaymentQueueProcessBody(payload = {}) {
       parcelas_cartao: item.parcelas_cartao == null ? undefined : validarCartoesFila(item.parcelas_cartao),
       forma_pagamento_id: parseInteger(item.forma_pagamento_id, 'Forma de pagamento'),
       cartao_id: parseInteger(item.cartao_id, 'Cartao'),
+      parcelamento_cartao: require('../services/cartaoParcelamentoDomain').validarParcelamentoCartao(item.parcelamento_cartao),
       usar_cheque_terceiro: parseBoolean(item.usar_cheque_terceiro),
       cheque_terceiro_id: parseInteger(item.cheque_terceiro_id, 'Cheque da carteira'),
       cheque_numero: parseOptionalText(item.cheque_numero, 'Numero do cheque', 60),
@@ -289,12 +290,14 @@ function validateManualPaymentQueueProcessBody(payload = {}) {
     });
   });
 
-  if (itens.some(item => item.parcelas_cartao && (item.cartao_id || item.parcelas_cheque || item.cheque_numero
+  if (itens.some(item => item.parcelamento_cartao && (!item.cartao_id || !item.forma_pagamento_id))) throw new ValidationError('Informe forma e cartao para parcelar o pagamento.');
+  if (itens.some(item => item.parcelas_cartao && (item.parcelamento_cartao || item.cartao_id || item.parcelas_cheque || item.cheque_numero
     || item.cheque_terceiro_id || item.usar_cheque_terceiro))) throw new ValidationError('Cartoes rateados nao podem ser misturados com outro instrumento individual.');
   if (itens.some(item => item.parcelas_cartao && !item.forma_pagamento_id)) throw new ValidationError('Informe a forma de pagamento dos cartoes rateados.');
-  if (instrumentos && itens.some(item => item.parcelas_cheque || item.parcelas_cartao || item.cartao_id
+  if (instrumentos && itens.some(item => item.parcelamento_cartao || item.parcelas_cheque || item.parcelas_cartao || item.cartao_id
     || item.cheque_numero || item.cheque_terceiro_id || item.usar_cheque_terceiro)) throw new ValidationError('Instrumentos do lote nao podem ser misturados com instrumentos individuais.');
   if ((instrumentos || itens.some(item => item.parcelas_cartao)) && isBlank(payload.idempotency_key)) throw new ValidationError('Chave de idempotencia obrigatoria para liquidacao compartilhada.');
+  if (itens.some(item => item.parcelamento_cartao) && isBlank(payload.idempotency_key)) throw new ValidationError('Chave de idempotencia obrigatoria para baixa parcelada no cartao.');
   if (itens.some(item=>Number(item.valor_permuta)) && isBlank(payload.idempotency_key)) throw new ValidationError('Chave de idempotencia obrigatoria para compor permuta.');
   if (instrumentos && itens.some(item => item.forma_pagamento_id && item.forma_pagamento_id !== instrumentos.forma_pagamento_id)) throw new ValidationError('Forma individual diferente da forma do lote.');
   return cleanUndefined({
@@ -307,8 +310,9 @@ function validateManualPaymentQueueProcessBody(payload = {}) {
 function validarCartoesFila(partes) {
   if (!Array.isArray(partes) || !partes.length || partes.length > 20) throw new ValidationError('Informe entre 1 e 20 cartoes.');
   return partes.map(item => {
-    ensureAllowedKeys(item, ['cartao_id', 'valor_pago'], 'Cartao do pagamento');
+    ensureAllowedKeys(item, ['cartao_id', 'valor_pago', 'parcelamento_cartao'], 'Cartao do pagamento');
     return { cartao_id: parseInteger(item.cartao_id, 'Cartao', { required: true }),
+      ...(item.parcelamento_cartao ? { parcelamento_cartao: require('../services/cartaoParcelamentoDomain').validarParcelamentoCartao(item.parcelamento_cartao) } : {}),
       valor_pago: parseDecimal(item.valor_pago, 'Valor no cartao', { required: true, min: 0.01 }) };
   });
 }

@@ -309,9 +309,9 @@ async function listarInstrumentosFila() {
   // Rota restrita a registrar baixas; nao concede acesso aos cadastros administrativos.
   const [formas, cartoes, cheques] = await Promise.all([
     FormaPagamentoFinanceira.findAll({ where: { ativo: true },
-      attributes: ['id', 'nome', 'codigo', 'tipo', 'exige_cartao', 'exige_cheque', 'gera_fatura'], order: [['nome', 'ASC']] }),
+      attributes: ['id', 'nome', 'codigo', 'tipo', 'exige_cartao', 'exige_cheque', 'gera_fatura', 'permite_parcelamento'], order: [['nome', 'ASC']] }),
     CartaoFinanceiro.findAll({ where: { ativo: true },
-      attributes: ['id', 'nome', 'tipo', 'conta_bancaria_id'], order: [['nome', 'ASC']] }),
+      attributes: ['id', 'nome', 'tipo', 'conta_bancaria_id', 'dia_fechamento', 'dia_vencimento'], order: [['nome', 'ASC']] }),
     ChequeTerceiro.findAll({ where: { status: 'EM_CARTEIRA' },
       attributes: ['id', 'codigo', 'numero_cheque', 'titular_nome', 'valor', 'empresa_id', 'data_vencimento'],
       include: [{ model: EmpresaGrupo, as: 'empresa', attributes: ['id', 'nome', 'ativo'], required: false }],
@@ -340,10 +340,16 @@ async function resolverInstrumentoFila(titulo, payload, transaction, rateioInter
     throw createHttpError(400, 'Dados de cheque permitidos somente para pagamento em cheque.');
   }
   if (tipo !== 'CARTAO' && instrumento.cartao_id) throw createHttpError(400, 'Cartao permitido somente para pagamento com cartao.');
+  if (tipo !== 'CARTAO' && instrumento.parcelamento_cartao) throw createHttpError(400, 'Parcelamento permitido somente no cartao de credito.');
   if (tipo === 'CARTAO') {
     const cartao = instrumento.cartao_id && await CartaoFinanceiro.findByPk(instrumento.cartao_id, { transaction });
     if (!cartao || cartao.ativo === false) throw createHttpError(400, 'Informe um cartao ativo utilizado no pagamento.');
     const tipoCartao = String(cartao.tipo || 'CREDITO').toUpperCase();
+    if (instrumento.parcelamento_cartao) {
+      instrumento.parcelamento_cartao = require('./cartaoParcelamentoDomain').validarParcelamentoCartao(instrumento.parcelamento_cartao);
+      if (instrumento.parcelamento_cartao.quantidade_parcelas > 1 && forma.permite_parcelamento === false) throw createHttpError(400, 'A forma efetiva de pagamento nao permite parcelamento.');
+      if (tipoCartao !== 'CREDITO') throw createHttpError(400, 'Cartao de debito nao permite parcelamento nas faturas.');
+    }
     const texto = `${forma.tipo} ${forma.codigo} ${forma.nome}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
     if ((texto.includes('DEBITO') && tipoCartao !== 'DEBITO') ||
       ((texto.includes('CREDITO') || forma.gera_fatura) && tipoCartao !== 'CREDITO')) {
@@ -829,6 +835,8 @@ async function processarItemFila(req, itemPayload, requestKey, transaction, liqu
     empresa_id: empresaPagadoraId,
     conta_bancaria_id: conta?.id || null,
     ...instrumento,
+    ...(instrumento.parcelamento_cartao ? { parcelamento_cartao: { ...instrumento.parcelamento_cartao,
+      chave_idempotencia: crypto.createHash('sha256').update(`cartao-baixa:${requestKey}:${filaItem.id}`).digest('hex') } } : {}),
     forma_recebimento: instrumento.forma_pagamento_id ? undefined : 'TRANSFERENCIA',
     valor: valores.principal,
     juros: valores.juros,

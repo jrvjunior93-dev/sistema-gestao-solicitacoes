@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:cartao-parcelamento-baixa": "node scripts/validarCartaoParcelamentoUI.mjs",
     "test:titulo-cancelamento": "node scripts/validarTituloCancelamentoUI.mjs",
     "test:fila-multiplas-fontes": "node scripts/validarFilaBaixaCompostaUI.mjs && node scripts/validarBaixaCompostaWorkspace.mjs",
     "test:permutas": "node scripts/validarPermutasUI.mjs",

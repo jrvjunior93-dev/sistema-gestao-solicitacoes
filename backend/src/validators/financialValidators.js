@@ -1584,6 +1584,7 @@ function validateFinanceTituloBaixaBody(body = {}) {
       'empresa_id',
       'conta_bancaria_id',
       'cartao_id',
+      'parcelamento_cartao',
       'forma_pagamento_id',
       'forma_recebimento',
       'tipo_permuta',
@@ -1627,6 +1628,8 @@ function validateFinanceTituloBaixaBody(body = {}) {
 
   const contaBancariaId = parseInteger(body.conta_bancaria_id, 'Conta bancaria');
   const cartaoId = parseInteger(body.cartao_id, 'Cartao');
+  const parcelamentoCartao = require('../services/cartaoParcelamentoDomain').validarParcelamentoCartao(body.parcelamento_cartao, { exigirChave: true });
+  if (parcelamentoCartao && formaRecebimento !== 'CARTAO') throw new ValidationError('Parcelamento permitido somente na baixa com cartao de credito.');
   const usarChequeTerceiro = parseBoolean(body.usar_cheque_terceiro, 'Usar cheque de terceiro');
   const chequeTerceiroId = parseInteger(body.cheque_terceiro_id, 'Cheque de terceiro');
   const empresaId = parseInteger(body.empresa_id, 'Empresa pagadora', { required: true });
@@ -1660,6 +1663,7 @@ function validateFinanceTituloBaixaBody(body = {}) {
     empresa_id: empresaId,
     conta_bancaria_id: contaBancariaId,
     cartao_id: cartaoId,
+    ...(parcelamentoCartao ? { parcelamento_cartao: parcelamentoCartao } : {}),
     forma_pagamento_id: formaPagamentoId,
     forma_recebimento: formaRecebimento,
     tipo_permuta: parseOptionalText(body.tipo_permuta, 'Tipo de permuta', 80),

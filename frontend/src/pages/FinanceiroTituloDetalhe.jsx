@@ -8,6 +8,8 @@ import ParticipacoesTitulo from '../components/financeiro/ParticipacoesTitulo';
 import CancelarLoteCompartilhado from '../components/financeiro/CancelarLoteCompartilhado';
 import CancelarTitulo from '../components/financeiro/CancelarTitulo';
 import DesvincularFaturaTitulo from '../components/financeiro/DesvincularFaturaTitulo';
+import ParcelamentoCartaoCampos from '../components/financeiro/ParcelamentoCartaoCampos';
+import { previaParcelasCartao, chaveBaixaCartao, comCalendarioCartao } from '../utils/parcelamentoCartao.mjs';
 import { Link, useParams } from 'react-router-dom';
 import {
   atualizarCobrancaTituloFinanceiro,
@@ -22,7 +24,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { hasPermissao, canCancelTitulosFinanceiros } from '../utils/acessoProduto';
 import {podePermuta} from '../utils/permuta';
-import { formatCurrencyInput, normalizeCurrencyTyping } from '../utils/formatters';
+import { formatCurrencyInput, normalizeCurrencyTyping, parseCurrencyInput } from '../utils/formatters';
 import {
   Pagina,
   PageHeader,
@@ -187,6 +189,8 @@ function buildBaixaForm(titulo, contasBancarias, movimento = null) {
       empresa_id: String(movimento.empresa_id || movimento.empresa?.id || ''),
       conta_bancaria_id: String(movimento.conta_bancaria_id || movimento.contaBancaria?.id || ''),
       cartao_id: String(movimento.cartao_id || movimento.cartao?.id || ''),
+      ...(movimento.parcelasCartao?.length ? { parcelamento_cartao: {
+        quantidade_parcelas: movimento.parcelasCartao[0].quantidade_parcelas, data_compra: movimento.parcelasCartao[0].data_compra } } : {}),
       usar_cheque_terceiro: Boolean(movimento.cheque_terceiro_id),
       cheque_terceiro_id: String(movimento.cheque_terceiro_id || ''),
       cheque_numero: movimento?.cheque_numero || '',
@@ -362,6 +366,7 @@ export default function FinanceiroTituloDetalhe() {
   const [corrigindoMovimentoId, setCorrigindoMovimentoId] = useWorkspaceState('titulo-detalhe:correcaoId', null);
   const query = useQueryRevision(id);
   const trava = useRef(false);
+  const cartaoKey = useRef(null);
   useWorkspaceWork(baixaDraft.dirty || cobrancaDraft.dirty || modalBaixaOpen,
     savingCobranca || savingBaixa || estornandoId !== null, 'titulo-detalhe:work');
   useWorkspaceTitle(titulo?.codigo || 'Título');
@@ -669,7 +674,17 @@ export default function FinanceiroTituloDetalhe() {
     try {
       setSavingBaixa(true);
       setError('');
-      await baixarTituloFinanceiro(id, baixaForm);
+      const { parcelamento_cartao: config, ...payload } = baixaForm;
+      if (baixaUsaCartao && !baixaCartaoDebito && tituloTipo === 'PAGAR' && !titulo.fatura_cartao_id) {
+        const parcelaConfig = { ...config, data_compra: config?.data_compra ?? baixaForm.data_movimento,
+          quantidade_parcelas: config?.quantidade_parcelas ?? 1 };
+        previaParcelasCartao(selectedCartaoBaixa, parcelaConfig, Number(parseCurrencyInput(baixaForm.valor) || 0)
+          + Number(parseCurrencyInput(baixaForm.juros) || 0) + Number(parseCurrencyInput(baixaForm.multa) || 0) - Number(parseCurrencyInput(baixaForm.desconto) || 0));
+        cartaoKey.current ||= chaveBaixaCartao();
+        payload.parcelamento_cartao = { ...comCalendarioCartao(parcelaConfig, selectedCartaoBaixa), chave_idempotencia: cartaoKey.current };
+      }
+      await baixarTituloFinanceiro(id, payload);
+      cartaoKey.current = null;
       setModalBaixaOpen(false);
       setCorrigindoMovimentoId(null);
       baixaDraft.discard();
@@ -700,6 +715,7 @@ export default function FinanceiroTituloDetalhe() {
 
       setError('');
       await estornarMovimentoFinanceiro(id, movimentoId, {});
+      cartaoKey.current = null;
       // Recarrega primeiro e avisa depois (mesma razão do salvar cobranca).
       await carregar();
       avisar.sucesso('Baixa estornada com sucesso.');
@@ -1223,6 +1239,11 @@ export default function FinanceiroTituloDetalhe() {
                           {movimento.valor_referencia_bem ? `Referencia ${formatCurrency(movimento.valor_referencia_bem)}.` : ''}
                         </div>
                       )}
+                      {Boolean(movimento.parcelasCartao?.length) && <details className="text-xs">
+                        <summary className="cursor-pointer">{movimento.parcelasCartao[0].quantidade_parcelas} parcela(s) no cartão · compra em {formatDate(movimento.parcelasCartao[0].data_compra)}</summary>
+                        <ul className="mt-2 space-y-1">{[...movimento.parcelasCartao].sort((a,b) => a.numero_parcela-b.numero_parcela).map(parte =>
+                          <li key={parte.id}>{parte.numero_parcela}/{parte.quantidade_parcelas} · {formatDate(parte.fatura?.data_vencimento)} · {formatCurrency(parte.valor)} · {parte.status === 'ESTORNADA' ? 'Estornada' : parte.fatura?.status || '—'}</li>)}</ul>
+                      </details>}
                       {movimento.observacoes && (
                         <div className="text-[var(--c-muted)] whitespace-pre-wrap">{movimento.observacoes}</div>
                       )}
@@ -1399,6 +1420,7 @@ export default function FinanceiroTituloDetalhe() {
                       ...current,
                       forma_recebimento: event.target.value,
                       cartao_id: '',
+                      parcelamento_cartao: undefined,
                       usar_cheque_terceiro: false,
                       cheque_terceiro_id: '',
                       cheque_numero: '',
@@ -1432,6 +1454,7 @@ export default function FinanceiroTituloDetalhe() {
                         setBaixaForm((current) => aplicarEmpresaFonteBaixa({
                           ...current,
                           cartao_id: event.target.value,
+                          parcelamento_cartao: undefined,
                           conta_bancaria_id: contaCartaoId
                         }, contaCartao?.empresa_id));
                       }}
@@ -1451,6 +1474,18 @@ export default function FinanceiroTituloDetalhe() {
                     ) : null}
                   </label>
                 ) : null}
+
+                {baixaUsaCartao && !baixaCartaoDebito && selectedCartaoBaixa && tituloTipo === 'PAGAR' && (
+                  <div className="md:col-span-2">
+                    {titulo.fatura_cartao_id ? <p className="text-xs text-[var(--c-muted)]">Para alterar o parcelamento desta compra, regularize primeiro o vínculo com a fatura prevista.</p> :
+                      <ParcelamentoCartaoCampos label={titulo.codigo || `Título #${id}`} cartao={selectedCartaoBaixa}
+                        value={baixaForm.parcelamento_cartao} dataMovimento={baixaForm.data_movimento}
+                        valor={Number(parseCurrencyInput(baixaForm.valor) || 0) + Number(parseCurrencyInput(baixaForm.juros) || 0)
+                          + Number(parseCurrencyInput(baixaForm.multa) || 0) - Number(parseCurrencyInput(baixaForm.desconto) || 0)}
+                        disabled={savingBaixa || baixaDraft.conflict || loading}
+                        onChange={parcelamento_cartao => setBaixaForm(current => ({ ...current, parcelamento_cartao }))} />}
+                  </div>
+                )}
 
                 {baixaUsaCheque && tituloTipo === 'PAGAR' ? (
                   <div className="rounded-xl border border-[var(--sem-warning-border)] bg-[var(--sem-warning-bg)] p-3 text-sm text-[var(--sem-warning)] md:col-span-2">

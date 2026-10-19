@@ -2,9 +2,9 @@
 
 Gerado por `node frontend/scripts/mapearCamposDatas.mjs`. Nao altera campos ou registros.
 
-Arquivos analisados: 1828. Erros de parser: 0. Conversoes identificadas: 2274.
+Arquivos analisados: 1834. Erros de parser: 0. Conversoes identificadas: 2289.
 
-- CAMPO_COMPARTILHADO: 160
+- CAMPO_COMPARTILHADO: 161
 - CAMPO_NATIVO: 19
 - COLUNA_BANCO: 875
 - CONFIGURACAO_DINAMICA_DATA: 83
@@ -33,8 +33,9 @@ O JSON inclui todas as linhas e referencias de conversao/validacao identificadas
 | frontend/src/components/financeiro/AutorizacoesPorObra.jsx:176 | CAMPO_COMPARTILHADO / DateInputBR | {rascunho.vencimento_inicio} | true |
 | frontend/src/components/financeiro/AutorizacoesPorObra.jsx:177 | CAMPO_COMPARTILHADO / DateInputBR | {rascunho.vencimento_fim} | true |
 | frontend/src/components/financeiro/BaixaCompostaModal.jsx:312 | CAMPO_COMPARTILHADO / DateInputBR | {dataMovimento} | nao declarado |
-| frontend/src/components/financeiro/BaixaMassaFilaModal.jsx:114 | CAMPO_COMPARTILHADO / DateInputBR | {data} | nao declarado |
+| frontend/src/components/financeiro/BaixaMassaFilaModal.jsx:124 | CAMPO_COMPARTILHADO / DateInputBR | {data} | nao declarado |
 | frontend/src/components/financeiro/ChequePagamentoFields.jsx:46 | TIPO_DINAMICO_REVISAR / input | {field === 'titular_documento' ? maskCpfCnpj(value?.[field]) : (value?.[field] \|\| '')} | nao declarado |
+| frontend/src/components/financeiro/ParcelamentoCartaoCampos.jsx:30 | CAMPO_COMPARTILHADO / DateInputBR | {config.data_compra \|\| ''} | true |
 | frontend/src/components/financeiro/TituloNegociacaoModal.jsx:135 | CAMPO_COMPARTILHADO / DateInputBR | {form.primeiro} | {hoje()} / nao declarado |
 | frontend/src/components/financeiro/TituloNegociacaoModal.jsx:150 | CAMPO_COMPARTILHADO / DateInputBR | {p.vencimento} | {hoje()} / nao declarado |
 | frontend/src/components/financeiro/TitulosCompartilhadosModal.jsx:126 | CAMPO_COMPARTILHADO / DateInputBR | {p.data_vencimento} | nao declarado |
@@ -186,7 +187,7 @@ O JSON inclui todas as linhas e referencias de conversao/validacao identificadas
 | frontend/src/pages/FinanceiroEndividamento.jsx:234 | CAMPO_COMPARTILHADO / DateInputBR | {filters.data_inicial} | nao declarado |
 | frontend/src/pages/FinanceiroEndividamento.jsx:238 | CAMPO_COMPARTILHADO / DateInputBR | {filters.data_final} | nao declarado |
 | frontend/src/pages/FinanceiroFaturaCartaoDetalhe.jsx:298 | CAMPO_COMPARTILHADO / DateInputBR | {baixaForm.data_pagamento} | nao declarado |
-| frontend/src/pages/FinanceiroFilaPagamentos.jsx:1587 | CAMPO_COMPARTILHADO / DateInputBR | {drafts[row.id]?.data_baixa \|\| row.data_baixa \|\| ''} | nao declarado |
+| frontend/src/pages/FinanceiroFilaPagamentos.jsx:1596 | CAMPO_COMPARTILHADO / DateInputBR | {drafts[row.id]?.data_baixa \|\| row.data_baixa \|\| ''} | nao declarado |
 | frontend/src/pages/FinanceiroFinanciamentosBancarios.jsx:723 | CAMPO_COMPARTILHADO / DateInputBR | {form.data_contrato} | nao declarado |
 | frontend/src/pages/FinanceiroFinanciamentosBancarios.jsx:726 | CAMPO_COMPARTILHADO / DateInputBR | {form.data_credito} | nao declarado |
 | frontend/src/pages/FinanceiroFinanciamentosBancarios.jsx:729 | CAMPO_COMPARTILHADO / DateInputBR | {form.primeiro_vencimento} | nao declarado |
@@ -211,10 +212,10 @@ O JSON inclui todas as linhas e referencias de conversao/validacao identificadas
 | frontend/src/pages/FinanceiroRelatorios.jsx:761 | CAMPO_COMPARTILHADO / DateInputBR | {filters.data_final} | nao declarado |
 | frontend/src/pages/FinanceiroRelatorios.jsx:1065 | CAMPO_COMPARTILHADO / DateInputBR | {filters.data_inicial} | nao declarado |
 | frontend/src/pages/FinanceiroRelatorios.jsx:1073 | CAMPO_COMPARTILHADO / DateInputBR | {filters.data_final} | nao declarado |
-| frontend/src/pages/FinanceiroTituloDetalhe.jsx:989 | CAMPO_COMPARTILHADO / DateInputBR | {cobrancaForm.boleto_emitido_em} | nao declarado |
-| frontend/src/pages/FinanceiroTituloDetalhe.jsx:1576 | CAMPO_COMPARTILHADO / DateInputBR | {baixaForm.data_emissao} | nao declarado |
-| frontend/src/pages/FinanceiroTituloDetalhe.jsx:1584 | CAMPO_COMPARTILHADO / DateInputBR | {baixaForm.data_vencimento} | nao declarado |
-| frontend/src/pages/FinanceiroTituloDetalhe.jsx:1628 | CAMPO_COMPARTILHADO / DateInputBR | {baixaForm.data_movimento} | nao declarado |
+| frontend/src/pages/FinanceiroTituloDetalhe.jsx:1005 | CAMPO_COMPARTILHADO / DateInputBR | {cobrancaForm.boleto_emitido_em} | nao declarado |
+| frontend/src/pages/FinanceiroTituloDetalhe.jsx:1611 | CAMPO_COMPARTILHADO / DateInputBR | {baixaForm.data_emissao} | nao declarado |
+| frontend/src/pages/FinanceiroTituloDetalhe.jsx:1619 | CAMPO_COMPARTILHADO / DateInputBR | {baixaForm.data_vencimento} | nao declarado |
+| frontend/src/pages/FinanceiroTituloDetalhe.jsx:1663 | CAMPO_COMPARTILHADO / DateInputBR | {baixaForm.data_movimento} | nao declarado |
 | frontend/src/pages/FinanceiroTituloEditar.jsx:1221 | CAMPO_COMPARTILHADO / DateInputBR | {form.data_emissao} | nao declarado |
 | frontend/src/pages/FinanceiroTituloEditar.jsx:1230 | CAMPO_COMPARTILHADO / DateInputBR | {form.data_vencimento} | nao declarado |
 | frontend/src/pages/FinanceiroTituloEditar.jsx:1243 | CAMPO_COMPARTILHADO / DateInputBR | {form.competencia_data} | nao declarado |
@@ -924,7 +925,7 @@ O JSON inclui todas as linhas e referencias de conversao/validacao identificadas
 | backend/src/models/MovimentoFinanceiro.js:120 | COLUNA_BANCO | cheque_data_emissao | DataTypes.DATEONLY |
 | backend/src/models/MovimentoFinanceiro.js:121 | COLUNA_BANCO | cheque_data_vencimento | DataTypes.DATEONLY |
 | backend/src/models/MovimentoFinanceiro.js:155 | COLUNA_BANCO | data_movimento | DataTypes.DATEONLY |
-| backend/src/models/MovimentoFinanceiro.js:171 | COLUNA_BANCO | estornado_em | DataTypes.DATE |
+| backend/src/models/MovimentoFinanceiro.js:173 | COLUNA_BANCO | estornado_em | DataTypes.DATE |
 | backend/src/models/NotificacaoDestinatario.js:20 | COLUNA_BANCO | lida_em | DataTypes.DATE |
 | backend/src/models/ObraCustoHistorico.js:35 | COLUNA_BANCO | data_pagamento | DataTypes.DATEONLY |
 | backend/src/models/ObraCustoHistorico.js:39 | COLUNA_BANCO | data_vencimento | DataTypes.DATEONLY |

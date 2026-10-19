@@ -6,8 +6,11 @@ import {podePermuta,ehPermuta,aceitaComposicaoPermuta} from '../../utils/permuta
 import { cartoesCompativeisFila, payloadInstrumentoFila, tipoInstrumentoFila } from './InstrumentoPagamentoFila';
 import ChequesParceladosFilaModal from './ChequesParceladosFilaModal';
 import CartoesRateadosFilaModal from './CartoesRateadosFilaModal';
+import ParcelamentoCartaoCampos from './ParcelamentoCartaoCampos';
+import { previaParcelasCartao, comCalendarioCartao } from '../../utils/parcelamentoCartao.mjs';
 
 const trocarForma = forma => ({ forma_pagamento_id: forma, cartao_id: '', parcelas_cheque: [], parcelas_cartao: [],
+  parcelamento_cartao: undefined,
   valor_permuta:'',documento_referencia:'',categoria_bem:'',descricao_bem:'',
   origem_cheque: '', usar_cheque_terceiro: false, cheque_terceiro_id: '', cheque_numero: '', cheque_emitente: '',
   titular_documento: '', cheque_banco: '', cheque_agencia: '', cheque_conta: '', data_emissao: '', data_vencimento: '' });
@@ -22,6 +25,7 @@ export default function BaixaMassaFilaModal({ rows, accounts, drafts = {}, instr
     return formas.size === 1 ? [...formas][0] : '';
   });
   const [cartaoTodos, setCartaoTodos] = useState('');
+  const [parcelamentoTodos, setParcelamentoTodos] = useState();
   const [instrumentosLote, setInstrumentosLote] = useState(null);
   const [editorLote, setEditorLote] = useState(null);
   const total = rows.reduce((sum, row) => sum + Math.round(Number(drafts[row.id]?.valor_pago || 0) * 100), 0) / 100;
@@ -46,7 +50,7 @@ export default function BaixaMassaFilaModal({ rows, accounts, drafts = {}, instr
       ? anteriores.componentes : [{ valor_pago: total, origem_cheque: '' }] });
   }
   function selecionarForma(value) {
-    setFormaTodos(value); setCartaoTodos(''); setInstrumentosLote(null); setErro('');
+    setFormaTodos(value); setCartaoTodos(''); setParcelamentoTodos(undefined); setInstrumentosLote(null); setErro('');
     const forma = instrumentos.formas.find(item => Number(item.id) === Number(value));
     if(tipoInstrumentoFila(forma)==='PERMUTA')setConta('');
     if (tipoInstrumentoFila(forma) === 'CHEQUE') abrirCheques(value, null);
@@ -62,10 +66,15 @@ export default function BaixaMassaFilaModal({ rows, accounts, drafts = {}, instr
     if (tipoTodos === 'CHEQUE' && !instrumentosLote) { setErro('Informe e confirme os cheques do lote no cabeçalho.'); return; }
     if ((!somenteCarteira && tipoTodos!=='PERMUTA' && !conta) || !data) { setErro('Informe a conta pagadora e a data do pagamento.'); return; }
     if (tipoTodos === 'CARTAO' && !instrumentosLote && !cartaoTodos) { setErro('Selecione o cartão usado ou informe os cartões do lote.'); return; }
+    if (parcelamentoTodos && !instrumentosLote) {
+      try { for (const row of rows) previaParcelasCartao(instrumentos.cartoes.find(card=>Number(card.id)===Number(cartaoTodos)), parcelamentoTodos, drafts[row.id]?.valor_pago); }
+      catch (error) { setErro(error.message); return; }
+    }
     enviando.current = true; setErro('');
     try {
       const pagamentos = Object.fromEntries(rows.map(row => [row.id, {
         ...trocarForma(formaTodos), cartao_id: instrumentosLote ? '' : cartaoTodos,
+        ...(!instrumentosLote && parcelamentoTodos ? { parcelamento_cartao: parcelamentoTodos } : {}),
         ...(preservarPermutas && Number(drafts[row.id]?.valor_permuta) > 0 ? {
           valor_permuta: drafts[row.id].valor_permuta,
           documento_referencia: drafts[row.id].documento_referencia || '',
@@ -84,7 +93,8 @@ export default function BaixaMassaFilaModal({ rows, accounts, drafts = {}, instr
     const normalizados = tipo === 'CHEQUE' ? componentes.map(item => ({ valor_pago: Number(item.valor_pago),
       ...payloadInstrumentoFila({ ...item, forma_pagamento_id: forma }, instrumentos.formas),
       ...(item.usar_cheque_terceiro && item.empresa_id ? { empresa_id: Number(item.empresa_id) } : {}), forma_pagamento_id: undefined }))
-      : componentes.map(item => ({ cartao_id: Number(item.cartao_id), valor_pago: Number(item.valor_pago) }));
+      : componentes.map(item => ({ cartao_id: Number(item.cartao_id), valor_pago: Number(item.valor_pago),
+        ...(item.parcelamento_cartao ? { parcelamento_cartao: item.parcelamento_cartao } : {}) }));
     if (tipo === 'CARTAO') {
       const card = instrumentos.cartoes.find(item => Number(item.id) === Number(componentes[0].cartao_id));
       setConta(String(card.conta_bancaria_id));
@@ -130,6 +140,7 @@ export default function BaixaMassaFilaModal({ rows, accounts, drafts = {}, instr
                 const id = event.target.value;
                 setCartaoTodos(id); setErro('');
                 const card = instrumentos.cartoes.find(item => Number(item.id) === Number(id));
+                setParcelamentoTodos(card?.tipo === 'CREDITO' ? comCalendarioCartao({ quantidade_parcelas: 1, data_compra: data }, card) : undefined);
                 if (card) setConta(String(card.conta_bancaria_id));
               }}>
               <option value="">Selecione ou informe vários cartões para o lote</option>
@@ -137,8 +148,13 @@ export default function BaixaMassaFilaModal({ rows, accounts, drafts = {}, instr
                 <option key={card.id} value={card.id}>{card.nome} · {card.tipo}</option>)}
             </select>
           </label>
+          {!instrumentosLote && <div className="mt-2"><ParcelamentoCartaoCampos label="lote selecionado"
+            permiteParcelamento={formaSelecionada?.permite_parcelamento !== false}
+            cartao={instrumentos.cartoes.find(card=>Number(card.id)===Number(cartaoTodos))} value={parcelamentoTodos}
+            dataMovimento={data} valor={total} valoresPorTitulo={rows.map(row=>Number(drafts[row.id]?.valor_pago))}
+            disabled={busy} onChange={setParcelamentoTodos} /></div>}
           <button type="button" className="btn btn-outline btn-sm mt-2" onClick={() => setEditorLote({ tipo: 'CARTAO', forma: formaTodos,
-            parcelas: instrumentosLote?.tipo === 'CARTAO' ? instrumentosLote.componentes : [{ cartao_id: cartaoTodos, valor_pago: total }] })}>Mais de um cartão para o lote</button>
+            parcelas: instrumentosLote?.tipo === 'CARTAO' ? instrumentosLote.componentes : [{ cartao_id: cartaoTodos, valor_pago: total, parcelamento_cartao: parcelamentoTodos }] })}>Mais de um cartão para o lote</button>
         </div>}
         {instrumentosLote && <div className="sm:col-span-2 text-sm border-t border-[var(--c-border)] pt-3" role="status">
           <strong>{instrumentosLote.componentes.length} {instrumentosLote.tipo === 'CHEQUE' ? 'cheque(s)' : 'cartão(ões)'} para o total do lote.</strong>
@@ -166,6 +182,8 @@ export default function BaixaMassaFilaModal({ rows, accounts, drafts = {}, instr
       podeCadastrar={podeCadastrarCheque} onFechar={() => setEditorLote(null)}
       onChange={parcelas => setEditorLote(current => ({ ...current, parcelas }))} onConfirmar={confirmarLote} />}
     {editorLote?.tipo === 'CARTAO' && <CartoesRateadosFilaModal label="lote selecionado" parcelas={editorLote.parcelas}
+      permiteParcelamento={formaSelecionada?.permite_parcelamento !== false}
+      dataMovimento={data} valoresPorTitulo={rows.map(row=>Number(drafts[row.id]?.valor_pago))}
       total={total} cartoes={cartoesCompativeisFila(instrumentos.formas.find(item => Number(item.id) === Number(editorLote.forma)), instrumentos.cartoes).filter(card => card.conta_bancaria_id)}
       conflito={busy} onFechar={() => setEditorLote(null)} onChange={parcelas => setEditorLote(current => ({ ...current, parcelas }))}
       onConfirmar={confirmarLote} />}
