@@ -14,12 +14,16 @@ const formas = [{ id: 1, nome: 'Boleto', gera_boleto: true }, { id: 2, nome: 'Pi
 const cartoes=[{id:10,nome:'Credito QA',tipo:'CREDITO',ativo:true}, {id:20,nome:'Debito QA',tipo:'DEBITO',ativo:true},
   {id:30,nome:'Inativo QA',tipo:'CREDITO',ativo:false}];
 const tituloPayloads = [], vinculos = [], documentos = [], anexos = [], historicos = [];
+let avulsos = [];
 let falharHistorico = false;
 const pedido = { id: 10, financeiro_fluxo_versao: 1, status: 'FECHADO_FORNECEDOR',
   obra_id: 7, valor_total_fornecedor: 100, fornecedor: { parceiro_id: 20, nome: 'Fornecedor' },
   solicitacao: { solicitacao_principal_id: 30 }, update: async () => {} };
 const frete = { id: 8, parceiro_id: 21, valor_total: 25 };
 const modelos = {
+  Solicitacao: { findByPk: async (_id, options) => { assert.equal(options.lock, transaction.LOCK.UPDATE); return { id: 30 }; } },
+  TituloFinanceiro: { findAll: async () => avulsos },
+  SolicitacaoCompraAlocacao: { findAll: async () => [] },
   CartaoFinanceiro: { findByPk: async (id, options) => {
     assert.equal(options.transaction,transaction);assert.equal(options.lock,transaction.LOCK.UPDATE);
     return cartoes.find(c=>c.id===id);
@@ -34,6 +38,7 @@ const modelos = {
     assert.equal(options.lock, transaction.LOCK.UPDATE); return pedido;
   } },
   PedidoCompraTitulo: {
+    findAll: async () => vinculos,
     findOne: async ({ where }) => vinculos.find((v) => v.idempotency_key === where.idempotency_key),
     create: async (data, options) => { assert.equal(options.transaction, transaction); vinculos.push(data); }
   },
@@ -55,6 +60,7 @@ const modelos = {
   } }
 };
 const sandbox = { module: { exports: {} }, require(id) {
+  if (id === './tituloSobreposicaoService') return protecao.exports;
   if (id === 'sequelize') return { Op: {} };
   if (id === '../models') return modelos;
   if (id === './tituloFinanceiroService') return { criarTituloManual: async (_req, data, options) => {
@@ -72,6 +78,10 @@ const sandbox = { module: { exports: {} }, require(id) {
   if (id === './formasPagamentoMedicaoService') return { listarFormasDosFluxos: async () => ({ formas }) };
   throw new Error(`Dependencia nao simulada: ${id}`);
 } };
+const protecao = { exports: {} };
+vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/services/tituloSobreposicaoService.js'), 'utf8'), {
+  module: protecao, require: id => { if (id === 'sequelize') return { Op: {} }; if (id === '../models') return modelos; throw Error(id); }
+});
 const arquivo = path.join(__dirname, '../src/services/pedidoCompraFinanceiroService.js');
 vm.runInNewContext(fs.readFileSync(arquivo, 'utf8') + `
   // Apenas consultas de projecao sao substituidas na fixture.
@@ -106,6 +116,7 @@ async function validarCuradoriaEFaturasReais() {
   const faturas=[],titulos=[];
   const faturaModel={exports:{}};
   const modeloFatura={
+    CartaoBaixaParcela:{findOne:async()=>null,findAll:async()=>[]},
     CartaoFinanceiro:{findByPk:async()=>({id:10,tipo:'CREDITO',ativo:true,dia_fechamento:10,dia_vencimento:20})},
     FaturaCartaoFinanceiro:{findOrCreate:async({where,defaults,transaction:tx})=>{
       assert.equal(tx,transaction);let f=faturas.find(f=>f.competencia===where.competencia);
@@ -218,5 +229,10 @@ async function validarCuradoriaEFaturasReais() {
     {forma_pagamento_id:1,cartao_id:10}])await assert.rejects(validar(data), /cartao|data de compra/);
   assert.throws(()=>validateCompraPedidoPrevisoesBody({...base,cartao_id:-1}),/Cartao/);
   assert.throws(()=>validateCompraPedidoPrevisoesBody({...base,data_compra:'2026-02-30'}),/Data/);
+  const antesAvulso = tituloPayloads.length;
+  avulsos = [{ id: 999, tipo: 'PAGAR', status: 'ABERTO' }];
+  await assert.rejects(criar(base, 'novo-pedido-com-avulso'), /títulos avulsos/);
+  assert.equal(tituloPayloads.length, antesAvulso, 'Título avulso impede nova geração pelo pedido');
+  avulsos = [];
   console.log('Boleto opcional: criacao compra/frete, anexos, auditoria, retry e validacoes preservadas. Sem banco real.');
 })().catch((error) => { console.error(error); process.exitCode = 1; });

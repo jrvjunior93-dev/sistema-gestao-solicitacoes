@@ -55,6 +55,10 @@ async function projetarOrigens(titulos, { transaction } = {}) {
     const pendentes = atual.parcelas.filter(p => centavos(p.valor_saldo) > 0);
     const vencimento = pendentes.map(p => p.vencimento).sort()[0] || original.data_vencimento;
     return { ...plain(t), renegociado_por_id: original.renegociado_por_id,
+      historico_titulo_original: { id: original.id, codigo: original.codigo, status: original.status,
+        valor_original: original.valor_original, valor_baixado: original.valor_baixado,
+        valor_saldo: original.valor_saldo, data_vencimento: original.data_vencimento,
+        renegociado_por_id: original.renegociado_por_id },
       status_original: original.status, valor_original_antes_negociacao: original.valor_original,
       status: saldo === 0 ? 'QUITADO' : anterior + atual.pago > 0 ? 'PARCIAL' : 'ABERTO',
       valor_original: dinheiro(anterior + atual.total), valor_baixado: dinheiro(anterior + atual.pago),

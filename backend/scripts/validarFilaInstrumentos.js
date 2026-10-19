@@ -17,6 +17,7 @@ const locks = [];
 const fatura = { id: 1, status: 'ABERTA', cartao_id: 10 };
 let encargosFatura = [];
 const models = {
+  CartaoBaixaParcela: { findAll: async () => [], findOne: async () => null },
   MovimentoFinanceiro: { findAll: async options => {
     assert.equal(options.where.tipo_movimento, 'BAIXA'); assert.equal(options.where.status, 'ATIVO');
     assert.equal(options.where.forma_recebimento, 'CARTAO_CREDITO'); return encargosFatura;

@@ -150,6 +150,10 @@ async function buildSessionUser(user) {
     integracao_sienge_capacidades: capacidadesRhDp.filter((item) => item.startsWith('integracao_sienge_')),
     areas_permissoes: areasPermissoes,
     areas_permissoes_configuradas: Boolean(areasPermissionState.configured),
+    // Concessoes estritas, inclusive quando o perfil administrativo tem bypass
+    // nas demais areas. Nao transforma esse bypass em permissao de permuta.
+    permutas_permissoes: areasPermissionState.permissions.filter(chave =>
+      ['financeiro.permutas.cadastrar', 'financeiro.permutas.usar', 'financeiro.permutas.relatorio'].includes(chave)),
     prioridade_diretoria_acesso: prioridadeDiretoriaAcesso,
     pode_criar_solicitacao_compra: Boolean(user.pode_criar_solicitacao_compra),
     pode_enviar_qualquer_setor: Boolean(user.pode_enviar_qualquer_setor),

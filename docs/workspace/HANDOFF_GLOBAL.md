@@ -7,6 +7,9 @@
   correcao do outro agente para sobreposicoes/historico de titulos.
   Exige leitura/simulacao EC2 de producao antes de publicar/aplicar; agente
   nao acessa servidor nem executa regularizacao financeira.
+  Preparacao local validada; preflight portatil e simulacao em memoria entregues
+  ao operador. Proximo passo em 2026-10-19-preparacao-main-financeiro-sobreposicoes.md.
+  Main permanece sem publicacao ate receber a evidencia real. Ownership liberado.
 
 ## Promocao main cadastro no pagamento RH - 2026-10-15
 

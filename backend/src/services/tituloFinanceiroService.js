@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { Op } = require('sequelize');
 const {
   CartaoFinanceiro,
+  CartaoBaixaParcela,
   Anexo,
   ChequeTerceiro,
   ChequeTerceiroMovimento,
@@ -482,7 +483,7 @@ async function resolverFormaPagamentoBaixa(payload = {}, options = {}) {
   return { formaPagamento, formaPagamentoId, formaRecebimento };
 }
 
-async function resolverCartaoBaixa({ formaRecebimento, cartaoId, conta, empresaBaixaId, dataMovimento, usuarioId, transaction, novaCompraFila = false }) {
+async function resolverCartaoBaixa({ formaRecebimento, cartaoId, conta, empresaBaixaId, dataMovimento, usuarioId, transaction, novaCompraFila = false, semFatura = false }) {
   if (String(formaRecebimento || '').toUpperCase() !== 'CARTAO') {
     if (cartaoId) {
       throw createHttpError(400, 'Cartao deve ser informado apenas quando a forma de recebimento for CARTAO.');
@@ -502,7 +503,8 @@ async function resolverCartaoBaixa({ formaRecebimento, cartaoId, conta, empresaB
 
   const cartao = await CartaoFinanceiro.findByPk(cartaoId, {
     include: [{ model: ContaBancaria, as: 'contaBancaria' }],
-    transaction
+    transaction,
+    ...(semFatura ? { lock: transaction.LOCK.UPDATE } : {})
   });
 
   if (!cartao || cartao.ativo === false) {
@@ -536,7 +538,7 @@ async function resolverCartaoBaixa({ formaRecebimento, cartaoId, conta, empresaB
     };
   }
 
-  const { fatura } = await obterOuCriarFaturaCartao({
+  const { fatura } = semFatura ? { fatura: null } : await obterOuCriarFaturaCartao({
     cartaoId: cartao.id,
     dataCompra: dataMovimento,
     usuarioId,
@@ -1161,6 +1163,8 @@ function buildTituloInclude({ includeMovimentos = false } = {}) {
       model: MovimentoFinanceiro,
       as: 'movimentos',
       include: [
+        { model: CartaoBaixaParcela, as: 'parcelasCartao', include: [{ model: FaturaCartaoFinanceiro, as: 'fatura',
+          attributes: ['id', 'competencia', 'data_vencimento', 'status'] }] },
         {
           model: FormaPagamentoFinanceira,
           as: 'formaPagamento',
@@ -2739,7 +2743,12 @@ async function listarTitulosPorSolicitacao(req, solicitacaoId) {
     order: [['id', 'ASC']]
   });
   const documentos = comprovantes.map((item) => item.toJSON());
-  return titulos.map((titulo) => ({ ...(titulo.toJSON ? titulo.toJSON() : titulo), comprovantesSolicitacao: documentos }));
+  return Promise.all(titulos.map(async (titulo) => {
+    const t = titulo.toJSON ? titulo.toJSON() : titulo;
+    const registro = t.status === 'CANCELADO'
+      ? await require('./tituloCancelamentoAuditoriaService').buscarCancelamento(t.id) : null;
+    return { ...t, ...(registro?.substituicao ? { regularizacao_substituicao: registro.substituicao } : {}), comprovantesSolicitacao: documentos };
+  }));
 }
 
 async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
@@ -2957,6 +2966,9 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
     await freteCompraService.validarGeracao(solicitacao.id, contextoCompraDireta, transaction);
     const origemAtual = await Solicitacao.findByPk(solicitacao.id, { transaction, lock: transaction.LOCK.UPDATE });
     if (!origemAtual || origemAtual.cancelada) throw createHttpError(409, 'Solicitação alterada ou cancelada. Atualize antes de gerar títulos.');
+    // Compra direta possui validação própria de fornecedor/frete e idempotência.
+    // Somente esse contexto, calculado no servidor, mantém a geração pela origem.
+    if (tipo === 'PAGAR' && !contextoCompraDireta) await require('./tituloSobreposicaoService').assertFluxoCompra(solicitacao.id, transaction);
     const compartilhado = await require('../models').TituloCompartilhadoOrigem.findOne({ where: { solicitacao_id: solicitacao.id },
       include: [{ model: TituloFinanceiro, as: 'titulo', required: true, attributes: ['id'], where: { status: { [Op.notIn]: ['CANCELADO', 'ESTORNADO'] } } }],
       transaction, lock: transaction.LOCK.UPDATE });
@@ -3356,6 +3368,10 @@ async function criarTituloManual(req, payload = {}, options = {}) {
   const origemFreteId = Number(payload.origem_frete_id || 0);
 
   try {
+    if (payload.solicitacao_id && tipo === 'PAGAR' && origemTitulo === 'MANUAL') {
+      await Solicitacao.findByPk(Number(payload.solicitacao_id), { transaction, lock: transaction.LOCK.UPDATE });
+      await require('./tituloSobreposicaoService').assertFluxoCompra(payload.solicitacao_id, transaction);
+    }
     for (const [pagamentoIndex, pagamento] of pagamentos.entries()) {
       for (let index = 0; index < pagamento.quantidadeParcelas; index += 1) {
         const numeroParcela = index + 1;
@@ -3694,6 +3710,7 @@ async function criarTituloManualComBaixaAtomica(req, payload = {}, { transaction
   }
 
   const formaRecebimento = exigirFormaRecebimentoBaixa(payload.forma_recebimento);
+  if (formaRecebimento==='PERMUTA'||payload.tipo_permuta) await require('./permutaOperacionalDomain').validarBaixaPermuta(req,payload,formaRecebimento);
   const ownTransaction = !externalTransaction;
   const transaction = externalTransaction || await sequelize.transaction();
 
@@ -3963,6 +3980,7 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
 
   const formaBaixa = await resolverFormaPagamentoBaixa(payload);
   const formaRecebimento = formaBaixa.formaRecebimento;
+  if (formaRecebimento==='PERMUTA'||payload.tipo_permuta || /\bPERMUTA\b/i.test([formaBaixa.formaPagamento?.tipo,formaBaixa.formaPagamento?.codigo,formaBaixa.formaPagamento?.nome].join(' '))) await require('./permutaOperacionalDomain').validarBaixaPermuta(req,payload,formaRecebimento,formaBaixa.formaPagamento);
   const conta = await validarContaBancaria(payload.conta_bancaria_id);
   const empresaBaixaId = await validarEmpresaBaixa({
     empresaId: payload.empresa_id,
@@ -3976,6 +3994,22 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
       autorizadoPorFilaPagamento: options.autorizadoPorFilaPagamento === true,
       autorizadoInternamente: options.autorizadoInternamente === true
     });
+    let compraConfig, compraHash;
+    if (payload.parcelamento_cartao) {
+      const domain = require('./cartaoParcelamentoDomain');
+      compraConfig = domain.validarParcelamentoCartao(payload.parcelamento_cartao, { exigirChave: true });
+      if (compraConfig.quantidade_parcelas > 1 && formaBaixa.formaPagamento?.permite_parcelamento === false) throw createHttpError(400, 'A forma efetiva de pagamento nao permite parcelamento. Confira o cadastro financeiro.');
+      payload = { ...payload, parcelamento_cartao: compraConfig };
+      compraHash = domain.hashCompra(req, tituloId, payload, options);
+      const existente = await MovimentoFinanceiro.findOne({ where: { cartao_baixa_chave: compraConfig.chave_idempotencia }, transaction, lock: transaction.LOCK.UPDATE });
+      if (existente) {
+        if (existente.cartao_baixa_hash !== compraHash || Number(existente.titulo_financeiro_id) !== Number(titulo.id) || existente.status !== 'ATIVO') throw createHttpError(409, 'Chave de baixa do cartao ja utilizada ou estornada. Atualize o titulo antes de tentar novamente.');
+        if (ownTransaction) await transaction.commit();
+        return { id: titulo.id, status: titulo.status, valor_baixado: titulo.valor_baixado, valor_saldo: titulo.valor_saldo,
+          movimento_financeiro_id: existente.id, movimento: existente, idempotente: true };
+      }
+      if (formaRecebimento !== 'CARTAO') throw createHttpError(400, 'Parcelamento permitido somente para baixa no cartao.');
+    }
     const statusAtual = String(titulo.status || '').trim().toUpperCase();
 
     if (!['ABERTO', 'PARCIAL'].includes(statusAtual)) {
@@ -4025,8 +4059,12 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
       dataMovimento: payload.data_movimento,
       usuarioId: req.user?.id || null,
       transaction,
-      novaCompraFila: options.autorizadoPorFilaPagamento === true
+      novaCompraFila: options.autorizadoPorFilaPagamento === true,
+      semFatura: Boolean(compraConfig)
     });
+    const parcelasCompra = compraConfig ? await require('./cartaoParcelamentoService').prepararParcelas({
+      cartao: cartaoBaixa.cartao, titulo, config: compraConfig, total: valorQuitacao,
+      usuarioId: req.user.id, transaction }) : null;
     const contaMovimento = cartaoBaixa.conta || conta;
     const formaMovimento = cartaoBaixa.formaRecebimento;
     const chequeTerceiroSemMovimentoBancario = isChequeFormaRecebimento(formaMovimento)
@@ -4053,6 +4091,7 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
       : null;
     const movimento = await MovimentoFinanceiro.create({
       titulo_financeiro_id: titulo.id,
+      ...(compraConfig ? { cartao_baixa_chave: compraConfig.chave_idempotencia, cartao_baixa_hash: compraHash } : {}),
       conta_bancaria_id: contaEfetivaMovimento?.id || null,
       ...(options.filaLiquidacaoId ? { fila_liquidacao_id: options.filaLiquidacaoId } : {}),
       baixa_grupo_id: payload.baixa_grupo_id || null,
@@ -4082,6 +4121,11 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
       criado_por: req.user?.id || null
     }, { transaction });
 
+    if (parcelasCompra) await require('./cartaoParcelamentoService').registrarParcelas({ parcelas: parcelasCompra,
+      config: compraConfig, titulo, movimento, usuarioId: req.user.id, transaction });
+    if (formaMovimento==='PERMUTA') await SecurityEventLog.create({usuario_id:req.user?.id||null,
+      tipo_evento:'FINANCIAL_PERMUTA_SETTLED',recurso_tipo:'MOVIMENTO_FINANCEIRO',recurso_id:String(movimento.id),
+      status:'SUCCESS',descricao:'Permuta registrada na baixa',metadata:{titulo_id:titulo.id,valor:valorQuitacao,empresa_id:empresaBaixaId}}, {transaction});
     if (isChequeFormaRecebimento(formaMovimento)) {
       const tipoTitulo = getTituloTipo(titulo);
       if (tipoTitulo === 'RECEBER') {
@@ -4161,7 +4205,7 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
         usuario_responsavel_id: req.user?.id || null,
         setor: getSetorUsuario(req),
         acao: 'TITULO_FINANCEIRO_BAIXADO',
-        observacao: `Baixa de ${formatCurrency(valorBaixa)} registrada no titulo financeiro #${titulo.id}`
+        observacao: `Baixa de ${formatCurrency(valorBaixa)} registrada no titulo financeiro #${titulo.id}${compraConfig ? `; cartao #${cartaoBaixa.cartao.id}, ${compraConfig.quantidade_parcelas} parcela(s), compra em ${compraConfig.data_compra}, total nas faturas ${formatCurrency(valorQuitacao)}` : ''}`
       }, { transaction });
     }
 
@@ -4181,6 +4225,8 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
           movimento_id: movimento.id,
           conta_bancaria_id: contaEfetivaMovimento?.id || null,
           cartao_id: cartaoBaixa.cartao?.id || null,
+          ...(compraConfig ? { parcelamento_cartao: { data_compra: compraConfig.data_compra, quantidade_parcelas: compraConfig.quantidade_parcelas,
+            fatura_ids: parcelasCompra.map(item => item.fatura.id) } } : {}),
           fatura_cartao_id: cartaoBaixa.fatura?.id || null,
           empresa_baixa_id: empresaBaixaId,
           intercompany_group_id: movimentoIntercompanyFields.intercompany_group_id || null,
@@ -4795,6 +4841,8 @@ async function estornarMovimentoTitulo(req, tituloId, movimentoId, payload = {},
     }
 
     let faturaEstornoFila;
+    if (movimento.cartao_baixa_chave) await require('./cartaoParcelamentoService').estornarParcelas({ movimento,
+      usuarioId: req.user.id, transaction });
     if (internalOptions.estornoFila && movimento.fatura_cartao_id) {
       faturaEstornoFila = await FaturaCartaoFinanceiro.findByPk(movimento.fatura_cartao_id,
         { transaction, lock: transaction.LOCK.UPDATE });
@@ -5020,6 +5068,8 @@ function normalizarLabelEventoAuditoria(tipoEvento) {
       return 'Baixa estornada';
     case 'FINANCIAL_TITLE_CARD_FORECAST_UNLINKED':
       return 'Previsão de cartão desvinculada';
+    case 'FINANCIAL_TITLE_CANCELLED':
+      return 'Título cancelado';
     default:
       return String(tipoEvento || 'Evento financeiro')
         .trim()
@@ -5094,10 +5144,13 @@ async function listarAuditoriaTitulo(req, tituloId) {
 
   // Desvinculacoes preservam trilha permanente; logs de seguranca possuem
   // retencao configuravel. Exibir uma vez, com as mesmas permissoes de auditoria.
-  const permanentes = await require('./tituloDesvincularFaturaAuditoriaService').listarEventos(titulo.id);
+  const permanentes = [
+    ...await require('./tituloDesvincularFaturaAuditoriaService').listarEventos(titulo.id),
+    ...(titulo.status === 'CANCELADO' ? await require('./tituloCancelamentoAuditoriaService').listarEventos(titulo.id) : [])
+  ];
   const chaves = new Set(permanentes.map(evento => evento.metadata.idempotency_key));
   const eventos = [...permanentes, ...eventosSeguranca.filter(evento =>
-    evento.tipo_evento !== 'FINANCIAL_TITLE_CARD_FORECAST_UNLINKED'
+    !['FINANCIAL_TITLE_CARD_FORECAST_UNLINKED', 'FINANCIAL_TITLE_CANCELLED'].includes(evento.tipo_evento)
       || !chaves.has(normalizarMetadataAuditoria(evento.metadata).idempotency_key))]
     .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0, 50);
   const eventosComMetadata = eventos.map((evento) => ({

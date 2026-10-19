@@ -5,6 +5,7 @@ const db = {};
 
 db.Sequelize = Sequelize;
 db.sequelize = sequelize;
+db.CartaoBaixaParcela = require('./CartaoBaixaParcela')(sequelize, Sequelize);
 db.TituloCompartilhadoLote = require('./TituloCompartilhadoLote')(sequelize, Sequelize);
 db.TituloCompartilhadoOrigem = require('./TituloCompartilhadoOrigem')(sequelize, Sequelize);
 
@@ -4407,6 +4408,11 @@ db.MovimentoFinanceiro.belongsTo(db.FaturaCartaoFinanceiro, {
   foreignKey: 'fatura_cartao_id',
   as: 'faturaCartao'
 });
+
+db.MovimentoFinanceiro.hasMany(db.CartaoBaixaParcela, { foreignKey: 'movimento_financeiro_id', as: 'parcelasCartao' });
+db.CartaoBaixaParcela.belongsTo(db.MovimentoFinanceiro, { foreignKey: 'movimento_financeiro_id', as: 'movimento' });
+db.CartaoBaixaParcela.belongsTo(db.TituloFinanceiro, { foreignKey: 'titulo_financeiro_id', as: 'titulo' });
+db.CartaoBaixaParcela.belongsTo(db.FaturaCartaoFinanceiro, { foreignKey: 'fatura_cartao_id', as: 'fatura' });
 
 db.CartaoFinanceiro.hasMany(db.MovimentoFinanceiro, {
   foreignKey: 'cartao_id',

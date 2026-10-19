@@ -552,6 +552,8 @@ async function listarFormasPagamentoFinanceiras(req) {
 async function criarFormaPagamentoFinanceira(req, payload = {}) {
   await assertFinanceAccess(req);
   const data = sanitizeFormaPagamentoPayload(payload);
+  if (require('./permutaOperacionalDomain').ehPermuta(data)) await require('./permutaOperacionalDomain').exigirPermissaoPermuta(req,'cadastrar');
+  require('./permutaOperacionalDomain').validarFormaPermuta(data);
   data.criado_por = req.user?.id || null;
   data.atualizado_por = req.user?.id || null;
 
@@ -578,6 +580,9 @@ async function atualizarFormaPagamentoFinanceira(req, formaId, payload = {}) {
   if (!forma) throw createHttpError(404, 'Forma de pagamento nao encontrada.');
 
   const data = sanitizeFormaPagamentoPayload(payload, { partial: true });
+  const formaFinal={...(forma.toJSON?forma.toJSON():forma),...data};
+  if (require('./permutaOperacionalDomain').ehPermuta(forma) || require('./permutaOperacionalDomain').ehPermuta(formaFinal)) await require('./permutaOperacionalDomain').exigirPermissaoPermuta(req,'cadastrar');
+  require('./permutaOperacionalDomain').validarFormaPermuta(formaFinal);
   if (Object.keys(data).length === 0) {
     throw createHttpError(400, 'Nenhum campo valido informado para atualizar a forma de pagamento.');
   }

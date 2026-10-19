@@ -12,6 +12,7 @@ const { isObraCentroCusto } = require('../constants/centroCusto');
 const {
   enrichTipoSolicitacao,
   normalizeTipoSolicitacaoBehavior,
+  normalizeTipoSolicitacaoCodigo,
   serializeTipoSolicitacaoBehavior
 } = require('./tipoSolicitacaoBehaviorService');
 
@@ -327,6 +328,25 @@ async function assertTipoDisponivelNoDestino(destino, tipo, { transaction = null
   return true;
 }
 
+// Somente as telas/endpoints proprios de compras usam esta validacao. O catalogo
+// da Nova Solicitacao continua respeitando o tipo fixo do Centro de Custo.
+// Nao substitui as permissoes funcionais nem a guarda de acesso ao destino.
+async function assertTipoCompraDisponivelNoDestino(destino, tipo, { transaction = null } = {}) {
+  const codigo = normalizeTipoSolicitacaoCodigo(tipo?.codigo_interno, tipo?.nome);
+  const ehTipoCompra = ['SOLICITACAO_DE_COMPRA', 'COMPRAS', 'COMPRA_DIRETA'].includes(codigo);
+  if (destino && !isObraCentroCusto(destino.tipo_centro_custo) && ehTipoCompra) {
+    if (destino.ativo === false) {
+      throw erroNegocio('Obra/Centro de Custo nao encontrado ou inativo.', 404);
+    }
+    if (!tipoPodeSerAbertoManualmente(tipo)) {
+      throw erroNegocio('Tipo de solicitacao indisponivel para abertura.');
+    }
+    return true;
+  }
+  // Obras e tipos personalizados mantem exatamente as regras anteriores.
+  return assertTipoDisponivelNoDestino(destino, tipo, { transaction });
+}
+
 async function obterConfiguracao() {
   await Promise.all([
     garantirTiposAutomaticosCentroCusto(),
@@ -449,6 +469,7 @@ async function salvarConfiguracao({ escopo, centroCustoId, tipos, usuarioId }) {
 }
 
 module.exports = {
+  assertTipoCompraDisponivelNoDestino,
   assertTipoDisponivelNoDestino,
   garantirTipoCadastroObra,
   garantirTiposAutomaticosCentroCusto,

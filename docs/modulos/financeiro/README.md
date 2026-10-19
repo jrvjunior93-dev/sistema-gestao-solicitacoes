@@ -1,5 +1,14 @@
 # Modulo FINANCEIRO
 
+## Preparacao da promocao financeira - 2026-10-19
+
+- Integracao local dos pacotes DEV ate db1d2253 com a main ff459840, incluindo
+  cartao, permuta, multiplas fontes, cancelamento e historico/sobreposicoes.
+- Preflight portatil `backend/scripts/preflightFinanceiroProducao20261019.js`
+  confere producao por leitura e executa simulacao das duas solicitacoes em
+  memoria, sem regularizacao automatica. Publicacao main aguarda evidencia EC2.
+- [Gates, validacoes e proximo passo](../../handoffs/2026-10-19-preparacao-main-financeiro-sobreposicoes.md).
+
 ## Promocao do historico/remetente para main - 2026-10-18
 
 - Usuario homologou2e146629 no DEV e confirmou backup cifrado/timer ativo.
@@ -8,6 +17,40 @@
   SHA main, backup/timer, identidade/schema/TLS/PILOT/12h e .env preservado.
   Sem migration nova ou restauracao de titulos; restart somente producao.
 - [Escopo, guardas e conferencia](../../handoffs/2026-10-18-promocao-main-pwa-historico.md).
+
+## Fila: baixa com multiplas fontes - 2026-10-18
+
+- Acoes Multiplas fontes na linha e Baixa com multiplas fontes na selecao
+  reutilizam o editor atual, com valor por fonte e distribuicao entre titulos.
+  A revisao nao grava baixas; confirmar revalida saldos/fontes sob bloqueio.
+- Rotas exclusivas da fila exigem acesso financeiro, baixa da fila e granulares
+  existentes de baixa composta criar/confirmar. Permuta exige .usar;
+  estorno do novo grupo exige tambem baixa composta .estornar. Sem concessoes.
+- Reusa baixarTitulo e PagamentoFilaLiquidacao; movimentos, fila e auditoria
+  sao atomicos. Replay nao duplica pagamentos; estorno reverte o grupo completo,
+  inclusive carteira uma vez. A linha mostra apenas suas fontes e valores.
+- Mesmo credor, ate 200 itens/60 fontes, sem encargos/desconto nesse caminho.
+  Cartao de credito permanece no fluxo proprio de fatura. Pagamento parcial
+  exige justificativa e segue a divergencia atual da fila. Escopos, bloqueios
+  proprietario/DP/Obra, caixa aberto e dados de cheque continuam validados.
+- Sem migration nova, alteracao de legado, EC2 ou producao. Implementacao local
+  baseada em refactor/frontend (39f368be); homologacao real DEV ainda pendente.
+- [Operacao, limites e testes](../../handoffs/2026-10-18-fila-multiplas-fontes.md).
+
+## Permutas realizadas: operacao e relatorio - 2026-10-18
+
+- Primeira etapa confirmada pelo usuario: registrar valores de permuta nas
+  baixas, sem limite/saldo de acordo e sem exigir recebimentos anteriores.
+  Nenhuma migration ou seed; legado preservado, inclusive BENS/tipo_permuta.
+- Cadastro da forma, uso na baixa e relatorio separados pelas granulares
+  `financeiro.permutas.cadastrar`, `financeiro.permutas.usar` e
+  `financeiro.permutas.relatorio`.
+  Exigem os acessos financeiros atuais; nao ampliam escopo de obras.
+- Na fila, PERMUTA integral sem conta; composicao monetaria informa o total
+  pago e a parte em permuta. Duas baixas atomicas, estorno do grupo e replay.
+  Relatorio /financeiro/permutas separa realizado pagar/receber e estornos.
+- [Escopo, operacao e QA](../../handoffs/2026-10-18-permutas-realizadas-mapa-datas.md).
+- [Mapa de datas, sem migracao global](../../datas/MAPA_E_PLANO_PADRONIZACAO.md).
 
 ## Titulos excluidos: consulta historica no PWA - 2026-10-18
 
@@ -1359,3 +1402,140 @@ Geracao de titulo, baixa, estorno, importacao OFX e conciliacao sao transacionai
   `verificarPwaPeriodoProducao.js --verificar` e somente leitura, inclusive
   inspecao Redis/RP/origens. Sem novas migrations ou mudanca de flags/.env;
   restart somente backend-solicitacoes, sem --update-env. DEV nao e alterado.
+
+## Cancelamento de titulo individual
+
+- No detalhe do titulo, em Dados do titulo, a acao Cancelar titulo exige motivo
+  e confirmacao. Aplica CANCELADO e saldo zero, sem excluir registro/anexos,
+  alterar valores originais, registrar baixa ou estornar pagamentos.
+- Nova chave `financeiro.titulos.cancelar`; operadores precisam de concessao
+  explicita. Acesso de setor, editar ou excluir nao substitui essa chave.
+  ACL e todas as obras do rateio sao revalidadas tambem no replay.
+- Pagamentos, fila/autorizacao ativa, cartao/fatura, cobranca, conciliacao,
+  integracao e fluxos especializados bloqueiam a acao; regularizar na origem.
+  Compartilhados continuam usando o cancelamento integral do lote existente.
+- Historico permanente guarda motivo/data/responsavel e recibo idempotente na
+  trilha financeira ja existente, sem criar autoria de solicitacao. Exibicao
+  no detalhe e auditoria financeira, mesmo apos retencao do log de seguranca.
+- Sem migration nova. Testes `test:titulo-cancelamento` em backend e frontend.
+  Handoff: `docs/handoffs/2026-10-19-cancelamento-titulo-financeiro.md`.
+
+## Parcelamento do cartao na baixa (19/10/2026)
+
+- Na fila e no modal Registrar baixa do titulo a pagar, selecionar credito e
+  cartao, informar data real da compra/quantidade (1 a 60) e valor efetivo.
+  Ver parcelas abre o OverlayModal amplo do sistema, apenas para conferencia.
+  Voltar/Fechar/Escape mantem o preenchimento e nao registra baixa. Registrar
+  baixa/Confirmar baixa continuam sendo as acoes de efetivacao e usam as mesmas
+  permissoes atuais. Debito nao oferece parcelamento mensal nas faturas.
+  A configuracao da forma efetiva que desabilita parcelas continua respeitada.
+  Mudanca de fechamento/vencimento desde a consulta exige atualizar e conferir
+  a previa novamente, sem lancamento silencioso em outra competencia.
+- Cada baixa gera um movimento no titulo. As parcelas, com divisao exata dos
+  centavos e encargos/desconto, alimentam as faturas mensais conforme fechamento
+  e vencimento do cartao. Nao cria novos titulos, nao repete a despesa, nao altera
+  vencimento/valor original do titulo nem registra saida da conta bancaria real
+  antes de pagar a fatura. A conta de controle do cartao segue a regra existente.
+- Mais de um cartao pode ter parcelamentos independentes. A liquidacao e o
+  estorno do grupo continuam atomicos e com as protecoes/permissoes existentes.
+  Baixa em massa preserva a configuracao comum/de cada cartao do lote; a previa
+  soma os centavos das alocacoes de cada titulo, como as faturas efetivas.
+  A restricao atual de credito integral/sem baixa anterior da fila foi mantida;
+  no detalhe, a baixa parcial conserva o saldo do titulo e parcela somente o
+  valor efetivo registrado. Nao amplia o fluxo de Multiplas Fontes para credito.
+- Todas as faturas sao revalidadas com locks na confirmacao; fatura fechada,
+  paga, conciliada ou com pagamento ativo bloqueia a operacao inteira. Estorno
+  confere todas as parcelas/faturas antes de qualquer alteracao e preserva as
+  alocacoes como ESTORNADA. Historico do titulo e detalhe da fatura mostram as
+  parcelas; pagamentos de fatura nao baixam o titulo novamente.
+- Integracao legada continua disponivel sem o campo novo. Um titulo com
+  parcelas ativas nao pode voltar a vincular seu valor integral a outra fatura.
+  Previsao antiga no detalhe precisa do fluxo existente de regularizacao antes
+  de mudar o parcelamento; na fila a previsao e revalidada/corrigida atomicamente.
+  Nenhum valor, parcela ou pagamento da SOL-6104 e corrigido automaticamente.
+- Migration estrutural/idempotente: 202610190001_cartao_parcelamento_baixa.js.
+  Cria financeiro_cartao_baixa_parcelas com FKs/indices e adiciona chave/hash
+  de idempotencia nullable ao movimento. Nao possui backfill ou mudanca de dados
+  antigos. O roteiro DEV anterior nao aplica esta migration; usar o novo
+  `ops/deploy/atualizar-dev-cartao-parcelamento-20261019.sh` com SHA publicado
+  e `--backup-dev-conferido`, somente depois de conferir backup do banco DEV.
+  Confere host/UUID/porta/processo/watch/sessao/flags, atualiza por fast-forward,
+  testa e autoriza exclusivamente esta migration; outra pendencia interrompe.
+  A flag de schema fica apenas no processo de migration, nunca no .env/PM2.
+  Reinicia somente backend-dev, sem importar variaveis do terminal.
+- `backend/scripts/verificarCartaoParcelamentoMySqlDev.js --verificar` executa
+  SELECT/EXPLAIN com transacao READ ONLY, limite de tempo e rollback final.
+  Confere colunas, FKs, indices, alocacoes por movimento/fatura/titulo e soma
+  das parcelas contra o valor da baixa, sem criar titulos ou pagamentos. Sem
+  amostra, aprova schema/SQL mas nao substitui teste humano de baixa/estorno.
+  Pode repetir apos homologacao, a partir de backend no checkout DEV.
+- `backend/scripts/validarDeployCartaoParcelamentoDev.js` testa os guardas e
+  caminhos de falha/repeticao com fixtures, sem conexao externa ou deploy.
+- Testes: npm run test:cartao-parcelamento-baixa em backend/frontend. Banco e
+  transporte isolados, calendario comparado entre frontend/backend em UTC/BR/NZ.
+  Homologacao em MySQL DEV e operacao manual com cartao real ainda necessarias
+  apos publicar/aplicar schema. Nunca testar essas escritas em producao.
+
+## Pacote DEV financeiro/compras de 19/10/2026
+
+- Inclui multiplas fontes na fila, cancelamento e compras em Centros de Custo
+  pelas telas proprias, sem mudar o tipo fixo da Nova Solicitacao.
+- Roteiro `ops/deploy/atualizar-dev-financeiro-20261019.sh` recebe SHA publicado,
+  verifica identidade DEV/PM2/watch/schema/sessao, executa testes isolados e
+  consultas SELECT/EXPLAIN de permutas em MySQL DEV, e reinicia so backend-dev.
+  Nao aplica migration nem altera flags/configuracoes. Erro interrompe o fluxo.
+- Frontend publicado pelo fluxo da branch na Vercel; nao construir frontend
+  nem modificar Nginx na EC2 para este pacote. Homologar com usuarios reais DEV.
+
+## Sobreposicoes, historico e resumo da solicitacao - 2026-10-19
+
+- O card financeiro separa obrigacoes vigentes de titulos CANCELADO/ESTORNADO e
+  originais RENEGOCIADO. Uma projecao de negociacao continua representando a
+  participacao vigente, com seu original em historico e parcelas atuais
+  expansivas abaixo da tabela. Nao oculta saldo ativo por suspeita de duplicidade.
+- Indicadores: quantidade de obrigacoes, valor vigente, principal liquidado
+  (inclui desconto, nao e apenas caixa) e saldo a pagar/receber. Participacoes
+  compartilhadas permanecem restritas a solicitacao. Dados de outras origens
+  nao sao acrescentados ao DTO operacional da Obra.
+- Geracao por pedido e lote consulta titulos diretos sem vinculo conhecido em
+  pedido/alocacao/frete. Avulsos, inclusive quitados ou renegociados sem esse
+  vinculo, exigem revisao antes de gerar outra obrigacao. Pedidos distintos com
+  vinculo conhecido nao sao bloqueados apenas por pertencerem a mesma solicitacao.
+- A geracao individual de PAGAR nao contorna pedidos de compra. Compra Direta
+  validada pelo servidor conserva seu fluxo especifico de fornecedor/frete.
+  Confirmacao do lote revalida disponibilidade sob transacao; replay continua
+  usando a chave e o hash existentes. Nao cancela registros automaticamente.
+- Original renegociado projetado e participacao compartilhada nao sao enviados
+  como um titulo integral para autorizacao/fila. As parcelas vigentes continuam
+  acessiveis pelo detalhe conforme permissoes financeiras existentes.
+- Cancelamento auditado existente aceita referencia opcional `substituicao`:
+  `{ tipo: 'NEGOCIACAO' | 'LOTE_COMPARTILHADO', id: inteiro_positivo }`.
+  O backend verifica parcelas validas, mesma solicitacao e mesmo credor sob
+  bloqueio. Nao comprova identidade comercial: documentos devem ser conferidos.
+  Mantem permissao `financeiro.titulos.cancelar`, escopo, versao, idempotencia,
+  bloqueios de fila/banco/contrato/integracoes e auditoria permanente em LogExclusao.
+  Nao apaga titulos, anexos, valores originais ou movimentos; nao gera pagamento.
+- A referencia aparece no detalhe cancelado e no historico do card. Nao ha
+  migration, seed, endpoint novo nem regularizacao automatica na inicializacao.
+
+### Simulacao offline
+
+A rotina abaixo le apenas arquivos locais e escreve um NOVO diretorio. Nao
+importa models/env/driver SQL e nao possui modo de aplicar no banco:
+
+```powershell
+node backend/scripts/simularRegularizacaoTitulos.js --extracao outputs/analise-titulos-solicitacoes-20261019/extracao --saida outputs/simulacao-regularizacao-titulos-NOVA
+```
+
+O caso preparado propoe cancelar TIT-010200 com referencia ao lote 1 e
+TIT-003948/003949/003950 com referencia a negociacao 3. Reducao simulada:
+R$ 9.870,00. Fontes, negociacoes, baixas e participacoes nao sao alteradas.
+A extracao nao contem todos os bloqueadores do cancelamento: uma operacao
+real futura deve revalidar integralmente os vinculos e a identidade comercial.
+Nao executar por atualizacao de codigo, deploy ou aprovacao desta simulacao.
+
+Testes sem banco: `validarSobreposicaoTitulos.js`, `validarTitulosCompartilhados.js`,
+`validarTituloCancelamento.js`, `validarTituloRenegociacaoVinculos.js`,
+`validarTituloRenegociacaoSincronizacao.js`, `validarPedidoBoletoOpcional.js` e
+`validarCompraDiretaFreteFinanceiro.js` em backend/scripts; resumo e UI real do
+card/cancelamento em frontend/scripts, alem de build e teste de documentacao.

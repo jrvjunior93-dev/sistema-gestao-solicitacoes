@@ -87,6 +87,8 @@ async function registrarLiquidacaoFila(req, itens, config, key, transaction, { p
             ? await require('./tituloCompartilhadoPagamento').entreEmpresas(titulo, fonte.empresa_id, transaction)
             : Boolean(titulo.empresa_id && Number(titulo.empresa_id) !== Number(fonte.empresa_id));
           const baixa = await baixarTitulo(req, titulo.id, { ...payload, ...fonte, ...parte,
+            ...(fonte.parcelamento_cartao ? { parcelamento_cartao: { ...fonte.parcelamento_cartao,
+              chave_idempotencia: require('crypto').createHash('sha256').update(`cartao-grupo:${key}:${item.fila_id}:${parte.componente}`).digest('hex') } } : {}),
             data_movimento: item.data_baixa, intercompany: entreEmpresas,
             natureza_intercompany_baixa: entreEmpresas ? 'OPERACIONAL_TERCEIRO' : undefined,
             tipo_intercompany: entreEmpresas ? 'TRANSFERENCIA_OPERACIONAL' : undefined,

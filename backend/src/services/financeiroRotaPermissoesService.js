@@ -84,6 +84,7 @@ const PERMISSOES_ROTAS_FINANCEIRAS = Object.freeze({
   'POST /financeiro/titulos/:id/baixas/conciliacoes': ['financeiro.titulos.baixar'],
   'POST /financeiro/titulos/:id/baixas': ['financeiro.titulos.baixar'],
   'POST /financeiro/titulos/:id/desvincular-fatura': ['financeiro.titulos.editar'],
+  'POST /financeiro/titulos/:id/cancelar': ['financeiro.titulos.cancelar'],
   'POST /financeiro/titulos/:id/movimentos/:movimentoId/estornar': ['financeiro.titulos.estornar'],
   'POST /financeiro/fila-pagamentos/:id/estornar': ['financeiro.titulos.estornar'],
 

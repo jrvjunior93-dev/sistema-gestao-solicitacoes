@@ -4,6 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:cartao-parcelamento-baixa": "node scripts/validarCartaoParcelamentoUI.mjs",
+    "test:titulo-cancelamento": "node scripts/validarTituloCancelamentoUI.mjs",
+    "test:fila-multiplas-fontes": "node scripts/validarFilaBaixaCompostaUI.mjs && node scripts/validarBaixaCompostaWorkspace.mjs",
+    "test:permutas": "node scripts/validarPermutasUI.mjs",
+    "test:mapa-datas": "node scripts/validarMapaCamposDatas.mjs",
     "test:pwa-titulos-excluidos": "node scripts/validarDatasObservacoesAutorizacao.mjs && node scripts/validarAutorizacoesPorObra.mjs && node scripts/validarAutorizacaoPwa.mjs",
     "test:pwa-rejeicao-datas": "node scripts/validarDatasObservacoesAutorizacao.mjs && node scripts/validarAutorizacoesPorObra.mjs && node scripts/validarTituloSolicitacaoAtualizacao.mjs",
     "test:rhdp-admissao-documentos": "node scripts/validarRhColaboradorContatos.mjs && node scripts/validarRhDocumentosPacote.mjs && node scripts/validarRhPedidoTiposDocumento.mjs",

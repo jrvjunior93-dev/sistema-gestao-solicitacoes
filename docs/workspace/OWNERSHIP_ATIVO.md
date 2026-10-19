@@ -10,6 +10,9 @@
   Nao editar runtime funcional, worktree do outro agente ou auditorias privadas.
 - Producao requer leitura/simulacao pelo operador antes de publicar main.
   Nao executar EC2, migrations, regularizacao, cancelamento ou restart pelo agente.
+- PreflightFinanceiroProducao20261019 e validador isolado concluidos; suites
+  integradas/UI/build/simulacao aprovadas. Reserva liberada ao encerrar etapa.
+  Main nao publicada; aguardar evidencia EC2. Handoff de preparacao registrado.
 
 ## Promocao MAIN: remetente, filtros e historico excluido - 2026-10-18
 
@@ -29,6 +32,55 @@
   Produto e dependencias conferidos contra2e146629; reserva encerrada,
   ownership liberado para commit/push main autorizados. Roteiro e limites em
   docs/handoffs/2026-10-18-promocao-main-pwa-historico.md.
+
+## Publicacao DEV: permutas e mapa de datas - 2026-10-18
+
+- Usuario autorizou commit/push do pacote local para refactor/frontend e
+  roteiro exclusivo DEV com verificacao somente leitura das consultas MySQL.
+- Agente unico. Reservados delta da implementacao, novo verificador MySQL DEV,
+  teste isolado, roteiro ops/deploy e handoff desta publicacao. Nao acessar
+  EC2/SSH/MySQL reais, alterar main, producao, .env, permissoes ou legado.
+- Nenhuma migration nova. Preflight deve interromper em schema pendente;
+  preservar PM2/flags/TLS/PILOT/sessao e reiniciar somente backend-dev.
+- Reserva complementar: metricas AGENTS/docs de autorizacao e validador
+  documental para referencias tecnicas de modelos/migrations no inventario
+  gerado, sem reativar funcionalidade legada nem permitir prosa obsoleta.
+- QA de publicacao concluido: permutas operacionais/SQL SQLite/UI, guards e
+  SQL com fronteira MySQL simulada, regressao fila/cartao/ACL/sessao/passkey,
+  inventario reproduzivel, navegacao, build, documentacao574/19, bash -n e diff.
+  Verificacao real MySQL e homologacao serao executadas pelo usuario no DEV.
+  Reserva encerrada; ownership liberado para commit/push exclusivo autorizado.
+  Roteiro e testes: docs/handoffs/2026-10-18-publicacao-dev-permutas.md.
+
+## Permutas operacionais, relatorio e mapa de datas - 2026-10-18
+
+- Agente unico, sem delegacao. Usuario autorizou implementar na base
+  refactor/frontend, preservar legado e permissoes atuais, sem producao.
+- Branch isolada codex/permutas-saldo-mapa-datas-20261018, base2e146629.
+  Nao alterar outros worktrees, outputs/, main ou executar EC2/banco real.
+- Reserva: novos modelos/migration schema-only/servico/controller de permutas;
+  integracao de baixa/estorno simples/composta/fila, rotas, registro de modelos,
+  permissoes granulares, paginas/componentes/clientes financeiro e navegacao.
+- Reserva adicional: inventario gerado e script/testes de campos de data,
+  docs/mapa-datas e handoff. Somente mapear datas globais nesta etapa; nao
+  converter registros antigos nem mudar automaticamente a data0226 da auditoria.
+- UX compacta operacional, sem blocos explicativos; orientacao ao usuario no
+  chat. Separar consulta operacional elegivel de relatorio gerencial granular.
+- Aguardando definicao do momento de liberacao do saldo e separacao de uso
+  operacional. Enquanto isso, mapear fluxos/ACL e campos de data existentes.
+- Definicao posterior confirmada: PRIMEIRA ETAPA somente registrar valores
+  realizados, sem limite/saldo de acordo ou dependencia de recebimento. Nao
+  criar acordo/carteira/saldo inicial agora. Separar cadastrar forma, usar
+  permuta e consultar relatorio por granularidade. Legado imutavel.
+- Reserva complementar AuthController/buildSessionUser: expor somente as tres
+  concessoes efetivas de permuta em campo proprio da sessao. O bypass visual
+  ADMINISTRADOR zera areas_permissoes; nao alterar esse comportamento global,
+  nem conceder permuta automaticamente ou modificar outras permissoes.
+- Implementacao concluida; testes operacionais/SQL SQLite/UI, regressao da
+  fila/instrumentos/cartoes, sessao/troca usuario, navegacao, mapa de datas e
+  build aprovados. Sem migration nova, commit/push, banco real ou EC2. Handoff
+  docs/handoffs/2026-10-18-permutas-realizadas-mapa-datas.md. Reserva encerrada;
+  ownership liberado, delta local preservado para futura publicacao autorizada.
 
 ## Publicacao DEV: remetente, filtros e titulos excluidos - 2026-10-18
 

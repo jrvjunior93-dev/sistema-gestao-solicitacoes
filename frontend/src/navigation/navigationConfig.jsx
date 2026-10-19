@@ -88,6 +88,7 @@ import {
   HiOutlinePresentationChartLine,
   HiOutlineRectangleGroup
 } from 'react-icons/hi2';
+import {podePermuta} from '../utils/permuta';
 import {
   canAccessBiblioteca,
   canAccessBoletos,
@@ -446,6 +447,7 @@ export const NAV_MODULES = [
       { id: 'fin-boletos', ordem: 90, label: 'Boletos', desc: 'Emissão e retorno de boletos.', icon: HiOutlineDocumentText, to: '/financeiro/boletos', can: (user) => canAccessBoletos(user) },
       { id: 'fin-faturas-cartao', ordem: 120, label: 'Faturas de Cartão', desc: 'Faturas de cartão corporativo.', icon: HiOutlineCreditCard, to: '/financeiro/faturas-cartao', can: (user) => canAccessFinanceiroArea(user, 'financeiro.cartoes.visualizar') },
       { id: 'fin-relatorios', ordem: 170, label: 'Relatórios Financeiros', desc: 'DRE, fluxo consolidado e análises.', icon: HiOutlineChartBar, to: '/financeiro/relatorios', can: (user) => canViewFinanceiroRelatorios(user) },
+      { id: 'fin-permutas', ordem: 175, label: 'Permutas', desc: 'Pagamentos e recebimentos realizados em permuta.', icon: HiOutlineBanknotes, to: '/financeiro/permutas', can: (user) => podePermuta(user, 'relatorio') },
       { id: 'fin-baixas', ordem: 30, label: 'Baixas Realizadas', desc: 'Histórico de baixas de títulos.', icon: HiOutlineBanknotes, to: '/financeiro/baixas', can: (user) => canAccessFinanceiroArea(user, 'financeiro.baixas.visualizar') },
       { id: 'fin-conciliacao', ordem: 40, label: 'Conciliação OFX', desc: 'Conciliação de extratos bancários.', icon: HiOutlineScale, to: '/financeiro/conciliacao', can: (user) => canAccessFinanceiroArea(user, 'financeiro.conciliacao.visualizar') },
       { id: 'fin-caixas', ordem: 50, label: 'Caixas e Contas', desc: 'Caixas operacionais e contas bancárias.', icon: HiOutlineWallet, to: '/financeiro/caixas', can: (user) => canViewFinanceiroCaixas(user) },

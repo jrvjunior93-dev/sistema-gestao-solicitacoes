@@ -25,6 +25,16 @@ function responderErro(res, error, fallback) {
 }
 
 module.exports = {
+  async compostaPreview(req, res) {
+    try { return res.json(await require('../services/filaBaixaCompostaService').previewFilaBaixaComposta(req, req.body)); }
+    catch (error) { return responderErro(res, error, 'Erro ao validar fontes da fila'); }
+  },
+  async compostaConfirmar(req, res) {
+    try {
+      return res.json(await require('../services/filaBaixaCompostaService').confirmarFilaBaixaComposta(req, req.body,
+        String(req.get('Idempotency-Key') || '').trim()));
+    } catch (error) { return responderErro(res, error, 'Erro ao registrar baixa composta na fila'); }
+  },
   async anexarComprovanteLote(req, res) {
     try {
       let ids;
