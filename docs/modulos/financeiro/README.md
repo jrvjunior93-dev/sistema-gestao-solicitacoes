@@ -1,5 +1,43 @@
 # Modulo FINANCEIRO
 
+## Autorizado aguardando envio: alerta e recuperacao - 2026-10-19
+
+- Autorizacao digital e enqueue usam transacoes distintas. Se a assinatura
+  foi commitada e a fila falha, o titulo permanece AUTORIZADO; nao pedir outra
+  assinatura nem apresentar falha de passkey. A resposta explicita envio_pendente.
+- Gera imediatamente notificacao interna PAGAMENTO_AUTORIZADO_ENVIO_PENDENTE
+  aos autorizadores nominais ativos que ainda possuem granular de decisao,
+  inclusive o proprio ator. Respeita a configuracao administrativa do evento.
+  Dedup por lote/revisao/conjunto de itens, serializada pelo lock do lote.
+  Push generico apos commit, sem valores/documentos/credores; falha de entrega
+  nao desfaz a decisao ou a notificacao interna. Entrega pelo SO depende de
+  permissao, assinatura/VAPID e conectividade; nao e garantia de entrega instantanea.
+- Conferir e reenviar na notificacao abre apenas GET da conferencia do lote,
+  inclusive fora da pagina carregada. Reenvio exige clique autenticado. Ha
+  Reenviar para a fila na lista por obra, detalhe do titulo e visao por lote.
+  No titulo envia somente aquele item; no aviso/lote envia os elegiveis exibidos.
+- Backend aceita preparador atual OU autorizador nominal ativo com granular
+  de decisao; visualizador/configurador sozinho nao pode reenviar. Modo Testar
+  usuario e PAUSED bloqueiam. Reenvio nao consome nova passkey, nao concede
+  permissao de envio direto e usa o enqueue existente com escopo/locks/revisao/
+  idempotencia/protecoes e historico. Rejeitados/invalidos/pagos nao sao reenviados.
+- Sem migration nova, backfill de alertas antigos, alteracao de dados reais ou
+  publicacao. Implementacao isolada na base refactor/frontend db1d2253.
+- Deploy anterior confirmado pelo log do operador: main72e628e8, migration
+  202610190001 aplicada, nenhuma pendente, schema/SQL/indices/FKs conferidos,
+  restart somente backend-solicitacoes e health200. .env/PILOT/TLS/12h e DEV
+  preservados. Esta correcao nova ainda exige homologacao DEV antes da main.
+- [Escopo, testes e pendencias](../../handoffs/2026-10-19-autorizacao-alerta-reenvio.md).
+- Publicacao DEV autorizada posteriormente: roteiro
+  `ops/deploy/atualizar-dev-autorizacao-reenvio-20261019.sh`, sem DDL, com
+  identidade/schema/flags, .env preservado e restart somente backend-dev.
+  `verificarReenvioAutorizacaoDev.js --verificar` confere prontidao por leitura.
+  Modo opcional `--testar-push USUARIO_ID LOTE_ID` envia push real somente ao
+  autorizador ativo/com granular e lote com itens AUTORIZADO no DEV; nao aprova
+  ou reenvia titulos, mas pode inativar assinatura expirada. Nao gera alerta
+  interno ficticio nem evento financeiro. Nao faz parte do deploy automatico.
+- [Comandos, testes e operacao ja na main](../../handoffs/2026-10-19-publicacao-dev-autorizacao-reenvio.md).
+
 ## Fila: baixa com multiplas fontes - 2026-10-18
 
 - Acoes Multiplas fontes na linha e Baixa com multiplas fontes na selecao

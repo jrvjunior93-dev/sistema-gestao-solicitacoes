@@ -14,7 +14,7 @@ const QUEUE = 'financeiro.fila_pagamentos.preparar';
 const DECIDE = 'financeiro.autorizacoes_pagamento.decidir';
 const user = { id: 2, grants: [PREPARE, QUEUE] };
 const req = { user, headers: {}, ip: '127.0.0.1' };
-let state, scope = null, auditFails = false, eventFails = false, serial = false, challenge = null;
+let state, scope = null, auditFails = false, eventFails = false, serial = false, challenge = null, pushFails = false, pushes = 0, avisosAtivos = true;
 let transactionTail = Promise.resolve();
 const locks = [];
 const env = { paymentOwnerApprovalMode: 'PILOT', paymentOwnerApprovalTtlHours: 24, webauthnRpId: 'qa.invalid', webauthnOrigins: ['https://qa.invalid'] };
@@ -23,7 +23,7 @@ const names = ['ConfiguracaoSistema', 'TituloFinanceiro', 'Solicitacao', 'Histor
   'PagamentoManualFilaItem', 'PagamentoAutorizacaoItem', 'PagamentoAutorizacaoLote', 'PagamentoAutorizacaoEvento',
   'Anexo', 'PagamentoAutorizacaoDocumento', 'PagamentoAutorizador', 'WebauthnCredential', 'PaymentIntent',
   'FormaPagamentoFinanceira', 'CartaoFinanceiro', 'ChequeTerceiro', 'ContaBancaria', 'ContratoParcela', 'Contrato',
-  'ContratoMedicao', 'MedicaoParcela', 'TituloRenegociacaoAlocacao'];
+  'ContratoMedicao', 'MedicaoParcela', 'TituloRenegociacaoAlocacao', 'User', 'Notificacao', 'NotificacaoDestinatario'];
 function matches(row, where = {}) {
   if (where.val?.includes('pagamento_autorizacao_itens nova')) return !state.PagamentoAutorizacaoItem.some(i => i.titulo_financeiro_id === row.titulo_financeiro_id && i.id > row.id);
   if (where.val?.includes('pagamentos_manuais_fila ativa')) return !state.PagamentoManualFilaItem.some(i => i.titulo_financeiro_id === row.titulo_financeiro_id && ['PENDENTE','NAO_PAGO','DIVERGENTE','EM_EDICAO'].includes(i.status));
@@ -85,6 +85,10 @@ models.sequelize = { async transaction(callback) {
 } };
 const services = new Map();
 const stubs = {
+  './pagamentoAutorizacaoSituacao': { projetarLotesAtuais: async lotes => lotes.map(l =>
+    require('../src/services/pagamentoAutorizacaoSituacao').projetarLote({ ...l.toJSON(),
+      itens: state.PagamentoAutorizacaoItem.filter(i => Number(i.lote_id) === Number(l.id))
+        .map(i => ({ ...i, titulo: state.TituloFinanceiro.find(t => t.id === i.titulo_financeiro_id) })) })) },
   '../utils/fileName': require('../src/utils/fileName'),
   sequelize: { Op, literal: val => ({ val }) }, '../models': models, '../config/env': { env }, crypto,
   './authorizationService': { getFinanceiroObraScopeIds: async () => scope,
@@ -99,7 +103,16 @@ const stubs = {
     saveChallenge: async (_, value) => { challenge = value; },
     consumeChallenge: async () => { const value = challenge; challenge = null; return value; }
   },
-  './webPushService': { isConfigured: () => false, hasActiveSubscription: async () => false, sendPendingAuthorizationNotification: async () => {} },
+  './webPushService': { isConfigured: () => false, hasActiveSubscription: async () => false, sendPendingAuthorizationNotification: async () => {},
+    sendQueueRetryNotification: async () => { pushes++; if (pushFails) throw Error('Provedor indisponivel QA'); } },
+  './notificacoes': { async criarNotificacaoDireta(dados) {
+    if (!avisosAtivos) return null;
+    assert.equal(dados.created_by, null, 'Nao suprimir o alerta do proprio proprietario');
+    assert.equal(dados.tipo, 'PAGAMENTO_AUTORIZADO_ENVIO_PENDENTE');
+    const row = await models.Notificacao.create({ mensagem: dados.mensagem, metadata: dados.metadata }, { transaction: dados.transaction });
+    for (const id of dados.destinatarios) await models.NotificacaoDestinatario.create({ notificacao_id: row.id, usuario_id: id }, { transaction: dados.transaction });
+    return row;
+  } },
   './setorCapabilityService': { findSetorByCapability: async () => ({}), resolveSetorPersistenciaValue: (_, fallback) => fallback }
 };
 function load(name) {
@@ -132,7 +145,7 @@ const { validateManualPaymentQueueCreateBody } = require('../src/validators/paym
 const analysisStatus = analysis.STATUS_ANALISE_PROPRIETARIO;
 function reset() {
   state = Object.fromEntries(names.map((name) => [name, []])); scope = null; auditFails = false; eventFails = false;
-  serial = false; challenge = null; locks.length = 0; env.paymentOwnerApprovalMode = 'PILOT';
+  serial = false; challenge = null; pushFails = false; pushes = 0; avisosAtivos = true; locks.length = 0; env.paymentOwnerApprovalMode = 'PILOT';
   state.TituloFinanceiro = [
     { id: 1, codigo: 'TIT-1', tipo: 'PAGAR', status: 'ABERTO', obra_id: 7, valor_saldo: 100, solicitacao_id: 6 },
     { id: 2, codigo: 'TIT-2', tipo: 'PAGAR', status: 'PARCIAL', obra_id: 7, valor_saldo: 50, solicitacao_id: 6 },
@@ -642,5 +655,61 @@ async function testarMedicoesIndependentes() {
   // Fatura inexistente nao pode ser tratada como previsao corrigivel.
   models.FaturaCartaoFinanceiro = { findByPk: async () => null };
   await assert.rejects(send(), /fatura prevista nao esta aberta/); assert.equal(state.PagamentoManualFilaItem.length, 0);
-  console.log('OK: analise, convergencia direta/digital, mistos, replay, lote parcial/concluido, escopo, auditoria atomica, decisao obsoleta e locks. Models/biometria simulados; sem banco ou rede.');
+  // Commit da assinatura confirmado; somente a segunda transacao (fila) falha.
+  reset(); lote = await digital.createBatch(req, { titulo_ids: [1, 2] });
+  const dono = { user: { id: 31, grants: [DECIDE] }, headers: {} };
+  state.PagamentoAutorizador.push({ id: 1, usuario_id: 31, ativo: true }, { id: 2, usuario_id: 32, ativo: true }, { id: 3, usuario_id: 33, ativo: false });
+  state.User.push({ id: 31, ativo: true, grants: [DECIDE] }, { id: 32, ativo: true, grants: [] }, { id: 33, ativo: true, grants: [DECIDE] });
+  state.WebauthnCredential.push({ id: 1, usuario_id: 31, credential_id: 'qa-key', public_key: 'AA==', ativo: true, counter: 0 });
+  const somenteUm = [{ item_id: 1, decisao: 'AUTORIZAR', motivo: null }];
+  await digital.authenticationOptions(dono, lote.id, somenteUm);
+  scope = [999]; pushFails = true;
+  const assinada = await digital.decideBatch(dono, lote.id, { decisoes: somenteUm, credential: { id: 'qa-key' } });
+  assert.equal(assinada.envio_pendente, true);
+  assert.equal(state.PagamentoAutorizacaoItem[0].status, 'AUTORIZADO');
+  assert.equal(state.PagamentoAutorizacaoItem[1].status, 'PENDENTE');
+  assert.equal(state.PagamentoManualFilaItem.length, 0);
+  assert.equal(state.Notificacao.length, 1, 'Push indisponivel nao perde notificacao persistida');
+  assert.deepEqual(state.NotificacaoDestinatario.map(n => n.usuario_id), [31], 'Somente autorizador nominal ativo com granular');
+  assert.equal(pushes, 1);
+  assert.equal(state.Notificacao[0].metadata.rota, '/financeiro/autorizacoes-pagamento?reenvio=1');
+  const hashAssinado = state.PagamentoAutorizacaoItem[0].snapshot_hash;
+  serial = true; pushFails = false;
+  await Promise.all([1, 2].map(() => assert.rejects(digital.enqueueAuthorizedItems(dono, lote.id, { itemIds: [1] }), { statusCode: 403 })));
+  assert.equal(state.Notificacao.length, 1, 'Falhas repetidas/concorrentes nao duplicam alerta');
+  assert.equal(pushes, 1);
+  for (const ator of [{ user: { id: 90, grants: [] } }, { user: { id: 33, grants: [DECIDE] } }, { ...dono, dev_user_switch: true }]) {
+    await assert.rejects(digital.enqueueAuthorizedItems(ator, lote.id, { itemIds: [1] }), { statusCode: 403 });
+  }
+  for (const itemIds of [[], [1, 1], ['1'], [-1], [0], Array(201).fill(1)]) {
+    await assert.rejects(digital.enqueueAuthorizedItems(dono, lote.id, { itemIds }), { statusCode: 400 });
+  }
+  await assert.rejects(digital.enqueueAuthorizedItems(dono, lote.id, { itemIds: [2] }), { statusCode: 409 });
+  await assert.rejects(digital.enqueueAuthorizedItems(dono, lote.id + 1, { itemIds: [1] }), { statusCode: 409 });
+  env.paymentOwnerApprovalMode = 'PAUSED';
+  await assert.rejects(digital.enqueueAuthorizedItems(dono, lote.id, { itemIds: [1] }), { statusCode: 423 });
+  env.paymentOwnerApprovalMode = 'PILOT'; scope = null;
+  const chavesAntes = state.WebauthnCredential[0].counter;
+  await digital.enqueueAuthorizedItems(dono, lote.id, { itemIds: [1] });
+  assert.equal(state.PagamentoManualFilaItem.length, 1);
+  assert.equal(state.PagamentoAutorizacaoItem[0].status, 'ENFILEIRADO');
+  assert.equal(state.PagamentoAutorizacaoItem[1].status, 'PENDENTE', 'Reenvio individual nao envia o resto do lote');
+  assert.equal(state.PagamentoAutorizacaoItem[0].snapshot_hash, hashAssinado);
+  assert.equal(state.WebauthnCredential[0].counter, chavesAntes, 'Reenvio nao consome outra passkey');
+  await assert.rejects(digital.enqueueAuthorizedItems(dono, lote.id, { itemIds: [1] }), { statusCode: 409 });
+  assert.equal(state.PagamentoManualFilaItem.length, 1, 'Replay nao duplica fila');
+  assert.equal(state.PagamentoAutorizacaoEvento.filter(e => e.tipo === 'ITEM_AUTORIZADO').length, 1);
+  state.PagamentoAutorizacaoItem[1].status = 'AUTORIZADO';
+  avisosAtivos = false;
+  await load('pagamentoAutorizacaoReenvioService').notificarEnvioPendente(dono, lote.id);
+  assert.equal(state.Notificacao.length, 1, 'Configuracao de notificacao desativada respeitada');
+  avisosAtivos = true; eventFails = true;
+  const antesAvisoFalho = JSON.stringify(state);
+  await assert.rejects(load('pagamentoAutorizacaoReenvioService').notificarEnvioPendente(dono, lote.id));
+  assert.equal(JSON.stringify(state), antesAvisoFalho, 'Alerta/evento transacionais sem escrita parcial');
+  eventFails = false;
+  await load('pagamentoAutorizacaoReenvioService').notificarEnvioPendente(dono, lote.id);
+  assert.equal(state.Notificacao.length, 2, 'Nova pendencia de outro item no mesmo lote gera aviso proprio');
+  assert.equal(pushes, 2);
+  console.log('OK: analise/locks/escopo, decisao commitada com envio pendente, alerta nominal deduplicado/concorrente, push falho, ACL/PAUSED, reenvio individual/replay sem nova passkey e demais protecoes. Sem banco/rede.');
 })().catch((error) => { console.error(error); process.exitCode = 1; });

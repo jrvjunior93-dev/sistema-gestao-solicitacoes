@@ -53,6 +53,7 @@ const NOTIFICACAO_EVENTOS = [
       ['PAGAMENTO_LOTE_APROVADO', 'Lote de pagamento aprovado', 'Lote recebeu aprovacao interna.'],
       ['PAGAMENTO_LOTE_ENVIADO_BANCO', 'Lote enviado ao banco', 'Lote enviado para API bancaria.'],
       ['PAGAMENTO_LOTE_FALHA', 'Falha em lote bancario', 'Banco ou integracao recusou/processou com erro.'],
+      ['PAGAMENTO_AUTORIZADO_ENVIO_PENDENTE', 'Autorizado aguardando envio', 'Autorizacao registrada, mas o envio a fila falhou. Avisa os autorizadores para conferir e reenviar.'],
       ['CNAB_REMESSA_GERADA', 'Remessa CNAB gerada', 'Arquivo de remessa gerado para envio ao banco.'],
       ['CNAB_RETORNO_IMPORTADO', 'Retorno CNAB importado', 'Arquivo retorno importado e processado.'],
       ['OFX_IMPORTADO', 'OFX importado', 'Extrato bancario OFX importado.'],

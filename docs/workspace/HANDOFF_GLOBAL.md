@@ -1,5 +1,18 @@
 # Handoff Global
 
+## Autorizacao: alerta/reenvio - 2026-10-19
+
+- Deploy anterior confirmado pelo log do operador: main72e628e8, migration
+  aplicada, schema sem pendencias e health200. Sem EC2/SQL pelo agente.
+- Novo ajuste local na base refactor/frontend db1d2253: alerta deduplicado
+  para autorizador nominal e botao individual/lista/detalhe/deep link seguro.
+  Sem migration/backfill/deploy/commit/push. QA backend/DOM/PWA/filtros/
+  convergencia/build/docs/sintaxe/diff aprovado; ownership liberado.
+  Publicacao e homologacao DEV real pendentes. Handoff especifico registrado.
+- Publicacao DEV posteriormente autorizada, preparacao/QA concluidos e
+  ownership liberado para commit/push. Roteiro sem DDL, prontidao por leitura
+  e teste push real opcional; main/producao/EC2 intactos pelo agente.
+
 ## Promocao main cadastro no pagamento RH - 2026-10-15
 
 - Usuario homologou dev e autorizou main; backup/timer conferidos. EC2 main

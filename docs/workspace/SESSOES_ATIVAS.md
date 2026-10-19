@@ -1,5 +1,11 @@
 # Sessoes Ativas
 
+- codex-autorizacao-reenvio-20261019: finalizado local. Producao72 concluida pelo
+  operador; novo alerta de falha de envio e botao de reenvio na base DEV,
+  branch isolada, QA aprovado e ownership liberado; sem producao/EC2 ou
+  deploy pelo agente. Publicacao DEV agora autorizada: roteiro/QA concluidos,
+  ownership liberado para commit/push exclusivo refactor/frontend e homologacao.
+
 - codex-promocao-compra-direta-admissao-main-20261015: integracao validada,
   ownership liberado para PR/merge autorizado. Main1341e1a3/devd72a9c93;
   backup/timer e schema real confirmados. Sem migration, EC2 ou banco pelo agente.

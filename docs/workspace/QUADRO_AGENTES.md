@@ -1,5 +1,18 @@
 # Quadro de Agentes
 
+## Autorizacao alerta/reenvio - 2026-10-19
+
+- Publicacao DEV agora autorizada: roteiro, prontidao MySQL somente leitura e
+  push real opcional com guardas preparados/validados. Ownership liberado para
+  commit/push refactor/frontend. Main72 preservada; EC2 somente pelo operador.
+- Sessao codex-autorizacao-reenvio-20261019, finalizado local, sem delegacao.
+  Mapear falha apos commit da decisao, notificar proprietario com acao segura,
+  reenvio individual na lista/detalhe e lote sem reautorizar ou duplicar fila.
+  Produto na base refactor/frontend; sem EC2/SQL real/deploy/commit/push.
+  Evidencia recebida: deploy main72 concluido, migration190001 e health200.
+  Novo pacote QA backend/DOM/PWA/filtros/historico/build/docs/sintaxe/diff
+  aprovado; ownership liberado, publicacao e DEV real pendentes.
+
 ## Promocao main Compra Direta/admissao - 2026-10-15
 
 - Integracao autorizada main1341e1a3/devd72a9c93, sem delegacao; backup/timer

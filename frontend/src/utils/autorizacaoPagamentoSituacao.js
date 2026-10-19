@@ -15,6 +15,12 @@ export const rotuloSituacao = value => ({ AGUARDANDO: 'Aguardando aprovação', 
 }[value] || String(value || '').replaceAll('_', ' '));
 export const tituloExcluido = item => Boolean(item.exclusao_titulo || item.situacao_financeira === 'EXCLUIDO'
   || item.titulo?.deleted_at || item.titulo?.status === 'EXCLUIDO');
+export function podeReenviarAutorizacao(item) {
+  return !tituloExcluido(item) && item.origem_painel !== 'FILA_DIRETA' && item.status === 'AUTORIZADO'
+    && Number(item.lote_id) > 0 && !item.bloqueado_proprietario && item.titulo
+    && ['ABERTO', 'PARCIAL'].includes(item.titulo.status) && Number(item.titulo.valor_saldo) > 0
+    && !item.titulo.renegociado_por_id && !['PENDENTE', 'EM_EDICAO', 'NAO_PAGO', 'DIVERGENTE'].includes(item.fila_atual?.status);
+}
 export function podeAutorizar(item) {
   if (tituloExcluido(item)) return false;
   if (item.origem_painel === 'FILA_DIRETA' || ['PENDENTE','EM_EDICAO','DIVERGENTE','NAO_PAGO'].includes(item.fila_atual?.status)) return false;
