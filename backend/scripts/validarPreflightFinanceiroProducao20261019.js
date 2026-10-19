@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { auditar, carregarSimulador, MIGRATION, UUID } = require('./preflightFinanceiroProducao20261019');
+const { auditar, carregarSimulador, conferirInventario, inventariarMigrations, MIGRATION, UUID } = require('./preflightFinanceiroProducao20261019');
 const raiz = path.resolve(__dirname, '../..');
 const simular = carregarSimulador(file => fs.readFileSync(path.join(raiz, file), 'utf8'));
 const titulo = (id, codigo, solicitacao_id, valor_original, extra = {}) => ({ id, codigo, solicitacao_id,
@@ -59,8 +59,16 @@ async function caso(tipo = 'ok') {
   assert.equal(JSON.stringify(base), antes); assert.equal(JSON.stringify(dados), entrada);
 }
 (async () => {
+  const cp = require('node:child_process');
+  const inventarios = [raiz, path.join(raiz, 'backend')].map(cwd => inventariarMigrations(
+    args => cp.execFileSync('git', args, { cwd, encoding: 'utf8' }).trim(), 'HEAD'));
+  assert.deepEqual(inventarios[0], inventarios[1]);
+  assert(inventarios[0].length > 200 && inventarios[0].includes(MIGRATION));
+  assert.throws(() => inventariarMigrations(() => ''));
+  for (const entrada of [[], ['anterior.js'], [MIGRATION, MIGRATION]]) assert.throws(() => conferirInventario(entrada));
+  await assert.rejects(auditar({ conexao: { query() { throw Error('Nao deveria consultar banco'); } }, arquivos: [], simular }), /INVENTARIO_MIGRATIONS_INCOMPLETO/);
   for (const tipo of ['ok','uuid','tls','schema','vinculo','pago','excluido','limite']) await caso(tipo);
   assert.throws(() => carregarSimulador(() => "require('node:fs').writeFileSync('x','x')"));
   assert.throws(() => carregarSimulador(() => "require('../models')"));
-  console.log('Preflight financeiro: simulador real, centavos/saldos, somente SELECT/READ ONLY, rollback, identidade/TLS/schema, vinculo/pagamento/exclusao/limite e sandbox sem models/escrita aprovados. Sem banco/rede.');
+  console.log('Preflight financeiro: inventario Git real identico na raiz/backend, lista vazia bloqueada; simulador, centavos, SELECT/READ ONLY, rollback, identidade/TLS/schema, vinculo/pagamento/exclusao/limite e sandbox aprovados. Sem banco/rede.');
 })().catch(e => { console.error(e); process.exitCode = 1; });

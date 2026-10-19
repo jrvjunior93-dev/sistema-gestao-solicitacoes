@@ -1,5 +1,15 @@
 # Quadro de Agentes
 
+## Retomada migration cartao MAIN - 2026-10-19
+
+- Sessao codex-correcao-deploy-financeiro-20261019: finalizado local, sem delegacao.
+  Inventario Git independente de cwd, fail-closed para lista vazia e roteiro
+  exclusivo do a67 com migration unica/runner canonico. Sem runtime/DEV.
+  Suites de producao/preflight/retomada/SQL/cartao aprovadas localmente;
+  sintaxe/docs/diff aprovados, ownership liberado para publicacao main.
+  EC2 somente pelo operador.
+  Handoff: 2026-10-19-retomada-migration-cartao-producao.md.
+
 ## Financeiro e sobreposicoes MAIN - 2026-10-19
 
 - Sessao codex-promocao-financeiro-20261019: em_andamento. Preservar main
@@ -7,7 +17,8 @@
   Preparar preflight de producao somente leitura e simulacao, sem regularizacao
   automatica. Merge/publicacao main aguardam evidencia do operador EC2.
   Integracao local validada; status: finalizado. Suites/UI/build/preflight
-  isolado/snapshot e evidencia EC2 aprovados. Schema alvo sem pendencias;
+  isolado/snapshot e evidencia EC2 recebidos. CORRECAO: inventario inicial do
+  alvo vazio, nao comprovava schema concluido. Migration 202610190001 pendente;
   roteiro sem DDL/regularizacao aprovado e ownership liberado para PR/merge.
 
 ## Promocao main Compra Direta/admissao - 2026-10-15

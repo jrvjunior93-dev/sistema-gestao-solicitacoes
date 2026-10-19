@@ -4,6 +4,14 @@ const assert = require('node:assert/strict');
 const { conferirSchema } = require('./verificarCartaoParcelamentoMySqlDev');
 const { UUID } = require('./preflightFinanceiroProducao20261019');
 
+function mensagemSegura(erro) {
+  // Nao ecoar mensagens arbitrarias do driver (podem incluir SQL/credenciais).
+  const mensagem = String(erro?.message || '');
+  if (/^Pendencias fora do pacote: (?:[0-9]{12}_[a-z0-9_]+\.js(?:, )?)*$/.test(mensagem)) return mensagem;
+  if (mensagem === 'Atualizacao ainda tem migrations pendentes. Nao reinicie.') return mensagem;
+  return 'Confira schema/identidade/configuracao/conectividade sem compartilhar segredos. Nada aplicado.';
+}
+
 async function verificar({ conexao, log = console.log }) {
   const [ids] = await conexao.query('SELECT @@GLOBAL.server_uuid AS uuid, DATABASE() AS banco');
   assert(ids[0]?.uuid === UUID && ids[0]?.banco === 'gestao_solicitacoes', 'BANCO_PRODUCAO_DIFERENTE');
@@ -31,6 +39,6 @@ if (require.main === module) {
       ssl: { ca: fs.readFileSync(env.dbSslCaFile), rejectUnauthorized: true, verifyIdentity: true } });
     try { await verificar({ conexao }); } finally { await conexao.end(); }
   })().catch(e => { console.error('VERIFICACAO PRODUCAO INTERROMPIDA:', e.code || e.name,
-    e.name === 'AssertionError' ? e.message : 'Confira schema/identidade/configuracao/conectividade sem compartilhar segredos. Nada aplicado.'); process.exitCode = 1; });
+    mensagemSegura(e)); process.exitCode = 1; });
 }
-module.exports = { verificar };
+module.exports = { verificar, mensagemSegura };
