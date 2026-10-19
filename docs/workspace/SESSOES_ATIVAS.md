@@ -1,5 +1,9 @@
 # Sessoes Ativas
 
+- codex-promocao-cheques-main-20261019: em_andamento, agente unico, homologacao
+  DEV719/e01 confirmada. Integrar main9e4 sem perder guardas/historicos.
+  Sem EC2/banco/DDL ou alteracao do DEV; backup/timer solicitado ao usuario.
+
 - codex-promocao-reenvio-main-20261019: finalizado local em branch isolada reutilizada;
   main72 + DEV139 homologado. Reserva roteiro/QA/prontidao/handoff e registros.
   Sem EC2, schema ou configuracoes alterados; backup/timer confirmados.

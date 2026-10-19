@@ -1,5 +1,15 @@
 # Ownership Ativo
 
+## Promocao cheques datas/moeda para main - 2026-10-19
+
+- Sessao codex-promocao-cheques-main-20261019, agente unico, em_andamento.
+  Usuario homologou DEV719/e01 e pediu promocao. Bases main9e4faf4e/DEVe01e7bbf.
+- Reserva: integracao documental README/handoffs e quatro controles workspace;
+  novo roteiro produtivo de cheques e teste isolado de suas guardas. Preservar
+  hotfixes exclusivos main, integrar historicos; sem migrations/dependencias.
+- Sem EC2/SSH/banco real ou alteracao do DEV. Backup/timer desta promocao
+  solicitado ao operador; confirmar antes da publicacao/merge produtivo.
+
 ## Promocao notificacoes/reenvio para main - 2026-10-19
 
 - Sessao codex-promocao-reenvio-main-20261019, agente unico. Usuario homologou

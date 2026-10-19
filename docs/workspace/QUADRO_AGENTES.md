@@ -1,5 +1,12 @@
 # Quadro de Agentes
 
+## Promocao cheques main - 2026-10-19
+
+- codex-promocao-cheques-main-20261019, em_andamento, agente unico.
+  Integrar somente datas/preservacao de lote719 e moedae01 homologados com
+  main9e4, mantendo hotfixes. Reservas no ownership; preparar roteiro/QA
+  produtivo sem DDL e preservar .env/flags/12h/TLS/PM2. EC2 so pelo operador.
+
 ## Promocao notificacoes/reenvio main - 2026-10-19
 
 - Sessao codex-promocao-reenvio-main-20261019, finalizado local, agente unico.
