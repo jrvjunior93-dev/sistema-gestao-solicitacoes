@@ -69,7 +69,7 @@ async function persistir(body, permitido = true) {
     isFormaPagamentoFopag: () => false, isFormaPagamentoBoleto: () => true,
     isAnexoBoletoCompraDireta: a => a.tipo_documento === 'BOLETO', formatarFormaPagamentoResumo: f => f.nome,
     buscarTipoSolicitacaoCompraDireta: async () => ({ id: 2 }), buscarTipoSolicitacaoCompra: async () => ({ id: 1 }),
-    assertTipoDisponivelNoDestino: noop, montarFluxoAprovacaoCompraDireta: fluxo, montarFluxoAprovacaoCompra: fluxo,
+    assertTipoCompraDisponivelNoDestino: noop, montarFluxoAprovacaoCompraDireta: fluxo, montarFluxoAprovacaoCompra: fluxo,
     gerarCodigoSolicitacao: async () => 'SOL-TESTE', formatCurrencyPdf: v => Number(v).toFixed(2),
     registrarLogSolicitacaoCompra: noop, publishComprasRealtimeEventSafe: noop,
     anexarPdfNaSolicitacaoPrincipal: async () => false, anexarArquivosCabecalhoSolicitacao: async () => 1,

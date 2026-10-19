@@ -99,8 +99,8 @@ function parseMoney(value) {
   return round(Number(normalized));
 }
 
-async function empresaAtiva(id, transaction) {
-  const empresa = await EmpresaGrupo.findByPk(Number(id), { transaction });
+async function empresaAtiva(id, transaction, lock = false) {
+  const empresa = await EmpresaGrupo.findByPk(Number(id), { transaction, ...(lock ? { lock: transaction.LOCK.UPDATE } : {}) });
   if (!empresa || empresa.ativo === false) throw httpError(400, 'Empresa detentora invalida ou inativa.');
   return empresa;
 }
@@ -664,7 +664,7 @@ function normalizarComponentes(payload) {
   });
 }
 
-async function validarBaixaComposta(payload, transaction, { lock = false } = {}) {
+async function validarBaixaComposta(payload, transaction, { lock = false, empresaReferenciaFonte = false, lockFontes = false } = {}) {
   const dataMovimento = dataOnly(payload.data_movimento);
   if (!dataMovimento) throw httpError(400, 'Data da baixa e obrigatoria.');
   const componentes = normalizarComponentes(payload);
@@ -689,22 +689,23 @@ async function validarBaixaComposta(payload, transaction, { lock = false } = {})
   if (titulos.some((titulo) => Number(titulo.parceiro_id) !== parceiroId)) {
     throw httpError(400, `Selecione somente titulos do mesmo ${tipoTitulo === 'PAGAR' ? 'credor' : 'cliente'}.`);
   }
-  const empresaReferencia = await empresaAtiva(titulos[0].empresa_id, transaction);
+  const empresaReferencia = await empresaAtiva(titulos[0].empresa_id || (empresaReferenciaFonte ? componentes[0].empresa_id : null), transaction, lockFontes);
   const empresasTituloIds = [...new Set(titulos.map((titulo) => Number(titulo.empresa_id)).filter(Boolean))];
-  for (const empresaTituloId of empresasTituloIds) await empresaAtiva(empresaTituloId, transaction);
+  for (const empresaTituloId of empresasTituloIds) await empresaAtiva(empresaTituloId, transaction, lockFontes);
 
   const tituloMap = new Map(titulos.map((titulo) => [Number(titulo.id), titulo]));
   const formaIds = [...new Set(componentes.map((item) => item.forma_pagamento_id).filter(Boolean))];
-  const formas = await FormaPagamentoFinanceira.findAll({ where: { id: { [Op.in]: formaIds }, ativo: true }, transaction });
+  const fonteOptions = { transaction, ...(lockFontes ? { lock: transaction.LOCK.UPDATE, order: [['id', 'ASC']] } : {}) };
+  const formas = await FormaPagamentoFinanceira.findAll({ where: { id: { [Op.in]: formaIds }, ativo: true }, ...fonteOptions });
   const formaMap = new Map(formas.map((item) => [Number(item.id), item]));
   const contaIds = [...new Set(componentes.map((item) => item.conta_bancaria_id).filter(Boolean))];
-  const contas = contaIds.length ? await ContaBancaria.findAll({ where: { id: { [Op.in]: contaIds }, ativo: true }, transaction }) : [];
+  const contas = contaIds.length ? await ContaBancaria.findAll({ where: { id: { [Op.in]: contaIds }, ativo: true }, ...fonteOptions }) : [];
   const contaMap = new Map(contas.map((item) => [Number(item.id), item]));
   const cartaoIds = [...new Set(componentes.map((item) => item.cartao_id).filter(Boolean))];
   const cartoes = cartaoIds.length ? await CartaoFinanceiro.findAll({
     where: { id: { [Op.in]: cartaoIds }, ativo: true },
     include: [{ model: ContaBancaria, as: 'contaBancaria', required: false }],
-    transaction
+    ...fonteOptions
   }) : [];
   const cartaoMap = new Map(cartoes.map((item) => [Number(item.id), item]));
 
@@ -771,7 +772,7 @@ async function validarBaixaComposta(payload, transaction, { lock = false } = {})
     const empresaFonteIds = [...new Set(empresasFonte)];
     if (!empresaFonteIds.length) throw httpError(400, `Informe a empresa da fonte na operacao ${item.ordem}.`);
     if (empresaFonteIds.length > 1) throw httpError(400, `Conta, cartao ou cheque da operacao ${item.ordem} pertencem a empresas diferentes.`);
-    const empresaFonte = await empresaAtiva(empresaFonteIds[0], transaction);
+    const empresaFonte = await empresaAtiva(empresaFonteIds[0], transaction, lockFontes);
 
     componentesValidados.push({
       ...item,
@@ -1158,6 +1159,7 @@ async function estornarBaixaComposta(req, id, payload = {}) {
 }
 
 module.exports = {
+  validarBaixaComposta,
   confirmarCompensacaoChequePorMovimento,
   confirmarBaixaComposta,
   confirmarImportacao,

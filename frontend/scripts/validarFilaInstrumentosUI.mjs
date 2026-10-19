@@ -35,7 +35,7 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
   load(id) {
     if (id === stub + 'tema') return `export const useTheme=()=>({tema:{}});`;
     if (id === stub + 'auth') return `const qaQuery=new URLSearchParams(location.search);if(!qaQuery.has('persistir-modo')){if(qaQuery.has('rolagem'))localStorage.removeItem('financeiro-fila-pagamentos:modo-lista');else localStorage.setItem('financeiro-fila-pagamentos:modo-lista',JSON.stringify({numerada:true}));}export const useAuth=()=>({user:{id:Number(new URLSearchParams(location.search).get('usuario')||1)},authReady:true,isAuthenticated:true});`;
-    if (id === stub + 'permissoes') return `const noResolve=new URLSearchParams(location.search).has('sem-resolver');export const canBaixarFilaPagamentos=()=>!window.__readOnly,hasPermissao=(_,key)=>!(key==='financeiro.titulos.estornar'&&(window.__noReverse||window.__readOnly)),canImportarComprovantesFilaPagamentos=()=>false,canReportarFilaPagamentos=()=>true,canResolverFilaPagamentos=()=>!window.__readOnly&&!noResolve;`;
+    if (id === stub + 'permissoes') return `const noResolve=new URLSearchParams(location.search).has('sem-resolver');export const canAccessFinanceiro=()=>true,canBaixarFilaPagamentos=()=>!window.__readOnly,hasPermissao=(_,key)=>!(key==='financeiro.titulos.estornar'&&(window.__noReverse||window.__readOnly)),canImportarComprovantesFilaPagamentos=()=>false,canReportarFilaPagamentos=()=>true,canResolverFilaPagamentos=()=>!window.__readOnly&&!noResolve;`;
     if (id === stub + 'padrao') return `export{default as Pagina}from'/src/components/padrao/Pagina.jsx';export{default as BlocoConteudo}from'/src/components/padrao/BlocoConteudo.jsx';export{default as PageHeader}from'/src/components/padrao/PageHeader.jsx';const avisar={erro:console.error,sucesso:()=>{},alerta:message=>window.__alerts.push(message)};const confirmar=async()=>({ok:true,texto:'Correção QA'});export const Avisos=()=>null;export const useAvisos=()=>({avisos:[],fechar:()=>{},limpar:()=>{},avisar});export const useConfirmacao=()=>({confirmar});`;
     if (id === stub + 'api') return `
       const onlyConsult=new URLSearchParams(location.search).has('somente-consulta');
@@ -107,6 +107,7 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
         ? ['boleto.PDF','foto.jpeg','planta.png','animacao.gif','foto.webp','arquivo.docx','arquivo.svg'].map((nome,i)=>({id:'qa-'+i,nome_original:nome,caminho_arquivo:'https://bucket.example.test/qa/'+nome,tipo:i===0?'BOLETO_COMPRA':i===1?'BOLETO_FRETE':'BOLETO',createdAt:'2026-10-08T12:00:00Z'})) : [];
       export const estornarBaixaFilaPagamento=async(id,motivo,key)=>{window.__reverseCalls=(window.__reverseCalls||0)+1;window.__reversed={id,motivo,key};};
       export const resolverFilaPagamento=async(id,action,motivo)=>{window.__returned={id,action,motivo};};
+      export const previewBaixaCompostaFila=async()=>{throw Error('Composicao fora desta fixture');},confirmarBaixaCompostaFila=async()=>{throw Error('Composicao fora desta fixture');};
       export const aprovarDivergenciasFilaPagamentos=async()=>{},getComprovanteFilaPagamento=async()=>{},informarNaoPagamentoFila=async()=>{},previewComprovantesFilaPagamentos=async()=>{},vincularComprovantesFilaPagamentos=async()=>{};`;
   },
   configureServer(server) { server.middlewares.use('/qa-fila', async (_, res) => {

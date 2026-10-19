@@ -6,6 +6,7 @@ import useWorkspaceOpenRecord from '../navigation/useWorkspaceOpenRecord';
 import TituloNegociacaoHistorico from '../components/financeiro/TituloNegociacaoHistorico';
 import ParticipacoesTitulo from '../components/financeiro/ParticipacoesTitulo';
 import CancelarLoteCompartilhado from '../components/financeiro/CancelarLoteCompartilhado';
+import CancelarTitulo from '../components/financeiro/CancelarTitulo';
 import DesvincularFaturaTitulo from '../components/financeiro/DesvincularFaturaTitulo';
 import { Link, useParams } from 'react-router-dom';
 import {
@@ -19,7 +20,7 @@ import {
   getTituloFinanceiroById
 } from '../services/financeiro';
 import { useAuth } from '../contexts/AuthContext';
-import { hasPermissao } from '../utils/acessoProduto';
+import { hasPermissao, canCancelTitulosFinanceiros } from '../utils/acessoProduto';
 import {podePermuta} from '../utils/permuta';
 import { formatCurrencyInput, normalizeCurrencyTyping } from '../utils/formatters';
 import {
@@ -850,6 +851,8 @@ export default function FinanceiroTituloDetalhe() {
           cor="var(--module-financeiro)"
         >
           <ParticipacoesTitulo titulo={titulo} />
+          <CancelarTitulo key={titulo.id} titulo={titulo} permitido={canCancelTitulosFinanceiros(user)}
+            onCancelado={async () => { avisar.sucesso('Título cancelado. Histórico e documentos preservados.'); await carregar(); }} />
           <DesvincularFaturaTitulo key={`${titulo.id}:${titulo.fatura_cartao_id || 0}`}
             titulo={titulo} permitido={podeEditarDadosTitulo && podeEditarTitulo}
             onDesvinculado={async () => { avisar.sucesso('Previsão desvinculada. Confira os dados antes de editar ou substituir os títulos.'); await carregar(); }} />

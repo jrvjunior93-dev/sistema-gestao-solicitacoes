@@ -76,7 +76,8 @@ function filaInclude() {
         'forma_pagamento_id', 'empresa_id', 'linha_digitavel', 'codigo_barras',
         'banco_cobranca', 'observacoes', 'solicitacao_id', 'favorecido_pagamento_id',
         'cartao_id', 'fatura_cartao_id', 'origem_titulo', 'status_interno_pagar', 'compartilhamento_id',
-        'medicao_pagamento', 'medicao_pagamento_origem_id', 'bloqueio_pagamento_proprietario'
+        'medicao_pagamento', 'medicao_pagamento_origem_id', 'bloqueio_pagamento_proprietario',
+        'parceiro_id', 'obra_id', 'data_emissao', 'updatedAt'
       ],
       include: [
         { model: Parceiro, as: 'parceiro', attributes: ['id', 'nome', 'cpf_cnpj', 'telefone', 'email'] },
@@ -298,7 +299,7 @@ async function listarFilaPagamentos(req, filters = {}) {
 async function listarContasPagadorasFila() {
   return ContaBancaria.findAll({
     where: { ativo: true, empresa_id: { [Op.ne]: null } },
-    attributes: ['id', 'nome', 'banco', 'agencia', 'conta', 'tipo_conta', 'tipo_operacional', 'empresa_id'],
+    attributes: ['id', 'nome', 'banco', 'agencia', 'conta', 'tipo_conta', 'tipo_operacional', 'empresa_id', 'ativo', 'exige_abertura_fechamento'],
     include: [{ model: EmpresaGrupo, as: 'empresa', attributes: ['id', 'codigo', 'nome', 'razao_social', 'cnpj'] }],
     order: [['nome', 'ASC']]
   });
@@ -308,7 +309,7 @@ async function listarInstrumentosFila() {
   // Rota restrita a registrar baixas; nao concede acesso aos cadastros administrativos.
   const [formas, cartoes, cheques] = await Promise.all([
     FormaPagamentoFinanceira.findAll({ where: { ativo: true },
-      attributes: ['id', 'nome', 'codigo', 'tipo', 'exige_cartao', 'gera_fatura'], order: [['nome', 'ASC']] }),
+      attributes: ['id', 'nome', 'codigo', 'tipo', 'exige_cartao', 'exige_cheque', 'gera_fatura'], order: [['nome', 'ASC']] }),
     CartaoFinanceiro.findAll({ where: { ativo: true },
       attributes: ['id', 'nome', 'tipo', 'conta_bancaria_id'], order: [['nome', 'ASC']] }),
     ChequeTerceiro.findAll({ where: { status: 'EM_CARTEIRA' },
@@ -754,6 +755,7 @@ async function processarItemFila(req, itemPayload, requestKey, transaction, liqu
   // Somente a liquidacao interna ja validada pode usar a empresa da carteira.
   // Nao ha flag no payload publico que dispense a conta dos demais pagamentos.
   const carteiraCompartilhada = liquidacao?.fonte?.usar_cheque_terceiro === true;
+  const fontesCompostas = liquidacao?.multiplasFontes === true;
   const instrumento = liquidacao?.instrumento || await resolverInstrumentoFila(titulo, {...itemPayload,
     juros:itemPayload.juros??filaItem.juros,multa:itemPayload.multa??filaItem.multa,
     desconto:itemPayload.desconto??filaItem.instrumento_pagamento_json?.desconto??0}, transaction);
@@ -761,16 +763,17 @@ async function processarItemFila(req, itemPayload, requestKey, transaction, liqu
   const permutaIntegral = tipoInstrumento(formaEfetiva) === 'PERMUTA';
   if (permutaIntegral || Number(instrumento.valor_permuta)) await require('./permutaOperacionalDomain').exigirPermissaoPermuta(req);
   if (permutaIntegral && itemPayload.conta_bancaria_id) throw createHttpError(400,'Permuta nao utiliza conta bancaria.');
-  const conta = carteiraCompartilhada || permutaIntegral || !itemPayload.conta_bancaria_id ? null : await ContaBancaria.findByPk(itemPayload.conta_bancaria_id, {
+  const fonteSemConta = fontesCompostas && !liquidacao.fonte.conta_bancaria_id;
+  const conta = carteiraCompartilhada || permutaIntegral || fonteSemConta || !itemPayload.conta_bancaria_id ? null : await ContaBancaria.findByPk(itemPayload.conta_bancaria_id, {
     transaction,
     lock: transaction.LOCK.UPDATE
   });
-  if (!carteiraCompartilhada && !permutaIntegral && (!conta || conta.ativo === false || !conta.empresa_id)) {
+  if (!carteiraCompartilhada && !permutaIntegral && !fonteSemConta && (!conta || conta.ativo === false || !conta.empresa_id)) {
     throw createHttpError(400, `A conta pagadora do titulo ${titulo.codigo || titulo.id} e invalida ou nao possui empresa.`);
   }
 
   const empresaTituloId = await carregarEmpresaTitulo(titulo, transaction);
-  const empresaPagadoraId = carteiraCompartilhada ? liquidacao.fonte.empresa_id : permutaIntegral ? Number(instrumento.empresa_permuta_id)||empresaTituloId : conta.empresa_id;
+  const empresaPagadoraId = fontesCompostas || carteiraCompartilhada ? liquidacao.fonte.empresa_id : permutaIntegral ? Number(instrumento.empresa_permuta_id)||empresaTituloId : conta.empresa_id;
   if(permutaIntegral&&!empresaPagadoraId)throw createHttpError(400,'Selecione a empresa da permuta.');
   const baixaEntreEmpresas = titulo.compartilhamento_id
     ? await require('./tituloCompartilhadoPagamento').entreEmpresas(titulo, empresaPagadoraId, transaction)
@@ -1259,6 +1262,9 @@ async function estornarLiquidacaoFila(req, anchorId, grupoId, payload) {
     // Trava titulos antes do grupo, mesma ordem da liquidacao, evitando inversao.
     const referencia = await PagamentoFilaLiquidacao.findByPk(grupoId, { transaction });
     if (!referencia?.dados?.fila_ids?.includes(Number(anchorId))) throw createHttpError(409, 'Item nao pertence ao grupo.');
+    if (referencia.dados.tipo === 'MULTIPLAS_FONTES' && !(await require('./authorizationService').userHasAreaPermission(req.user, ['financeiro.baixas_compostas.estornar']))) {
+      throw createHttpError(403, 'Permissao de estornar baixa composta obrigatoria.');
+    }
     await bloquearTitulosDaFila(referencia.dados.fila_ids, transaction);
     const { grupo, filas } = await obterGrupoParaEstorno(req, grupoId, transaction);
     if (grupo.status === 'ESTORNADO') return { fila_id: Number(anchorId), reaberto_ids: grupo.dados.reaberto_ids, idempotente: true };
@@ -1305,6 +1311,8 @@ module.exports = {
   listarContasPagadorasFila,
   listarInstrumentosFila,
   resolverInstrumentoFila,
+  processarItemFila,
+  bloquearTitulosDaFila,
   listarFilaPagamentos,
   obterComprovanteFila,
   obterComprovanteAdicionalFila,

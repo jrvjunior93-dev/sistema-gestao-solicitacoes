@@ -53,7 +53,7 @@ assert(solicitacoes.includes('resolverDestinoInicialNovaSolicitacao()'));
 assert(solicitacoes.includes('assertTipoDisponivelNoDestino(obraSelecionada, tipoSelecionado)'));
 assert(contratos.includes('resolverDestinoInicialNovaSolicitacao()'));
 assert(contratos.includes('assertTipoDisponivelNoDestino(obraSelecionada, tipoMacro)'));
-assert(compras.includes('assertTipoDisponivelNoDestino(obra, tipoSolicitacao, { transaction })'));
+assert(compras.includes('assertTipoCompraDisponivelNoDestino(obra, tipoSolicitacao, { transaction })'));
 assert(!novaSolicitacao.includes('name="area_responsavel"'), 'A tela nao deve permitir escolher o setor inicial.');
 assert(novaSolicitacao.includes('getTiposSolicitacaoDisponiveis(form.obra_id)'));
 assert(novaSolicitacao.includes('area_responsavel: undefined'));

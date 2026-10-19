@@ -2,7 +2,7 @@
 
 Gerado por `node frontend/scripts/mapearCamposDatas.mjs`. Nao altera campos ou registros.
 
-Arquivos analisados: 1821. Erros de parser: 0. Conversoes identificadas: 2262.
+Arquivos analisados: 1828. Erros de parser: 0. Conversoes identificadas: 2274.
 
 - CAMPO_COMPARTILHADO: 160
 - CAMPO_NATIVO: 19
@@ -32,7 +32,7 @@ O JSON inclui todas as linhas e referencias de conversao/validacao identificadas
 | frontend/src/components/contratos/ReprogramarSaldoContrato.jsx:90 | CAMPO_COMPARTILHADO / DateInputBR | {l.vencimento} | nao declarado |
 | frontend/src/components/financeiro/AutorizacoesPorObra.jsx:176 | CAMPO_COMPARTILHADO / DateInputBR | {rascunho.vencimento_inicio} | true |
 | frontend/src/components/financeiro/AutorizacoesPorObra.jsx:177 | CAMPO_COMPARTILHADO / DateInputBR | {rascunho.vencimento_fim} | true |
-| frontend/src/components/financeiro/BaixaCompostaModal.jsx:294 | CAMPO_COMPARTILHADO / DateInputBR | {dataMovimento} | nao declarado |
+| frontend/src/components/financeiro/BaixaCompostaModal.jsx:312 | CAMPO_COMPARTILHADO / DateInputBR | {dataMovimento} | nao declarado |
 | frontend/src/components/financeiro/BaixaMassaFilaModal.jsx:114 | CAMPO_COMPARTILHADO / DateInputBR | {data} | nao declarado |
 | frontend/src/components/financeiro/ChequePagamentoFields.jsx:46 | TIPO_DINAMICO_REVISAR / input | {field === 'titular_documento' ? maskCpfCnpj(value?.[field]) : (value?.[field] \|\| '')} | nao declarado |
 | frontend/src/components/financeiro/TituloNegociacaoModal.jsx:135 | CAMPO_COMPARTILHADO / DateInputBR | {form.primeiro} | {hoje()} / nao declarado |
@@ -186,7 +186,7 @@ O JSON inclui todas as linhas e referencias de conversao/validacao identificadas
 | frontend/src/pages/FinanceiroEndividamento.jsx:234 | CAMPO_COMPARTILHADO / DateInputBR | {filters.data_inicial} | nao declarado |
 | frontend/src/pages/FinanceiroEndividamento.jsx:238 | CAMPO_COMPARTILHADO / DateInputBR | {filters.data_final} | nao declarado |
 | frontend/src/pages/FinanceiroFaturaCartaoDetalhe.jsx:298 | CAMPO_COMPARTILHADO / DateInputBR | {baixaForm.data_pagamento} | nao declarado |
-| frontend/src/pages/FinanceiroFilaPagamentos.jsx:1554 | CAMPO_COMPARTILHADO / DateInputBR | {drafts[row.id]?.data_baixa \|\| row.data_baixa \|\| ''} | nao declarado |
+| frontend/src/pages/FinanceiroFilaPagamentos.jsx:1587 | CAMPO_COMPARTILHADO / DateInputBR | {drafts[row.id]?.data_baixa \|\| row.data_baixa \|\| ''} | nao declarado |
 | frontend/src/pages/FinanceiroFinanciamentosBancarios.jsx:723 | CAMPO_COMPARTILHADO / DateInputBR | {form.data_contrato} | nao declarado |
 | frontend/src/pages/FinanceiroFinanciamentosBancarios.jsx:726 | CAMPO_COMPARTILHADO / DateInputBR | {form.data_credito} | nao declarado |
 | frontend/src/pages/FinanceiroFinanciamentosBancarios.jsx:729 | CAMPO_COMPARTILHADO / DateInputBR | {form.primeiro_vencimento} | nao declarado |
@@ -211,10 +211,10 @@ O JSON inclui todas as linhas e referencias de conversao/validacao identificadas
 | frontend/src/pages/FinanceiroRelatorios.jsx:761 | CAMPO_COMPARTILHADO / DateInputBR | {filters.data_final} | nao declarado |
 | frontend/src/pages/FinanceiroRelatorios.jsx:1065 | CAMPO_COMPARTILHADO / DateInputBR | {filters.data_inicial} | nao declarado |
 | frontend/src/pages/FinanceiroRelatorios.jsx:1073 | CAMPO_COMPARTILHADO / DateInputBR | {filters.data_final} | nao declarado |
-| frontend/src/pages/FinanceiroTituloDetalhe.jsx:986 | CAMPO_COMPARTILHADO / DateInputBR | {cobrancaForm.boleto_emitido_em} | nao declarado |
-| frontend/src/pages/FinanceiroTituloDetalhe.jsx:1573 | CAMPO_COMPARTILHADO / DateInputBR | {baixaForm.data_emissao} | nao declarado |
-| frontend/src/pages/FinanceiroTituloDetalhe.jsx:1581 | CAMPO_COMPARTILHADO / DateInputBR | {baixaForm.data_vencimento} | nao declarado |
-| frontend/src/pages/FinanceiroTituloDetalhe.jsx:1625 | CAMPO_COMPARTILHADO / DateInputBR | {baixaForm.data_movimento} | nao declarado |
+| frontend/src/pages/FinanceiroTituloDetalhe.jsx:989 | CAMPO_COMPARTILHADO / DateInputBR | {cobrancaForm.boleto_emitido_em} | nao declarado |
+| frontend/src/pages/FinanceiroTituloDetalhe.jsx:1576 | CAMPO_COMPARTILHADO / DateInputBR | {baixaForm.data_emissao} | nao declarado |
+| frontend/src/pages/FinanceiroTituloDetalhe.jsx:1584 | CAMPO_COMPARTILHADO / DateInputBR | {baixaForm.data_vencimento} | nao declarado |
+| frontend/src/pages/FinanceiroTituloDetalhe.jsx:1628 | CAMPO_COMPARTILHADO / DateInputBR | {baixaForm.data_movimento} | nao declarado |
 | frontend/src/pages/FinanceiroTituloEditar.jsx:1221 | CAMPO_COMPARTILHADO / DateInputBR | {form.data_emissao} | nao declarado |
 | frontend/src/pages/FinanceiroTituloEditar.jsx:1230 | CAMPO_COMPARTILHADO / DateInputBR | {form.data_vencimento} | nao declarado |
 | frontend/src/pages/FinanceiroTituloEditar.jsx:1243 | CAMPO_COMPARTILHADO / DateInputBR | {form.competencia_data} | nao declarado |

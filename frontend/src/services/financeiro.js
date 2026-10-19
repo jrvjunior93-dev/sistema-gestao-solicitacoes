@@ -969,6 +969,13 @@ export async function desvincularFaturaTituloFinanceiro(id, data) {
   return parseJson(response, 'Não foi possível desvincular a previsão de cartão');
 }
 
+export async function cancelarTituloFinanceiro(id, data) {
+  const response = await fetch(`${API_URL}/financeiro/titulos/${id}/cancelar`, {
+    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(data)
+  });
+  return parseJson(response, 'Não foi possível cancelar o título.');
+}
+
 export async function importarCodigosBarrasTitulos(data) {
   const response = await fetch(`${API_URL}/financeiro/titulos/importar-codigos-barras`, {
     method: 'POST',
@@ -1355,6 +1362,20 @@ export async function previewBaixaFinanceiraComposta(data) {
     body: JSON.stringify(data)
   });
   return parseJson(response, 'Erro ao validar baixa com multiplas fontes');
+}
+
+export async function previewBaixaCompostaFila(data) {
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/baixas-compostas/preview`, {
+    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(data)
+  });
+  return parseJson(response, 'Erro ao validar fontes da fila').catch(error => { error.status = response.status; throw error; });
+}
+
+export async function confirmarBaixaCompostaFila(data, idempotencyKey) {
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/baixas-compostas/confirmar`, {
+    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey }), body: JSON.stringify(data)
+  });
+  return parseJson(response, 'Erro ao registrar baixa composta na fila').catch(error => { error.status = response.status; throw error; });
 }
 
 export async function confirmarBaixaFinanceiraComposta(data, idempotencyKey) {

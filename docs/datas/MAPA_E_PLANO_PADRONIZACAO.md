@@ -14,11 +14,11 @@ Inventario integral do codigo analisado:
 - Geracao: `node frontend/scripts/mapearCamposDatas.mjs`.
 - Prova: `node frontend/scripts/validarMapaCamposDatas.mjs`.
 
-Na primeira etapa concluida:1821arquivos,160declaracoes de controles
+Inventario atualizado apos fontes na fila e cancelamento:1828arquivos,160declaracoes de controles
 compartilhados,19controles nativos,83configuracoes dinamicas de data e14inputs
 de tipo dinamico a revisar.875declaracoes DATE/DATEONLY:370nos modelos e505nas
 migrations historicas; nao representam875colunas distintas do banco atual.
-2262referencias de conversao foram identificadas; nenhum erro de parser.
+2274referencias de conversao foram identificadas; nenhum erro de parser.
 Esses numeros sao de declaracoes estaticas, nao uma contagem de inputs em uso
 ou de registros. Configuracoes podem gerar multiplos campos. createdAt/updatedAt
 implicitos do ORM e campos externos/importados exigem cruzamento do contrato.

@@ -94,6 +94,13 @@ export default function InstrumentoPagamentoFila({ row, draft = {}, instrumentos
     onChange(chequeDraft);
     setChequeDraft(null);
   }
+  if (disabled && row.instrumento_pagamento_json?.multiplas_fontes) return <div className="text-xs space-y-1">
+    <strong>Múltiplas fontes</strong>
+    {(row.instrumento_pagamento_json.fontes_titulo || []).map(parte => {
+      const fonte = row.instrumento_pagamento_json.instrumentos?.[parte.componente];
+      return <div key={parte.componente}>{fonte?.forma_nome || fonte?.tipo || 'Fonte'} · {Number(parte.valor).toLocaleString('pt-BR', {style:'currency',currency:'BRL'})}</div>;
+    })}
+  </div>;
   if (disabled) return <span className="text-xs">{forma?.nome || row.titulo?.formaPagamento?.nome || '—'}
     {Number(row.instrumento_pagamento_json?.valor_permuta) ? ` · Permuta R$ ${Number(row.instrumento_pagamento_json.valor_permuta).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : row.instrumento_pagamento_json?.liquidacao_id ? ` · ${row.instrumento_pagamento_json.instrumentos?.length || 0} instrumento(s) compartilhados no grupo` : ''}
     {draft.parcelas_cartao?.length ? ` · ${draft.parcelas_cartao.length} cartão(ões)` : ''}

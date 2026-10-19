@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
+    "test:titulo-cancelamento": "node scripts/validarTituloCancelamento.js",
+    "test:fila-multiplas-fontes": "node scripts/validarFilaBaixaComposta.js && node scripts/validarFilaLiquidacaoRateada.js && node scripts/validarPermutasOperacionais.js && node scripts/validarCarteiraChequesBaixaComposta.js",
     "test:deploy-permutas-dev": "node scripts/validarDeployPermutasDev.js",
     "test:permutas-operacionais": "node scripts/validarPermutasOperacionais.js",
     "test:permutas-relatorio-local": "node scripts/validarPermutasRelatorio.js",

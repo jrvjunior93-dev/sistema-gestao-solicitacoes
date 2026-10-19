@@ -387,6 +387,7 @@ const {
   canViewSolicitacoesRelatorioOperacional
 } = require('./services/authorizationService');
 const { userBelongsToDpSetor } = require('./services/setorCapabilityService');
+const { validarFilaBaixaComposta } = require('./validators/filaBaixaCompostaValidator');
 
 const uploadComprovantes = require('./config/uploadComprovantes');
 const uploadComprovantesPagamento = require('./config/uploadComprovantesPagamento');
@@ -2251,6 +2252,10 @@ router.post('/financeiro/fila-pagamentos/comprovantes/preview', allowFilaPagamen
 router.post('/financeiro/fila-pagamentos/comprovantes/vincular', allowFilaPagamentosImportarComprovantes, criticalRateLimit, uploadComprovantesPagamento.array('files', 10), PagamentoManualFilaController.vincularComprovantes);
 router.post('/financeiro/fila-pagamentos', allowFilaPagamentosPrepare, criticalRateLimit, validateRequest({ body: validateManualPaymentQueueCreateBody }), PagamentoManualFilaController.create);
 router.post('/financeiro/fila-pagamentos/baixar', allowFilaPagamentosBaixa, criticalRateLimit, validateRequest({ body: validateManualPaymentQueueProcessBody }), PagamentoManualFilaController.baixar);
+router.post('/financeiro/fila-pagamentos/baixas-compostas/preview', allowFilaPagamentosBaixa, allowBaixaCompostaCriar, criticalRateLimit,
+  validateRequest({ body: validarFilaBaixaComposta }), PagamentoManualFilaController.compostaPreview);
+router.post('/financeiro/fila-pagamentos/baixas-compostas/confirmar', allowFilaPagamentosBaixa, allowBaixaCompostaCriar, allowBaixaCompostaConfirmar, criticalRateLimit,
+  validateRequest({ body: validarFilaBaixaComposta }), PagamentoManualFilaController.compostaConfirmar);
 router.post('/financeiro/fila-pagamentos/aprovar-divergencias', allowFilaPagamentosResolver, criticalRateLimit, validateRequest({ body: validateManualPaymentQueueApproveBody }), PagamentoManualFilaController.aprovarDivergencias);
 router.post('/financeiro/fila-pagamentos/:id/resultado', allowFilaPagamentosReportar, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Item da fila'), body: validateManualPaymentQueueResultBody }), PagamentoManualFilaController.resultado);
 router.post('/financeiro/fila-pagamentos/:id/resolver', allowFilaPagamentosResolver, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Item da fila'), body: validateManualPaymentQueueResolveBody }), PagamentoManualFilaController.resolver);
@@ -2427,6 +2432,7 @@ router.get('/financeiro/titulos/:id', allowFinanceiro, validateRequest({ params:
 router.get('/financeiro/titulos/:id/auditoria', allowFinanceiro, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro') }), TituloFinanceiroController.auditoria);
 router.patch('/financeiro/titulos/:id', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro'), body: validateFinanceTituloUpdateBody }), TituloFinanceiroController.update);
 router.post('/financeiro/titulos/:id/desvincular-fatura', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro'), body: require('./validators/tituloDesvincularFaturaValidator').validateTituloDesvincularFaturaBody }), require('./controllers/TituloDesvincularFaturaController').desvincular);
+router.post('/financeiro/titulos/:id/cancelar', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro'), body: require('./validators/tituloCancelamentoValidator').validateTituloCancelamentoBody }), require('./controllers/TituloCancelamentoController').cancelar);
 router.patch('/financeiro/titulos/:id/cobranca', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro'), body: validateFinanceTituloCobrancaBody }), TituloFinanceiroController.atualizarCobranca);
 router.post('/financeiro/titulos/:id/baixas/conciliacoes', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro'), body: validateFinanceTituloBaixaConciliacoesBody }), TituloFinanceiroController.baixarPorConciliacoes);
 router.post('/financeiro/titulos/:id/baixas', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro'), body: validateFinanceTituloBaixaBody }), TituloFinanceiroController.baixar);

@@ -141,6 +141,9 @@ module.exports = {
     try {
       const titulo = await carregarTituloPorId(req, req.params.id, { includeMovimentos: true });
       const payload = await filtrarDetalheTituloPorPermissoes(req, titulo);
+      if (payload.status === 'CANCELADO') {
+        payload.cancelamento = await require('../services/tituloCancelamentoAuditoriaService').resumoCancelamento(titulo.id);
+      }
       return res.json(payload);
     } catch (error) {
       console.error(error);

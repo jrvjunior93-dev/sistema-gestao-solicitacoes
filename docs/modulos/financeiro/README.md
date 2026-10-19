@@ -1,5 +1,24 @@
 # Modulo FINANCEIRO
 
+## Fila: baixa com multiplas fontes - 2026-10-18
+
+- Acoes Multiplas fontes na linha e Baixa com multiplas fontes na selecao
+  reutilizam o editor atual, com valor por fonte e distribuicao entre titulos.
+  A revisao nao grava baixas; confirmar revalida saldos/fontes sob bloqueio.
+- Rotas exclusivas da fila exigem acesso financeiro, baixa da fila e granulares
+  existentes de baixa composta criar/confirmar. Permuta exige .usar;
+  estorno do novo grupo exige tambem baixa composta .estornar. Sem concessoes.
+- Reusa baixarTitulo e PagamentoFilaLiquidacao; movimentos, fila e auditoria
+  sao atomicos. Replay nao duplica pagamentos; estorno reverte o grupo completo,
+  inclusive carteira uma vez. A linha mostra apenas suas fontes e valores.
+- Mesmo credor, ate 200 itens/60 fontes, sem encargos/desconto nesse caminho.
+  Cartao de credito permanece no fluxo proprio de fatura. Pagamento parcial
+  exige justificativa e segue a divergencia atual da fila. Escopos, bloqueios
+  proprietario/DP/Obra, caixa aberto e dados de cheque continuam validados.
+- Sem migration nova, alteracao de legado, EC2 ou producao. Implementacao local
+  baseada em refactor/frontend (39f368be); homologacao real DEV ainda pendente.
+- [Operacao, limites e testes](../../handoffs/2026-10-18-fila-multiplas-fontes.md).
+
 ## Permutas realizadas: operacao e relatorio - 2026-10-18
 
 - Primeira etapa confirmada pelo usuario: registrar valores de permuta nas
@@ -1358,3 +1377,31 @@ Geracao de titulo, baixa, estorno, importacao OFX e conciliacao sao transacionai
   COMMAND INFO e RP/origens HTTPS; nao altera nenhuma chave/configuracao.
   Biometria/passkey real deve ser testada manualmente no PWA DEV, com usuario
   nominal, nunca Testar usuario. Roteiro nao aplica migration nem promove main.
+
+## Cancelamento de titulo individual
+
+- No detalhe do titulo, em Dados do titulo, a acao Cancelar titulo exige motivo
+  e confirmacao. Aplica CANCELADO e saldo zero, sem excluir registro/anexos,
+  alterar valores originais, registrar baixa ou estornar pagamentos.
+- Nova chave `financeiro.titulos.cancelar`; operadores precisam de concessao
+  explicita. Acesso de setor, editar ou excluir nao substitui essa chave.
+  ACL e todas as obras do rateio sao revalidadas tambem no replay.
+- Pagamentos, fila/autorizacao ativa, cartao/fatura, cobranca, conciliacao,
+  integracao e fluxos especializados bloqueiam a acao; regularizar na origem.
+  Compartilhados continuam usando o cancelamento integral do lote existente.
+- Historico permanente guarda motivo/data/responsavel e recibo idempotente na
+  trilha financeira ja existente, sem criar autoria de solicitacao. Exibicao
+  no detalhe e auditoria financeira, mesmo apos retencao do log de seguranca.
+- Sem migration nova. Testes `test:titulo-cancelamento` em backend e frontend.
+  Handoff: `docs/handoffs/2026-10-19-cancelamento-titulo-financeiro.md`.
+
+## Pacote DEV financeiro/compras de 19/10/2026
+
+- Inclui multiplas fontes na fila, cancelamento e compras em Centros de Custo
+  pelas telas proprias, sem mudar o tipo fixo da Nova Solicitacao.
+- Roteiro `ops/deploy/atualizar-dev-financeiro-20261019.sh` recebe SHA publicado,
+  verifica identidade DEV/PM2/watch/schema/sessao, executa testes isolados e
+  consultas SELECT/EXPLAIN de permutas em MySQL DEV, e reinicia so backend-dev.
+  Nao aplica migration nem altera flags/configuracoes. Erro interrompe o fluxo.
+- Frontend publicado pelo fluxo da branch na Vercel; nao construir frontend
+  nem modificar Nginx na EC2 para este pacote. Homologar com usuarios reais DEV.

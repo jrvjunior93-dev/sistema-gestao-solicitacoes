@@ -12,6 +12,7 @@ const entry = `import React,{useEffect,useMemo,useState}from'react';import{creat
 import Modal from'/src/components/financeiro/BaixaCompostaModal.jsx';
 import{WorkspacePageContext,createWorkspaceMemory}from'/src/navigation/WorkspaceContext.jsx';
 import{ThemeContext,TEMA_PADRAO}from'/src/contexts/ThemeContext.jsx';
+import{AuthContext}from'/src/contexts/AuthContext.jsx';
 window.reads=0;window.previews=[];window.writes=[];window.denied=false;window.readonly=false;window.fail=true;
 window.data={titulos:[{id:1,codigo:'TIT-A',tipo:'PAGAR',status:'ABERTO',valor_saldo:100,empresa_id:8,parceiro_id:7,data_vencimento:'2026-10-01'},
 {id:2,codigo:'TIT-B',tipo:'PAGAR',status:'ABERTO',valor_saldo:200,empresa_id:8,parceiro_id:7,data_vencimento:'2026-10-02'}],
@@ -22,7 +23,7 @@ function Page(){const[data,D]=useState(null);const[closed,C]=useState(false);use
 return data&&!window.readonly&&!closed?<Modal {...data} eligible={data.titulos.every(t=>t.status==='ABERTO'&&Number(t.valor_saldo)>0)} onClose={()=>C(true)} onConfirmed={r=>window.result=r}/>:<p>{closed?'Baixa encerrada':data?'Somente consulta':'Baixa indisponível'}</p>}
 function Host(){const[active,A]=useState(true);const memory=useMemo(()=>createWorkspaceMemory(),[]);window.qaTab=A;window.memory=memory;
 return <WorkspacePageContext.Provider value={{key:'fontes-qa',memory,snapshot:true,active:true}}>{active?<Page/>:<p>Consulta auxiliar</p>}</WorkspacePageContext.Provider>}
-createRoot(document.getElementById('root')).render(<MemoryRouter><ThemeContext.Provider value={{tema:TEMA_PADRAO}}><Host/></ThemeContext.Provider></MemoryRouter>);`;
+createRoot(document.getElementById('root')).render(<MemoryRouter><AuthContext.Provider value={{user:{id:1,perfil:'SUPERADMIN',financeiro_liberado:true}}}><ThemeContext.Provider value={{tema:TEMA_PADRAO}}><Host/></ThemeContext.Provider></AuthContext.Provider></MemoryRouter>);`;
 const mocks = `export async function previewBaixaFinanceiraComposta(data){window.previews.push(structuredClone(data));await new Promise(r=>setTimeout(r,100));return {componentes:data.componentes,titulos:[1,2],valor_principal:200}}
 export async function confirmarBaixaFinanceiraComposta(data,key){window.writes.push({data:structuredClone(data),key});await new Promise(r=>setTimeout(r,100));if(window.fail)throw new Error('Falha simulada de rede');return {id:90}}`;
 const server=await createServer({root,configFile:false,logLevel:'error',server:{host:'127.0.0.1',port:0},plugins:[{

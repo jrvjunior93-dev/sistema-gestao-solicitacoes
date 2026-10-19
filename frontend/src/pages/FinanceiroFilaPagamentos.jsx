@@ -30,6 +30,8 @@ import {
   getFilaPagamentos,
   informarNaoPagamentoFila,
   previewComprovantesFilaPagamentos,
+  previewBaixaCompostaFila,
+  confirmarBaixaCompostaFila,
   registrarBaixasFilaPagamentos,
   resolverFilaPagamento,
   estornarBaixaFilaPagamento,
@@ -37,6 +39,7 @@ import {
 } from '../services/financeiro';
 import {
   canBaixarFilaPagamentos,
+  canAccessFinanceiro,
   hasPermissao,
   canImportarComprovantesFilaPagamentos,
   canReportarFilaPagamentos,
@@ -48,6 +51,7 @@ import OverlayModal from '../components/ui/OverlayModal';
 import ArquivosSolicitacaoFilaModal from '../components/financeiro/ArquivosSolicitacaoFilaModal';
 import DadosPagamentoFila from '../components/financeiro/DadosPagamentoFila';
 import BaixaMassaFilaModal from '../components/financeiro/BaixaMassaFilaModal';
+import BaixaCompostaModal from '../components/financeiro/BaixaCompostaModal';
 import InstrumentoPagamentoFila, { payloadInstrumentoFila, tipoInstrumentoFila } from '../components/financeiro/InstrumentoPagamentoFila';
 import { ResizableTable, ResizableTh } from '../components/ResizableTable';
 import { listarComprovantesFila } from '../utils/comprovantesFila';
@@ -692,6 +696,8 @@ export default function FinanceiroFilaPagamentos() {
   const [reasonOpenId, setReasonOpenId] = useWorkspaceState('fila:motivoId', null);
   const [erroBaixa, setErroBaixa] = useState(null);
   const [baixaMassa, setBaixaMassa] = useState(null);
+  const [baixaFontes, setBaixaFontes] = useState(null);
+  const [fontesEmProcessamento, setFontesEmProcessamento] = useState(false);
   const [comprovantesOpen, setComprovantesOpen] = useWorkspaceState('fila:pdfOpen', false);
   const [comprovanteLote, setComprovanteLote] = useState(null);
   const [filaAutorizada, setFilaAutorizada] = useState(false);
@@ -701,6 +707,7 @@ export default function FinanceiroFilaPagamentos() {
   useWorkspaceWork(Boolean(Object.keys(edicoesFila).length || selected.length), Boolean(actionKey));
 
   const canSettle = canBaixarFilaPagamentos(user);
+  const canCompose = canSettle && canAccessFinanceiro(user) && hasPermissao(user, 'financeiro.baixas_compostas.criar') && hasPermissao(user, 'financeiro.baixas_compostas.confirmar');
   const canOpenTitle = hasPermissao(user, 'financeiro.titulos.visualizar');
   const canReport = canReportarFilaPagamentos(user);
   const canResolve = canResolverFilaPagamentos(user);
@@ -716,7 +723,7 @@ export default function FinanceiroFilaPagamentos() {
   useLayoutEffect(() => {
     if (usuarioSelecao.current !== user?.id) {
       setSelected([]); setLinhasConhecidas({}); setRows([]);
-      setBaixaMassa(null); setComprovanteLote(null);
+      setBaixaMassa(null); setComprovanteLote(null); setBaixaFontes(null);
       ultimaPaginaCarregada.current = null; idsPaginaCarregada.current = new Set();
     }
     usuarioSelecao.current = user?.id;
@@ -854,7 +861,7 @@ export default function FinanceiroFilaPagamentos() {
         const anterior = linhasOperacao.find(r => Number(r.id) === Number(row.id));
         return !anterior || revisaoFila(anterior) !== revisaoFila(row);
       })) {
-        setSelected([]); setBaixaMassa(null); setComprovanteLote(null);
+        setSelected([]); setBaixaMassa(null); setComprovanteLote(null); setBaixaFontes(null);
         await load();
         avisar.alerta('Um título selecionado mudou ou saiu deste recorte. A seleção foi limpa; confira os dados atuais antes de continuar.');
         return null;
@@ -1033,6 +1040,24 @@ export default function FinanceiroFilaPagamentos() {
   async function settle(targetRows) {
     if (!targetRows.length || !canSettle) return;
     return executarOperacao(() => performSettle(targetRows));
+  }
+
+  async function abrirFontes(targetRows) {
+    if (!canCompose || busy || loading || !filaAutorizada || !targetRows.length || targetRows.length > 200) return;
+    return executarOperacao(async () => {
+      const atuais = await conferirSelecao(targetRows.map(row => Number(row.id)));
+      if (!atuais) return;
+      if (atuais.some(row => row.status !== 'PENDENTE' || row.somente_consulta || row.movimento_financeiro_id
+        || (edicoesFilaRef.current[row.id] && edicoesFilaRef.current[row.id].revisao !== revisaoFila(row)))) {
+        avisar.alerta('Atualize e confira os titulos antes de combinar fontes.'); return;
+      }
+      if (atuais.some(row => ['juros', 'multa', 'desconto'].some(k => Number(draftsRef.current[row.id]?.[k] || 0)))) {
+        avisar.alerta('Use a baixa simples para preservar juros, multa e desconto.'); return;
+      }
+      const datas = [...new Set(atuais.map(row => draftsRef.current[row.id]?.data_baixa).filter(Boolean))];
+      setBaixaFontes({ ids: atuais.map(row => Number(row.id)), revisoes: atuais.map(revisaoFila), usuario: user.id,
+        dataInicial: datas.length === 1 ? datas[0] : hojeISO() });
+    });
   }
 
   async function performSettle(targetRows, dados = draftsRef.current, instrumentosLote = null) {
@@ -1222,7 +1247,11 @@ export default function FinanceiroFilaPagamentos() {
   const hasReceiptSelection = canSettle && ['PENDENTE', 'PENDENTE_COMPROVANTE', 'TODOS'].includes(status);
   const hasBulkAction = status === 'DIVERGENTE' ? canResolve : (['PENDENTE', 'TODOS'].includes(status) && canSettle);
   const showReasonColumn = ['DIVERGENTE', 'PENDENTE', 'NAO_PAGO', 'EM_EDICAO', 'TODOS', 'RESOLVIDO'].includes(status);
-  const busy = Boolean(actionKey);
+  const busy = Boolean(actionKey) || fontesEmProcessamento;
+  const filasFontes = baixaFontes?.ids.map(id => linhasOperacao.find(row => Number(row.id) === id)).filter(Boolean) || [];
+  const fontesElegiveis = Boolean(baixaFontes && baixaFontes.usuario === user.id && filasFontes.length === baixaFontes.ids.length
+    && filasFontes.every((row, i) => row.status === 'PENDENTE' && !row.somente_consulta && !row.movimento_financeiro_id
+      && revisaoFila(row) === baixaFontes.revisoes[i]));
   const carregarMais = useCallback(() => setPagina((paginacao?.pagina || 1) + 1), [paginacao?.pagina, setPagina]);
   const rotuloSelecao = numerada ? 'Selecionar todos os elegíveis da página atual' : 'Selecionar todos os elegíveis carregados';
   const colunasOriginais = PAYMENT_QUEUE_COLUMNS.filter(column => showReasonColumn || column.key !== 'justificativa');
@@ -1257,6 +1286,10 @@ export default function FinanceiroFilaPagamentos() {
           icone: <HiOutlineCheckCircle aria-hidden="true" />
         } : undefined}
         secundarias={[
+          ...(canCompose && hasBulkAction && !approvingDivergences ? [{
+            rotulo: 'Baixa com múltiplas fontes', onClick: () => abrirFontes(selectedPayments),
+            desabilitada: loading || busy || !filaAutorizada || !selectedPayments.length || selectedPayments.length > 200
+          }] : []),
           ...(hasReceiptSelection ? [{
             rotulo: `Anexar mesmo comprovante${selectedReceipts.length ? ` (${selectedReceipts.length})` : ''}`,
             onClick: () => setComprovanteLote({ ids: selectedReceipts.map(r => Number(r.id)), arquivo: null }),
@@ -1304,7 +1337,7 @@ export default function FinanceiroFilaPagamentos() {
         controles={(
           <div className="flex flex-wrap items-end gap-2">
             {colunasConfiguradas.painel}
-            <AlternadorPaginacaoConsulta numerada={numerada} ocupado={loading || busy || Boolean(baixaMassa || comprovanteLote)}
+            <AlternadorPaginacaoConsulta numerada={numerada} ocupado={loading || busy || Boolean(baixaMassa || comprovanteLote || baixaFontes)}
               aoAlternar={() => { setPagina(1); remendarVisual({ numerada: !numerada }); }} />
             <label className="text-sm">
               <span className="sr-only">Status</span>
@@ -1586,7 +1619,9 @@ export default function FinanceiroFilaPagamentos() {
                         onChange={patch => updateDraft(row.id, patch)} />
                     </td>
                     <td className="px-3 py-3 align-top">
-                      <div className="max-w-48 text-xs font-medium">{row.instrumento_pagamento_json?.instrumentos?.some(item => item.usar_cheque_terceiro)
+                      <div className="max-w-48 text-xs font-medium">{row.instrumento_pagamento_json?.multiplas_fontes
+                        ? [...new Set((row.instrumento_pagamento_json.fontes_titulo || []).map(f => row.instrumento_pagamento_json.instrumentos?.[f.componente]).filter(Boolean).map(f => f.empresa_nome || `Empresa #${f.empresa_id}`))].join(' / ') || 'Múltiplas fontes'
+                        : row.instrumento_pagamento_json?.instrumentos?.some(item => item.usar_cheque_terceiro)
                         ? `Lote · empresas ${[...new Set(row.instrumento_pagamento_json.instrumentos.map(item => item.empresa_id))].map(id =>
                           accounts.find(item => Number(item.empresa_id) === Number(id))?.empresa?.nome ||
                           instrumentos.cheques.find(item => Number(item.empresa_id) === Number(id))?.empresa?.nome || `#${id}`).join(', ')}`
@@ -1655,7 +1690,8 @@ export default function FinanceiroFilaPagamentos() {
                         {editable && canSettle ? (
                           <button className="btn btn-primary btn-sm" type="button" onClick={() => settle([row])} disabled={busy}>Registrar baixa</button>
                         ) : null}
-                        {['BAIXADO', 'RESOLVIDO'].includes(row.status) && !row.instrumento_pagamento_json?.estorno && hasPermissao(user, 'financeiro.titulos.estornar') && !row.somente_consulta && row.movimento_financeiro_id ? (
+                        {editable && canCompose && !row.somente_consulta ? <button className="btn btn-outline btn-sm" type="button" onClick={() => abrirFontes([row])} disabled={busy}>Múltiplas fontes</button> : null}
+                        {['BAIXADO', 'RESOLVIDO'].includes(row.status) && !row.instrumento_pagamento_json?.estorno && hasPermissao(user, 'financeiro.titulos.estornar') && (!row.instrumento_pagamento_json?.multiplas_fontes || hasPermissao(user, 'financeiro.baixas_compostas.estornar')) && !row.somente_consulta && row.movimento_financeiro_id ? (
                           <button className="btn btn-outline btn-sm" type="button" disabled={busy} onClick={() => estornar(row)}>Estornar baixa</button>
                         ) : null}
                         {row.status === 'PENDENTE' && canReport ? (
@@ -1692,13 +1728,34 @@ export default function FinanceiroFilaPagamentos() {
         </div>
         {!numerada && <NavegacaoRolagemConsulta pagina={paginacao?.pagina || 1} paginas={paginacao?.total_paginas || 1}
           quantidade={rows.length} total={paginacao?.total ?? rows.length} carregando={loading}
-          bloqueado={!ativa || busy || Boolean(baixaMassa || comprovanteLote || comprovantesOpen || solicitacaoArquivos || erroBaixa || modalPreview)}
+          bloqueado={!ativa || busy || Boolean(baixaMassa || baixaFontes || comprovanteLote || comprovantesOpen || solicitacaoArquivos || erroBaixa || modalPreview)}
           erro={erroConsulta} aoCarregar={carregarMais} aoRepetir={load} />}
         <p className="mt-3 text-xs text-[var(--c-muted)]">
           O processamento em massa é atômico: se uma linha falhar na validação, nenhuma baixa do lote é gravada.
         </p>
       </BlocoConteudo>
       <ErroRegistroBaixaModal erro={erroBaixa} onFechar={fecharErroRegistroBaixa} />
+      {baixaFontes && canCompose && <BaixaCompostaModal contextoFila
+        titulos={filasFontes.map(row => row.titulo)} empresas={instrumentos.empresas || []}
+        contas={accounts} formas={instrumentos.formas.filter(f => !f.gera_fatura && !/CREDITO/.test([f.tipo, f.codigo, f.nome].join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()))}
+        cartoes={instrumentos.cartoes.filter(c => String(c.tipo).toUpperCase() === 'DEBITO')} cheques={instrumentos.cheques}
+        chaveRascunho={`fila:fontes:${baixaFontes.usuario}:${baixaFontes.ids.join(':')}`} revisaoContexto={JSON.stringify(filasFontes.map(revisaoFila))} dataInicial={baixaFontes.dataInicial}
+        ready={!loading && filaAutorizada && baixaFontes.usuario === user.id} eligible={fontesElegiveis}
+        onBusyChange={setFontesEmProcessamento} onClose={() => setBaixaFontes(null)}
+        onPreview={async payload => {
+          const atuais = await conferirSelecao(baixaFontes.ids);
+          if (!atuais || !fontesElegiveis) throw new Error('Selecao alterada. Atualize a fila e revise novamente.');
+          return previewBaixaCompostaFila({ ...payload, fila_ids: baixaFontes.ids });
+        }}
+        onConfirm={(payload, key) => confirmarBaixaCompostaFila({ ...payload, fila_ids: baixaFontes.ids }, key)}
+        onConfirmed={async result => {
+          avisar.sucesso(`${result.baixados} baixa(s) registrada(s) com múltiplas fontes.`);
+          if (result.pendentes_comprovante) avisar.alerta(`${result.pendentes_comprovante} pagamento(s) pendente(s) de comprovante.`);
+          setSelected(current => current.filter(id => !baixaFontes.ids.includes(Number(id))));
+          limparEdicoes(baixaFontes.ids);
+          setBaixaFontes(null);
+          await load();
+        }} />}
       {baixaMassa && <BaixaMassaFilaModal rows={linhasOperacao.filter(row => baixaMassa.ids.includes(row.id))}
         accounts={accounts} drafts={drafts} instrumentos={instrumentos}
         podeCadastrarCheque={hasPermissao(user, 'financeiro.cheques.cadastrar') && hasPermissao(user, 'financeiro.cheques.visualizar')}

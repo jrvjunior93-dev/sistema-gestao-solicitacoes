@@ -5,7 +5,7 @@
     "backend/src",
     "backend/migrations"
   ],
-  "arquivos_analisados": 1821,
+  "arquivos_analisados": 1828,
   "contagens": {
     "CAMPO_COMPARTILHADO": 160,
     "CAMPO_NATIVO": 19,
@@ -6328,7 +6328,7 @@
     },
     {
       "arquivo": "frontend/src/components/financeiro/BaixaCompostaModal.jsx",
-      "linha": 294,
+      "linha": 312,
       "tipo": "CAMPO_COMPARTILHADO",
       "componente": "DateInputBR",
       "formato": "COMPONENTE",
@@ -7940,7 +7940,7 @@
     },
     {
       "arquivo": "frontend/src/pages/FinanceiroFilaPagamentos.jsx",
-      "linha": 1554,
+      "linha": 1587,
       "tipo": "CAMPO_COMPARTILHADO",
       "componente": "DateInputBR",
       "formato": "COMPONENTE",
@@ -8290,7 +8290,7 @@
     },
     {
       "arquivo": "frontend/src/pages/FinanceiroTituloDetalhe.jsx",
-      "linha": 986,
+      "linha": 989,
       "tipo": "CAMPO_COMPARTILHADO",
       "componente": "DateInputBR",
       "formato": "COMPONENTE",
@@ -8304,7 +8304,7 @@
     },
     {
       "arquivo": "frontend/src/pages/FinanceiroTituloDetalhe.jsx",
-      "linha": 1573,
+      "linha": 1576,
       "tipo": "CAMPO_COMPARTILHADO",
       "componente": "DateInputBR",
       "formato": "COMPONENTE",
@@ -8318,7 +8318,7 @@
     },
     {
       "arquivo": "frontend/src/pages/FinanceiroTituloDetalhe.jsx",
-      "linha": 1581,
+      "linha": 1584,
       "tipo": "CAMPO_COMPARTILHADO",
       "componente": "DateInputBR",
       "formato": "COMPONENTE",
@@ -8332,7 +8332,7 @@
     },
     {
       "arquivo": "frontend/src/pages/FinanceiroTituloDetalhe.jsx",
-      "linha": 1625,
+      "linha": 1628,
       "tipo": "CAMPO_COMPARTILHADO",
       "componente": "DateInputBR",
       "formato": "COMPONENTE",
@@ -12412,12 +12412,12 @@
     },
     {
       "arquivo": "backend/src/services/chequeTerceiroService.js",
-      "linha": 1054,
+      "linha": 1055,
       "expressao": "new Date()"
     },
     {
       "arquivo": "backend/src/services/chequeTerceiroService.js",
-      "linha": 1141,
+      "linha": 1142,
       "expressao": "new Date()"
     },
     {
@@ -13762,77 +13762,77 @@
     },
     {
       "arquivo": "backend/src/services/pagamentoManualFilaService.js",
-      "linha": 509,
+      "linha": 510,
       "expressao": "new Date()"
     },
     {
       "arquivo": "backend/src/services/pagamentoManualFilaService.js",
-      "linha": 652,
+      "linha": 653,
       "expressao": "new Date()"
     },
     {
       "arquivo": "backend/src/services/pagamentoManualFilaService.js",
-      "linha": 810,
+      "linha": 813,
       "expressao": "new Date()"
     },
     {
       "arquivo": "backend/src/services/pagamentoManualFilaService.js",
-      "linha": 1066,
+      "linha": 1069,
       "expressao": "new Date()"
     },
     {
       "arquivo": "backend/src/services/pagamentoManualFilaService.js",
-      "linha": 1109,
+      "linha": 1112,
       "expressao": "new Date()"
     },
     {
       "arquivo": "backend/src/services/pagamentoManualFilaService.js",
-      "linha": 1140,
+      "linha": 1143,
       "expressao": "new Date()"
     },
     {
       "arquivo": "backend/src/services/pagamentoManualFilaService.js",
-      "linha": 1158,
+      "linha": 1161,
       "expressao": "new Date()"
     },
     {
       "arquivo": "backend/src/services/pagamentoManualFilaService.js",
-      "linha": 1169,
+      "linha": 1172,
       "expressao": "new Date()"
     },
     {
       "arquivo": "backend/src/services/pagamentoManualFilaService.js",
-      "linha": 1237,
+      "linha": 1240,
       "expressao": "new Date()"
     },
     {
       "arquivo": "backend/src/services/pagamentoManualFilaService.js",
-      "linha": 1243,
+      "linha": 1246,
       "expressao": "new Date()"
     },
     {
       "arquivo": "backend/src/services/pagamentoManualFilaService.js",
-      "linha": 1245,
+      "linha": 1248,
       "expressao": "new Date().toISOString()"
     },
     {
       "arquivo": "backend/src/services/pagamentoManualFilaService.js",
-      "linha": 1245,
+      "linha": 1248,
       "expressao": "new Date()"
     },
     {
       "arquivo": "backend/src/services/pagamentoManualFilaService.js",
-      "linha": 1281,
-      "expressao": "new Date()"
-    },
-    {
-      "arquivo": "backend/src/services/pagamentoManualFilaService.js",
-      "linha": 1282,
+      "linha": 1287,
       "expressao": "new Date()"
     },
     {
       "arquivo": "backend/src/services/pagamentoManualFilaService.js",
       "linha": 1288,
+      "expressao": "new Date()"
+    },
+    {
+      "arquivo": "backend/src/services/pagamentoManualFilaService.js",
+      "linha": 1294,
       "expressao": "new Date()"
     },
     {
@@ -16131,6 +16131,26 @@
       "expressao": "new Date()"
     },
     {
+      "arquivo": "backend/src/services/tituloCancelamentoService.js",
+      "linha": 38,
+      "expressao": "new Date(titulo.updatedAt).toISOString()"
+    },
+    {
+      "arquivo": "backend/src/services/tituloCancelamentoService.js",
+      "linha": 38,
+      "expressao": "new Date(titulo.updatedAt)"
+    },
+    {
+      "arquivo": "backend/src/services/tituloCancelamentoService.js",
+      "linha": 84,
+      "expressao": "new Date().toISOString()"
+    },
+    {
+      "arquivo": "backend/src/services/tituloCancelamentoService.js",
+      "linha": 84,
+      "expressao": "new Date()"
+    },
+    {
       "arquivo": "backend/src/services/tituloCompartilhadoCancelamento.js",
       "linha": 29,
       "expressao": "new Date()"
@@ -16437,17 +16457,17 @@
     },
     {
       "arquivo": "backend/src/services/tituloFinanceiroService.js",
-      "linha": 5107,
+      "linha": 5112,
       "expressao": "new Date(b.createdAt || 0)"
     },
     {
       "arquivo": "backend/src/services/tituloFinanceiroService.js",
-      "linha": 5107,
+      "linha": 5112,
       "expressao": "new Date(a.createdAt || 0)"
     },
     {
       "arquivo": "backend/src/services/tituloFinanceiroService.js",
-      "linha": 5377,
+      "linha": 5382,
       "expressao": "new Date()"
     },
     {
@@ -16739,6 +16759,21 @@
       "arquivo": "backend/src/validators/commercialValidators.js",
       "linha": 910,
       "expressao": "parseDateOnly(body.competencia_data, 'Competencia DRE do ajuste')"
+    },
+    {
+      "arquivo": "backend/src/validators/filaBaixaCompostaValidator.js",
+      "linha": 27,
+      "expressao": "new Date(v + 'T12:00:00Z').toISOString().slice(0, 10)"
+    },
+    {
+      "arquivo": "backend/src/validators/filaBaixaCompostaValidator.js",
+      "linha": 27,
+      "expressao": "new Date(v + 'T12:00:00Z').toISOString()"
+    },
+    {
+      "arquivo": "backend/src/validators/filaBaixaCompostaValidator.js",
+      "linha": 27,
+      "expressao": "new Date(v + 'T12:00:00Z')"
     },
     {
       "arquivo": "backend/src/validators/financialValidators.js",
@@ -17461,6 +17496,16 @@
       "expressao": "parseDateOnly(body.data_vencimento, 'Data de vencimento')"
     },
     {
+      "arquivo": "backend/src/validators/tituloCancelamentoValidator.js",
+      "linha": 15,
+      "expressao": "new Date(versao).toISOString()"
+    },
+    {
+      "arquivo": "backend/src/validators/tituloCancelamentoValidator.js",
+      "linha": 15,
+      "expressao": "new Date(versao)"
+    },
+    {
       "arquivo": "frontend/src/components/contratos/BlocoContratoFluxoNovo.jsx",
       "linha": 62,
       "expressao": "new Date(a, m - 1, d)"
@@ -17627,23 +17672,38 @@
     },
     {
       "arquivo": "frontend/src/components/financeiro/BaixaCompostaModal.jsx",
-      "linha": 16,
+      "linha": 17,
       "expressao": "new Date().toISOString().slice(0, 10)"
     },
     {
       "arquivo": "frontend/src/components/financeiro/BaixaCompostaModal.jsx",
-      "linha": 16,
+      "linha": 17,
       "expressao": "new Date().toISOString()"
     },
     {
       "arquivo": "frontend/src/components/financeiro/BaixaCompostaModal.jsx",
-      "linha": 16,
+      "linha": 17,
       "expressao": "new Date()"
     },
     {
       "arquivo": "frontend/src/components/financeiro/BaixaMassaFilaModal.jsx",
       "linha": 30,
       "expressao": "new Date()"
+    },
+    {
+      "arquivo": "frontend/src/components/financeiro/CancelarTitulo.jsx",
+      "linha": 17,
+      "expressao": "new Date(cancelamento.cancelado_em)"
+    },
+    {
+      "arquivo": "frontend/src/components/financeiro/CancelarTitulo.jsx",
+      "linha": 21,
+      "expressao": "new Date(titulo.updatedAt)"
+    },
+    {
+      "arquivo": "frontend/src/components/financeiro/CancelarTitulo.jsx",
+      "linha": 22,
+      "expressao": "dataVersao.toISOString()"
     },
     {
       "arquivo": "frontend/src/components/financeiro/TituloExcluidoAviso.jsx",
@@ -19382,22 +19442,22 @@
     },
     {
       "arquivo": "frontend/src/pages/FinanceiroFilaPagamentos.jsx",
-      "linha": 152,
+      "linha": 156,
       "expressao": "new Date()"
     },
     {
       "arquivo": "frontend/src/pages/FinanceiroFilaPagamentos.jsx",
-      "linha": 154,
+      "linha": 158,
       "expressao": "new Date(now.getTime() - offset * 60000).toISOString().slice(0, 10)"
     },
     {
       "arquivo": "frontend/src/pages/FinanceiroFilaPagamentos.jsx",
-      "linha": 154,
+      "linha": 158,
       "expressao": "new Date(now.getTime() - offset * 60000).toISOString()"
     },
     {
       "arquivo": "frontend/src/pages/FinanceiroFilaPagamentos.jsx",
-      "linha": 154,
+      "linha": 158,
       "expressao": "new Date(now.getTime() - offset * 60000)"
     },
     {
@@ -19637,97 +19697,97 @@
     },
     {
       "arquivo": "frontend/src/pages/FinanceiroTituloDetalhe.jsx",
-      "linha": 113,
+      "linha": 114,
       "expressao": "new Date(`${value}T00:00:00`)"
     },
     {
       "arquivo": "frontend/src/pages/FinanceiroTituloDetalhe.jsx",
-      "linha": 120,
+      "linha": 121,
       "expressao": "new Date(value)"
     },
     {
       "arquivo": "frontend/src/pages/FinanceiroTituloDetalhe.jsx",
-      "linha": 131,
+      "linha": 132,
       "expressao": "new Date().toISOString().slice(0, 10)"
     },
     {
       "arquivo": "frontend/src/pages/FinanceiroTituloDetalhe.jsx",
-      "linha": 131,
+      "linha": 132,
       "expressao": "new Date().toISOString()"
     },
     {
       "arquivo": "frontend/src/pages/FinanceiroTituloDetalhe.jsx",
-      "linha": 131,
+      "linha": 132,
       "expressao": "new Date()"
     },
     {
       "arquivo": "frontend/src/pages/FinanceiroTituloDetalhe.jsx",
-      "linha": 174,
+      "linha": 175,
       "expressao": "formatDate(cheque.data_vencimento)"
     },
     {
       "arquivo": "frontend/src/pages/FinanceiroTituloDetalhe.jsx",
-      "linha": 862,
+      "linha": 865,
       "expressao": "formatDate(titulo.data_vencimento)"
     },
     {
       "arquivo": "frontend/src/pages/FinanceiroTituloDetalhe.jsx",
-      "linha": 862,
+      "linha": 865,
       "expressao": "formatDate(titulo.data_vencimento)"
     },
     {
       "arquivo": "frontend/src/pages/FinanceiroTituloDetalhe.jsx",
-      "linha": 863,
+      "linha": 866,
       "expressao": "formatDate(titulo.data_emissao)"
     },
     {
       "arquivo": "frontend/src/pages/FinanceiroTituloDetalhe.jsx",
-      "linha": 863,
+      "linha": 866,
       "expressao": "formatDate(titulo.data_emissao)"
     },
     {
       "arquivo": "frontend/src/pages/FinanceiroTituloDetalhe.jsx",
-      "linha": 865,
+      "linha": 868,
       "expressao": "formatDate(titulo.data_quitacao)"
     },
     {
       "arquivo": "frontend/src/pages/FinanceiroTituloDetalhe.jsx",
-      "linha": 865,
+      "linha": 868,
       "expressao": "formatDate(titulo.data_quitacao)"
-    },
-    {
-      "arquivo": "frontend/src/pages/FinanceiroTituloDetalhe.jsx",
-      "linha": 1129,
-      "expressao": "formatDateTime(intent.enviado_em)"
-    },
-    {
-      "arquivo": "frontend/src/pages/FinanceiroTituloDetalhe.jsx",
-      "linha": 1129,
-      "expressao": "formatDateTime(intent.confirmado_banco_em)"
     },
     {
       "arquivo": "frontend/src/pages/FinanceiroTituloDetalhe.jsx",
       "linha": 1132,
+      "expressao": "formatDateTime(intent.enviado_em)"
+    },
+    {
+      "arquivo": "frontend/src/pages/FinanceiroTituloDetalhe.jsx",
+      "linha": 1132,
+      "expressao": "formatDateTime(intent.confirmado_banco_em)"
+    },
+    {
+      "arquivo": "frontend/src/pages/FinanceiroTituloDetalhe.jsx",
+      "linha": 1135,
       "expressao": "formatDateTime(intent.baixa_confirmada_em)"
     },
     {
       "arquivo": "frontend/src/pages/FinanceiroTituloDetalhe.jsx",
-      "linha": 1170,
+      "linha": 1173,
       "expressao": "formatDate(movimento.data_movimento)"
     },
     {
       "arquivo": "frontend/src/pages/FinanceiroTituloDetalhe.jsx",
-      "linha": 1201,
+      "linha": 1204,
       "expressao": "formatDate(movimento.cheque_data_emissao)"
     },
     {
       "arquivo": "frontend/src/pages/FinanceiroTituloDetalhe.jsx",
-      "linha": 1202,
+      "linha": 1205,
       "expressao": "formatDate(movimento.cheque_data_vencimento)"
     },
     {
       "arquivo": "frontend/src/pages/FinanceiroTituloDetalhe.jsx",
-      "linha": 1306,
+      "linha": 1309,
       "expressao": "formatDateTime(evento.criado_em)"
     },
     {

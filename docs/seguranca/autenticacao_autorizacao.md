@@ -34,12 +34,15 @@ O codigo ainda reconhece perfis especializados em fluxos especificos, como `FINA
 
 2. Perfil e permissao de area
    - registro central em `backend/src/constants/moduloPermissoes.js`;
-   - estado atualizado em 2026-10-18: 19 grupos, 111 areas e 396 permissoes;
+   - estado atualizado em 2026-10-19: 19 grupos, 111 areas e 397 permissoes;
    - formato `modulo.area.acao`, por exemplo `financeiro.titulos.criar`;
    - configuracao `PERMISSOES_AREAS_USUARIOS` contem permissoes por usuario, bloqueios por usuario e padroes por setor/perfil;
    - a permissao efetiva e a uniao de padrao do setor/perfil, sessao e concessao individual, menos os bloqueios;
    - sem permissoes configuradas, o backend preserva o acesso legado permitido pelo perfil e setor;
    - com permissoes configuradas, a chave explicita governa os fluxos que usam a matriz.
+   - cancelar titulo exige `financeiro.titulos.cancelar`, sem herdar o acesso legado
+     do setor nem as chaves editar/excluir; excecoes administrativas existentes
+     permanecem. Nao ha concessao automatica aos operadores.
 
 3. Compatibilidades especificas
    - `USUARIOS_ACESSO_FINANCEIRO` libera acesso financeiro adicional;

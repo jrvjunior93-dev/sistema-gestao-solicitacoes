@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:titulo-cancelamento": "node scripts/validarTituloCancelamentoUI.mjs",
+    "test:fila-multiplas-fontes": "node scripts/validarFilaBaixaCompostaUI.mjs && node scripts/validarBaixaCompostaWorkspace.mjs",
     "test:permutas": "node scripts/validarPermutasUI.mjs",
     "test:mapa-datas": "node scripts/validarMapaCamposDatas.mjs",
     "test:pwa-titulos-excluidos": "node scripts/validarDatasObservacoesAutorizacao.mjs && node scripts/validarAutorizacoesPorObra.mjs && node scripts/validarAutorizacaoPwa.mjs",

@@ -5025,6 +5025,8 @@ function normalizarLabelEventoAuditoria(tipoEvento) {
       return 'Baixa estornada';
     case 'FINANCIAL_TITLE_CARD_FORECAST_UNLINKED':
       return 'Previsão de cartão desvinculada';
+    case 'FINANCIAL_TITLE_CANCELLED':
+      return 'Título cancelado';
     default:
       return String(tipoEvento || 'Evento financeiro')
         .trim()
@@ -5099,10 +5101,13 @@ async function listarAuditoriaTitulo(req, tituloId) {
 
   // Desvinculacoes preservam trilha permanente; logs de seguranca possuem
   // retencao configuravel. Exibir uma vez, com as mesmas permissoes de auditoria.
-  const permanentes = await require('./tituloDesvincularFaturaAuditoriaService').listarEventos(titulo.id);
+  const permanentes = [
+    ...await require('./tituloDesvincularFaturaAuditoriaService').listarEventos(titulo.id),
+    ...(titulo.status === 'CANCELADO' ? await require('./tituloCancelamentoAuditoriaService').listarEventos(titulo.id) : [])
+  ];
   const chaves = new Set(permanentes.map(evento => evento.metadata.idempotency_key));
   const eventos = [...permanentes, ...eventosSeguranca.filter(evento =>
-    evento.tipo_evento !== 'FINANCIAL_TITLE_CARD_FORECAST_UNLINKED'
+    !['FINANCIAL_TITLE_CARD_FORECAST_UNLINKED', 'FINANCIAL_TITLE_CANCELLED'].includes(evento.tipo_evento)
       || !chaves.has(normalizarMetadataAuditoria(evento.metadata).idempotency_key))]
     .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).slice(0, 50);
   const eventosComMetadata = eventos.map((evento) => ({

@@ -10,6 +10,7 @@ import ChequePagamentoFields from './ChequePagamentoFields';
 import DateInputBR from '../DateInputBR';
 import {useAuth} from '../../contexts/AuthContext';
 import {podePermuta,ehPermuta} from '../../utils/permuta';
+import ModalPortal from '../ui/ModalPortal';
 
 function round(value) { return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100; }
 function money(value) { return Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
@@ -23,6 +24,8 @@ const NATUREZAS_INTERCOMPANY = [
 ];
 
 function operationalType(forma) {
+  if (forma?.exige_cartao || forma?.gera_fatura) return 'CARTAO';
+  if (forma?.exige_cheque) return 'CHEQUE';
   const raw = [forma?.tipo, forma?.codigo, forma?.nome].filter(Boolean).join(' ').toUpperCase();
   if (raw.includes('PIX')) return 'PIX';
   if (raw.includes('BOLETO')) return 'BOLETO';
@@ -51,7 +54,7 @@ function newComponent(formas = [], empresaId = '') {
     cheque_terceiro_id: '', valor: '', documento_referencia: '', observacoes: '',
     cheque_numero: '', cheque_emitente: '', titular_documento: '', cheque_banco: '',
     cheque_agencia: '', cheque_conta: '', data_emissao: '', data_vencimento: '',
-    natureza_intercompany_baixa: 'OPERACIONAL_TERCEIRO', motivo_intercompany: '', alocacoes: {}
+    natureza_intercompany_baixa: 'OPERACIONAL_TERCEIRO', motivo_intercompany: '', alocacoes: {}, empresa_sem_conta_id: ''
   };
 }
 
@@ -92,7 +95,9 @@ function redistributeComponents(components, titulos) {
 }
 
 export default function BaixaCompostaModal({
-  titulos = EMPTY_LIST, formas:formasOriginais = EMPTY_LIST, contas = EMPTY_LIST, cartoes = EMPTY_LIST, cheques = EMPTY_LIST, ready = true, eligible = true, onClose, onConfirmed
+  titulos = EMPTY_LIST, formas:formasOriginais = EMPTY_LIST, contas = EMPTY_LIST, cartoes = EMPTY_LIST, cheques = EMPTY_LIST, ready = true, eligible = true, onClose, onConfirmed,
+  contextoFila = false, empresas = EMPTY_LIST, revisaoContexto = '', chaveRascunho = 'baixaComposta',
+  onPreview = previewBaixaFinanceiraComposta, onConfirm = confirmarBaixaFinanceiraComposta, onBusyChange, dataInicial
 }) {
   const {user}=useAuth();
   const formas=useMemo(()=>formasOriginais.filter(f=>!ehPermuta(f)||podePermuta(user)),[formasOriginais,user]);
@@ -101,10 +106,10 @@ export default function BaixaCompostaModal({
   const isReceivable = titleType === 'RECEBER';
   const operationName = isReceivable ? 'recebimento' : 'pagamento';
   const partnerName = isReceivable ? 'cliente' : 'credor';
-  const [dateInitial] = useState(today);
+  const [dateInitial] = useState(() => dataInicial || today());
   const firstFormId = formas[0]?.id || '';
   const initial = useMemo(() => ({ dataMovimento: dateInitial, observacoes: '', components: [newComponent([{ id: firstFormId }])] }), [dateInitial, firstFormId]);
-  const slot = 'baixaComposta:' + titulos.map(t => t.id).sort((a,b) => Number(a)-Number(b)).join(':');
+  const slot = chaveRascunho + ':' + titulos.map(t => t.id).sort((a,b) => Number(a)-Number(b)).join(':');
   const draft = useWorkspaceRecordDraft(slot, initial);
   const form = draft.value || initial;
   const dataMovimento = form.dataMovimento;
@@ -116,7 +121,7 @@ export default function BaixaCompostaModal({
     const cheque = cheques.find(item => Number(item.id) === Number(component.cheque_terceiro_id));
     const cartao = cartoes.find(item => Number(item.id) === Number(component.cartao_id));
     const conta = contas.find(item => Number(item.id) === Number(component.conta_bancaria_id || cartao?.conta_bancaria_id));
-    return { ...component, empresa_id: cheque?.empresa_id || conta?.empresa_id || orderedTitles[0]?.empresa_id || '',
+    return { ...component, empresa_id: cheque?.empresa_id || conta?.empresa_id || (contextoFila && component.empresa_sem_conta_id) || orderedTitles[0]?.empresa_id || '',
       ...(component.cheque_terceiro_id ? { valor: Number(cheque?.valor || 0) } : {}) };
   });
   const setDataMovimento = value => { setPreview(null); confirmation.current = null; draft.setValue(current => ({ ...current, dataMovimento: value })); };
@@ -140,9 +145,10 @@ export default function BaixaCompostaModal({
     formas.map(item => [item.id,item.ativo,item.tipo,item.codigo,item.gera_fatura]),
     contas.map(item => [item.id,item.ativo,item.empresa_id,item.tipo_operacional,item.exige_abertura_fechamento]),
     cartoes.map(item => [item.id,item.ativo,item.conta_bancaria_id]),
-    cheques.map(item => [item.id,item.status,item.valor,item.empresa_id])]);
-  const query = useQueryRevision(JSON.stringify([ready,revision]));
+    cheques.map(item => [item.id,item.status,item.valor,item.empresa_id]), revisaoContexto]);
+  const query = useQueryRevision(JSON.stringify([ready,revision,revisaoContexto]));
   useWorkspaceWork(draft.dirty, saving, slot + ':work');
+  useEffect(() => { onBusyChange?.(saving); return () => onBusyChange?.(false); }, [saving, onBusyChange]);
   useEffect(() => {
     setPreview(null); confirmation.current = null; setAvailable(ready);
     if (ready) draft.hydrate(initial, revision); else draft.conceal(initial);
@@ -178,6 +184,7 @@ export default function BaixaCompostaModal({
         const cartao = cartoes.find((item) => Number(item.id) === Number(value));
         const contaCartao = contas.find((item) => Number(item.id) === Number(cartao?.conta_bancaria_id));
         if (contaCartao?.empresa_id) next.empresa_id = String(contaCartao.empresa_id);
+        if (contextoFila) next.conta_bancaria_id = String(cartao?.conta_bancaria_id || '');
       }
       if (field === 'cheque_terceiro_id') {
         const cheque = cheques.find((item) => Number(item.id) === Number(value));
@@ -206,7 +213,7 @@ export default function BaixaCompostaModal({
   }
 
   function buildPayload() {
-    const componentes = components.map(({ alocacoes, ...component }) => ({
+    const componentes = components.map(({ alocacoes, empresa_sem_conta_id, ...component }) => ({
       ...component,
       documento_referencia: component.documento_referencia || component.cheque_numero || null,
       empresa_id: Number(component.empresa_id),
@@ -219,7 +226,7 @@ export default function BaixaCompostaModal({
     const alocacoes = components.flatMap((component, componentIndex) => Object.entries(component.alocacoes || {})
       .filter(([, value]) => Number(value) > 0)
       .map(([tituloId, value]) => ({ componente_index: componentIndex, titulo_financeiro_id: Number(tituloId), valor: Number(value) })));
-    return { empresa_id: empresaId, data_movimento: dataMovimento, observacoes, componentes, alocacoes };
+    return { empresa_id: contextoFila ? empresaId || undefined : empresaId, data_movimento: dataMovimento, observacoes, componentes, alocacoes };
   }
 
   function validateCashSources() {
@@ -251,9 +258,9 @@ export default function BaixaCompostaModal({
     mutex.current = true;
     setSaving(true); setError('');
     try {
-      const result = await previewBaixaFinanceiraComposta(payload);
+      const result = await onPreview(payload);
       if (!query.isCurrent(token)) return;
-      confirmation.current = { payload, key: crypto.randomUUID() }; setPreview(result);
+      confirmation.current = { payload: { ...payload, ...(result.versao_revisao ? { versao_revisao: result.versao_revisao } : {}) }, key: crypto.randomUUID() }; setPreview(result);
     }
     catch (err) { if (query.isCurrent(token)) { setError(err.message || 'Revise as fontes e os rateios.'); setPreview(null); confirmation.current = null; } }
     finally { mutex.current = false; setSaving(false); }
@@ -266,32 +273,43 @@ export default function BaixaCompostaModal({
     mutex.current = true;
     setSaving(true); setError('');
     try {
-      const result = await confirmarBaixaFinanceiraComposta(confirmation.current.payload, confirmation.current.key);
+      const result = await onConfirm(confirmation.current.payload, confirmation.current.key);
       if (!query.isCurrent(token)) return;
       draft.hydrate(initial, revision, { discard: true });
       await onConfirmed?.(result); onClose();
-    } catch (err) { if (query.isCurrent(token)) setError(err.message || 'Erro ao confirmar baixa composta.'); }
+    } catch (err) {
+      if (query.isCurrent(token)) {
+        setError(err.message || 'Erro ao confirmar baixa composta.');
+        if (contextoFila && [400, 403, 404, 409, 423].includes(err.status)) { setPreview(null); confirmation.current = null; }
+      }
+    }
     finally { mutex.current = false; setSaving(false); }
   }
 
   if (!ready) return null;
-  return (
-    <div className="modal-overlay finance-operation-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="baixa-multiplas-fontes-titulo">
+  const conteudo = (
+    <div className="modal-overlay finance-operation-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="baixa-multiplas-fontes-titulo" onKeyDown={event => {
+      if (!contextoFila || event.key !== 'Tab') return;
+      const focaveis = [...event.currentTarget.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]')].filter(el => el.offsetParent !== null);
+      const primeiro = focaveis[0], ultimo = focaveis.at(-1);
+      if (event.shiftKey && document.activeElement === primeiro) { event.preventDefault(); ultimo?.focus(); }
+      if (!event.shiftKey && document.activeElement === ultimo) { event.preventDefault(); primeiro?.focus(); }
+    }}>
       <section className="modal-dialog finance-operation-modal finance-operation-modal--wide">
         <header className="modal-header">
-          <div><h2 id="baixa-multiplas-fontes-titulo" className="modal-title">Baixa com múltiplas fontes</h2><p className="modal-subtitle">Combine PIX, contas, cartões, dinheiro e cheques em um único {operationName} auditável.</p></div>
+          <div><h2 id="baixa-multiplas-fontes-titulo" className="modal-title">Baixa com múltiplas fontes</h2>{!contextoFila && <p className="modal-subtitle">Combine PIX, contas, cartões, dinheiro e cheques em um único {operationName} auditável.</p>}</div>
           <button className="modal-close-btn" type="button" disabled={saving} onClick={close} aria-label="Fechar baixa com múltiplas fontes"><HiOutlineXMark className="h-5 w-5" /></button>
         </header>
         <div className="modal-body min-h-0 flex-1 overflow-y-auto">
           {!compatible ? <div className="finance-operation-notice finance-operation-notice--warning mb-4">Selecione somente contas a {isReceivable ? 'receber' : 'pagar'} do mesmo {partnerName}.</div> : null}
           {compatible && new Set(orderedTitles.map((item) => Number(item.empresa_id))).size > 1 ? <div className="finance-operation-notice finance-operation-notice--info mb-4">Os títulos pertencem a empresas diferentes. Cada fonte será movimentada na sua empresa e os rateios entre empresas serão registrados individualmente para conciliação.</div> : null}
-          {compatible ? <div className="finance-operation-notice finance-operation-notice--info mb-4">Cada valor informado é distribuído automaticamente pelo vencimento: o título mais antigo é coberto primeiro e o último pode permanecer parcialmente pago.</div> : null}
+          {compatible && !contextoFila ? <div className="finance-operation-notice finance-operation-notice--info mb-4">Cada valor informado é distribuído automaticamente pelo vencimento: o título mais antigo é coberto primeiro e o último pode permanecer parcialmente pago.</div> : null}
           {error ? <div className="finance-operation-notice finance-operation-notice--danger mb-4">{error}</div> : null}
           {draft.conflict && <div role="alert" className="app-note">Os saldos ou instrumentos mudaram. Seu preenchimento foi preservado. <button type="button" className="btn btn-outline btn-sm" disabled={saving} onClick={() => { draft.discard(); setPreview(null); confirmation.current = null; }}>Descartar baixa digitada</button></div>}
           {!eligible && <p role="alert" className="app-note">Os títulos atuais não estão disponíveis para baixa.</p>}
           <fieldset disabled={saving || blocked}>
           <div className="mb-4 grid gap-3 md:grid-cols-[220px_1fr_auto]">
-            <label className="form-control"><span>Data do {operationName}</span><DateInputBR className="input" value={dataMovimento} onChange={(e) => { setDataMovimento(e.target.value); setPreview(null); }} /></label>
+            <label className="form-control"><span>Data do {operationName}</span><DateInputBR autoFocus={contextoFila} className="input" value={dataMovimento} onChange={(e) => { setDataMovimento(e.target.value); setPreview(null); }} /></label>
             <label className="form-control"><span>Observações do grupo</span><input className="input" value={observacoes} onChange={(e) => setObservacoes(e.target.value)} placeholder={`Ex.: ${isReceivable ? 'Recebimento' : 'Pagamento'} combinado acordado com o ${partnerName}`} /></label>
             <div className="finance-operation-metric self-end px-4 py-2"><small className="block text-[var(--c-muted)]">Saldo selecionado</small><strong>{money(totalSaldo)}</strong></div>
           </div>
@@ -315,6 +333,7 @@ export default function BaixaCompostaModal({
               {type === 'CHEQUE' && !isReceivable ? <label className="form-control"><span>Cheque de terceiro em carteira</span><select aria-label="Cheque de terceiro em carteira" className="select" value={component.cheque_terceiro_id} onChange={(e) => updateComponent(index, 'cheque_terceiro_id', e.target.value)}><option value="">Selecione um cheque cadastrado</option>{chequesDisponiveis.map((item) => <option key={item.id} value={item.id}>{item.codigo} · Nº {item.numero_cheque} · {money(item.valor)}{item.empresa?.nome ? ` · ${item.empresa.nome}` : ''}</option>)}</select>{!component.cheque_terceiro_id ? <small className="mt-1 text-xs text-[var(--c-muted)]">Sem seleção, informe a conta e o número do cheque emitido.</small> : null}</label> : null}
               {!['PERMUTA', 'OUTROS'].includes(type) && !(type === 'CHEQUE' && (component.cheque_terceiro_id || isReceivable)) ? <label className="form-control"><span>{type === 'DINHEIRO' ? 'Caixa físico *' : 'Conta financeira *'}</span><select aria-label={type === 'DINHEIRO' ? 'Caixa físico *' : 'Conta financeira *'} className="select" value={component.conta_bancaria_id} onChange={(e) => updateComponent(index, 'conta_bancaria_id', e.target.value)}><option value="">{type === 'DINHEIRO' ? 'Selecione o caixa físico' : 'Selecione uma conta'}</option>{contasCompativeis.map((item) => <option key={item.id} value={item.id}>{item.nome || item.banco_nome || `Conta #${item.id}`}{item.empresa?.nome ? ` · ${item.empresa.nome}` : ''}</option>)}</select>{type === 'DINHEIRO' ? <small className="mt-1 text-xs text-[var(--c-muted)]">O caixa deve estar aberto e abranger a data do {operationName}.{contasCompativeis.length === 0 ? ' Nenhum caixa físico ativo foi encontrado.' : ''}</small> : null}</label> : null}
               {type === 'CARTAO' ? <label className="form-control"><span>Cartão *</span><select className="select" value={component.cartao_id} onChange={(e) => updateComponent(index, 'cartao_id', e.target.value)}><option value="">Selecione</option>{cartoesDisponiveis.map((item) => <option key={item.id} value={item.id}>{item.nome || item.descricao || `Cartão #${item.id}`}</option>)}</select></label> : null}
+              {contextoFila && ['PERMUTA', 'OUTROS', 'BENS'].includes(type) && <label className="form-control"><span>Empresa responsável *</span><select className="select" value={component.empresa_id || ''} onChange={e => updateComponent(index, 'empresa_sem_conta_id', e.target.value)}><option value="">Selecione</option>{empresas.map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}</select></label>}
               <label className="form-control"><span>Valor da fonte *</span><input className="input" type="number" min="0.01" step="0.01" value={component.valor} readOnly={Boolean(component.cheque_terceiro_id)} onChange={(e) => updateComponent(index, 'valor', e.target.value)} /></label>
               {type !== 'CHEQUE' ? <label className="form-control"><span>Documento</span><input className="input" value={component.documento_referencia} onChange={(e) => updateComponent(index, 'documento_referencia', e.target.value)} /></label> : null}
               {temRateioIntercompany ? <label className="form-control xl:col-span-2"><span>Natureza entre empresas *</span><select className="select" value={component.natureza_intercompany_baixa} onChange={(e) => updateComponent(index, 'natureza_intercompany_baixa', e.target.value)}>{NATUREZAS_INTERCOMPANY.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label> : null}
@@ -388,4 +407,5 @@ export default function BaixaCompostaModal({
       </section>
     </div>
   );
+  return contextoFila ? <ModalPortal onClose={close} closeOnEscape={!saving}>{conteudo}</ModalPortal> : conteudo;
 }
