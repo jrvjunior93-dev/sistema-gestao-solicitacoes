@@ -1,5 +1,14 @@
 # Sessoes Ativas
 
+- codex-cheques-datas-20261019-publicacao: finalizado local, commit/push DEV agora
+  autorizados; novo roteiro/QA com guardas. Main9e4faf4e e EC2 preservadas.
+  Ownership liberado para publicar; sem migration ou configuracao alterada.
+
+- codex-cheques-datas-20261019: finalizado local, agente unico na base DEV139;
+  reserva datas/erros dos cheques e preservacao do modal em erro, testes e docs.
+  Sem avisos preventivos, mudanca de permissao, main/EC2/DDL/publicacao.
+  QA backend/UI completa/build/docs aprovados; ownership liberado e handoff salvo.
+
 - codex-autorizacao-reenvio-20261019: finalizado local. Producao72 concluida pelo
   operador; novo alerta de falha de envio e botao de reenvio na base DEV,
   branch isolada, QA aprovado e ownership liberado; sem producao/EC2 ou

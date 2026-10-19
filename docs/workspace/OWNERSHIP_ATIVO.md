@@ -1,5 +1,39 @@
 # Ownership Ativo
 
+## Publicacao DEV das datas de cheques - 2026-10-19
+
+- Usuario autorizou commit/push da correcao local para refactor/frontend e
+  comandos exclusivos DEV. Reserva do delta ja concluido, novo roteiro
+  atualizar-dev-datas-cheques-20261019.sh, teste isolado e registros desta sessao.
+- Base DEV1393a446 e main9e4faf4e conferidas. Publicar somente o pacote da
+  correcao; main, outputs privados e worktrees de outros agentes intactos.
+- Sem migration/dependencias novas. Guardas existentes antes do merge,
+  identidade/schema/12h/flags, .env por hash e restart somente backend-dev.
+- Agente unico, sem EC2/SSH ou banco real. QA repetido aprovado: backend/guardas,
+  UI direcionada, build, docs583/19, Node/Bash e diff. Reserva encerrada;
+  ownership liberado para commit/push exclusivo autorizado na refactor/frontend.
+
+## Datas dos cheques na baixa - 2026-10-19
+
+- Sessao codex-cheques-datas-20261019, agente unico, base refactor/frontend1393a446.
+  Usuario autorizou implementar sem producao, preservando preenchimento/ACL;
+  erros somente ao confirmar/enviar, sem avisos preventivos na digitacao.
+- Reserva: ChequePagamentoFields.jsx, DateInputBR.jsx (opt-in de rotulo de erro),
+  ChequesParceladosFilaModal.jsx, FinanceiroFilaPagamentos.jsx (preservar modal
+  em falha), novo validador puro de datas de cheque e integracoes restritas em
+  paymentValidators.js/financialValidators.js; testes backend/UI e README/handoff.
+- Registros desta sessao nos quatro controles workspace. Mapear consumidores
+  simples/parcelas/lote/multiplas fontes; nao alterar required, permissoes,
+  idempotencia, baixas, transacoes, datas antigas ou regras de carteira.
+- Sem migration, banco/EC2, commit/push, main ou deploy. QA concluido e
+  ownership desta sessao liberado; delta local preservado para publicacao futura.
+- Reserva complementar: frontend/scripts/validarFilaInstrumentosUI.mjs somente
+  novo modo isolado --datas-cheques e stub de falha explicita, novo
+  datasChequesFilaQA.mjs e backend/scripts/validarDatasCheques.js.
+- Testes backend de datas/middleware, rateio/carteira/composta/cartao/ACL;
+  UI direcionada e suite completa da fila, desktop/mobile, build, docs583/19,
+  sintaxe e diff-check aprovados. Sem mudanca de servicos financeiros/rotas.
+
 ## Publicacao DEV: notificacao e reenvio - 2026-10-19
 
 - Usuario autorizou commit/push do pacote local para refactor/frontend,

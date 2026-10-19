@@ -121,7 +121,8 @@ export default function ChequesParceladosFilaModal({ label, parcelas, onChange, 
                   </select>
                 </label>;
             })()}
-          </div> : origemCheque(item) === 'PROPRIO' && <ChequePagamentoFields compact value={item} onChange={(key, value) => alterar(index, { [key]: value })} />}
+          </div> : origemCheque(item) === 'PROPRIO' && <ChequePagamentoFields compact value={item}
+            identificacaoCheque={`do cheque ${index + 1}`} onChange={(key, value) => alterar(index, { [key]: value })} />}
         </section>)}
       </fieldset>
       <p className="text-xs text-[var(--c-muted)]">Cheques de terceiros precisam estar cadastrados e disponíveis na carteira. O valor de cada um deve ser usado integralmente.

@@ -1,5 +1,22 @@
 # Modulo FINANCEIRO
 
+## Datas dos cheques na baixa - 2026-10-19
+
+- Campos compartilhados de cheque usam DateInputBR com edicao segmentada,
+  DD/MM/AAAA e ano de quatro digitos. API conserva AAAA-MM-DD; datas opcionais
+  continuam opcionais. Nenhuma inferencia/regravacao de datas antigas.
+- Falhas de formato/calendario identificam emissao ou vencimento/compensacao
+  e a posicao do cheque. Mensagem visivel somente na tentativa de confirmar
+  ou enviar, sem avisos antecipados durante preenchimento.
+- Na falha de envio da baixa em massa, o modal permanece aberto com os dados
+  de conta/data/forma e instrumentos do lote. Erro nao limpa selecao nem
+  cheques; correcao/retry preservam revalidacao de versao, ACL e mutex.
+- Sem migration ou alteracao de permissoes, idempotencia, valores ou regras
+  de cheque proprio/carteira. [Escopo e testes](../../handoffs/2026-10-19-datas-cheques-baixa.md).
+- Publicacao DEV autorizada com roteiro exclusivo
+  `ops/deploy/atualizar-dev-datas-cheques-20261019.sh`: guardas antes do merge,
+  schema somente leitura, .env/flags/12h preservados e restart apenas do DEV.
+
 ## Autorizado aguardando envio: alerta e recuperacao - 2026-10-19
 
 - Autorizacao digital e enqueue usam transacoes distintas. Se a assinatura

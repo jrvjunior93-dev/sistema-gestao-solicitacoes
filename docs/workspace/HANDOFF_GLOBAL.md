@@ -1,5 +1,26 @@
 # Handoff Global
 
+## Publicacao DEV datas de cheques - 2026-10-19
+
+- Commit/push refactor/frontend e comandos DEV autorizados pelo usuario.
+  Base139 e main9e4 conferidas; somente delta da correcao e roteiro/QA.
+- Roteiro com SHA, flock, PM2/watch, guardas antigas antes do merge, sem DDL,
+  schema/12h/flags, .env por hash, testes e restart exclusivo backend-dev8001.
+- Backend/guardas, UI direcionada e build repetidos, docs583/19/Node/Bash/diff
+  aprovados. Ownership liberado para publicacao Git. EC2 somente pelo operador.
+
+## Datas dos cheques na baixa - 2026-10-19
+
+- Usuario autorizou implementar na base refactor/frontend139, sem producao.
+  Erros somente ao confirmar/enviar, sem avisos preventivos. Agente unico.
+- Componente padrao DD/MM/AAAA segmentado, ano4 e calendario/ISO estritos para
+  novas datas de cheque, erro por posicao/campo. Baixa em massa preserva modal
+  e instrumentos ao falhar, sem limpar conta/data/forma/cheques/selecao.
+- Backend/middleware, rateios/carteira/composta/cartao/ACL, UI direcionada e
+  completa da fila desktop/mobile, build/docs583/19/sintaxe/diff aprovados.
+- Ownership liberado. Sem migration, main/EC2/banco, commit/push ou deploy.
+  Handoff: docs/handoffs/2026-10-19-datas-cheques-baixa.md.
+
 ## Autorizacao: alerta/reenvio - 2026-10-19
 
 - Deploy anterior confirmado pelo log do operador: main72e628e8, migration

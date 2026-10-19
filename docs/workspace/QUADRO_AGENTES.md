@@ -1,5 +1,25 @@
 # Quadro de Agentes
 
+## Publicacao DEV datas de cheques - 2026-10-19
+
+- Usuario autorizou commit/push para refactor/frontend e roteiro DEV. Agente
+  unico, finalizado local; preservar main9e4faf4e e outputs privados. Sem EC2/SQL.
+- Validar delta/roteiro, publicar fast-forward e fornecer SHA pinado para
+  operador. Sem migration, configuracao ou teste financeiro real automatico.
+- Testes backend/guardas/UI/build/docs/sintaxe/diff aprovados, ownership
+  liberado para publicacao Git autorizada; DEV real somente pelo operador.
+
+## Datas dos cheques na baixa - 2026-10-19
+
+- Sessao codex-cheques-datas-20261019, finalizado local, agente unico.
+- Padronizar emissao/vencimento em DD/MM/AAAA com edicao segmentada; ano
+  de quatro digitos/calendario, ISO na API. Erro apenas apos confirmar/enviar,
+  identificando cheque/campo. Preservar preenchimento no erro de baixa em massa.
+- Base refactor/frontend1393a446 em branch isolada; sem main, banco/EC2,
+  migration, commit/push ou deploy. ACL/locks/transacoes/idempotencia intactos.
+- Backend, UI direcionada e completa da fila, build, docs583/19, sintaxe/diff
+  aprovados. Dados mantidos no erro; ownership liberado, homologacao DEV futura.
+
 ## Autorizacao alerta/reenvio - 2026-10-19
 
 - Publicacao DEV agora autorizada: roteiro, prontidao MySQL somente leitura e

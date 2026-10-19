@@ -1,0 +1,81 @@
+import assert from 'node:assert/strict';
+import path from 'node:path';
+
+export async function validarDatasChequesFila(page, root) {
+  for (const width of [1366,390]) {
+    await page.setViewportSize({width,height:900});
+    await page.goto('http://127.0.0.1:5308/qa-fila?massa=1&parcelas=1&status=TODOS');
+    for (const i of [1,2]) await page.getByLabel(`Selecionar TIT-MASSA-${i}`,{exact:true}).check();
+    await page.getByRole('button',{name:'Baixa em massa (2)',exact:true}).click();
+    const massa = page.getByRole('dialog',{name:'Baixa em massa',exact:true});
+    await massa.getByLabel('Forma de pagamento do lote',{exact:true}).selectOption('4');
+    const editor = page.getByRole('dialog',{name:'Cheques do pagamento de lote selecionado',exact:true});
+    await editor.getByLabel('Quantidade de cheques',{exact:true}).fill('2');
+    for (const i of [1,2]) {
+      await editor.getByLabel(`Origem do cheque ${i}`,{exact:true}).selectOption('PROPRIO');
+      const parte = editor.getByRole('region',{name:`Dados do cheque ${i}`,exact:true});
+      await parte.getByLabel(`Valor do cheque ${i} (R$)`,{exact:true}).fill('213');
+      await parte.getByLabel('Numero do cheque *',{exact:true}).fill(`000${i}`);
+      await parte.getByLabel('Emitente / titular *',{exact:true}).fill('Empresa QA');
+      const emissao = parte.getByLabel('Data de emissao',{exact:true});
+      assert.equal(await emissao.getAttribute('type'),'text');
+      assert.equal(await emissao.getAttribute('maxlength'),'10');
+      await emissao.fill('19/10/2026');
+      await parte.getByLabel('Data de vencimento / compensacao',{exact:true}).fill('19/11/2026');
+    }
+    await editor.getByLabel('Conta pagadora dos cheques',{exact:true}).selectOption('5');
+    const segundo = editor.getByRole('region',{name:'Dados do cheque 2',exact:true});
+    const data2 = segundo.getByLabel('Data de emissao',{exact:true});
+    await data2.fill('31/02/2026');
+    await data2.blur();
+    assert.equal(await editor.getByRole('alert').count(),0,'Sem avisos preventivos durante digitacao/blur');
+    await editor.getByRole('button',{name:'Confirmar cheques',exact:true}).click();
+    assert(await editor.isVisible());
+    assert((await data2.evaluate(el=>el.validationMessage)).includes('cheque 2'));
+    assert.equal(await data2.inputValue(),'31/02/2026','Data invalida continua disponivel para corrigir');
+    assert.equal(await segundo.getByLabel('Numero do cheque *',{exact:true}).inputValue(),'0002');
+    assert.equal(await page.evaluate(()=>window.__settles.length),0);
+    await data2.fill('19/10/2026');
+    await data2.evaluate(el=>{el.focus();el.setSelectionRange(3,5);});
+    await page.keyboard.type('11');
+    assert.equal(await data2.inputValue(),'19/11/2026');
+    await data2.evaluate(el=>{el.focus();el.setSelectionRange(6,10);});
+    await page.keyboard.type('2027'); await page.keyboard.type('9');
+    assert.equal(await data2.inputValue(),'19/11/2027','Ano nao recebe quinto digito nem desloca dia/mes');
+    await editor.getByLabel('Quantidade de cheques',{exact:true}).fill('1');
+    await editor.getByLabel('Quantidade de cheques',{exact:true}).fill('2');
+    assert.equal(await data2.inputValue(),'19/11/2027');
+    await editor.getByRole('button',{name:'Confirmar cheques',exact:true}).click();
+    await editor.waitFor({state:'hidden'});
+    await page.evaluate(()=>{window.__settleError='Data de emissão do cheque 2: data inválida. Corrija a data.';});
+    await massa.getByRole('button',{name:'Conferir e registrar baixas',exact:true}).click();
+    await massa.getByRole('alert').filter({hasText:'cheque 2'}).waitFor();
+    assert(await massa.isVisible(),'Falha nao desmonta formulario da baixa em massa');
+    assert.equal(await massa.getByLabel('Conta pagadora',{exact:true}).inputValue(),'5');
+    const dataPagamento = await massa.getByLabel('Data do pagamento',{exact:true}).inputValue();
+    await massa.getByRole('button',{name:'Informar cheques do lote',exact:true}).click();
+    assert.equal(await data2.inputValue(),'19/11/2027');
+    assert.equal(await segundo.getByLabel('Numero do cheque *',{exact:true}).inputValue(),'0002');
+    assert.equal(await segundo.getByLabel('Valor do cheque 2 (R$)',{exact:true}).inputValue(),'213');
+    assert.equal(await segundo.getByLabel('Emitente / titular *',{exact:true}).inputValue(),'Empresa QA');
+    await data2.fill('20/11/2027');
+    await page.screenshot({path:path.join(root,`../outputs/cheques-datas-${width}.png`)});
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    await editor.getByRole('button',{name:'Confirmar cheques',exact:true}).click();
+    await editor.waitFor({state:'hidden'});
+    assert.equal(await massa.getByLabel('Data do pagamento',{exact:true}).inputValue(),dataPagamento);
+    await page.evaluate(()=>{window.__settleError='';});
+    await massa.getByRole('button',{name:'Conferir e registrar baixas',exact:true}).evaluate(el=>{el.click();el.click();});
+    await massa.waitFor({state:'hidden'});
+    const envios = await page.evaluate(()=>window.__settles);
+    assert.equal(envios.length,2,'Uma tentativa falha e somente uma no retry/duplo clique');
+    assert.equal(envios[1].instrumentos_lote.componentes[1].data_emissao,'2027-11-20');
+    assert.equal(envios[1].instrumentos_lote.componentes[0].data_emissao,'2026-10-19');
+    assert.equal(envios[1].instrumentos_lote.componentes[1].data_vencimento,'2026-11-19');
+    assert.equal(envios[1].itens.length,2);
+  }
+  await page.goto('http://127.0.0.1:5308/qa-fila?massa=1&readonly=1');
+  await page.getByText('TIT-MASSA-1',{exact:true}).waitFor();
+  assert.equal(await page.getByRole('button',{name:/Baixa em massa/}).count(),0);
+  console.log('Cheques UI real: DD/MM/AAAA, ano4/edicao segmentada, calendario, erro so no confirmar, preservacao apos falha backend/quantidade, retry sem duplicidade, ACL e 1366/390 aprovados. APIs simuladas.');
+}
