@@ -81,6 +81,7 @@ async function cancelarTitulo(req, tituloId, raw) {
     for (const [model, where, mensagem] of bloqueios) {
       if (await db[model].findOne({ where, attributes: ['id'], transaction, lock: transaction.LOCK.UPDATE })) falhar(409, mensagem);
     }
+    if (body.substituicao) await require('./tituloRegularizacaoDomain').conferirReferencia(db, titulo, body.substituicao, transaction);
     const dados = { ...body, request_hash: hash, cancelado_em: new Date().toISOString(),
       usuario: { id: req.user.id, nome: String(req.user.nome || `Usuario #${req.user.id}`).slice(0, 160) },
       antes: { status: titulo.status, valor_original: String(titulo.valor_original), valor_saldo: String(titulo.valor_saldo),

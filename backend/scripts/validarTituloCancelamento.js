@@ -28,7 +28,8 @@ const permission = 'financeiro.titulos.cancelar';
 function fixture() {
   let state = { titulo: { id: 10, codigo: 'TIT-QA', tipo: 'PAGAR', status: 'ABERTO', origem_titulo: 'MANUAL',
     obra_id: 1, valor_original: '120.00', valor_saldo: '120.00', valor_baixado: '0.00', updatedAt: body.versao,
-    juros: '3.00', multa: '2.00', deleted_at: null }, rateios: [], logs: [], events: [], blockers: {}, updates: 0 };
+    juros: '3.00', multa: '2.00', deleted_at: null }, rateios: [], logs: [], events: [], blockers: {}, updates: 0,
+    referencias: [], destinos: [] };
   const req = { user: { id: 99, nome: 'Operador QA', perfil: 'USUARIO', configurada: true, permissoes: [permission], scope: [1] }, headers: {} };
   let failLog = false, failEvent = false, failQuery = false, commits = 0, rollbacks = 0;
   const matches = (row, where) => Reflect.ownKeys(where).every(key => {
@@ -48,7 +49,7 @@ function fixture() {
       catch (error) { state = before; rollbacks++; throw error; }
     }); tail = result.catch(() => {}); return result;
   } }, TituloFinanceiro: { findByPk: async (id, options) => {
-    assert(options.lock && options.transaction); return Number(id) === 10 && !state.titulo.deleted_at ? titulo() : null;
+    assert(options.lock && options.transaction); return Number(id) === 10 && !state.titulo.deleted_at ? titulo() : state.destinos.find(t => t.id === Number(id)) || null;
   } }, TituloFinanceiroRateio: { findAll: async () => state.rateios },
   LogExclusao: { findOne: async ({ where }) => state.logs.find(l => matches(l, where)) || null,
     create: async (data, options) => { assert(options.transaction); if (failLog) throw Error('Log indisponivel'); state.logs.push(data); } },
@@ -61,6 +62,9 @@ function fixture() {
     assert(options.transaction && options.lock); if (failQuery) throw Error('Consulta indisponivel');
     return (state.blockers[model] || []).find(row => matches(row, options.where)) || null;
   } };
+  const referencias = async ({ where }) => state.referencias.filter(r => matches(r, where));
+  db.TituloCompartilhadoOrigem = { findAll: referencias };
+  db.TituloRenegociacaoAlocacao.findAll = referencias;
   const auditoria = load('src/services/tituloCancelamentoAuditoriaService.js', { '../models': db });
   const service = load('src/services/tituloCancelamentoService.js', {
     'node:crypto': crypto, sequelize: { Op }, '../models': db,
@@ -72,6 +76,7 @@ function fixture() {
     } }, './securityLogService': { getRequestIp: () => '127.0.0.1' },
     '../validators/tituloCancelamentoValidator': { validateTituloCancelamentoBody: validate },
     './tituloCancelamentoAuditoriaService': auditoria,
+    './tituloRegularizacaoDomain': require('../src/services/tituloRegularizacaoDomain'),
     './rhPagamentoRevisaoPolicy': { assertSemRevisaoDp: t => {
       if (t.status_interno_pagar === 'EM EDICAO DP') throw Object.assign(Error('Revisao DP'), { statusCode: 409 });
     } }
@@ -82,6 +87,29 @@ function fixture() {
     get commits() { return commits; }, get rollbacks() { return rollbacks; } };
 }
 async function main() {
+  for (const substituicao of [null, [], { tipo: 'NEGOCIACAO', id: '3' }, { tipo: 'NEGOCIACAO', id: -1 },
+    { tipo: 'OUTRO', id: 3 }, { tipo: 'NEGOCIACAO', id: 3, status: 'ABERTO' }]) assert.throws(() => validate({ ...body, substituicao }));
+  for (const tipo of ['NEGOCIACAO', 'LOTE_COMPARTILHADO']) {
+    const f = fixture(); f.state.titulo.solicitacao_id = 100; f.state.titulo.parceiro_id = 7;
+    const substituicao = { tipo, id: 3 }, lote = tipo === 'LOTE_COMPARTILHADO';
+    const row = { solicitacao_id: 100, [lote ? 'lote_id' : 'negociacao_id']: 3, [lote ? 'titulo_financeiro_id' : 'titulo_destino_id']: 20 };
+    f.state.referencias.push(row);
+    f.state.destinos.push({ id: 20, tipo: 'PAGAR', parceiro_id: 7, status: 'ABERTO', [lote ? 'compartilhamento_id' : 'renegociacao_id']: 3 });
+    const request = { ...body, substituicao };
+    row.solicitacao_id = 101; await assert.rejects(f.call(request), /substituto/);
+    f.state.referencias[0].solicitacao_id = 100;
+    f.state.destinos[0].status = 'CANCELADO'; await assert.rejects(f.call(request), /substituto/);
+    f.state.destinos[0].status = 'ABERTO';
+    f.state.destinos[0].parceiro_id = 8; await assert.rejects(f.call(request), /substituto/);
+    f.state.destinos[0].parceiro_id = 7;
+    const antes = JSON.stringify(f.state.destinos);
+    await f.call(request);
+    assert.equal(JSON.stringify(f.state.destinos), antes, 'O substituto não é alterado');
+    assert.equal(JSON.stringify((await f.auditoria.resumoCancelamento(10)).substituicao), JSON.stringify(substituicao));
+    assert.equal((await f.call(request)).idempotente, true);
+    await assert.rejects(f.call({ ...request, substituicao: { tipo, id: 4 } }), /ja cancelado/);
+    assert.equal(f.state.updates, 1); assert.equal(f.state.logs.length, 1);
+  }
   for (const patch of [{ motivo: '' }, { motivo: 'ab' }, { motivo: {} }, { motivo: 123 }, { motivo: 'x'.repeat(1001) },
     { idempotency_key: '' }, { versao: '' }, { versao: '2026-99-40' }, { status: 'QUITADO' }, { autorizadoInternamente: true }]) {
     assert.throws(() => validate({ ...body, ...patch }));

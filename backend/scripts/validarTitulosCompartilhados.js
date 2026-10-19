@@ -50,8 +50,9 @@ const db = { sequelize: { escape: v => `'${String(v).replaceAll("'", "''")}'`, a
   SolicitacaoPedidoRetorno: model('retornos'),
   PagamentoManualFilaItem: model('filas'), PagamentoAutorizacaoItem: model('autorizacoes'), PaymentIntent: model('bancarios'),
   PedidoCompra: model('pedidos'), PedidoCompraFrete: { findAll: async () => [] },
+  SolicitacaoCompraAlocacao: { findAll: async () => [] },
   TituloFinanceiro: { ...model('titulos'), build: v => v },
-  Solicitacao: { findAll: async ({ where }) => solicitacoes.filter(s => matches(s, where)).map(instance) },
+  Solicitacao: { findByPk: async id => instance(solicitacoes.find(s => s.id === Number(id))), findAll: async ({ where }) => solicitacoes.filter(s => matches(s, where)).map(instance) },
   SolicitacaoCompra: { findOne: async ({ where }) => compras.find(s => matches(s, where)) },
   FornecedorCompra: { findByPk: async id => { assert.equal(id, 6, 'Usa fornecedor_compra_id, não fornecedor_id inexistente'); return { id: 6, parceiro_id: 7 }; } },
   Obra: { findByPk: async id => obras.find(o => o.id === Number(id)), findAll: async () => obras },
@@ -170,6 +171,18 @@ async function main() {
   await assert.rejects(service.confirmar(req, { ...payload(), preview_hash: p2.preview_hash }, 'rollback-chave-12345'), /segunda parcela/);
   assert.equal(state.lotes.length, 0); assert.equal(state.titulos.length, 0); assert.equal(state.origens.length, 0); assert.equal(state.historico.length, 0);
   falharTitulo = false; state.pedidos[0].valor_total = '61.00'; await assert.rejects(service.preview(req, payload()), /total fechado/);
+  reset();
+  const previaSemAvulso = await service.preview(req, payload());
+  state.titulos.push({ id: 900, solicitacao_id: 1, tipo: 'PAGAR', status: 'ABERTO', valor_original: '60.01', valor_saldo: '60.01' });
+  await assert.rejects(service.preview(req, payload()), /títulos avulsos/);
+  await assert.rejects(service.confirmar(req, { ...payload(), preview_hash: previaSemAvulso.preview_hash }, 'avulso-entre-previa-confirmacao'), /títulos avulsos/);
+  assert.equal(state.lotes.length, 0); assert.equal(state.titulos.length, 1);
+  state.titulos[0].status = 'QUITADO'; state.titulos[0].valor_saldo = '0.00';
+  await assert.rejects(service.preview(req, payload()), /títulos avulsos/, 'Pagamento anterior também exige conferência');
+  state.titulos[0].status = 'CANCELADO';
+  await service.preview(req, payload());
+  state.titulos[0].status = 'ABERTO'; state.vinculos.push({ pedido_compra_id: 99, titulo_financeiro_id: 900 });
+  await service.preview(req, payload()); // Outro pedido identificado não bloqueia o pedido selecionado.
   reset(); comprasPermitidas = false; await assert.rejects(service.preview(req, payload()), /permissão/);
   console.log('Títulos compartilhados: 100 origens/120 parcelas, centavos exatos, obras/CNPJs distintos, ACL/replay, concorrência, rollback, baixas/estorno, projeções por pedido/solicitação/empresa e SQL parametrizado aprovados. Sem banco/rede.');
 }

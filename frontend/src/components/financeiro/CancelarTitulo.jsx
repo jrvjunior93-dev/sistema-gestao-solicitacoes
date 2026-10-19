@@ -7,6 +7,7 @@ export default function CancelarTitulo({ titulo, permitido, onCancelado }) {
   const prefix = `cancelarTitulo:${titulo.id}`;
   const [pedido, setPedido] = useWorkspaceState(`${prefix}:pedido`, null);
   const [motivo, setMotivo] = useWorkspaceState(`${prefix}:motivo`, '');
+  const [substituicao, setSubstituicao] = useWorkspaceState(`${prefix}:substituicao`, { tipo: '', id: '' });
   const [busy, setBusy] = useState(false), [erro, setErro] = useState('');
   const trava = useRef(false), mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -16,6 +17,7 @@ export default function CancelarTitulo({ titulo, permitido, onCancelado }) {
     <strong>Título cancelado</strong>
     <p className="text-[var(--c-muted)]">{new Date(cancelamento.cancelado_em).toLocaleString('pt-BR')} · {cancelamento.usuario?.nome || `Usuário #${cancelamento.usuario?.id}`}</p>
     <p className="whitespace-pre-wrap break-words">{cancelamento.motivo}</p>
+    {cancelamento.substituicao && <p>Substituição: {cancelamento.substituicao.tipo === 'NEGOCIACAO' ? 'negociação' : 'lote compartilhado'} #{cancelamento.substituicao.id}</p>}
   </div> : null;
   if (!permitido || titulo.compartilhamento_id) return null;
   const dataVersao = new Date(titulo.updatedAt);
@@ -26,12 +28,13 @@ export default function CancelarTitulo({ titulo, permitido, onCancelado }) {
     if (trava.current || !elegivel || !pedido || motivo.trim().length < 3) return;
     if (pedido.versao !== versao) { setErro('O título mudou. Feche a janela e confira os dados atuais.'); return; }
     trava.current = true; setBusy(true); setErro('');
-    try { await cancelarTituloFinanceiro(titulo.id, { ...pedido, motivo: motivo.trim() }); }
+    try { await cancelarTituloFinanceiro(titulo.id, { ...pedido, motivo: motivo.trim(),
+      ...(substituicao.tipo ? { substituicao: { tipo: substituicao.tipo, id: Number(substituicao.id) } } : {}) }); }
     catch (error) {
       if (mounted.current) { setErro(error.message || 'Não foi possível cancelar. Atualize e confira o título.'); setBusy(false); }
       trava.current = false; return;
     }
-    if (mounted.current) { setPedido(null); setMotivo(''); }
+    if (mounted.current) { setPedido(null); setMotivo(''); setSubstituicao({ tipo: '', id: '' }); }
     try { if (mounted.current) await onCancelado?.(); }
     catch { if (mounted.current) setErro('Título cancelado. Não repita a ação; atualize a consulta para conferir.'); }
     finally { trava.current = false; if (mounted.current) setBusy(false); }
@@ -40,12 +43,23 @@ export default function CancelarTitulo({ titulo, permitido, onCancelado }) {
     {erro && !pedido && <p role="alert" className="app-alert app-alert--warning">{erro}</p>}
     <button type="button" className="btn btn-outline btn-sm btn-perigo-suave" disabled={busy || !elegivel}
       title={elegivel ? 'Cancelar sem excluir o título' : 'Somente títulos abertos ou em previsão, sem pagamento, podem ser cancelados'}
-      onClick={() => { setErro(''); setMotivo(''); setPedido({ versao, idempotency_key: crypto.randomUUID() }); }}>Cancelar título</button>
+      onClick={() => { setErro(''); setMotivo(''); setSubstituicao({ tipo: '', id: '' }); setPedido({ versao, idempotency_key: crypto.randomUUID() }); }}>Cancelar título</button>
     {pedido && <OverlayModal rotulo="Cancelar título" largura="620px" onFechar={busy ? undefined : () => setPedido(null)} fecharComEscape={!busy}>
       <form onSubmit={confirmar}>
         <header data-modal="cabecalho" className="border-b border-[var(--c-border)] px-4 py-3 font-semibold">Cancelar · {titulo.codigo || `Título #${titulo.id}`}</header>
         <div className="space-y-3 p-4 text-sm">
           <p>O saldo deixará de estar disponível para pagamento ou recebimento. O título, seus valores originais, anexos e histórico serão preservados. Não registra baixa nem estorno.</p>
+          <label className="block">Referência de substituição (opcional)
+            <select aria-label="Tipo de substituição" className="input w-full" disabled={busy} value={substituicao.tipo}
+              onChange={e => setSubstituicao({ tipo: e.target.value, id: '' })}>
+              <option value="">Cancelamento sem substituição</option><option value="NEGOCIACAO">Negociação existente</option><option value="LOTE_COMPARTILHADO">Lote compartilhado existente</option>
+            </select>
+          </label>
+          {substituicao.tipo && <label className="block">ID da negociação ou do lote
+            <input aria-label="ID do substituto" className="input w-full" type="number" min="1" step="1" required disabled={busy}
+              value={substituicao.id} onChange={e => setSubstituicao({ ...substituicao, id: e.target.value })} />
+            <span className="text-xs text-[var(--c-muted)]">Use somente após conferir que é a mesma obrigação. O sistema valida o vínculo com esta solicitação e preserva a referência na auditoria.</span>
+          </label>}
           <label className="block">Motivo do cancelamento
             <textarea autoFocus aria-label="Motivo do cancelamento" required minLength={3} maxLength={1000} rows={3}
               className="input mt-1 w-full" disabled={busy} value={motivo} onChange={event => setMotivo(event.target.value)} />

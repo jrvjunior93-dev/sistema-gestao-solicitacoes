@@ -45,6 +45,8 @@ import { useFecharAoSair } from '../../hooks/useFecharAoSair';
 import { canManagePaymentBeneficiaries, canPrepareFilaPagamentos, hasPermissao } from '../../utils/acessoProduto';
 import ComprovantesTituloSolicitacao from '../../components/financeiro/ComprovantesTituloSolicitacao';
 import TitulosCompartilhadosModal from '../../components/financeiro/TitulosCompartilhadosModal';
+import HistoricoTitulosSolicitacao, { ParcelasNegociadasSolicitacao } from '../../components/financeiro/HistoricoTitulosSolicitacao';
+import { resumirTitulosSolicitacao } from '../../utils/resumoTitulosSolicitacao.mjs';
 import {
   atualizarPaymentBeneficiary,
   criarPaymentBeneficiary,
@@ -1697,9 +1699,7 @@ export default function FinanceiroCard({
     }));
   }, [form.tipo, categorias]);
 
-  const totalTitulos = useMemo(() => {
-    return titulos.reduce((acc, item) => acc + Number(item.valor_original || 0), 0);
-  }, [titulos]);
+  const resumoTitulos = useMemo(() => resumirTitulosSolicitacao(titulos), [titulos]);
 
   const categoriasCompativeis = useMemo(() => {
     return categorias.filter((categoria) => isCategoriaCompativel(categoria, form.tipo));
@@ -2426,7 +2426,7 @@ export default function FinanceiroCard({
       noCard: 'titulo',
       render: (titulo) => {
         const nome = limparDescricaoTituloCompra(titulo.descricao, solicitacao) || `${titulo.tipo} #${titulo.id}`;
-        return podeConsultarTitulo ? (
+        const identificacao = podeConsultarTitulo ? (
           // Link para o REGISTRO RELACIONADO fica no corpo, junto do dado que
           // o origina — e e ele que da o caminho por TECLADO da linha (A1).
           <Link className="font-medium" to={`/financeiro/titulos/${titulo.id}`} title={nome}>
@@ -2435,6 +2435,7 @@ export default function FinanceiroCard({
         ) : (
           <span className="font-medium" title={nome}>{nome}</span>
         );
+        return <div>{identificacao}<ParcelasNegociadasSolicitacao titulo={titulo} podeConsultar={podeConsultarTitulo} /></div>;
       }
     },
     {
@@ -2610,20 +2611,14 @@ export default function FinanceiroCard({
 
         {exibirTitulosDetalhados && (
           <StatGrid colunas={4}>
-            <StatTile label="Títulos" valor={titulos.length} />
-            {/*
-              DEFEITO DE SIGNIFICADO, corrigido no ROTULO e nao no calculo
-              (o calculo nao e meu para mudar): o ladrilho soma
-              `valor_original` de cada titulo, e a coluna da tabela mostra
-              `valor_saldo`. Sao duas grandezas diferentes, e o rotulo "Total"
-              deixava o leitor tentar fechar uma com a outra. Agora cada um
-              diz o que e. Relatado ao responsavel.
-            */}
+            <StatTile label="Obrigações vigentes" valor={resumoTitulos.vigentes.length} />
             <StatTile
-              label="Total original"
-              valor={formatCurrency(totalTitulos)}
-              sub="Soma do valor original dos títulos (a coluna Saldo mostra o que resta)"
+              label="Valor financeiro vigente"
+              valor={formatCurrency(resumoTitulos.valor)}
+              sub="Participações desta solicitação; histórico substituído separado"
             />
+            <StatTile label="Principal liquidado" valor={formatCurrency(resumoTitulos.liquidado)} sub="Inclui descontos; não representa apenas dinheiro pago" />
+            <StatTile label="Saldo a pagar / receber" valor={formatCurrency(resumoTitulos.saldo)} />
             <StatTile
               label="Parceiro"
               valor={parceiroFinanceiro?.nome || 'Nao vinculado'}
@@ -2661,7 +2656,7 @@ export default function FinanceiroCard({
         {exibirTitulosDetalhados && (
           <TabelaPadrao
             colunas={colunasTitulos}
-            itens={titulos}
+            itens={resumoTitulos.vigentes}
             getId={(titulo) => titulo.id}
             selecao={podeEnviarTitulos ? {
               selecionados: titulosSelecionados,
@@ -2677,6 +2672,13 @@ export default function FinanceiroCard({
             rotuloRolagem="Titulos financeiros da solicitacao"
           />
         )}
+        {exibirTitulosDetalhados && resumoTitulos.conferirCoexistencia && (
+          <p role="status" className="mt-2 text-sm text-[var(--c-muted)]">Existem títulos individuais e participações em negociação ou lote nesta solicitação. Confira os vínculos: nenhum saldo ativo é ocultado automaticamente.</p>
+        )}
+        {exibirTitulosDetalhados && resumoTitulos.vigentes.filter(t => t.renegociacao_titulos?.length).map(titulo => (
+          <ParcelasNegociadasSolicitacao key={titulo.id} titulo={titulo} podeConsultar={podeConsultarTitulo} detalhar />
+        ))}
+        {exibirTitulosDetalhados && <HistoricoTitulosSolicitacao titulos={resumoTitulos.historicos} podeConsultar={podeConsultarTitulo} />}
       </BlocoConteudo>
       {elementoConfirmacao}
 

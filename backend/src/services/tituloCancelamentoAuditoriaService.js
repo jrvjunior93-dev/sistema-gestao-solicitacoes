@@ -24,7 +24,8 @@ async function registrarCancelamento(req, tituloId, dados, transaction) {
 }
 async function resumoCancelamento(tituloId) {
   const dados = await buscarCancelamento(tituloId);
-  return dados ? { motivo: dados.motivo, cancelado_em: dados.cancelado_em, usuario: dados.usuario } : null;
+  return dados ? { motivo: dados.motivo, cancelado_em: dados.cancelado_em, usuario: dados.usuario,
+    ...(dados.substituicao ? { substituicao: dados.substituicao } : {}) } : null;
 }
 async function listarEventos(tituloId) {
   const dados = await buscarCancelamento(tituloId);

@@ -1461,3 +1461,56 @@ Geracao de titulo, baixa, estorno, importacao OFX e conciliacao sao transacionai
   Nao aplica migration nem altera flags/configuracoes. Erro interrompe o fluxo.
 - Frontend publicado pelo fluxo da branch na Vercel; nao construir frontend
   nem modificar Nginx na EC2 para este pacote. Homologar com usuarios reais DEV.
+
+## Sobreposicoes, historico e resumo da solicitacao - 2026-10-19
+
+- O card financeiro separa obrigacoes vigentes de titulos CANCELADO/ESTORNADO e
+  originais RENEGOCIADO. Uma projecao de negociacao continua representando a
+  participacao vigente, com seu original em historico e parcelas atuais
+  expansivas abaixo da tabela. Nao oculta saldo ativo por suspeita de duplicidade.
+- Indicadores: quantidade de obrigacoes, valor vigente, principal liquidado
+  (inclui desconto, nao e apenas caixa) e saldo a pagar/receber. Participacoes
+  compartilhadas permanecem restritas a solicitacao. Dados de outras origens
+  nao sao acrescentados ao DTO operacional da Obra.
+- Geracao por pedido e lote consulta titulos diretos sem vinculo conhecido em
+  pedido/alocacao/frete. Avulsos, inclusive quitados ou renegociados sem esse
+  vinculo, exigem revisao antes de gerar outra obrigacao. Pedidos distintos com
+  vinculo conhecido nao sao bloqueados apenas por pertencerem a mesma solicitacao.
+- A geracao individual de PAGAR nao contorna pedidos de compra. Compra Direta
+  validada pelo servidor conserva seu fluxo especifico de fornecedor/frete.
+  Confirmacao do lote revalida disponibilidade sob transacao; replay continua
+  usando a chave e o hash existentes. Nao cancela registros automaticamente.
+- Original renegociado projetado e participacao compartilhada nao sao enviados
+  como um titulo integral para autorizacao/fila. As parcelas vigentes continuam
+  acessiveis pelo detalhe conforme permissoes financeiras existentes.
+- Cancelamento auditado existente aceita referencia opcional `substituicao`:
+  `{ tipo: 'NEGOCIACAO' | 'LOTE_COMPARTILHADO', id: inteiro_positivo }`.
+  O backend verifica parcelas validas, mesma solicitacao e mesmo credor sob
+  bloqueio. Nao comprova identidade comercial: documentos devem ser conferidos.
+  Mantem permissao `financeiro.titulos.cancelar`, escopo, versao, idempotencia,
+  bloqueios de fila/banco/contrato/integracoes e auditoria permanente em LogExclusao.
+  Nao apaga titulos, anexos, valores originais ou movimentos; nao gera pagamento.
+- A referencia aparece no detalhe cancelado e no historico do card. Nao ha
+  migration, seed, endpoint novo nem regularizacao automatica na inicializacao.
+
+### Simulacao offline
+
+A rotina abaixo le apenas arquivos locais e escreve um NOVO diretorio. Nao
+importa models/env/driver SQL e nao possui modo de aplicar no banco:
+
+```powershell
+node backend/scripts/simularRegularizacaoTitulos.js --extracao outputs/analise-titulos-solicitacoes-20261019/extracao --saida outputs/simulacao-regularizacao-titulos-NOVA
+```
+
+O caso preparado propoe cancelar TIT-010200 com referencia ao lote 1 e
+TIT-003948/003949/003950 com referencia a negociacao 3. Reducao simulada:
+R$ 9.870,00. Fontes, negociacoes, baixas e participacoes nao sao alteradas.
+A extracao nao contem todos os bloqueadores do cancelamento: uma operacao
+real futura deve revalidar integralmente os vinculos e a identidade comercial.
+Nao executar por atualizacao de codigo, deploy ou aprovacao desta simulacao.
+
+Testes sem banco: `validarSobreposicaoTitulos.js`, `validarTitulosCompartilhados.js`,
+`validarTituloCancelamento.js`, `validarTituloRenegociacaoVinculos.js`,
+`validarTituloRenegociacaoSincronizacao.js`, `validarPedidoBoletoOpcional.js` e
+`validarCompraDiretaFreteFinanceiro.js` em backend/scripts; resumo e UI real do
+card/cancelamento em frontend/scripts, alem de build e teste de documentacao.

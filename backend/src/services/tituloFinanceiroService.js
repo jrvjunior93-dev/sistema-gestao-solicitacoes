@@ -2743,7 +2743,12 @@ async function listarTitulosPorSolicitacao(req, solicitacaoId) {
     order: [['id', 'ASC']]
   });
   const documentos = comprovantes.map((item) => item.toJSON());
-  return titulos.map((titulo) => ({ ...(titulo.toJSON ? titulo.toJSON() : titulo), comprovantesSolicitacao: documentos }));
+  return Promise.all(titulos.map(async (titulo) => {
+    const t = titulo.toJSON ? titulo.toJSON() : titulo;
+    const registro = t.status === 'CANCELADO'
+      ? await require('./tituloCancelamentoAuditoriaService').buscarCancelamento(t.id) : null;
+    return { ...t, ...(registro?.substituicao ? { regularizacao_substituicao: registro.substituicao } : {}), comprovantesSolicitacao: documentos };
+  }));
 }
 
 async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
@@ -2961,6 +2966,9 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
     await freteCompraService.validarGeracao(solicitacao.id, contextoCompraDireta, transaction);
     const origemAtual = await Solicitacao.findByPk(solicitacao.id, { transaction, lock: transaction.LOCK.UPDATE });
     if (!origemAtual || origemAtual.cancelada) throw createHttpError(409, 'Solicitação alterada ou cancelada. Atualize antes de gerar títulos.');
+    // Compra direta possui validação própria de fornecedor/frete e idempotência.
+    // Somente esse contexto, calculado no servidor, mantém a geração pela origem.
+    if (tipo === 'PAGAR' && !contextoCompraDireta) await require('./tituloSobreposicaoService').assertFluxoCompra(solicitacao.id, transaction);
     const compartilhado = await require('../models').TituloCompartilhadoOrigem.findOne({ where: { solicitacao_id: solicitacao.id },
       include: [{ model: TituloFinanceiro, as: 'titulo', required: true, attributes: ['id'], where: { status: { [Op.notIn]: ['CANCELADO', 'ESTORNADO'] } } }],
       transaction, lock: transaction.LOCK.UPDATE });
@@ -3360,6 +3368,10 @@ async function criarTituloManual(req, payload = {}, options = {}) {
   const origemFreteId = Number(payload.origem_frete_id || 0);
 
   try {
+    if (payload.solicitacao_id && tipo === 'PAGAR' && origemTitulo === 'MANUAL') {
+      await Solicitacao.findByPk(Number(payload.solicitacao_id), { transaction, lock: transaction.LOCK.UPDATE });
+      await require('./tituloSobreposicaoService').assertFluxoCompra(payload.solicitacao_id, transaction);
+    }
     for (const [pagamentoIndex, pagamento] of pagamentos.entries()) {
       for (let index = 0; index < pagamento.quantidadeParcelas; index += 1) {
         const numeroParcela = index + 1;

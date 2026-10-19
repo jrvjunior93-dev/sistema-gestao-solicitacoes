@@ -138,6 +138,14 @@ vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/comp
   }
 });
 dependencies['./compraDiretaFreteFinanceiroService'] = freteModule.exports;
+const sobreposicaoModule = { exports: {} };
+vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/tituloSobreposicaoService.js'), 'utf8'), {
+  module: sobreposicaoModule, require(id) {
+    if (!(id in dependencies)) throw Error(`Dependencia de sobreposicao nao isolada: ${id}`);
+    return dependencies[id];
+  }
+});
+dependencies['./tituloSobreposicaoService'] = sobreposicaoModule.exports;
 const isolated = { exports: {} };
 vm.runInNewContext(fs.readFileSync(file, 'utf8') + '\nmodule.exports.test = { validarFormaPagamentoFinanceira, resolverFormaPagamentoBaixa, resolverCartaoBaixa };', {
   module: isolated, console, Date, Intl,

@@ -55,6 +55,7 @@ async function carregarOrigens(req, body, transaction, { conferirDisponibilidade
       if (Number(fornecedor?.parceiro_id) !== body.parceiro_id) falhar(400, 'Os pedidos precisam pertencer ao credor selecionado.');
       if (centavos(o.valor) !== centavos(pedido.valor_total_fornecedor ?? pedido.valor_total)) falhar(409, 'A participação de cada pedido deve corresponder ao total fechado, incluindo frete embutido.');
       if (conferirDisponibilidade) {
+        await require('./tituloSobreposicaoService').assertSemAvulsosCompra(s.id, transaction);
         const titulos = await require('./pedidoCompraFinanceiroService').buscarTitulosPedido(pedido.id, { transaction, incluirLegados: true });
         const fretes = await db.PedidoCompraFrete.findAll({ where: { pedido_compra_id: pedido.id, tipo: 'TERCEIRO' }, transaction });
         if (fretes.some(f => f.status_financeiro === 'PENDENTE_TITULO')) falhar(409, 'O pedido possui frete a terceiro pendente. Regularize seu título específico antes de consolidar a compra.');

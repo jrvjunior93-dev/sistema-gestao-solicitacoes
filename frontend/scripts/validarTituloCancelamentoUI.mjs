@@ -23,7 +23,7 @@ return <WorkspacePageContext.Provider value={{key:'cancelamento-qa',memory,snaps
 createRoot(document.getElementById('root')).render(<MemoryRouter><ThemeContext.Provider value={{tema:TEMA_PADRAO}}><Host/></ThemeContext.Provider></MemoryRouter>);`;
 const mocks = `export async function cancelarTituloFinanceiro(id,data){window.writes.push({id,data:structuredClone(data)});await new Promise(r=>setTimeout(r,150));
 if(window.fail)throw new Error('Título com autorização em andamento. Regularize antes de cancelar.');
-window.titulo={...window.titulo,status:'CANCELADO',valor_saldo:0,cancelamento:{motivo:data.motivo,cancelado_em:'2026-10-19T12:30:00.000Z',usuario:{id:99,nome:'Operador QA'}}};return {status:'CANCELADO'}}`;
+window.titulo={...window.titulo,status:'CANCELADO',valor_saldo:0,cancelamento:{motivo:data.motivo,cancelado_em:'2026-10-19T12:30:00.000Z',usuario:{id:99,nome:'Operador QA'},...(data.substituicao?{substituicao:data.substituicao}:{})}};return {status:'CANCELADO'}}`;
 const server = await createServer({ root, configFile: false, logLevel: 'error', server: { host: '127.0.0.1', port: 0 }, plugins: [{
   name: 'cancelamento-qa-local', enforce: 'pre', resolveId(id) { if (id === '/fixture.jsx') return '\0cancelamento-qa.jsx'; },
   async load(id) { if (id === '\0cancelamento-qa.jsx') return transformWithEsbuild(entry, 'fixture.jsx', { loader: 'jsx', jsx: 'transform' }); },
@@ -76,6 +76,11 @@ try {
     assert.equal(dados.titulo.valor_original, 120); assert.equal(dados.titulo.valor_baixado, 0); assert.equal(dados.titulo.valor_saldo, 0);
     assert.equal(await abrir.count(), 0); await page.getByText('Duplicidade conferida <script>não executar</script>', { exact: true }).waitFor();
     await page.getByText(/Operador QA/).waitFor();
+    await goto(); await abrir.click(); await dialog.getByLabel('Motivo do cancelamento', { exact: true }).fill('Sobreposição conferida com negociação');
+    await dialog.getByLabel('Tipo de substituição', { exact: true }).selectOption('NEGOCIACAO');
+    await dialog.getByLabel('ID do substituto', { exact: true }).fill('3');
+    await confirmar.click(); await page.getByText('Substituição: negociação #3', { exact: true }).waitFor();
+    assert.deepEqual(await page.evaluate(() => window.writes[0].data.substituicao), { tipo: 'NEGOCIACAO', id: 3 });
     await goto(); await abrir.click(); await dialog.getByLabel('Motivo do cancelamento', { exact: true }).fill('Conferido QA');
     await page.evaluate(() => window.change()); await confirmar.click(); await dialog.getByRole('alert').filter({ hasText: 'O título mudou' }).waitFor();
     assert.equal(await page.evaluate(() => window.writes.length), 0);

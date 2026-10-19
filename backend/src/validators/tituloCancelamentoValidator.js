@@ -1,7 +1,7 @@
 'use strict';
 const { ensureAllowedKeys, sanitizeString, ValidationError } = require('../middlewares/validation');
 function validateTituloCancelamentoBody(body) {
-  ensureAllowedKeys(body, ['motivo', 'idempotency_key', 'versao'], 'Cancelamento de titulo');
+  ensureAllowedKeys(body, ['motivo', 'idempotency_key', 'versao', 'substituicao'], 'Cancelamento de titulo');
   if (['motivo', 'idempotency_key', 'versao'].some(key => typeof body[key] !== 'string')) {
     throw new ValidationError('Informe motivo, chave e versao como texto.');
   }
@@ -15,6 +15,7 @@ function validateTituloCancelamentoBody(body) {
     || !Number.isFinite(Date.parse(versao)) || new Date(versao).toISOString() !== versao) {
     throw new ValidationError('Versao do titulo invalida. Atualize a consulta.');
   }
-  return { motivo, idempotency_key, versao };
+  return { motivo, idempotency_key, versao, ...(body.substituicao !== undefined
+    ? { substituicao: require('../services/tituloRegularizacaoDomain').validarReferencia(body.substituicao) } : {}) };
 }
 module.exports = { validateTituloCancelamentoBody };

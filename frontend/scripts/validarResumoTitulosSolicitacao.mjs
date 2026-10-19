@@ -1,0 +1,21 @@
+import assert from 'node:assert/strict';
+import { resumirTitulosSolicitacao as resumo } from '../src/utils/resumoTitulosSolicitacao.mjs';
+import { tituloElegivelParaEnvioPagamento as elegivel } from '../src/utils/envioTitulosPagamento.js';
+const avulso = { id: 1, tipo: 'PAGAR', status: 'ABERTO', valor_original: '7055.00', valor_baixado: '0.00', valor_saldo: '7055.00' };
+const parts = ['2351.67', '2351.66', '2351.67'].map((v, i) => ({ id: i + 2, tipo: 'PAGAR', status: 'ABERTO', somente_participacao: true, compartilhamento_id: 1, valor_original: v, valor_saldo: v }));
+assert.equal(resumo([avulso, ...parts]).saldo, 14110, 'Sobreposição ativa não pode ser escondida');
+assert.equal(resumo([avulso, ...parts]).conferirCoexistencia, true);
+const cancelado = { ...avulso, status: 'CANCELADO', valor_saldo: '0.00', regularizacao_substituicao: { tipo: 'LOTE_COMPARTILHADO', id: 1 } };
+assert.equal(resumo([cancelado, ...parts]).valor, 7055);
+assert.equal(resumo([cancelado, ...parts]).historicos[0].valor_original, '7055.00');
+assert.equal(resumo([cancelado, ...parts]).saldo, 7055);
+const proj = { id: 8, tipo: 'PAGAR', status: 'PARCIAL', renegociado_por_id: 3, valor_original: '2815.00', valor_baixado: '938.33', valor_saldo: '1876.67',
+  historico_titulo_original: { id: 8, status: 'RENEGOCIADO', valor_original: '2815.00', valor_saldo: '0.00' } };
+const r = resumo([proj, { ...avulso, id: 10, status: 'ESTORNADO' }]);
+assert.equal(r.valor, 2815); assert.equal(r.liquidado, 938.33); assert.equal(r.saldo, 1876.67); assert.equal(r.historicos.length, 2);
+assert.equal(resumo([proj, proj]).valor, 2815, 'Mesmo registro não é contado duas vezes');
+assert.equal(elegivel(proj), false, 'Não enviar o original substituído para pagamento');
+assert.equal(elegivel(parts[0]), false, 'Não enviar participação como título integral');
+assert.equal(elegivel(avulso), true); assert.equal(elegivel(cancelado), false);
+assert.deepEqual(resumo([]).vigentes, []);
+console.log('OK resumo: saldo ativo preservado, cancelamento separado, negociação histórica, participações, centavos e seleção de pagamento.');
