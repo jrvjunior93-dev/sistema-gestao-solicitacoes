@@ -84,7 +84,7 @@ function logPushDiagnostic(level, marker, details = {}) {
   console[level](`[payment-owner-push-${marker}]`, JSON.stringify(safeDetails));
 }
 
-async function sendPendingAuthorizationNotification(userIds) {
+async function sendPendingAuthorizationNotification(userIds, retryLotId = null) {
   const recipients = Array.from(new Set((userIds || []).map(Number).filter(Boolean)));
   if (!recipients.length) return { sent: 0, failed: 0, deactivated: 0, skipped: true, reason: 'NO_RECIPIENTS' };
   if (!configure()) {
@@ -102,10 +102,11 @@ async function sendPendingAuthorizationNotification(userIds) {
   await Promise.all(subscriptions.map(async (row) => {
     try {
       await webpush.sendNotification({ endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } }, JSON.stringify({
-        title: 'Fluxy · autorização necessária',
-        body: 'Há pagamentos aguardando sua decisão segura.',
-        url: '/financeiro/autorizacoes-pagamento'
-      }), { TTL: 300, urgency: 'high' });
+        title: retryLotId ? 'Fluxy · envio à fila pendente' : 'Fluxy · autorização necessária',
+        body: retryLotId ? 'Uma autorização foi registrada, mas o envio não foi concluído. Abra para conferir e reenviar.' : 'Há pagamentos aguardando sua decisão segura.',
+        url: '/financeiro/autorizacoes-pagamento' + (retryLotId ? `?reenvio=${retryLotId}` : ''),
+        ...(retryLotId ? { actions: [{ action: 'reenviar', title: 'Conferir e reenviar' }] } : {})
+      }), { TTL: 300, urgency: 'high', timeout: 10000 });
       sent += 1;
     } catch (error) {
       failed += 1;
@@ -133,4 +134,8 @@ async function sendPendingAuthorizationNotification(userIds) {
   return { sent, failed, deactivated, skipped: false, reason: null };
 }
 
-module.exports = { isConfigured, saveSubscription, removeSubscription, hasActiveSubscription, sendPendingAuthorizationNotification };
+function sendQueueRetryNotification(userIds, lotId) {
+  if (!Number.isSafeInteger(Number(lotId)) || Number(lotId) <= 0) throw Error('Lote de reenvio invalido.');
+  return sendPendingAuthorizationNotification(userIds, Number(lotId));
+}
+module.exports = { isConfigured, saveSubscription, removeSubscription, hasActiveSubscription, sendPendingAuthorizationNotification, sendQueueRetryNotification };

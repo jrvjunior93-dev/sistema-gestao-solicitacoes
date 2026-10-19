@@ -1,5 +1,20 @@
 # Modulo FINANCEIRO
 
+## Promocao notificacoes/reenvio para main - 2026-10-19
+
+- Usuario homologou o pacote DEV1393a446 e autorizou promocao; backup cifrado
+  recente e timer ativo confirmados. Produto identico ao homologado, sem
+  migrations/dependencias/configuracoes novas nem regularizacoes automaticas.
+- Roteiro `ops/deploy/atualizar-producao-autorizacao-reenvio-20261019.sh` exige
+  main72 previamente concluida e schema sem pendencias; guardas existentes
+  antes do merge, .env por hash, SQL somente leitura, restart apenas do backend
+  produtivo e health8000. Nenhum envio/reenvio/push de teste no deploy.
+- `verificarReenvioAutorizacaoProducao.js --verificar` usa UUID/TLS/PM2/flags
+  produtivos, transacao READ ONLY e ROLLBACK, sem chaves/endpoints/valores no log.
+  Configuracao do evento e VAPID nao sao alteradas; contagens nao comprovam
+  entrega nem permissao granular de um usuario.
+- [Escopo, validacao, operacao e recuperacao](../../handoffs/2026-10-19-promocao-main-autorizacao-reenvio.md).
+
 ## Preparacao da promocao financeira - 2026-10-19
 
 - Integracao local dos pacotes DEV ate db1d2253 com a main ff459840, incluindo
@@ -35,6 +50,44 @@
   SHA main, backup/timer, identidade/schema/TLS/PILOT/12h e .env preservado.
   Sem migration nova ou restauracao de titulos; restart somente producao.
 - [Escopo, guardas e conferencia](../../handoffs/2026-10-18-promocao-main-pwa-historico.md).
+
+## Autorizado aguardando envio: alerta e recuperacao - 2026-10-19
+
+- Autorizacao digital e enqueue usam transacoes distintas. Se a assinatura
+  foi commitada e a fila falha, o titulo permanece AUTORIZADO; nao pedir outra
+  assinatura nem apresentar falha de passkey. A resposta explicita envio_pendente.
+- Gera imediatamente notificacao interna PAGAMENTO_AUTORIZADO_ENVIO_PENDENTE
+  aos autorizadores nominais ativos que ainda possuem granular de decisao,
+  inclusive o proprio ator. Respeita a configuracao administrativa do evento.
+  Dedup por lote/revisao/conjunto de itens, serializada pelo lock do lote.
+  Push generico apos commit, sem valores/documentos/credores; falha de entrega
+  nao desfaz a decisao ou a notificacao interna. Entrega pelo SO depende de
+  permissao, assinatura/VAPID e conectividade; nao e garantia de entrega instantanea.
+- Conferir e reenviar na notificacao abre apenas GET da conferencia do lote,
+  inclusive fora da pagina carregada. Reenvio exige clique autenticado. Ha
+  Reenviar para a fila na lista por obra, detalhe do titulo e visao por lote.
+  No titulo envia somente aquele item; no aviso/lote envia os elegiveis exibidos.
+- Backend aceita preparador atual OU autorizador nominal ativo com granular
+  de decisao; visualizador/configurador sozinho nao pode reenviar. Modo Testar
+  usuario e PAUSED bloqueiam. Reenvio nao consome nova passkey, nao concede
+  permissao de envio direto e usa o enqueue existente com escopo/locks/revisao/
+  idempotencia/protecoes e historico. Rejeitados/invalidos/pagos nao sao reenviados.
+- Sem migration nova, backfill de alertas antigos, alteracao de dados reais ou
+  publicacao. Implementacao isolada na base refactor/frontend db1d2253.
+- Deploy anterior confirmado pelo log do operador: main72e628e8, migration
+  202610190001 aplicada, nenhuma pendente, schema/SQL/indices/FKs conferidos,
+  restart somente backend-solicitacoes e health200. .env/PILOT/TLS/12h e DEV
+  preservados. Esta correcao nova ainda exige homologacao DEV antes da main.
+- [Escopo, testes e pendencias](../../handoffs/2026-10-19-autorizacao-alerta-reenvio.md).
+- Publicacao DEV autorizada posteriormente: roteiro
+  `ops/deploy/atualizar-dev-autorizacao-reenvio-20261019.sh`, sem DDL, com
+  identidade/schema/flags, .env preservado e restart somente backend-dev.
+  `verificarReenvioAutorizacaoDev.js --verificar` confere prontidao por leitura.
+  Modo opcional `--testar-push USUARIO_ID LOTE_ID` envia push real somente ao
+  autorizador ativo/com granular e lote com itens AUTORIZADO no DEV; nao aprova
+  ou reenvia titulos, mas pode inativar assinatura expirada. Nao gera alerta
+  interno ficticio nem evento financeiro. Nao faz parte do deploy automatico.
+- [Comandos, testes e operacao ja na main](../../handoffs/2026-10-19-publicacao-dev-autorizacao-reenvio.md).
 
 ## Fila: baixa com multiplas fontes - 2026-10-18
 

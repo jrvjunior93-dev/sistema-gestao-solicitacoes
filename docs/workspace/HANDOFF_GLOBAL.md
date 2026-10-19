@@ -1,5 +1,16 @@
 # Handoff Global
 
+## Promocao notificacoes/reenvio MAIN - 2026-10-19
+
+- Usuario homologou DEV1393a446, autorizou main e confirmou backup/timer.
+  Integracao com main72 preserva historicos e runtime homologado. Sem DDL,
+  dependencias/configuracoes novas ou alteracao de DEV. Sem EC2 pelo agente.
+- Roteiro produtivo pinado, guardas antes/depois, SQL READ ONLY e diagnostico
+  de push sem envio, .env por hash, restart exclusivo backend-solicitacoes8000.
+- Backend, UI/PWA real com APIs simuladas, build, docs587/19 e sintaxe/diff
+  aprovados; ownership liberado para PR/merge. Roteiro somente pelo operador.
+- Handoff: docs/handoffs/2026-10-19-promocao-main-autorizacao-reenvio.md.
+
 ## Retomada cartao MAIN - 2026-10-19
 
 - Correcao operacional validada localmente, ownership liberado para publicacao,
@@ -23,6 +34,19 @@
   invalidado (lista vazia/cwd). Migration 202610190001 pendente. Roteiro original
   sem DDL interrompeu antes do restart; usar retomada documentada acima;
   ownership liberado para PR/merge autorizado. Deploy exclusivamente pelo operador.
+
+## Autorizacao: alerta/reenvio - 2026-10-19
+
+- Deploy anterior confirmado pelo log do operador: main72e628e8, migration
+  aplicada, schema sem pendencias e health200. Sem EC2/SQL pelo agente.
+- Novo ajuste local na base refactor/frontend db1d2253: alerta deduplicado
+  para autorizador nominal e botao individual/lista/detalhe/deep link seguro.
+  Sem migration/backfill/deploy/commit/push. QA backend/DOM/PWA/filtros/
+  convergencia/build/docs/sintaxe/diff aprovado; ownership liberado.
+  Publicacao e homologacao DEV real pendentes. Handoff especifico registrado.
+- Publicacao DEV posteriormente autorizada, preparacao/QA concluidos e
+  ownership liberado para commit/push. Roteiro sem DDL, prontidao por leitura
+  e teste push real opcional; main/producao/EC2 intactos pelo agente.
 
 ## Promocao main cadastro no pagamento RH - 2026-10-15
 
