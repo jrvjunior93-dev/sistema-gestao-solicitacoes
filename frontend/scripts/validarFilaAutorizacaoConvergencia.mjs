@@ -73,6 +73,7 @@ try {
   await page.route('**/*', async route => {
     const request = route.request(), url = new URL(request.url());
     const json = data => route.fulfill({ contentType: 'application/json', body: JSON.stringify(data) });
+    if (url.pathname.endsWith('/autorizacoes-pagamento/painel/obras')) return json({ data: [], resumo: {}, paginacao: { total: 0, mais: false } });
     if (url.pathname.endsWith('/autenticacao/opcoes')) return json({ challenge: 'qa' });
     if (url.pathname.endsWith('/decidir')) {
       decisions.push(request.postDataJSON());
@@ -94,6 +95,7 @@ try {
     unexpected.push(url.pathname); return route.abort();
   });
   await page.goto('http://127.0.0.1:5307/qa-autorizacao');
+  await page.getByRole('button', { name: 'Por lote / histórico', exact: true }).click();
   const checks = page.getByRole('checkbox');
   await checks.nth(1).waitFor();
   assert.equal(await page.getByText(/Expira em/).count(), 0);
@@ -141,19 +143,20 @@ try {
   await checks.first().check();
   await page.getByRole('button', { name: /Autorizar.*50,00/ }).waitFor();
 
-  // Uma resposta antiga nao pode reabrir a pendencia que um GET mais novo encerrou.
+  // A consulta atual e serial: liberar o GET antigo antes do refresh seguinte.
   holdNext = true;
   const started = new Promise(resolve => { heldStarted = resolve; });
   await page.getByRole('button', { name: 'Atualizar', exact: true }).click();
   await started;
   rows[0].status = 'CONCLUIDO'; rows[0].itens[1].status = 'ENFILEIRADO'; rows[0].itens[1].fila_item_id = 12;
-  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-  await page.getByText('Fila #12', { exact: true }).waitFor();
+  const antiga = page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/financeiro/autorizacoes-pagamento'));
   releaseHeld();
-  await page.waitForResponse(response => response.url().endsWith('/financeiro/autorizacoes-pagamento'));
+  await antiga;
+  await page.getByRole('button', { name: 'Atualizar', exact: true }).click();
+  await page.getByText('Fila #12', { exact: true }).waitFor();
   assert.equal(await checks.count(), 0);
-  assert.equal(await page.getByText('Na fila de pagamento', { exact: true }).count(), 2);
-  assert.equal(await page.getByText('NA FILA', { exact: true }).count(), 2, 'Rotulo do lote na lista e no detalhe');
+  assert.equal(await page.locator('.pa-table').getByText('Na fila', { exact: true }).count(), 2);
+  assert.equal(await page.getByText('Na fila', { exact: true }).count(), 4, 'Dois titulos, lista e detalhe do lote');
   assert.equal(await page.getByText('CONCLUIDO', { exact: true }).count(), 0);
   assert.equal(await page.locator('.pa-status--concluido').count(), 2, 'Status interno e estilo preservados');
   assert.equal(await page.getByRole('button', { name: /^Autorizar/ }).count(), 0);
@@ -163,8 +166,8 @@ try {
   rows[0].itens[1].motivo_decisao = 'Corrigir documento antes de autorizar o pagamento.';
   await page.getByRole('button', { name: 'Atualizar', exact: true }).click();
   await page.getByText('REJEITADO', { exact: true }).waitFor();
-  assert.equal(await page.getByText('NA FILA', { exact: true }).count(), 2);
-  assert.equal(await page.getByText('Na fila de pagamento', { exact: true }).count(), 1);
+  assert.equal(await page.getByText('Na fila', { exact: true }).count(), 3);
+  assert.equal(await page.locator('.pa-table').getByText('Na fila', { exact: true }).count(), 1);
   const reasonRow = page.locator('.pa-table tbody tr').nth(1);
   assert.equal(await reasonRow.locator('td').last().textContent(), rows[0].itens[1].motivo_decisao);
   assert.equal(await reasonRow.locator('td').nth(7).getByText(rows[0].itens[1].motivo_decisao).count(), 0);
@@ -221,13 +224,14 @@ try {
   await page.locator('.pa-table').getByText('TIT-AVULSO', { exact: true }).waitFor();
   rows[0].itens[1].snapshot_json = origem;
 
-  // Autorizacao ja gravada: somente o preparo pode reprocessar, sem nova decisao.
+  // Autorizacao ja gravada: preparador/autorizador recupera envio, sem nova decisao.
   rows[0].status = 'AUTORIZADO'; rows[0].itens[0].status = 'AUTORIZADO'; delete rows[0].itens[0].fila_item_id;
+  rows[0].itens[0].lote_id = 1; rows[0].itens[0].titulo.valor_saldo = 100;
   await page.getByRole('button', { name: 'Atualizar', exact: true }).click();
-  await page.getByRole('button', { name: 'Reprocessar envio à fila', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Reenviar autorizados para a fila', exact: true }).waitFor();
   assert.equal(await checks.count(), 0);
-  assert.equal(await page.getByText('NA FILA', { exact: true }).count(), 0);
-  assert.equal(await page.getByText('AUTORIZADO', { exact: true }).count(), 3);
+  assert.equal(await page.getByText('Na fila', { exact: true }).count(), 0);
+  assert.equal(await page.getByText('Autorizado — aguardando envio', { exact: true }).count(), 3);
   assert.equal(await page.getByRole('button', { name: /^Autorizar/ }).count(), 0);
   // Revogar titulo autorizado exige motivo + passkey, sem nova baixa/estorno.
   rows[0].itens[0].titulo = { status: 'ABERTO', valor_baixado: 0 };

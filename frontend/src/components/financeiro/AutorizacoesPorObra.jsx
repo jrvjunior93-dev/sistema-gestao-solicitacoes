@@ -10,6 +10,7 @@ import { resumoSolicitacaoAutorizacao } from '../../utils/autorizacaoPagamentoRe
 import AutorizacaoTituloDetalhe from './AutorizacaoTituloDetalhe';
 import TituloExcluidoAviso from './TituloExcluidoAviso';
 import useAutorizacaoHistorico from '../../hooks/useAutorizacaoHistorico';
+import BotaoReenvioAutorizacao from './BotaoReenvioAutorizacao';
 
 const moeda = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const INICIAL = { data_tipo: 'VENCIMENTO', vencimento_inicio: '', vencimento_fim: '', obra: '', situacao: 'AGUARDANDO' };
@@ -143,7 +144,7 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
   }
   async function confirmar() {
     if (travado.current || busy || !revisaoDecisao || !caps.can_decide || !caps.passkey_count || caps.paused) return;
-    travado.current = true; setBusy(true); let concluidos = 0;
+    travado.current = true; setBusy(true); let concluidos = 0, enviosPendentes = 0;
     try {
       for (const [loteId, decisoes] of revisaoDecisao.grupos) {
         if (!vivo.current) throw Error('Operação interrompida ao sair da tela.');
@@ -156,11 +157,12 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
         const identificador = d => direto ? -d.fila_id : d.item_id;
         const confirmados = decisoes.filter(d => resultado.itens.some(i => Number(i.id) === identificador(d) && esperados.includes(i.status)));
         concluidos += confirmados.length;
+        if (resultado.envio_pendente) enviosPendentes += resultado.itens.filter(i => i.status === 'AUTORIZADO').length;
         const ids = new Set(decisoes.filter(d => resultado.itens.some(i => Number(i.id) === identificador(d) && i.status !== 'PENDENTE')).map(identificador));
         setSelecao(current => Object.fromEntries(Object.entries(current).filter(([, i]) => !ids.has(Number(i.id)))));
         if (confirmados.length !== decisoes.length) throw Error('Um ou mais títulos mudaram ou foram invalidados na conferência do servidor. Confira o financeiro antes de continuar.');
       }
-      setMotivo(''); setAviso(`${concluidos} título(s) confirmado(s). ${revisaoDecisao.decisao === 'AUTORIZAR' ? 'Somente os selecionados foram autorizados; os demais continuam pendentes.' : 'Rejeições registradas com histórico.'}`);
+      setMotivo(''); setAviso(enviosPendentes ? `Autorização registrada. ${enviosPendentes} título(s) aguardam envio. Use Reenviar para a fila.` : `${concluidos} título(s) confirmado(s). ${revisaoDecisao.decisao === 'AUTORIZAR' ? 'Somente os selecionados foram autorizados; os demais continuam pendentes.' : 'Rejeições registradas com histórico.'}`);
     } catch (e) {
       setAviso(passkeyInterrompida(e) ? mensagemPasskeyInterrompida(concluidos)
         : `${concluidos ? `${concluidos} título(s) já confirmado(s). ` : ''}${e.message || 'Não foi possível concluir.'} Os demais não foram confirmados. Atualize e confira antes de tentar novamente.`);
@@ -212,6 +214,8 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
                   onClick={() => abrirDetalhe({ item, filtro: { ...filtro, obra_id: String(obra.id) } })}>{s.solicitacao?.codigo || s.codigo || `Título #${item.titulo_financeiro_id}`} <span aria-hidden="true">›</span></button></div>
                 <span className={`pa-status pa-status--${item.situacao_financeira?.toLowerCase()}`}>{rotuloSituacao(item.situacao_financeira)}</span></div>
               <TituloExcluidoAviso exclusao={item.exclusao_titulo} />
+              <BotaoReenvioAutorizacao item={item} caps={caps} disabled={indisponivel} setBusy={setBusy}
+                onEnviado={() => setTentativaManual(current => current + 1)} />
               {!item.exclusao_titulo && item.status === 'PENDENTE' && (!permitido || item.situacao_financeira !== 'AGUARDANDO') && <small>{permitido ? 'Aguardando aprovação do saldo deste título.' : 'Pendente de decisão, mas o saldo ou vínculo mudou. Confira o financeiro antes de aprovar.'}</small>}
               {item.fila_atual?.status === 'NAO_PAGO' && item.situacao_financeira !== 'NAO_PAGO' && <small>Última tentativa na fila: não pago.</small>}
               <div className="pa-obra-titulo__corpo"><div><strong>{s.favorecido_pagamento?.nome || s.credor?.nome || 'Credor não informado'}</strong>

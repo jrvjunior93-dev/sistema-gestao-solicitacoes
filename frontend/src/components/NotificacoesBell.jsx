@@ -254,12 +254,13 @@ export default function NotificacoesBell() {
                   </div>
 
                   <div className="notification-item-body">
-                    {['RETORNO_SOLICITADO', 'RH_TRANSFERENCIA_ATUALIZADA'].includes(item.tipo) && !item.lida_em && (
+                    {['RETORNO_SOLICITADO', 'RH_TRANSFERENCIA_ATUALIZADA', 'PAGAMENTO_AUTORIZADO_ENVIO_PENDENTE'].includes(item.tipo) && !item.lida_em && (
                       <span className="mb-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-amber-800">
                         Ação necessária
                       </span>
                     )}
                     <p className="notification-item-message">{item.mensagem}</p>
+                    {item.tipo === 'PAGAMENTO_AUTORIZADO_ENVIO_PENDENTE' && <span className="btn btn-outline btn-sm">Conferir e reenviar</span>}
                     {item.createdAt && (
                       <p className="notification-item-date">
                         {new Date(item.createdAt).toLocaleString('pt-BR')}

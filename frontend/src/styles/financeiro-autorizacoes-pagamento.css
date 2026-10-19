@@ -100,7 +100,8 @@
 .pa-justification-preview:focus-visible{outline:2px solid var(--sem-info,#2563eb);outline-offset:3px}
 .pa-justification-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid var(--c-border)}
 .pa-justification-text{margin:0;padding:16px;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--c-text);line-height:1.6}
-.pa-retry{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:10px 14px;background:#fff7ed;border-top:1px solid #fed7aa;font-size:12px;color:#9a3412}
+.pa-retry{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:10px;padding:10px 14px;background:#fff7ed;border-top:1px solid #fed7aa;font-size:12px;color:#9a3412}
+.pa-reenvio-aviso{justify-content:space-between}.pa-reenvio-aviso>div{min-width:0;overflow-wrap:anywhere}.pa-reenvio-aviso p{margin:4px 0}.pa-reenvio-aviso .pa-obras-acoes{flex-wrap:wrap}
 .pa-table .pa-reason-column{min-width:140px;max-width:260px;white-space:normal;overflow-wrap:anywhere}
 .pa-detail,.pa-list{min-width:0}
 .pa-lot-record{font-size:12px;margin-top:4px}.pa-lot-record summary{cursor:pointer;color:var(--c-muted,#64748b)}

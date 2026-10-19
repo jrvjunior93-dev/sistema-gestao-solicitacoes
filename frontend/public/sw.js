@@ -24,7 +24,8 @@ self.addEventListener('push', (event) => {
   event.waitUntil(self.registration.showNotification(data.title || 'Fluxy', {
     body: data.body || 'Há pagamentos aguardando sua autorização.',
     icon: '/fluxy-pwa-icon.svg', badge: '/fluxy-pwa-icon.svg',
-    data: { url: data.url || '/financeiro/autorizacoes-pagamento' }
+    data: { url: data.url || '/financeiro/autorizacoes-pagamento' },
+    actions: Array.isArray(data.actions) ? data.actions.filter(a => a.action === 'reenviar').slice(0, 1).map(a => ({ action: 'reenviar', title: 'Conferir e reenviar' })) : []
   }));
 });
 

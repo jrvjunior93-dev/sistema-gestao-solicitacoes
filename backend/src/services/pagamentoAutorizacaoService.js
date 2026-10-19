@@ -658,7 +658,15 @@ async function decideBatch(req, lotId, payload = {}) {
 
     if (shouldEnqueue) {
       stage = 'QUEUE_ENQUEUE';
-      await enqueueAuthorizedItems(req, lotId, { skipPermission: true });
+      try { await enqueueAuthorizedItems(req, lotId, { skipPermission: true }); }
+      catch (error) {
+        logPaymentDecisionFailure({ req, lotId, stage, error });
+        await notificarEnvioPendenteSeguro(req, lotId);
+        // A decisao ja foi commitada: responder o estado verdadeiro, nao uma
+        // falsa falha da passkey que induziria a assinar outra vez.
+        const atual = await getBatch(req, lot.id);
+        return { ...atual, envio_pendente: atual.itens.some(item => item.status === 'AUTORIZADO') };
+      }
     }
     stage = 'RESPONSE_LOAD';
     return getBatch(req, lot.id);
@@ -670,16 +678,34 @@ async function decideBatch(req, lotId, payload = {}) {
   }
 }
 
+async function notificarEnvioPendenteSeguro(req, lotId) {
+  try { await require('./pagamentoAutorizacaoReenvioService').notificarEnvioPendente(req, Number(lotId)); }
+  catch (_) { console.error('[payment-owner-retry-notification-failed]', JSON.stringify({ lote_id: Number(lotId) })); }
+}
+
 async function enqueueAuthorizedItems(req, lotId, options = {}) {
   assertFeatureAvailable();
-  if (!options.skipPermission) await assertPermission(req.user, PERMISSIONS.PREPARE);
-  const authorized = await PagamentoAutorizacaoItem.findAll({ where: { lote_id: lotId, status: 'AUTORIZADO' }, order: [['id', 'ASC']] });
+  if (!options.skipPermission) {
+    assertNoDevSwitch(req);
+    if (!await hasPermission(req.user, PERMISSIONS.PREPARE)) await assertActiveAuthorizer(req.user);
+  }
+  const ids = options.itemIds;
+  if (ids !== undefined && (!Array.isArray(ids) || !ids.length || ids.length > 200
+    || ids.some(id => !Number.isSafeInteger(id) || id <= 0) || new Set(ids).size !== ids.length)) throw httpError(400, 'Selecione entre 1 e 200 itens validos para reenvio.');
+  const authorized = await PagamentoAutorizacaoItem.findAll({ where: { lote_id: lotId, status: 'AUTORIZADO',
+    ...(ids ? { id: { [Op.in]: ids } } : {}) }, order: [['id', 'ASC']] });
+  if (ids && authorized.length !== ids.length) throw httpError(409, 'O titulo mudou ou ja foi encaminhado. Atualize antes de reenviar.');
   if (!authorized.length) return getBatch(req, lotId);
   const titleIds = authorized.map((item) => Number(item.titulo_financeiro_id));
   const lot = await PagamentoAutorizacaoLote.findByPk(lotId);
   const revisao = Number(lot?.revisao_autorizacao || 0);
   const key = `owner-auth-${lotId}-${revisao}-${sha256(titleIds).slice(0, 24)}`;
-  await enfileirarTitulosAutorizados(req, { titulo_ids: titleIds, idempotency_key: key }, Number(lotId), revisao);
+  try {
+    await enfileirarTitulosAutorizados(req, { titulo_ids: titleIds, idempotency_key: key }, Number(lotId), revisao);
+  } catch (error) {
+    if (!options.skipPermission) await notificarEnvioPendenteSeguro(req, lotId);
+    throw error;
+  }
   return getBatch(req, lotId);
 }
 

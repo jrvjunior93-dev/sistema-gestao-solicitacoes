@@ -1,5 +1,19 @@
 # Ownership Ativo
 
+## Promocao notificacoes/reenvio para main - 2026-10-19
+
+- Sessao codex-promocao-reenvio-main-20261019, agente unico. Usuario homologou
+  DEV1393a446 e autorizou promover somente notificacoes/reenvio para main72e628e8.
+- Reserva: novos roteiro atualizar-producao-autorizacao-reenvio-20261019.sh,
+  verificador de prontidao produtivo somente leitura e teste isolado; handoff,
+  README financeiro e registros desta sessao nos quatro controles workspace.
+- Integrar historicos preservando runtime homologado e guardas produtivas.
+  Sem migration nova, EC2/SSH, SQL/push real, .env ou DEV pelo agente.
+- Backup recente cifrado e timer ativo confirmados pelo operador nesta promocao.
+- QA concluido: backend/reenvio/push/guardas/read-only, UI 320/390/1366,
+  historico/PWA/convergencia, build, docs587/19, sintaxe e diff aprovados.
+  Reserva encerrada; ownership liberado para commit/PR/merge autorizado.
+
 ## Correcao do deploy financeiro interrompido - 2026-10-19
 
 - Reserva agente desta conversa, sem delegacao: preflightFinanceiroProducao20261019
@@ -66,6 +80,45 @@
   Produto e dependencias conferidos contra2e146629; reserva encerrada,
   ownership liberado para commit/push main autorizados. Roteiro e limites em
   docs/handoffs/2026-10-18-promocao-main-pwa-historico.md.
+
+## Publicacao DEV: notificacao e reenvio - 2026-10-19
+
+- Usuario autorizou commit/push do pacote local para refactor/frontend,
+  comandos exclusivos DEV e testes de notificacao/reenvio. Agente unico.
+- Reserva do delta anterior, novo roteiro atualizar-dev-autorizacao-reenvio,
+  verificador DEV de prontidao/push e testes isolados; README/handoff e
+  registros desta sessao. Nao alterar main, EC2, .env ou outros worktrees.
+- Sem migration nova. Guardas DEV antes e depois do merge; schema pendente
+  interrompe sem aplicar. Teste push real somente quando operador pedir
+  explicitamente, com IDs de usuario nominal/lote pendente do DEV.
+- QA de publicacao concluido: backend/reenvio/push/SQL em fixtures, UI real,
+  compras/permuta, build, docs582/19, Node/Bash e diff-check aprovados.
+  Reserva encerrada e ownership liberado para commit/push exclusivo autorizado.
+
+## Autorizacao: alerta e reenvio - 2026-10-19
+
+- Sessao codex-autorizacao-reenvio-20261019, agente unico, base DEV db1d2253
+  em branch isolada no worktree reutilizado. Producao 72e628e8 concluida pelo
+  operador (migration aplicada, schema sem pendencias, health200).
+- Reserva: pagamentoAutorizacaoService, novo pagamentoAutorizacaoReenvioService,
+  controller enqueue, webPushService, catalogo notificacaoEventos; frontend
+  pagamentoAutorizacao.js, util situacao, AutorizacaoTituloDetalhe,
+  AutorizacoesPorObra, FinanceiroAutorizacoesPagamento, NotificacoesBell e sw.js;
+  testes novos de reenvio/backend/DOM/push, README financeiro e handoff.
+- Reserva complementar: validarAnaliseProprietario.js para regressao com servicos
+  reais/transportes simulados; CSS financeiro somente quebra de linha do aviso.
+- validarFilaAutorizacaoConvergencia.mjs: atualizar bootstrap do teste legado
+  para escolher explicitamente Por lote/historico (padrao atual e Por obra),
+  stub da consulta inicial de obras, refresh serial e rotulos atuais de status.
+- Registros desta sessao em QUADRO_AGENTES/SESSOES_ATIVAS/HANDOFF_GLOBAL.
+  Preservar segregacao/passkey da decisao, escopo de obras, protecoes de fila,
+  idempotencia e auditoria. Notificacao nao pode efetuar reenvio por GET.
+- Sem EC2, banco real, deploy, migration, commit/push ou mudanca de main nesta
+  implementacao. Trabalho privado/outputs e worktrees alheios intactos.
+- Implementacao/QA concluidos: servicos reais em memoria, push/SW em VM, DOM
+  reenvio/PWA/por obra/datas/convergencia, build, docs, sintaxe e diff aprovados.
+  Reserva desta sessao encerrada, ownership liberado. Falta publicacao e
+  homologacao DEV pelo usuario; handoff 2026-10-19-autorizacao-alerta-reenvio.md.
 
 ## Publicacao DEV: permutas e mapa de datas - 2026-10-18
 

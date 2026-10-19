@@ -27,7 +27,8 @@ import { criarAssinaturaPush, obterAssinaturaPush, suportaWebPush } from '../uti
 import { codigoLoteAutorizacao, motivosAjusteAutorizacao, resumoSolicitacaoAutorizacao } from '../utils/autorizacaoPagamentoResumo';
 import OverlayModal from '../components/ui/OverlayModal';
 import AutorizacoesPorObra from '../components/financeiro/AutorizacoesPorObra';
-import { rotuloSituacao, tituloExcluido } from '../utils/autorizacaoPagamentoSituacao';
+import AutorizacaoReenvioAviso from '../components/financeiro/AutorizacaoReenvioAviso';
+import { rotuloSituacao, tituloExcluido, podeReenviarAutorizacao } from '../utils/autorizacaoPagamentoSituacao';
 import TituloExcluidoAviso from '../components/financeiro/TituloExcluidoAviso';
 import usePollingSeguro from '../hooks/usePollingSeguro';
 import { useWorkspaceActive } from '../navigation/WorkspaceContext';
@@ -249,10 +250,11 @@ export default function FinanceiroAutorizacoesPagamento() {
     try {
       const options = await obterOpcoesDecisaoPasskey(selected.id, decisions);
       const credential = await autenticarComPasskey(options);
-      await decidirAutorizacaoPagamento(selected.id, decisions, credential);
+      const resultado = await decidirAutorizacaoPagamento(selected.id, decisions, credential);
       setRejectReason('');
       await load();
-      avisar.sucesso(decision === 'AUTORIZAR' ? 'Pagamentos autorizados e encaminhados à fila.' : 'Pagamentos rejeitados com rastreabilidade.');
+      if (resultado.envio_pendente) avisar.alerta('Autorização registrada. O envio à fila não foi concluído. Use Reenviar autorizados para a fila.');
+      else avisar.sucesso(decision === 'AUTORIZAR' ? 'Pagamentos autorizados e encaminhados à fila.' : 'Pagamentos rejeitados com rastreabilidade.');
     } catch (error) {
       if (passkeyInterrompida(error)) avisar.alerta(mensagemPasskeyInterrompida());
       else avisar.erro(error?.message || 'Não foi possível registrar a decisão.');
@@ -312,7 +314,7 @@ export default function FinanceiroAutorizacoesPagamento() {
     if (busy || mutationRef.current) return;
     mutationRef.current = true;
     setBusy(true);
-    try { await reenviarAutorizacaoParaFila(selected.id); await load(); avisar.sucesso('Itens autorizados encaminhados para a fila.'); }
+    try { await reenviarAutorizacaoParaFila(selected.id, selected.itens.filter(podeReenviarAutorizacao).map(i => Number(i.id))); await load(); avisar.sucesso('Itens autorizados encaminhados para a fila.'); }
     catch (error) { avisar.erro(error?.message || 'Não foi possível reenviar para a fila.'); }
     finally { mutationRef.current = false; setBusy(false); }
   }
@@ -340,6 +342,9 @@ export default function FinanceiroAutorizacoesPagamento() {
         </details>
       </div>
       {caps.paused && <p role="status">Novas decisões pausadas.</p>}
+      {/^[1-9]\d*$/.test(searchParams.get('reenvio') || '') && <AutorizacaoReenvioAviso loteId={Number(searchParams.get('reenvio'))}
+        caps={caps} busy={busy} setBusy={setBusy} onAtualizado={() => { setRevisaoObras(n => n + 1); load(); }}
+        onFechar={() => { const params = new URLSearchParams(searchParams); params.delete('reenvio'); setSearchParams(params, { replace: true }); }} />}
       {visao === 'obras' && <AutorizacoesPorObra userId={user?.id} caps={caps} busy={busy} setBusy={setBusy} abrirDocumento={openDocument} revisao={revisaoObras} />}
       {visao === 'lotes' && <div className="pa-layout">
         <aside className="pa-list" aria-label="Lotes de autorização">
@@ -417,7 +422,7 @@ export default function FinanceiroAutorizacoesPagamento() {
               <div><button type="button" className="btn btn-secondary btn-sm" onClick={() => decide('REJEITAR')} disabled={busy || !selectedItems.length}><HiOutlineXCircle /> Rejeitar</button><button type="button" className="btn btn-primary btn-sm" onClick={() => decide('AUTORIZAR')} disabled={busy || !selectedItems.length || !caps.passkey_count}><HiOutlineCheckCircle /> Autorizar {money(selectedTotal)}</button></div>
               {!caps.passkey_count && <small><HiOutlineLockClosed /> Cadastre uma passkey antes da primeira autorização.</small>}
             </div>}
-            {caps.can_prepare && (selected.itens || []).some((item) => item.status === 'AUTORIZADO' && !tituloExcluido(item)) && <div className="pa-retry"><span>A autorização foi registrada, mas há itens ainda não encaminhados.</span><button type="button" className="btn btn-secondary btn-sm" onClick={retryQueue} disabled={busy}>Reprocessar envio à fila</button></div>}
+            {(caps.can_prepare || caps.can_decide) && (selected.itens || []).some(podeReenviarAutorizacao) && <div className="pa-retry"><span>A autorização foi registrada, mas há itens ainda não encaminhados.</span><button type="button" className="btn btn-secondary btn-sm" onClick={retryQueue} disabled={busy || caps.paused}>Reenviar autorizados para a fila</button></div>}
             {caps.can_decide && revokeItems.length > 0 && <div className="pa-decision">
               <label>Motivo da revogação<input value={revokeReason} maxLength={500} onChange={event => setRevokeReason(event.target.value)} /></label>
               <p>{revokeItems.length} título(s) voltarão para autorização. Nenhum pagamento será estornado. Se houver baixa, inclusive parcial, a operação inteira será recusada.</p>

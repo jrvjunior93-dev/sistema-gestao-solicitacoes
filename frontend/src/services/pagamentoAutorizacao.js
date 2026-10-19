@@ -33,7 +33,7 @@ export const obterOpcoesDecisaoPasskey = (id, decisoes) => request(`/${id}/auten
 export const decidirAutorizacaoPagamento = (id, decisoes, credential) => request(`/${id}/decidir`, { method: 'POST', body: { decisoes, credential } });
 export const obterOpcoesRejeicaoFilaDireta = decisoes => request('/painel/fila-direta/autenticacao/opcoes', { method: 'POST', body: { decisoes } });
 export const rejeitarFilaDireta = (decisoes, credential) => request('/painel/fila-direta/rejeitar', { method: 'POST', body: { decisoes, credential } });
-export const reenviarAutorizacaoParaFila = (id) => request(`/${id}/enfileirar`, { method: 'POST', body: {} });
+export const reenviarAutorizacaoParaFila = (id, itemIds) => request(`/${id}/enfileirar`, { method: 'POST', body: itemIds ? { item_ids: itemIds } : {} });
 export const listarAutorizadoresPagamento = () => request('/autorizadores');
 export const salvarAutorizadorPagamento = (payload) => request('/autorizadores', { method: 'PUT', body: payload });
 export const obterDocumentoAutorizacao = (id) => request(`/documentos/${id}`);

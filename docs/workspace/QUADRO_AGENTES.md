@@ -1,5 +1,16 @@
 # Quadro de Agentes
 
+## Promocao notificacoes/reenvio main - 2026-10-19
+
+- Sessao codex-promocao-reenvio-main-20261019, finalizado local, agente unico.
+- Integrar DEV1393a446 homologado com main72e628e8; preservar ambos os historicos.
+  Preparar deploy sem DDL, guardas produtivas antes/depois, teste de leitura
+  de prontidao, suites e build. Backup cifrado/timer confirmados pelo usuario.
+- Sem EC2/SSH, banco/push real, alteracao de DEV ou configuracoes pelo agente.
+- Cinco conflitos documentais resolvidos mantendo historicos. Runtime DEV
+  identico; QA backend/UI/PWA/build/docs587/19/sintaxe/diff aprovado.
+  Ownership liberado para commit/PR/merge; roteiro sem DDL somente pelo operador.
+
 ## Retomada migration cartao MAIN - 2026-10-19
 
 - Sessao codex-correcao-deploy-financeiro-20261019: finalizado local, sem delegacao.
@@ -20,6 +31,19 @@
   isolado/snapshot e evidencia EC2 recebidos. CORRECAO: inventario inicial do
   alvo vazio, nao comprovava schema concluido. Migration 202610190001 pendente;
   roteiro sem DDL/regularizacao aprovado e ownership liberado para PR/merge.
+
+## Autorizacao alerta/reenvio - 2026-10-19
+
+- Publicacao DEV agora autorizada: roteiro, prontidao MySQL somente leitura e
+  push real opcional com guardas preparados/validados. Ownership liberado para
+  commit/push refactor/frontend. Main72 preservada; EC2 somente pelo operador.
+- Sessao codex-autorizacao-reenvio-20261019, finalizado local, sem delegacao.
+  Mapear falha apos commit da decisao, notificar proprietario com acao segura,
+  reenvio individual na lista/detalhe e lote sem reautorizar ou duplicar fila.
+  Produto na base refactor/frontend; sem EC2/SQL real/deploy/commit/push.
+  Evidencia recebida: deploy main72 concluido, migration190001 e health200.
+  Novo pacote QA backend/DOM/PWA/filtros/historico/build/docs/sintaxe/diff
+  aprovado; ownership liberado, publicacao e DEV real pendentes.
 
 ## Promocao main Compra Direta/admissao - 2026-10-15
 

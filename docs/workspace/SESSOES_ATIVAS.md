@@ -1,5 +1,10 @@
 # Sessoes Ativas
 
+- codex-promocao-reenvio-main-20261019: finalizado local em branch isolada reutilizada;
+  main72 + DEV139 homologado. Reserva roteiro/QA/prontidao/handoff e registros.
+  Sem EC2, schema ou configuracoes alterados; backup/timer confirmados.
+  QA completo aprovado, ownership liberado para publicacao Git autorizada.
+
 - codex-correcao-deploy-financeiro-20261019: finalizado local, agente unico, worktree
   isolado da promocao. Corrige inventario Git/cwd e retoma migration unica
   202610190001 confirmada pelo operador; sem runtime/DEV/regularizacao.
@@ -10,6 +15,12 @@
   Simulacao real conferida; inventario inicial de schema alvo invalidado, lista
   vazia por cwd. Pendencia 202610190001 confirmada depois pelo operador. Roteiro
   sem DDL/regularizacao e QA aprovados; ownership liberado para PR/merge.
+
+- codex-autorizacao-reenvio-20261019: finalizado local. Producao72 concluida pelo
+  operador; novo alerta de falha de envio e botao de reenvio na base DEV,
+  branch isolada, QA aprovado e ownership liberado; sem producao/EC2 ou
+  deploy pelo agente. Publicacao DEV agora autorizada: roteiro/QA concluidos,
+  ownership liberado para commit/push exclusivo refactor/frontend e homologacao.
 
 - codex-promocao-compra-direta-admissao-main-20261015: integracao validada,
   ownership liberado para PR/merge autorizado. Main1341e1a3/devd72a9c93;

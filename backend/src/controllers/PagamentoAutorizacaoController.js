@@ -71,7 +71,7 @@ module.exports = {
     catch (error) { return fail(res, error, 'Erro ao registrar decisao de pagamento'); }
   },
   async enqueue(req, res) {
-    try { return res.json(await service.enqueueAuthorizedItems(req, req.params.id)); }
+    try { return res.json(await service.enqueueAuthorizedItems(req, req.params.id, { itemIds: req.body?.item_ids })); }
     catch (error) { return fail(res, error, 'Erro ao encaminhar itens autorizados para a fila'); }
   },
   async authorizers(req, res) {
