@@ -1,5 +1,16 @@
 # Handoff Global
 
+## Promocao cheques main - 2026-10-19
+
+- Usuario homologou datas719 e moedae01, autorizou promocao main9e4 e confirmou
+  backup recente cifrado/timer. Integracao preservou historicos e scripts main;
+  runtime identico ao DEV. Sem migration/dependencia/configuracao nova.
+- Novo roteiro produtivo pinado com guardas instaladas antes do merge,
+  schema/UUID/TLS/12h/flags, .env por hash e restart somente backend-solicitacoes.
+  Backend/guardas/sintaxe/docs590/19, UI completa/direcionada e build aprovados.
+  Ownership liberado para PR/merge. Sem EC2/banco ou operacao financeira pelo
+  agente. Bundle privado anterior verificado; handoff promocao-main-cheques.
+
 ## Promocao notificacoes/reenvio MAIN - 2026-10-19
 
 - Usuario homologou DEV1393a446, autorizou main e confirmou backup/timer.
@@ -34,6 +45,45 @@
   invalidado (lista vazia/cwd). Migration 202610190001 pendente. Roteiro original
   sem DDL interrompeu antes do restart; usar retomada documentada acima;
   ownership liberado para PR/merge autorizado. Deploy exclusivamente pelo operador.
+
+## Publicacao DEV moeda dos cheques - 2026-10-19
+
+- Usuario autorizou commit/push refactor/frontend e comandos DEV; base719 e
+  main9e4 conferidas. Somente BRL/testes/docs, sem backend/migration ou EC2.
+- UI direcionada/build/backend/guardas aprovados novamente, UI completa ja
+  aprovada na implementacao; docs/diff conferidos antes do commit. Ownership
+  liberado. Reutilizar roteiro DEV de datas de cheques pinado no novo SHA,
+  preservando .env/schema/12h/flags e reiniciando apenas backend-dev.
+
+## Moeda brasileira nos cheques - 2026-10-19
+
+- Usuario homologou datas DEV719 e pediu somente BRL nos valores. Campo de
+  cheque proprio/carteira, individual/lote, reutiliza formatters existentes
+  e mantem numero no estado/API; soma em centavos e regras preservadas.
+- QA BRL/datas/payload numerico e UI completa da fila desktop/mobile,
+  build/docs584/19/diff aprovados. Ownership liberado; delta local sem
+  commit/push/backend/migration/main/EC2. Handoff moeda-cheques registrado.
+
+## Publicacao DEV datas de cheques - 2026-10-19
+
+- Commit/push refactor/frontend e comandos DEV autorizados pelo usuario.
+  Base139 e main9e4 conferidas; somente delta da correcao e roteiro/QA.
+- Roteiro com SHA, flock, PM2/watch, guardas antigas antes do merge, sem DDL,
+  schema/12h/flags, .env por hash, testes e restart exclusivo backend-dev8001.
+- Backend/guardas, UI direcionada e build repetidos, docs583/19/Node/Bash/diff
+  aprovados. Ownership liberado para publicacao Git. EC2 somente pelo operador.
+
+## Datas dos cheques na baixa - 2026-10-19
+
+- Usuario autorizou implementar na base refactor/frontend139, sem producao.
+  Erros somente ao confirmar/enviar, sem avisos preventivos. Agente unico.
+- Componente padrao DD/MM/AAAA segmentado, ano4 e calendario/ISO estritos para
+  novas datas de cheque, erro por posicao/campo. Baixa em massa preserva modal
+  e instrumentos ao falhar, sem limpar conta/data/forma/cheques/selecao.
+- Backend/middleware, rateios/carteira/composta/cartao/ACL, UI direcionada e
+  completa da fila desktop/mobile, build/docs583/19/sintaxe/diff aprovados.
+- Ownership liberado. Sem migration, main/EC2/banco, commit/push ou deploy.
+  Handoff: docs/handoffs/2026-10-19-datas-cheques-baixa.md.
 
 ## Autorizacao: alerta/reenvio - 2026-10-19
 

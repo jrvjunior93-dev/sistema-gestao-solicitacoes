@@ -2,10 +2,13 @@
 
 ## Promocao cheques main - 2026-10-19
 
-- codex-promocao-cheques-main-20261019, em_andamento, agente unico.
+- codex-promocao-cheques-main-20261019, finalizado local, agente unico.
   Integrar somente datas/preservacao de lote719 e moedae01 homologados com
   main9e4, mantendo hotfixes. Reservas no ownership; preparar roteiro/QA
   produtivo sem DDL e preservar .env/flags/12h/TLS/PM2. EC2 so pelo operador.
+- Backup cifrado/timer desta promocao confirmados; backend/guardas/docs590/19,
+  sintaxe/diff, UI completa/direcionada e build aprovados; sem migration nova.
+  Ownership liberado para commit/PR/merge autorizado; EC2 so pelo operador.
 
 ## Promocao notificacoes/reenvio main - 2026-10-19
 
@@ -38,6 +41,43 @@
   isolado/snapshot e evidencia EC2 recebidos. CORRECAO: inventario inicial do
   alvo vazio, nao comprovava schema concluido. Migration 202610190001 pendente;
   roteiro sem DDL/regularizacao aprovado e ownership liberado para PR/merge.
+
+## Publicacao DEV moeda cheques - 2026-10-19
+
+- Usuario autorizou commit/push para refactor/frontend e comandos DEV. Agente
+  unico, QA finalizado e ownership liberado para publicacao autorizada.
+  Somente BRL/testes/docs, sem backend/migration/main/EC2.
+- Reutilizar roteiro pinado existente de datas dos cheques, guardas antes do
+  merge e .env/schema/12h/flags; operador atualiza DEV e confere moeda/payload.
+
+## Moeda nos cheques - 2026-10-19
+
+- codex-cheques-moeda-20261019, finalizado local, agente unico, baseDEV7198d786.
+  Somente formato BRL no valor dos cheques, mantendo numero em estado/API e
+  todas as regras de soma/carteira/envio. Reutilizar formatadores do Fluxy.
+- Sem backend, EC2, migration, main ou publicacao. QA desktop/mobile e build.
+- Datas/BRL/payload, UI completa da fila/carteira/mutex/ACL, build, docs584/19
+  e diff aprovados. Ownership liberado, delta sem commit/push.
+
+## Publicacao DEV datas de cheques - 2026-10-19
+
+- Usuario autorizou commit/push para refactor/frontend e roteiro DEV. Agente
+  unico, finalizado local; preservar main9e4faf4e e outputs privados. Sem EC2/SQL.
+- Validar delta/roteiro, publicar fast-forward e fornecer SHA pinado para
+  operador. Sem migration, configuracao ou teste financeiro real automatico.
+- Testes backend/guardas/UI/build/docs/sintaxe/diff aprovados, ownership
+  liberado para publicacao Git autorizada; DEV real somente pelo operador.
+
+## Datas dos cheques na baixa - 2026-10-19
+
+- Sessao codex-cheques-datas-20261019, finalizado local, agente unico.
+- Padronizar emissao/vencimento em DD/MM/AAAA com edicao segmentada; ano
+  de quatro digitos/calendario, ISO na API. Erro apenas apos confirmar/enviar,
+  identificando cheque/campo. Preservar preenchimento no erro de baixa em massa.
+- Base refactor/frontend1393a446 em branch isolada; sem main, banco/EC2,
+  migration, commit/push ou deploy. ACL/locks/transacoes/idempotencia intactos.
+- Backend, UI direcionada e completa da fila, build, docs583/19, sintaxe/diff
+  aprovados. Dados mantidos no erro; ownership liberado, homologacao DEV futura.
 
 ## Autorizacao alerta/reenvio - 2026-10-19
 

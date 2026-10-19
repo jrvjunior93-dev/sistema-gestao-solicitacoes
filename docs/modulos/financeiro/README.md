@@ -1,5 +1,14 @@
 # Modulo FINANCEIRO
 
+## Promocao cheques para main - 2026-10-19
+
+- Datas/preservacao de lote719 e moedae01 homologados no DEV, sem migration
+  ou dependencia nova. Runtime homologado preservado; hotfixes main mantidos.
+- Roteiro `ops/deploy/atualizar-producao-cheques-20261019.sh`: SHA pinado,
+  backup/timer, guardas produtivas antes/depois, .env/schema/flags/12h/TLS
+  preservados; restart exclusivo producao, sem operacao financeira automatica.
+- [Escopo, validacoes e recuperacao](../../handoffs/2026-10-19-promocao-main-cheques.md).
+
 ## Promocao notificacoes/reenvio para main - 2026-10-19
 
 - Usuario homologou o pacote DEV1393a446 e autorizou promocao; backup cifrado
@@ -50,6 +59,30 @@
   SHA main, backup/timer, identidade/schema/TLS/PILOT/12h e .env preservado.
   Sem migration nova ou restauracao de titulos; restart somente producao.
 - [Escopo, guardas e conferencia](../../handoffs/2026-10-18-promocao-main-pwa-historico.md).
+
+## Moeda nos cheques - 2026-10-19
+
+- Valor dos cheques no editor individual e de lote usa mascara BRL existente
+  (R$ 1.234,56), com teclado decimal. Estado e payload permanecem numericos;
+  soma em centavos, carteira somente leitura e validacoes atuais preservadas.
+- [Escopo e validacao](../../handoffs/2026-10-19-moeda-cheques.md).
+
+## Datas dos cheques na baixa - 2026-10-19
+
+- Campos compartilhados de cheque usam DateInputBR com edicao segmentada,
+  DD/MM/AAAA e ano de quatro digitos. API conserva AAAA-MM-DD; datas opcionais
+  continuam opcionais. Nenhuma inferencia/regravacao de datas antigas.
+- Falhas de formato/calendario identificam emissao ou vencimento/compensacao
+  e a posicao do cheque. Mensagem visivel somente na tentativa de confirmar
+  ou enviar, sem avisos antecipados durante preenchimento.
+- Na falha de envio da baixa em massa, o modal permanece aberto com os dados
+  de conta/data/forma e instrumentos do lote. Erro nao limpa selecao nem
+  cheques; correcao/retry preservam revalidacao de versao, ACL e mutex.
+- Sem migration ou alteracao de permissoes, idempotencia, valores ou regras
+  de cheque proprio/carteira. [Escopo e testes](../../handoffs/2026-10-19-datas-cheques-baixa.md).
+- Publicacao DEV autorizada com roteiro exclusivo
+  `ops/deploy/atualizar-dev-datas-cheques-20261019.sh`: guardas antes do merge,
+  schema somente leitura, .env/flags/12h preservados e restart apenas do DEV.
 
 ## Autorizado aguardando envio: alerta e recuperacao - 2026-10-19
 

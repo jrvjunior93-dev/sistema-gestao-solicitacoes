@@ -2,13 +2,15 @@
 
 ## Promocao cheques datas/moeda para main - 2026-10-19
 
-- Sessao codex-promocao-cheques-main-20261019, agente unico, em_andamento.
+- Sessao codex-promocao-cheques-main-20261019, agente unico, finalizado local.
   Usuario homologou DEV719/e01 e pediu promocao. Bases main9e4faf4e/DEVe01e7bbf.
 - Reserva: integracao documental README/handoffs e quatro controles workspace;
   novo roteiro produtivo de cheques e teste isolado de suas guardas. Preservar
   hotfixes exclusivos main, integrar historicos; sem migrations/dependencias.
-- Sem EC2/SSH/banco real ou alteracao do DEV. Backup/timer desta promocao
-  solicitado ao operador; confirmar antes da publicacao/merge produtivo.
+- Sem EC2/SSH/banco real ou alteracao do DEV. Backup recente cifrado e timer
+  ativo confirmados pelo operador para esta promocao. Backend/guardas, UI
+  completa/direcionada, build, docs590/19, sintaxe/diff aprovados. Ownership
+  liberado para commit/PR/merge autorizado. Bundle anterior privado verificado.
 
 ## Promocao notificacoes/reenvio para main - 2026-10-19
 
@@ -90,6 +92,64 @@
   Produto e dependencias conferidos contra2e146629; reserva encerrada,
   ownership liberado para commit/push main autorizados. Roteiro e limites em
   docs/handoffs/2026-10-18-promocao-main-pwa-historico.md.
+
+## Publicacao DEV moeda dos cheques - 2026-10-19
+
+- Usuario autorizou commit/push do delta BRL para refactor/frontend e comandos
+  DEV. Agente unico; reserva do delta ja validado e registros desta publicacao.
+- Base remota7198d786, main9e4faf4e conferidas. Sem backend/migration/dependencia
+  novos, sem EC2/banco ou producao. Reutilizar roteiro DEV de datas dos cheques
+  com novo SHA pinado; manter guardas/schema/flags/.env e restart so backend-dev.
+- Status: QA UI/build/backend/guardas aprovado; docs/diff conferidos antes do
+  commit. Ownership liberado para publicacao autorizada; outputs e outros
+  worktrees intactos. EC2 somente pelo operador.
+
+## Moeda brasileira nos valores dos cheques - 2026-10-19
+
+- Usuario homologou datas no DEV e pediu apenas formatacao dos campos de valor
+  neste fluxo. Sessao codex-cheques-moeda-20261019, agente unico, base7198d786.
+- Reserva: ChequesParceladosFilaModal.jsx (valor proprio/carteira, lote/individual),
+  datasChequesFilaQA.mjs e validarFilaInstrumentosUI.mjs para mascara/payload;
+  README financeiro, handoff e registros desta sessao nos controles workspace.
+- Reutilizar formatters existentes sem alteracao global. Guardar valor numerico
+  canonico; preservar soma em centavos, somente leitura da carteira, ACL,
+  datas, preservacao apos falha e bloqueio de duplo envio. Quantidade nao e moeda.
+- Sem backend, migration, main/EC2, commit/push ou deploy. QA direcionado e
+  completo da fila, build, docs584/19 e diff-check aprovados. Ownership liberado.
+
+## Publicacao DEV das datas de cheques - 2026-10-19
+
+- Usuario autorizou commit/push da correcao local para refactor/frontend e
+  comandos exclusivos DEV. Reserva do delta ja concluido, novo roteiro
+  atualizar-dev-datas-cheques-20261019.sh, teste isolado e registros desta sessao.
+- Base DEV1393a446 e main9e4faf4e conferidas. Publicar somente o pacote da
+  correcao; main, outputs privados e worktrees de outros agentes intactos.
+- Sem migration/dependencias novas. Guardas existentes antes do merge,
+  identidade/schema/12h/flags, .env por hash e restart somente backend-dev.
+- Agente unico, sem EC2/SSH ou banco real. QA repetido aprovado: backend/guardas,
+  UI direcionada, build, docs583/19, Node/Bash e diff. Reserva encerrada;
+  ownership liberado para commit/push exclusivo autorizado na refactor/frontend.
+
+## Datas dos cheques na baixa - 2026-10-19
+
+- Sessao codex-cheques-datas-20261019, agente unico, base refactor/frontend1393a446.
+  Usuario autorizou implementar sem producao, preservando preenchimento/ACL;
+  erros somente ao confirmar/enviar, sem avisos preventivos na digitacao.
+- Reserva: ChequePagamentoFields.jsx, DateInputBR.jsx (opt-in de rotulo de erro),
+  ChequesParceladosFilaModal.jsx, FinanceiroFilaPagamentos.jsx (preservar modal
+  em falha), novo validador puro de datas de cheque e integracoes restritas em
+  paymentValidators.js/financialValidators.js; testes backend/UI e README/handoff.
+- Registros desta sessao nos quatro controles workspace. Mapear consumidores
+  simples/parcelas/lote/multiplas fontes; nao alterar required, permissoes,
+  idempotencia, baixas, transacoes, datas antigas ou regras de carteira.
+- Sem migration, banco/EC2, commit/push, main ou deploy. QA concluido e
+  ownership desta sessao liberado; delta local preservado para publicacao futura.
+- Reserva complementar: frontend/scripts/validarFilaInstrumentosUI.mjs somente
+  novo modo isolado --datas-cheques e stub de falha explicita, novo
+  datasChequesFilaQA.mjs e backend/scripts/validarDatasCheques.js.
+- Testes backend de datas/middleware, rateio/carteira/composta/cartao/ACL;
+  UI direcionada e suite completa da fila, desktop/mobile, build, docs583/19,
+  sintaxe e diff-check aprovados. Sem mudanca de servicos financeiros/rotas.
 
 ## Publicacao DEV: notificacao e reenvio - 2026-10-19
 
