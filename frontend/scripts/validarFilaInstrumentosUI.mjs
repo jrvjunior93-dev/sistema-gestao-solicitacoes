@@ -481,7 +481,7 @@ try {
     await editor.getByLabel('Quantidade de cheques', { exact: true }).fill('2');
     await editor.getByLabel('Origem do cheque 1', { exact: true }).selectOption('PROPRIO');
     await editor.getByLabel('Conta pagadora dos cheques', { exact: true }).selectOption('5');
-    await editor.getByLabel('Valor do cheque 1 (R$)', { exact: true }).fill('326');
+    await editor.getByLabel('Valor do cheque 1 (R$)', { exact: true }).fill('326,00');
     await editor.getByLabel('Numero do cheque *', { exact: true }).fill('BULK-101');
     await editor.getByLabel('Emitente / titular *', { exact: true }).fill('Empresa QA');
     await editor.getByLabel('Origem do cheque 2', { exact: true }).selectOption('CARTEIRA');
@@ -566,7 +566,7 @@ try {
     if (tipo === 'CHEQUE') {
       await editor.getByLabel('Quantidade de cheques', { exact: true }).fill('2');
       await editor.getByLabel('Origem do cheque 1', { exact: true }).selectOption('PROPRIO');
-      await editor.getByLabel('Valor do cheque 1 (R$)', { exact: true }).fill('326');
+      await editor.getByLabel('Valor do cheque 1 (R$)', { exact: true }).fill('326,00');
       await editor.getByLabel('Numero do cheque *', { exact: true }).fill('LOTE-1');
       await editor.getByLabel('Emitente / titular *', { exact: true }).fill('Empresa QA');
       await editor.getByLabel('Origem do cheque 2', { exact: true }).selectOption('CARTEIRA');
@@ -632,7 +632,7 @@ try {
     const parcelas = page.getByRole('dialog', { name: 'Cheques do pagamento de TIT-QA', exact: true });
     await parcelas.waitFor();
     await parcelas.getByLabel('Origem do cheque 1', { exact: true }).selectOption('PROPRIO');
-    await parcelas.getByLabel('Valor do cheque 1 (R$)', { exact: true }).fill('100');
+    await parcelas.getByLabel('Valor do cheque 1 (R$)', { exact: true }).fill('100,00');
     await parcelas.getByLabel('Numero do cheque *', { exact: true }).fill('101');
     await parcelas.getByLabel('Emitente / titular *', { exact: true }).fill('Empresa QA');
     await parcelas.getByLabel('Quantidade de cheques', { exact: true }).fill('4');
@@ -643,7 +643,7 @@ try {
     await parcelas.getByLabel('Origem do cheque 2', { exact: true }).selectOption('CARTEIRA');
     await parcelas.getByLabel('Cheque da carteira 2', { exact: true }).selectOption('77');
     assert.equal(await parcelas.getByLabel('Cheque da carteira 2', { exact: true }).locator('option[value="88"]').count(), 0);
-    assert.equal(await parcelas.getByLabel('Valor do cheque 2 (R$)', { exact: true }).inputValue(), '100');
+    assert.equal((await parcelas.getByLabel('Valor do cheque 2 (R$)', { exact: true }).inputValue()).replace(/\s/g,' '), 'R$ 100,00');
     assert.equal(await parcelas.getByRole('link', { name: 'Abrir carteira para cadastrar', exact: true }).getAttribute('href'), '/financeiro/cheques-terceiros');
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
     await page.screenshot({ path: path.join(root, `../outputs/fila-cheques-parcelas-${width}.png`), fullPage: true });

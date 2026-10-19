@@ -1,5 +1,23 @@
 # Handoff Global
 
+## Publicacao DEV moeda dos cheques - 2026-10-19
+
+- Usuario autorizou commit/push refactor/frontend e comandos DEV; base719 e
+  main9e4 conferidas. Somente BRL/testes/docs, sem backend/migration ou EC2.
+- UI direcionada/build/backend/guardas aprovados novamente, UI completa ja
+  aprovada na implementacao; docs/diff conferidos antes do commit. Ownership
+  liberado. Reutilizar roteiro DEV de datas de cheques pinado no novo SHA,
+  preservando .env/schema/12h/flags e reiniciando apenas backend-dev.
+
+## Moeda brasileira nos cheques - 2026-10-19
+
+- Usuario homologou datas DEV719 e pediu somente BRL nos valores. Campo de
+  cheque proprio/carteira, individual/lote, reutiliza formatters existentes
+  e mantem numero no estado/API; soma em centavos e regras preservadas.
+- QA BRL/datas/payload numerico e UI completa da fila desktop/mobile,
+  build/docs584/19/diff aprovados. Ownership liberado; delta local sem
+  commit/push/backend/migration/main/EC2. Handoff moeda-cheques registrado.
+
 ## Publicacao DEV datas de cheques - 2026-10-19
 
 - Commit/push refactor/frontend e comandos DEV autorizados pelo usuario.

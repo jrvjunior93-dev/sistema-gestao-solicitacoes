@@ -1,5 +1,29 @@
 # Ownership Ativo
 
+## Publicacao DEV moeda dos cheques - 2026-10-19
+
+- Usuario autorizou commit/push do delta BRL para refactor/frontend e comandos
+  DEV. Agente unico; reserva do delta ja validado e registros desta publicacao.
+- Base remota7198d786, main9e4faf4e conferidas. Sem backend/migration/dependencia
+  novos, sem EC2/banco ou producao. Reutilizar roteiro DEV de datas dos cheques
+  com novo SHA pinado; manter guardas/schema/flags/.env e restart so backend-dev.
+- Status: QA UI/build/backend/guardas aprovado; docs/diff conferidos antes do
+  commit. Ownership liberado para publicacao autorizada; outputs e outros
+  worktrees intactos. EC2 somente pelo operador.
+
+## Moeda brasileira nos valores dos cheques - 2026-10-19
+
+- Usuario homologou datas no DEV e pediu apenas formatacao dos campos de valor
+  neste fluxo. Sessao codex-cheques-moeda-20261019, agente unico, base7198d786.
+- Reserva: ChequesParceladosFilaModal.jsx (valor proprio/carteira, lote/individual),
+  datasChequesFilaQA.mjs e validarFilaInstrumentosUI.mjs para mascara/payload;
+  README financeiro, handoff e registros desta sessao nos controles workspace.
+- Reutilizar formatters existentes sem alteracao global. Guardar valor numerico
+  canonico; preservar soma em centavos, somente leitura da carteira, ACL,
+  datas, preservacao apos falha e bloqueio de duplo envio. Quantidade nao e moeda.
+- Sem backend, migration, main/EC2, commit/push ou deploy. QA direcionado e
+  completo da fila, build, docs584/19 e diff-check aprovados. Ownership liberado.
+
 ## Publicacao DEV das datas de cheques - 2026-10-19
 
 - Usuario autorizou commit/push da correcao local para refactor/frontend e

@@ -1,5 +1,22 @@
 # Quadro de Agentes
 
+## Publicacao DEV moeda cheques - 2026-10-19
+
+- Usuario autorizou commit/push para refactor/frontend e comandos DEV. Agente
+  unico, QA finalizado e ownership liberado para publicacao autorizada.
+  Somente BRL/testes/docs, sem backend/migration/main/EC2.
+- Reutilizar roteiro pinado existente de datas dos cheques, guardas antes do
+  merge e .env/schema/12h/flags; operador atualiza DEV e confere moeda/payload.
+
+## Moeda nos cheques - 2026-10-19
+
+- codex-cheques-moeda-20261019, finalizado local, agente unico, baseDEV7198d786.
+  Somente formato BRL no valor dos cheques, mantendo numero em estado/API e
+  todas as regras de soma/carteira/envio. Reutilizar formatadores do Fluxy.
+- Sem backend, EC2, migration, main ou publicacao. QA desktop/mobile e build.
+- Datas/BRL/payload, UI completa da fila/carteira/mutex/ACL, build, docs584/19
+  e diff aprovados. Ownership liberado, delta sem commit/push.
+
 ## Publicacao DEV datas de cheques - 2026-10-19
 
 - Usuario autorizou commit/push para refactor/frontend e roteiro DEV. Agente

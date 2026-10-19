@@ -14,7 +14,18 @@ export async function validarDatasChequesFila(page, root) {
     for (const i of [1,2]) {
       await editor.getByLabel(`Origem do cheque ${i}`,{exact:true}).selectOption('PROPRIO');
       const parte = editor.getByRole('region',{name:`Dados do cheque ${i}`,exact:true});
-      await parte.getByLabel(`Valor do cheque ${i} (R$)`,{exact:true}).fill('213');
+      const valor = parte.getByLabel(`Valor do cheque ${i} (R$)`,{exact:true});
+      assert.equal(await valor.getAttribute('type'),'text');
+      assert.equal(await valor.getAttribute('inputmode'),'decimal');
+      await valor.fill('R$ 1.234,56');
+      assert.equal((await valor.inputValue()).replace(/\s/g,' '),'R$ 1.234,56');
+      await valor.fill('0,01');
+      assert.equal((await valor.inputValue()).replace(/\s/g,' '),'R$ 0,01');
+      await valor.fill('-1,00');
+      assert(/-/.test(await valor.inputValue()) && (await valor.inputValue()).endsWith('1,00'),'Nao converter negativo em valor positivo');
+      await valor.fill(''); assert.equal(await valor.inputValue(),'');
+      await valor.fill('213,00');
+      assert.equal((await valor.inputValue()).replace(/\s/g,' '),'R$ 213,00');
       await parte.getByLabel('Numero do cheque *',{exact:true}).fill(`000${i}`);
       await parte.getByLabel('Emitente / titular *',{exact:true}).fill('Empresa QA');
       const emissao = parte.getByLabel('Data de emissao',{exact:true});
@@ -25,6 +36,8 @@ export async function validarDatasChequesFila(page, root) {
     }
     await editor.getByLabel('Conta pagadora dos cheques',{exact:true}).selectOption('5');
     const segundo = editor.getByRole('region',{name:'Dados do cheque 2',exact:true});
+    await segundo.getByLabel('Valor do cheque 2 (R$)',{exact:true}).scrollIntoViewIfNeeded();
+    await page.screenshot({path:path.join(root,`../outputs/cheques-moeda-${width}.png`)});
     const data2 = segundo.getByLabel('Data de emissao',{exact:true});
     await data2.fill('31/02/2026');
     await data2.blur();
@@ -56,7 +69,7 @@ export async function validarDatasChequesFila(page, root) {
     await massa.getByRole('button',{name:'Informar cheques do lote',exact:true}).click();
     assert.equal(await data2.inputValue(),'19/11/2027');
     assert.equal(await segundo.getByLabel('Numero do cheque *',{exact:true}).inputValue(),'0002');
-    assert.equal(await segundo.getByLabel('Valor do cheque 2 (R$)',{exact:true}).inputValue(),'213');
+    assert.equal((await segundo.getByLabel('Valor do cheque 2 (R$)',{exact:true}).inputValue()).replace(/\s/g,' '),'R$ 213,00');
     assert.equal(await segundo.getByLabel('Emitente / titular *',{exact:true}).inputValue(),'Empresa QA');
     await data2.fill('20/11/2027');
     await page.screenshot({path:path.join(root,`../outputs/cheques-datas-${width}.png`)});
@@ -73,9 +86,10 @@ export async function validarDatasChequesFila(page, root) {
     assert.equal(envios[1].instrumentos_lote.componentes[0].data_emissao,'2026-10-19');
     assert.equal(envios[1].instrumentos_lote.componentes[1].data_vencimento,'2026-11-19');
     assert.equal(envios[1].itens.length,2);
+    assert(envios[1].instrumentos_lote.componentes.every(c=>typeof c.valor_pago==='number' && c.valor_pago===213),'Mascara nao muda valor/soma do payload');
   }
   await page.goto('http://127.0.0.1:5308/qa-fila?massa=1&readonly=1');
   await page.getByText('TIT-MASSA-1',{exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:/Baixa em massa/}).count(),0);
-  console.log('Cheques UI real: DD/MM/AAAA, ano4/edicao segmentada, calendario, erro so no confirmar, preservacao apos falha backend/quantidade, retry sem duplicidade, ACL e 1366/390 aprovados. APIs simuladas.');
+  console.log('Cheques UI real: BRL/milhar/centavos/limpeza/negativo com payload numerico, DD/MM/AAAA, ano4, erro so no confirmar, preservacao apos falha, retry/mutex, ACL e 1366/390 aprovados. APIs simuladas.');
 }

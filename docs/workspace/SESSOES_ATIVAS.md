@@ -1,5 +1,13 @@
 # Sessoes Ativas
 
+- codex-cheques-moeda-20261019-publicacao: QA finalizado, ownership liberado
+  para commit/push DEV autorizado. UI/build/backend/guardas aprovados.
+  Base719/main9e4 preservadas; sem EC2, backend/migration/configuracao novos.
+
+- codex-cheques-moeda-20261019: finalizado local, ajuste visual de BRL nos cheques
+  na base7198d786. Sem backend/main/EC2/DDL/commit/push/deploy. Agente unico.
+  QA UI direcionada/completa, build/docs aprovados; ownership liberado.
+
 - codex-cheques-datas-20261019-publicacao: finalizado local, commit/push DEV agora
   autorizados; novo roteiro/QA com guardas. Main9e4faf4e e EC2 preservadas.
   Ownership liberado para publicar; sem migration ou configuracao alterada.

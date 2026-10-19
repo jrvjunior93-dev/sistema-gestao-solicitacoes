@@ -1,5 +1,12 @@
 # Modulo FINANCEIRO
 
+## Moeda nos cheques - 2026-10-19
+
+- Valor dos cheques no editor individual e de lote usa mascara BRL existente
+  (R$ 1.234,56), com teclado decimal. Estado e payload permanecem numericos;
+  soma em centavos, carteira somente leitura e validacoes atuais preservadas.
+- [Escopo e validacao](../../handoffs/2026-10-19-moeda-cheques.md).
+
 ## Datas dos cheques na baixa - 2026-10-19
 
 - Campos compartilhados de cheque usam DateInputBR com edicao segmentada,
