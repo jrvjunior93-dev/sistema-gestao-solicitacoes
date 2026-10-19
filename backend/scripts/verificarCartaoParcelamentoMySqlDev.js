@@ -29,6 +29,12 @@ async function executar({ conexao, log = console.log }) {
   const [identidade] = await conexao.query('SELECT @@GLOBAL.server_uuid AS uuid, DATABASE() AS banco');
   assert.equal(identidade[0]?.uuid, UUID, 'BANCO_DEV_DIFERENTE');
   assert.equal(identidade[0]?.banco, 'gestao_solicitacoes', 'BANCO_DEV_DIFERENTE');
+  await conferirSchema({ conexao, log });
+  log('MYSQL CARTAO DEV APROVADO. Somente leitura, sem baixa/estorno/configuracao.');
+}
+
+// Reuso apenas de SELECT/EXPLAIN. Cada CLI conserva sua propria guarda de ambiente/UUID.
+async function conferirSchema({ conexao, log = console.log }) {
   await conexao.query('SET SESSION MAX_EXECUTION_TIME = 15000');
   await conexao.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
   await conexao.query('START TRANSACTION READ ONLY');
@@ -84,9 +90,9 @@ async function executar({ conexao, log = console.log }) {
       log(JSON.stringify({ consulta: nome, indice_disponivel: indice, plano: acessos(json) }));
     }
     log(JSON.stringify({ parcelas: resumo, amostra: amostra.length ? 'existente' : 'vazia' }));
-    if (!amostra.length) log('Sem parcelas de teste ainda: schema/SQL aprovados; baixa e estorno exigem homologacao manual DEV.');
+    if (!amostra.length) log('Sem parcelas registradas: validacao de schema/SQL; amostra vazia nao comprova casos operacionais.');
   } finally { await conexao.query('ROLLBACK'); }
-  log('MYSQL CARTAO DEV APROVADO: schema, indices, FKs, consistencia e SELECT/EXPLAIN. Somente leitura, sem baixa/estorno/configuracao.');
+  log('Schema, indices, FKs, consistencia e SELECT/EXPLAIN de cartao conferidos. Somente leitura.');
 }
 
 if (require.main === module) {
@@ -104,4 +110,4 @@ if (require.main === module) {
   })().catch(e => { console.error('MYSQL CARTAO DEV INTERROMPIDO:', e.code || e.name,
     e.name === 'AssertionError' ? e.message : 'Confira ambiente/schema/conectividade DEV; nao compartilhe credenciais.'); process.exitCode = 1; });
 }
-module.exports = { executar, conferirIndices, INDICES, COLUNAS, CONSULTAS };
+module.exports = { executar, conferirSchema, conferirIndices, INDICES, COLUNAS, CONSULTAS };

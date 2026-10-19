@@ -1,9 +1,9 @@
 # Sessoes Ativas
 
-- codex-promocao-financeiro-20261019: em_andamento, integracao isolada de
+- codex-promocao-financeiro-20261019: finalizado local, integracao isolada de
   main ff459840 e DEV db1d2253; backup/timer e homologacao DEV confirmados.
-  Publicacao main aguarda preflight/simulacao de producao pelo operador.
-  Preparacao local validada, ownership liberado; aguardando evidencia EC2.
+  Preflight/simulacao real conferidos, schema alvo sem pendencias. Roteiro
+  sem DDL/regularizacao e QA aprovados; ownership liberado para PR/merge.
 
 - codex-promocao-compra-direta-admissao-main-20261015: integracao validada,
   ownership liberado para PR/merge autorizado. Main1341e1a3/devd72a9c93;

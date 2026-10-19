@@ -6,7 +6,14 @@
   cartao, permuta, multiplas fontes, cancelamento e historico/sobreposicoes.
 - Preflight portatil `backend/scripts/preflightFinanceiroProducao20261019.js`
   confere producao por leitura e executa simulacao das duas solicitacoes em
-  memoria, sem regularizacao automatica. Publicacao main aguarda evidencia EC2.
+  memoria, sem regularizacao automatica. Evidencia EC2 recebida: identidade/TLS,
+  sessao/flags e simulacao conferidos, nenhuma migration pendente no alvo.
+- Roteiro `ops/deploy/atualizar-producao-financeiro-20261019.sh`: SHA fixo,
+  backup/timer, bootstrap antigo, runtime homologado, schema/indices/FKs e
+  consistencia por SELECT/EXPLAIN antes de restart somente producao. Nao aplica
+  migration (ja registrada), nao cancela titulos e preserva .env/PILOT/TLS/12h.
+  `verificarFinanceiroProducao20261019.js --verificar` e exclusivo producao;
+  `verificarCartaoParcelamentoMySqlDev.js` continua exclusivo DEV.
 - [Gates, validacoes e proximo passo](../../handoffs/2026-10-19-preparacao-main-financeiro-sobreposicoes.md).
 
 ## Promocao do historico/remetente para main - 2026-10-18

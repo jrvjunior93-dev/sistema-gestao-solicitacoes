@@ -1,5 +1,20 @@
 # Ownership Ativo
 
+## Publicacao MAIN financeiro apos preflight real - 2026-10-19
+
+- Sessao codex-promocao-financeiro-20261019: em_andamento. Evidencia do
+  operador recebida: UUID produtivo/TLS/PILOT/12h, schema alvo sem pendencias,
+  simulacao em memoria aprovada, nenhum registro alterado (17:15:44 UTC).
+- Reserva: novo verificarFinanceiroProducao20261019.js, roteiro de deploy e
+  teste isolado; extracao somente da verificacao SQL reutilizavel em
+  verificarCartaoParcelamentoMySqlDev.js, mantendo suas guardas DEV intactas;
+  README financeiro, handoff e registros desta promocao no worktree isolado.
+- Nenhum runtime funcional, arquivo do outro agente ou dado real sera alterado.
+  Producao nao precisa reaplicar migration; script deve recusar pendencias.
+- Roteiro/SQL/testes/documentacao concluidos. Guardas DEV/producao, suites
+  integradas, build, sintaxe Bash e diff aprovados. Reserva encerrada e ownership
+  liberado para PR/merge autorizado; EC2/deploy ficam exclusivamente com operador.
+
 ## Preparacao MAIN financeiro e sobreposicoes - 2026-10-19
 
 - Sessao codex-promocao-financeiro-20261019, agente unico, em_andamento.

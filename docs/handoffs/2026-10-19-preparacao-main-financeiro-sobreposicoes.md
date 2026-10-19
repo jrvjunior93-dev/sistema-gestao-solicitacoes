@@ -12,7 +12,8 @@ DEV congelada: db1d2253c7ee12cb6e13cf6e61ad7a40a8154987.
 Delta DEV: permuta/relatorio/mapa de datas (39f368be), multiplas fontes/centros/
 cancelamento (4ffdb9ae), parcelas do cartao (d9f00c5d), sobreposicoes/historico
 do outro agente (db1d2253). Nova migration estrutural unica:
-202610190001_cartao_parcelamento_baixa.js. Pendencia real ainda nao conferida.
+202610190001_cartao_parcelamento_baixa.js. Preflight real posterior confirmou
+nenhuma pendencia no alvo: schema registrado como ja aplicado em producao.
 
 ## Preparacao local
 
@@ -68,14 +69,54 @@ contornar asserts nem flexibilizar a simulacao para obter um resultado positivo.
   recebido. Nenhum fixture privado, dado pessoal ou outputs adicionado ao Git.
 - Sintaxe, documentacao e diff-check aprovados. MySQL real nao acessado.
 
+## Evidencia real recebida e publicacao
+
+Operador executou o arquivo SHA256
+89F7749B70DF41136818D9D78424AC347A55BA926DC1B1320D59337560032AD9, timer
+ativo e checkout ff459840. Corte UTC 2026-10-19 17:15:44, UUID produtivo
+5ed4b970-009f-11f1-809c-0ad0e0c90c53, TLS/JSON/PILOT/12h preservados.
+Main atual sem pendencias e alvo db1d2253 tambem sem pendencias. Nao reaplicar
+DDL com base apenas no delta de arquivos: o banco ja registra a nova migration.
+
+Simulacao em memoria conferida sem mutacoes: SOL-5426 saldo proposto 7055.00;
+SOL-5419 saldo proposto 1876.67, preservando 938.33 liquidados. Zero movimentos
+criados e zero exclusoes. Hash da fonte
+2ac4439976cc38d82f6eff22280e390e38d5b567e745ef2299337295edde4645.
+Identidade comercial e bloqueadores atuais/ACL ainda precisam ser verificados
+na operacao de cancelamento. Nenhuma regularizacao financeira autorizada pelo
+preflight ou executada como efeito da promocao.
+
+Novo roteiro ops/deploy/atualizar-producao-financeiro-20261019.sh recebe SHA
+main e confirmacoes de backup/timer. Faz bootstrap com o verificador ja presente
+na main antiga, compara runtime/lockfiles/migrations com DEV db1d2253 e atualiza
+por fast-forward. Instala lockfile, roda suites isoladas e verifica schema/SQL
+ANTES de restart exclusivo backend-solicitacoes. Qualquer pendencia interrompe;
+nao possui comando de migration nem escrita financeira. Preserva hash do .env,
+PILOT/TLS/12h e ambiente PM2, sem --update-env. DEV nao e reiniciado.
+
+Novo verificarFinanceiroProducao20261019.js confirma identidade/TLS e reusa
+somente SELECT/EXPLAIN/schema/indices/FKs/consistencia de parcelas; nenhum runner
+DDL. Extracao desse verificador em verificarCartaoParcelamentoMySqlDev mantem
+intactas as guardas exclusivas DEV e seu UUID; nao executar a CLI DEV em producao.
+Novo validarDeployFinanceiroProducao20261019.js cobre fixtures com UUID DEV,
+TLS ausente, coluna/indice/FK ausente, soma divergente e erro SQL com rollback,
+alem de bootstrap antigo, .env e processo exclusivo. Suites anteriores DEV e
+producao continuam aprovadas; build e documentacao repetidos com sucesso.
+
+Alias Git remoto do operador fluxyintegracao-dev e origin local jrvjunior93-dev
+conferidos na API com o mesmo repository ID 1148559590; nao sao dois forks.
+Nenhuma URL/credencial foi alterada ou incluida no Git.
+
 ## Proximo passo exato
 
-Aguardar saida do preflight executado pelo usuario na EC2 de producao. Nao
-publicar main nem fornecer comando de aplicacao antes de conferir a evidencia.
-Depois: revisar pendencias reais; preparar roteiro produtivo com allowlist de
-uma migration, identidade antes do merge usando somente arquivos ja presentes
-na main antiga (evitar o bootstrap quebrado do roteiro DEV), testes/schema
-antes de restart, preservar .env/PILOT/TLS/12h e processo backend-dev.
-Criar/atualizar PR de integracao e publicar main somente apos gates aprovados;
-entregar SHA fixo e roteiro ao operador. Tratar regularizacao de SOL-5426 e
-SOL-5419 como operacao separada: nenhum cancelamento automatico no deploy.
+Publicar branch de integracao e tag de recuperacao, abrir PR e concluir merge
+autorizado para main com SHA esperado. Conferir SHA remoto final e entregar
+roteiro fixado nessa versao ao operador. Agente nao acessa EC2/SQL reais nem
+faz deploy. Depois do health, homologar UI e permissao nas telas publicadas;
+nao criar pagamentos ficticios em producao. Regularizacao dos quatro titulos
+continua separada e nao e executada pelo roteiro.
+
+Rollback nunca automatico: schema nao deve sofrer down. Retorno ao codigo
+anterior exige conferir se ja houve baixas com parcelas novas, porque o legado
+nao reconhece essas alocacoes. Preservar dados/historico e planejar compatibilidade
+antes de reverter se a nova funcionalidade ja tiver sido usada.

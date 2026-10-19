@@ -9,7 +9,9 @@
   nao acessa servidor nem executa regularizacao financeira.
   Preparacao local validada; preflight portatil e simulacao em memoria entregues
   ao operador. Proximo passo em 2026-10-19-preparacao-main-financeiro-sobreposicoes.md.
-  Main permanece sem publicacao ate receber a evidencia real. Ownership liberado.
+  Evidencia real recebida e conferida: schema alvo sem pendencias e simulacao
+  sem mutacoes. Roteiro produtivo sem DDL/regularizacao e verificacao SQL aprovados;
+  ownership liberado para PR/merge autorizado. Deploy exclusivamente pelo operador.
 
 ## Promocao main cadastro no pagamento RH - 2026-10-15
 

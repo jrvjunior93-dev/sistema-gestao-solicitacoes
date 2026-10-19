@@ -6,8 +6,9 @@
   ff459840 e incorporar DEV db1d2253; rodar suites integradas/backend/UI/build.
   Preparar preflight de producao somente leitura e simulacao, sem regularizacao
   automatica. Merge/publicacao main aguardam evidencia do operador EC2.
-  Integracao local validada; status: validando. Suites/UI/build/preflight
-  isolado/snapshot aprovados. Ownership liberado; sem publicacao de main.
+  Integracao local validada; status: finalizado. Suites/UI/build/preflight
+  isolado/snapshot e evidencia EC2 aprovados. Schema alvo sem pendencias;
+  roteiro sem DDL/regularizacao aprovado e ownership liberado para PR/merge.
 
 ## Promocao main Compra Direta/admissao - 2026-10-15
 
