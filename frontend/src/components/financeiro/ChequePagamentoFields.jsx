@@ -1,4 +1,5 @@
 import { getCpfCnpjError, maskCpfCnpj } from '../../utils/formatters';
+import DateInputBR from '../DateInputBR';
 
 const fields = [
   ['cheque_numero', 'Numero do cheque', true],
@@ -17,6 +18,7 @@ export default function ChequePagamentoFields({
   title = 'Dados do cheque usado no pagamento',
   description = 'Informe os dados impressos no cheque para manter a baixa identificada e auditavel.',
   compact = false,
+  identificacaoCheque = 'do cheque',
   className = ''
 }) {
   const update = (field, nextValue) => onChange?.(field, nextValue);
@@ -43,7 +45,16 @@ export default function ChequePagamentoFields({
         {fields.map(([field, label, required, type = 'text']) => (
           <label key={field} className="app-filter-field min-w-0">
             <span className="app-filter-label">{label}{required ? ' *' : ''}</span>
-            <input
+            {type === 'date' ? <DateInputBR
+              className={`input w-full ${compact ? 'input-sm' : ''}`}
+              name={field}
+              value={value?.[field] || ''}
+              onChange={event => update(field, event.target.value)}
+              edicaoSegmentada
+              min="1000-01-01" max="9999-12-31"
+              rotuloErro={`${field === 'data_emissao' ? 'Data de emissão' : 'Data de vencimento / compensação'} ${identificacaoCheque}`}
+              required={Boolean(required)}
+            /> : <input
               className={`input w-full ${compact ? 'input-sm' : ''}`}
               type={type}
               value={field === 'titular_documento' ? maskCpfCnpj(value?.[field]) : (value?.[field] || '')}
@@ -52,7 +63,7 @@ export default function ChequePagamentoFields({
               maxLength={field === 'titular_documento' ? 18 : undefined}
               required={Boolean(required)}
               autoComplete="off"
-            />
+            />}
           </label>
         ))}
       </div>

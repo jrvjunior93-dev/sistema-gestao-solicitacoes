@@ -63,7 +63,7 @@ export function dataISOParaBR(valor) {
  * perderiam a trava em silencio ao migrar.
  */
 export default function DateInputBR({ name, value, onChange, className = '', min, max,
-  chaveWorkspace, revisaoWorkspace = 0, edicaoSegmentada = false, ...props }) {
+  chaveWorkspace, revisaoWorkspace = 0, edicaoSegmentada = false, rotuloErro, ...props }) {
   // Opt-in: somente texto digitado + ISO correspondente, nunca DTO/data do
   // servidor como autoridade. Revisao permite limpar inclusive um parcial
   // cujo ISO externo ja era vazio (sucesso/descarte explicito).
@@ -78,11 +78,12 @@ export default function DateInputBR({ name, value, onChange, className = '', min
 
   function problemaDoTexto(atual) {
     if (!atual) return '';
-    if (atual.length < 10) return 'Informe uma data válida no formato DD/MM/AAAA.';
+    const prefixo = rotuloErro ? `${rotuloErro}: ` : '';
+    if (atual.length < 10) return `${prefixo}Informe uma data válida no formato DD/MM/AAAA.`;
     const iso = dataBRParaISO(atual);
-    if (!iso) return 'Informe uma data válida no formato DD/MM/AAAA.';
-    if (min && iso < String(min)) return `A data não pode ser anterior a ${dataISOParaBR(min)}.`;
-    if (max && iso > String(max)) return `A data não pode ser posterior a ${dataISOParaBR(max)}.`;
+    if (!iso) return `${prefixo}Informe uma data válida no formato DD/MM/AAAA.`;
+    if (min && iso < String(min)) return `${prefixo}A data não pode ser anterior a ${dataISOParaBR(min)}.`;
+    if (max && iso > String(max)) return `${prefixo}A data não pode ser posterior a ${dataISOParaBR(max)}.`;
     return '';
   }
 

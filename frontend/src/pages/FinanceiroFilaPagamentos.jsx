@@ -268,6 +268,10 @@ function orientarErroRegistroBaixa(error) {
     || 'O sistema não conseguiu concluir o registro da baixa.';
   const normalizada = mensagem.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
+  if (normalizada.includes('cheque') && /data|emissao|vencimento|compensacao/.test(normalizada)) {
+    return { mensagem, correcao: 'Abra os dados dos cheques e corrija a data indicada. Os demais dados preenchidos foram mantidos.', campo: 'forma_pagamento_id' };
+  }
+
   if (normalizada.includes('data da baixa')) {
     return { mensagem, correcao: 'Preencha uma data válida na coluna Data da baixa e tente novamente.', campo: 'data_baixa' };
   }
@@ -1042,7 +1046,7 @@ export default function FinanceiroFilaPagamentos() {
     if (settleLockRef.current || actionKey || loading || !filaAutorizada) return;
     settleLockRef.current = true;
     setActionKey('conferencia');
-    try { await callback(); }
+    try { return await callback(); }
     finally { settleLockRef.current = false; setActionKey(''); }
   }
 
@@ -1069,12 +1073,13 @@ export default function FinanceiroFilaPagamentos() {
     });
   }
 
-  async function performSettle(targetRows, dados = draftsRef.current, instrumentosLote = null) {
+  async function performSettle(targetRows, dados = draftsRef.current, instrumentosLote = null, preservarModal = false) {
     const atuais = await conferirSelecao(targetRows.map(row => Number(row.id)));
     if (!atuais) return;
     targetRows = atuais;
     const problem = validateRows(targetRows, dados, instrumentosLote);
     if (problem) {
+      if (preservarModal) return `${problem.mensagem} ${problem.correcao}`;
       setBaixaMassa(null);
       setErroBaixa({ ...problem, lote: targetRows.length > 1 });
       return;
@@ -1110,6 +1115,7 @@ export default function FinanceiroFilaPagamentos() {
       await load();
     } catch (error) {
       const detalhe = orientarErroRegistroBaixa(error);
+      if (preservarModal) return `${detalhe.mensagem} ${detalhe.correcao}`;
       setBaixaMassa(null);
       const linhaRelacionada = targetRows.find((row) => {
         const codigo = String(row.titulo?.codigo || '').trim();
@@ -1781,8 +1787,7 @@ export default function FinanceiroFilaPagamentos() {
           if (problema) return `${atuais.find(row => row.id === problema.filaId)?.titulo?.codigo || ''}: ${problema.mensagem} ${problema.correcao}`;
           atuais.forEach(row => updateDraft(row.id, { ...patch.pagamentos[row.id],
             conta_bancaria_id: patch.conta_bancaria_id, data_baixa: patch.data_baixa }));
-          await executarOperacao(() => performSettle(atuais, dados, patch.instrumentos_lote));
-          return null;
+          return executarOperacao(() => performSettle(atuais, dados, patch.instrumentos_lote, true));
         }} />}
       {comprovanteLote && canSettle && filaAutorizada && <OverlayModal rotulo="Anexar mesmo comprovante" largura="660px" onFechar={busy ? undefined : () => setComprovanteLote(null)}>
         <div className="p-4 space-y-4">

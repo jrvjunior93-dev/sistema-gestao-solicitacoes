@@ -10,6 +10,7 @@ const {
 } = require('../constants/categoriaFinanceiraGerencial');
 const { onlyDigits, isValidCpfCnpj } = require('../utils/cpfCnpj');
 const { STATUS_TITULO_FILTROS_CALCULADOS } = require('../utils/tituloFinanceiroStatusFilter');
+const { parseChequeDate } = require('./chequeDataValidator');
 
 const CATEGORIAS_BEM = ['VEICULO', 'IMOVEL', 'TERRENO', 'SERVICO', 'MATERIAL', 'CREDITO', 'OUTROS'];
 const FORMAS_COBRANCA = ['BOLETO', 'PIX', 'OUTROS'];
@@ -1685,8 +1686,8 @@ function validateFinanceTituloBaixaBody(body = {}) {
     cheque_agencia: parseOptionalText(body.cheque_agencia, 'Agencia do cheque', 40),
     cheque_conta: parseOptionalText(body.cheque_conta, 'Conta do cheque', 60),
     titular_documento: parseOptionalCpfCnpj(body.titular_documento, 'CPF/CNPJ do titular do cheque'),
-    data_emissao: parseDateOnly(body.data_emissao, 'Data de emissao do cheque'),
-    data_vencimento: parseDateOnly(body.data_vencimento, 'Data de vencimento do cheque'),
+    data_emissao: parseChequeDate(body.data_emissao, 'Data de emissão do cheque'),
+    data_vencimento: parseChequeDate(body.data_vencimento, 'Data de vencimento / compensação do cheque'),
     intercompany: parseBoolean(body.intercompany, 'Entre Empresas'),
     natureza_intercompany_baixa: parseEnum(body.natureza_intercompany_baixa, 'Natureza da baixa entre empresas', NATUREZAS_INTERCOMPANY_BAIXA),
     tipo_intercompany: parseEnum(body.tipo_intercompany, 'Tipo', TIPOS_INTERCOMPANY),
@@ -1792,8 +1793,8 @@ function validateFinanceTituloBaixaParceladaBody(body = {}) {
       cheque_agencia: parseOptionalText(item?.cheque_agencia, `Agencia do cheque da parcela ${index + 1}`, 40),
       cheque_conta: parseOptionalText(item?.cheque_conta, `Conta do cheque da parcela ${index + 1}`, 60),
       titular_documento: parseOptionalCpfCnpj(item?.titular_documento, `CPF/CNPJ do titular do cheque da parcela ${index + 1}`),
-      data_emissao: parseDateOnly(item?.data_emissao, `Data de emissao do cheque da parcela ${index + 1}`),
-      data_vencimento: parseDateOnly(item?.data_vencimento, `Data de vencimento do cheque da parcela ${index + 1}`),
+      data_emissao: parseChequeDate(item?.data_emissao, `Data de emissão do cheque da parcela ${index + 1}`),
+      data_vencimento: parseChequeDate(item?.data_vencimento, `Data de vencimento / compensação do cheque da parcela ${index + 1}`),
       usar_cheque_terceiro: usarChequeTerceiro,
       cheque_terceiro_id: chequeTerceiroId
     };

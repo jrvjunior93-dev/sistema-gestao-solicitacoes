@@ -13,6 +13,7 @@ import { validarDadosPagamentoFila } from './filaDadosPagamentoQA.mjs';
 import { validarFiltrosDpFila } from './filaFiltrosDpQA.mjs';
 import { validarPaginacaoFila } from './filaPaginacaoQA.mjs';
 import { validarRolagemFila } from './filaRolagemQA.mjs';
+import { validarDatasChequesFila } from './datasChequesFilaQA.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const stub = '\0qa-fila-instrumentos-';
 const forms = [
@@ -100,7 +101,7 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
       };
       export const getContasFilaPagamentos=async()=>[{id:5,nome:'Conta QA',ativo:true,empresa_id:1},{id:6,nome:'Outra conta',ativo:true,empresa_id:2}];
       export const getInstrumentosFilaPagamentos=async()=>({formas:${JSON.stringify(forms)},cartoes:[{id:10,nome:'Crédito QA',tipo:'CREDITO',conta_bancaria_id:5,dia_fechamento:15,dia_vencimento:25},{id:11,nome:'Crédito outra conta',tipo:'CREDITO',conta_bancaria_id:6,dia_fechamento:15,dia_vencimento:25},{id:20,nome:'Débito QA',tipo:'DEBITO',conta_bancaria_id:5}],cheques:[{id:77,codigo:'CH-QA',numero_cheque:'007',titular_nome:'Cliente QA',valor:new URLSearchParams(location.search).has('parcelas')?100:200,empresa_id:1},{id:88,codigo:'CH-OUTRA',valor:200,empresa_id:2},{id:89,codigo:'CH-LOTE',valor:426,empresa_id:2,empresa:{id:2,nome:'Empresa carteira QA',ativo:true}},{id:90,codigo:'CH-LEGADO',valor:426,empresa_id:null}]});
-      export const registrarBaixasFilaPagamentos=async(itens,key,instrumentos_lote)=>{window.__settles.push({itens,key,instrumentos_lote});if(window.__receiptScenario)window.__paid=true;return{baixados:1,divergentes:0,pendentes_comprovante:window.__receiptScenario?1:0}};
+      export const registrarBaixasFilaPagamentos=async(itens,key,instrumentos_lote)=>{window.__settles.push({itens,key,instrumentos_lote});if(window.__settleError)throw Error(window.__settleError);if(window.__receiptScenario)window.__paid=true;return{baixados:1,divergentes:0,pendentes_comprovante:window.__receiptScenario?1:0}};
       export const anexarComprovanteFilaPagamento=async()=>{window.__uploads++;window.__receipt=true};
       export const anexarComprovanteFilaPagamentoLote=async(ids,file)=>{window.__sharedCalls=(window.__sharedCalls||0)+1;await new Promise(r=>setTimeout(r,150));window.__shared={ids,name:file.name};return {quantidade:ids.length,criados:ids.length}};
       export const getArquivosSolicitacaoFila=async()=>new URLSearchParams(location.search).has('arquivos')
@@ -131,7 +132,10 @@ try {
     if (new URL(route.request().url()).origin === 'http://127.0.0.1:5308') return route.continue();
     unexpected.push(route.request().url()); return route.abort();
   });
-  if (process.argv.includes('--boletos-pedido')) {
+  if (process.argv.includes('--datas-cheques')) {
+    await validarDatasChequesFila(page,root);
+    assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
+  } else if (process.argv.includes('--boletos-pedido')) {
     for (const width of [1366,390]) {
       await page.setViewportSize({width,height:900});
       await page.goto('http://127.0.0.1:5308/qa-fila?arquivos=1');
@@ -477,7 +481,7 @@ try {
     await editor.getByLabel('Quantidade de cheques', { exact: true }).fill('2');
     await editor.getByLabel('Origem do cheque 1', { exact: true }).selectOption('PROPRIO');
     await editor.getByLabel('Conta pagadora dos cheques', { exact: true }).selectOption('5');
-    await editor.getByLabel('Valor do cheque 1 (R$)', { exact: true }).fill('326');
+    await editor.getByLabel('Valor do cheque 1 (R$)', { exact: true }).fill('326,00');
     await editor.getByLabel('Numero do cheque *', { exact: true }).fill('BULK-101');
     await editor.getByLabel('Emitente / titular *', { exact: true }).fill('Empresa QA');
     await editor.getByLabel('Origem do cheque 2', { exact: true }).selectOption('CARTEIRA');
@@ -562,7 +566,7 @@ try {
     if (tipo === 'CHEQUE') {
       await editor.getByLabel('Quantidade de cheques', { exact: true }).fill('2');
       await editor.getByLabel('Origem do cheque 1', { exact: true }).selectOption('PROPRIO');
-      await editor.getByLabel('Valor do cheque 1 (R$)', { exact: true }).fill('326');
+      await editor.getByLabel('Valor do cheque 1 (R$)', { exact: true }).fill('326,00');
       await editor.getByLabel('Numero do cheque *', { exact: true }).fill('LOTE-1');
       await editor.getByLabel('Emitente / titular *', { exact: true }).fill('Empresa QA');
       await editor.getByLabel('Origem do cheque 2', { exact: true }).selectOption('CARTEIRA');
@@ -628,7 +632,7 @@ try {
     const parcelas = page.getByRole('dialog', { name: 'Cheques do pagamento de TIT-QA', exact: true });
     await parcelas.waitFor();
     await parcelas.getByLabel('Origem do cheque 1', { exact: true }).selectOption('PROPRIO');
-    await parcelas.getByLabel('Valor do cheque 1 (R$)', { exact: true }).fill('100');
+    await parcelas.getByLabel('Valor do cheque 1 (R$)', { exact: true }).fill('100,00');
     await parcelas.getByLabel('Numero do cheque *', { exact: true }).fill('101');
     await parcelas.getByLabel('Emitente / titular *', { exact: true }).fill('Empresa QA');
     await parcelas.getByLabel('Quantidade de cheques', { exact: true }).fill('4');
@@ -639,7 +643,7 @@ try {
     await parcelas.getByLabel('Origem do cheque 2', { exact: true }).selectOption('CARTEIRA');
     await parcelas.getByLabel('Cheque da carteira 2', { exact: true }).selectOption('77');
     assert.equal(await parcelas.getByLabel('Cheque da carteira 2', { exact: true }).locator('option[value="88"]').count(), 0);
-    assert.equal(await parcelas.getByLabel('Valor do cheque 2 (R$)', { exact: true }).inputValue(), '100');
+    assert.equal((await parcelas.getByLabel('Valor do cheque 2 (R$)', { exact: true }).inputValue()).replace(/\s/g,' '), 'R$ 100,00');
     assert.equal(await parcelas.getByRole('link', { name: 'Abrir carteira para cadastrar', exact: true }).getAttribute('href'), '/financeiro/cheques-terceiros');
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
     await page.screenshot({ path: path.join(root, `../outputs/fila-cheques-parcelas-${width}.png`), fullPage: true });

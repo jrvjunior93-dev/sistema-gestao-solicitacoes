@@ -2,6 +2,7 @@ import OverlayModal from '../ui/OverlayModal';
 import ChequePagamentoFields from './ChequePagamentoFields';
 import { Link } from 'react-router-dom';
 import { useRef, useState } from 'react';
+import { formatCurrencyInput, normalizeCurrencyTyping, parseCurrencyInput } from '../../utils/formatters';
 
 const origemCheque = item => item.origem_cheque ||
   (item.usar_cheque_terceiro || item.cheque_terceiro_id ? 'CARTEIRA' : item.cheque_numero ? 'PROPRIO' : '');
@@ -89,8 +90,14 @@ export default function ChequesParceladosFilaModal({ label, parcelas, onChange, 
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label className="text-sm">Valor do cheque {index + 1} (R$)
-              <input required readOnly={Boolean(item.usar_cheque_terceiro)} className="input w-full text-right" type="number" min="0.01" step="0.01" value={item.valor_pago || ''}
-                onChange={event => alterar(index, { valor_pago: event.target.value })} />
+              <input required readOnly={Boolean(item.usar_cheque_terceiro)} className="input w-full text-right" type="text" inputMode="decimal"
+                value={formatCurrencyInput(item.valor_pago, { emptyZero: false })}
+                onFocus={event => { if (!item.usar_cheque_terceiro) event.target.select(); }}
+                onChange={event => {
+                  const texto = normalizeCurrencyTyping(event.target.value);
+                  const numero = parseCurrencyInput(texto);
+                  alterar(index, { valor_pago: texto ? (event.target.value.includes('-') ? -numero : numero) : '' });
+                }} />
             </label>
             <label className="text-sm">Origem do cheque {index + 1}
               <select aria-label={`Origem do cheque ${index + 1}`} required className="input w-full" value={origemCheque(item)}
@@ -121,7 +128,8 @@ export default function ChequesParceladosFilaModal({ label, parcelas, onChange, 
                   </select>
                 </label>;
             })()}
-          </div> : origemCheque(item) === 'PROPRIO' && <ChequePagamentoFields compact value={item} onChange={(key, value) => alterar(index, { [key]: value })} />}
+          </div> : origemCheque(item) === 'PROPRIO' && <ChequePagamentoFields compact value={item}
+            identificacaoCheque={`do cheque ${index + 1}`} onChange={(key, value) => alterar(index, { [key]: value })} />}
         </section>)}
       </fieldset>
       <p className="text-xs text-[var(--c-muted)]">Cheques de terceiros precisam estar cadastrados e disponíveis na carteira. O valor de cada um deve ser usado integralmente.

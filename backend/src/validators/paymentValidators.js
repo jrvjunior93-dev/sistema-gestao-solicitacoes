@@ -1,6 +1,7 @@
 const { ensureAllowedKeys, sanitizeString, ValidationError } = require('../middlewares/validation');
 const { onlyDigits, isValidCnpj, isValidCpfCnpj, isValidPixDocument } = require('../utils/cpfCnpj');
 const { PIX_TIPOS_CHAVE, PIX_TEXTO_MAX } = require('../utils/pix');
+const { parseChequeDate } = require('./chequeDataValidator');
 
 function isBlank(value) {
   return value == null || String(value).trim() === '';
@@ -278,8 +279,8 @@ function validateManualPaymentQueueProcessBody(payload = {}) {
       cheque_banco: parseOptionalText(item.cheque_banco, 'Banco', 120),
       cheque_agencia: parseOptionalText(item.cheque_agencia, 'Agencia', 40),
       cheque_conta: parseOptionalText(item.cheque_conta, 'Conta do cheque', 60),
-      data_emissao: parseDateOnly(item.data_emissao, 'Emissao do cheque'),
-      data_vencimento: parseDateOnly(item.data_vencimento, 'Vencimento do cheque'),
+      data_emissao: parseChequeDate(item.data_emissao, `Data de emissão do cheque do item ${index + 1}`),
+      data_vencimento: parseChequeDate(item.data_vencimento, `Data de vencimento / compensação do cheque do item ${index + 1}`),
       data_baixa: parseDateOnly(item.data_baixa, `Data da baixa do item ${index + 1}`, { required: true }),
       conta_bancaria_id: parseInteger(item.conta_bancaria_id, `Conta pagadora do item ${index + 1}`, { required: !somenteCarteira && !item.forma_pagamento_id }),
       valor_pago: parseDecimal(item.valor_pago, `Valor pago do item ${index + 1}`, { required: true, min: 0.01 }),
@@ -338,6 +339,9 @@ function validarParcelasChequeFila(parcelas, compartilhado = false) {
       'cheque_numero', 'cheque_emitente', 'titular_documento', 'cheque_banco', 'cheque_agencia',
       'cheque_conta', 'data_emissao', 'data_vencimento', ...(compartilhado ? ['empresa_id'] : [])], `Cheque ${index + 1}`);
     const { empresa_id, ...instrumento } = parcela;
+    // Identifica a posicao real do cheque antes da validacao recursiva do item.
+    parseChequeDate(instrumento.data_emissao, `Data de emissão do cheque ${index + 1}`);
+    parseChequeDate(instrumento.data_vencimento, `Data de vencimento / compensação do cheque ${index + 1}`);
     if (empresa_id != null && !parseBoolean(parcela.usar_cheque_terceiro)) throw new ValidationError('Empresa explicita somente para cheque da carteira.');
     const normalizado = validateManualPaymentQueueProcessBody({ itens: [{ ...instrumento,
       fila_id: 1, data_baixa: '2000-01-01', conta_bancaria_id: 1 }] }).itens[0];

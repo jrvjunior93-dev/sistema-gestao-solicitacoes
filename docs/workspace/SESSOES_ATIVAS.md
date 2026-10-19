@@ -1,5 +1,11 @@
 # Sessoes Ativas
 
+- codex-promocao-cheques-main-20261019: finalizado local, agente unico, homologacao
+  DEV719/e01 confirmada. Integrar main9e4 sem perder guardas/historicos.
+  Sem EC2/banco/DDL ou alteracao do DEV; backup/timer confirmado pelo usuario.
+  Backend/guardas/UI/build/docs590/19/sintaxe/diff aprovados, ownership liberado
+  para commit/PR/merge autorizado; bundle main anterior privado conferido.
+
 - codex-promocao-reenvio-main-20261019: finalizado local em branch isolada reutilizada;
   main72 + DEV139 homologado. Reserva roteiro/QA/prontidao/handoff e registros.
   Sem EC2, schema ou configuracoes alterados; backup/timer confirmados.
@@ -15,6 +21,23 @@
   Simulacao real conferida; inventario inicial de schema alvo invalidado, lista
   vazia por cwd. Pendencia 202610190001 confirmada depois pelo operador. Roteiro
   sem DDL/regularizacao e QA aprovados; ownership liberado para PR/merge.
+
+- codex-cheques-moeda-20261019-publicacao: QA finalizado, ownership liberado
+  para commit/push DEV autorizado. UI/build/backend/guardas aprovados.
+  Base719/main9e4 preservadas; sem EC2, backend/migration/configuracao novos.
+
+- codex-cheques-moeda-20261019: finalizado local, ajuste visual de BRL nos cheques
+  na base7198d786. Sem backend/main/EC2/DDL/commit/push/deploy. Agente unico.
+  QA UI direcionada/completa, build/docs aprovados; ownership liberado.
+
+- codex-cheques-datas-20261019-publicacao: finalizado local, commit/push DEV agora
+  autorizados; novo roteiro/QA com guardas. Main9e4faf4e e EC2 preservadas.
+  Ownership liberado para publicar; sem migration ou configuracao alterada.
+
+- codex-cheques-datas-20261019: finalizado local, agente unico na base DEV139;
+  reserva datas/erros dos cheques e preservacao do modal em erro, testes e docs.
+  Sem avisos preventivos, mudanca de permissao, main/EC2/DDL/publicacao.
+  QA backend/UI completa/build/docs aprovados; ownership liberado e handoff salvo.
 
 - codex-autorizacao-reenvio-20261019: finalizado local. Producao72 concluida pelo
   operador; novo alerta de falha de envio e botao de reenvio na base DEV,
