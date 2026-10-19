@@ -1,5 +1,17 @@
 # Ownership Ativo
 
+## Promocao notificacoes/reenvio para main - 2026-10-19
+
+- Sessao codex-promocao-reenvio-main-20261019, agente unico. Usuario homologou
+  DEV1393a446 e autorizou promover somente notificacoes/reenvio para main72e628e8.
+- Reserva: novos roteiro atualizar-producao-autorizacao-reenvio-20261019.sh,
+  verificador de prontidao produtivo somente leitura e teste isolado; handoff,
+  README financeiro e registros desta sessao nos quatro controles workspace.
+- Integrar historicos preservando runtime homologado e guardas produtivas.
+  Sem migration nova, EC2/SSH, SQL/push real, .env ou DEV pelo agente.
+- Backup recente/timer solicitados ao operador antes da publicacao produtiva.
+  Status: em_andamento. Nao editar arquivos de outros worktrees/agentes.
+
 ## Correcao do deploy financeiro interrompido - 2026-10-19
 
 - Reserva agente desta conversa, sem delegacao: preflightFinanceiroProducao20261019

@@ -1,5 +1,9 @@
 # Sessoes Ativas
 
+- codex-promocao-reenvio-main-20261019: em_andamento em branch isolada reutilizada;
+  main72 + DEV139 homologado. Reserva roteiro/QA/prontidao/handoff e registros.
+  Sem EC2, schema ou configuracoes alterados; backup/timer a confirmar.
+
 - codex-correcao-deploy-financeiro-20261019: finalizado local, agente unico, worktree
   isolado da promocao. Corrige inventario Git/cwd e retoma migration unica
   202610190001 confirmada pelo operador; sem runtime/DEV/regularizacao.

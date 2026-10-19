@@ -1,5 +1,13 @@
 # Quadro de Agentes
 
+## Promocao notificacoes/reenvio main - 2026-10-19
+
+- Sessao codex-promocao-reenvio-main-20261019, em_andamento, agente unico.
+- Integrar DEV1393a446 homologado com main72e628e8; preservar ambos os historicos.
+  Preparar deploy sem DDL, guardas produtivas antes/depois, teste de leitura
+  de prontidao, suites e build. Publicacao apos conferir backup/timer.
+- Sem EC2/SSH, banco/push real, alteracao de DEV ou configuracoes pelo agente.
+
 ## Retomada migration cartao MAIN - 2026-10-19
 
 - Sessao codex-correcao-deploy-financeiro-20261019: finalizado local, sem delegacao.
