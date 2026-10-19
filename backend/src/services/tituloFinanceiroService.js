@@ -3694,6 +3694,7 @@ async function criarTituloManualComBaixaAtomica(req, payload = {}, { transaction
   }
 
   const formaRecebimento = exigirFormaRecebimentoBaixa(payload.forma_recebimento);
+  if (formaRecebimento==='PERMUTA'||payload.tipo_permuta) await require('./permutaOperacionalDomain').validarBaixaPermuta(req,payload,formaRecebimento);
   const ownTransaction = !externalTransaction;
   const transaction = externalTransaction || await sequelize.transaction();
 
@@ -3963,6 +3964,7 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
 
   const formaBaixa = await resolverFormaPagamentoBaixa(payload);
   const formaRecebimento = formaBaixa.formaRecebimento;
+  if (formaRecebimento==='PERMUTA'||payload.tipo_permuta || /\bPERMUTA\b/i.test([formaBaixa.formaPagamento?.tipo,formaBaixa.formaPagamento?.codigo,formaBaixa.formaPagamento?.nome].join(' '))) await require('./permutaOperacionalDomain').validarBaixaPermuta(req,payload,formaRecebimento,formaBaixa.formaPagamento);
   const conta = await validarContaBancaria(payload.conta_bancaria_id);
   const empresaBaixaId = await validarEmpresaBaixa({
     empresaId: payload.empresa_id,
@@ -4082,6 +4084,9 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
       criado_por: req.user?.id || null
     }, { transaction });
 
+    if (formaMovimento==='PERMUTA') await SecurityEventLog.create({usuario_id:req.user?.id||null,
+      tipo_evento:'FINANCIAL_PERMUTA_SETTLED',recurso_tipo:'MOVIMENTO_FINANCEIRO',recurso_id:String(movimento.id),
+      status:'SUCCESS',descricao:'Permuta registrada na baixa',metadata:{titulo_id:titulo.id,valor:valorQuitacao,empresa_id:empresaBaixaId}}, {transaction});
     if (isChequeFormaRecebimento(formaMovimento)) {
       const tipoTitulo = getTituloTipo(titulo);
       if (tipoTitulo === 'RECEBER') {

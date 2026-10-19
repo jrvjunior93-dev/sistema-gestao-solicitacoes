@@ -253,12 +253,18 @@ function validateManualPaymentQueueProcessBody(payload = {}) {
     ensureAllowedKeys(item, ['fila_id', 'data_baixa', 'conta_bancaria_id', 'valor_pago', 'desconto', 'juros', 'multa', 'motivo',
       'forma_pagamento_id', 'cartao_id', 'usar_cheque_terceiro', 'cheque_terceiro_id',
       'cheque_numero', 'cheque_emitente', 'titular_documento', 'cheque_banco', 'cheque_agencia',
-      'cheque_conta', 'data_emissao', 'data_vencimento', 'parcelas_cheque', 'parcelas_cartao'], `Item ${index + 1}`);
+      'cheque_conta', 'data_emissao', 'data_vencimento', 'parcelas_cheque', 'parcelas_cartao',
+      'valor_permuta','empresa_permuta_id','documento_referencia','categoria_bem','descricao_bem'], `Item ${index + 1}`);
     const filaId = parseInteger(item.fila_id, `Item ${index + 1}`, { required: true });
     if (ids.has(filaId)) throw new ValidationError(`O item ${filaId} foi informado mais de uma vez.`);
     ids.add(filaId);
     return cleanUndefined({
       fila_id: filaId,
+      valor_permuta:parseDecimal(item.valor_permuta,'Valor em permuta',{min:0}),
+      empresa_permuta_id:parseInteger(item.empresa_permuta_id,'Empresa da permuta'),
+      documento_referencia:parseOptionalText(item.documento_referencia,'Documento de referencia',120),
+      categoria_bem:parseEnum(item.categoria_bem,'Categoria da permuta',['VEICULO','IMOVEL','TERRENO','SERVICO','MATERIAL','CREDITO','OUTROS']),
+      descricao_bem:parseOptionalText(item.descricao_bem,'Descricao da permuta',255),
       parcelas_cheque: item.parcelas_cheque == null ? undefined : validarParcelasChequeFila(item.parcelas_cheque),
       parcelas_cartao: item.parcelas_cartao == null ? undefined : validarCartoesFila(item.parcelas_cartao),
       forma_pagamento_id: parseInteger(item.forma_pagamento_id, 'Forma de pagamento'),
@@ -274,7 +280,7 @@ function validateManualPaymentQueueProcessBody(payload = {}) {
       data_emissao: parseDateOnly(item.data_emissao, 'Emissao do cheque'),
       data_vencimento: parseDateOnly(item.data_vencimento, 'Vencimento do cheque'),
       data_baixa: parseDateOnly(item.data_baixa, `Data da baixa do item ${index + 1}`, { required: true }),
-      conta_bancaria_id: parseInteger(item.conta_bancaria_id, `Conta pagadora do item ${index + 1}`, { required: !somenteCarteira }),
+      conta_bancaria_id: parseInteger(item.conta_bancaria_id, `Conta pagadora do item ${index + 1}`, { required: !somenteCarteira && !item.forma_pagamento_id }),
       valor_pago: parseDecimal(item.valor_pago, `Valor pago do item ${index + 1}`, { required: true, min: 0.01 }),
       juros: parseDecimal(item.juros, `Juros do item ${index + 1}`, { min: 0 }),
       multa: parseDecimal(item.multa, `Multa do item ${index + 1}`, { min: 0 }),
@@ -289,6 +295,7 @@ function validateManualPaymentQueueProcessBody(payload = {}) {
   if (instrumentos && itens.some(item => item.parcelas_cheque || item.parcelas_cartao || item.cartao_id
     || item.cheque_numero || item.cheque_terceiro_id || item.usar_cheque_terceiro)) throw new ValidationError('Instrumentos do lote nao podem ser misturados com instrumentos individuais.');
   if ((instrumentos || itens.some(item => item.parcelas_cartao)) && isBlank(payload.idempotency_key)) throw new ValidationError('Chave de idempotencia obrigatoria para liquidacao compartilhada.');
+  if (itens.some(item=>Number(item.valor_permuta)) && isBlank(payload.idempotency_key)) throw new ValidationError('Chave de idempotencia obrigatoria para compor permuta.');
   if (instrumentos && itens.some(item => item.forma_pagamento_id && item.forma_pagamento_id !== instrumentos.forma_pagamento_id)) throw new ValidationError('Forma individual diferente da forma do lote.');
   return cleanUndefined({
     itens,

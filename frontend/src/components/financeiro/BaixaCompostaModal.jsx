@@ -8,6 +8,8 @@ import { confirmarBaixaFinanceiraComposta, previewBaixaFinanceiraComposta } from
 import { TabelaPadrao } from '../padrao';
 import ChequePagamentoFields from './ChequePagamentoFields';
 import DateInputBR from '../DateInputBR';
+import {useAuth} from '../../contexts/AuthContext';
+import {podePermuta,ehPermuta} from '../../utils/permuta';
 
 function round(value) { return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100; }
 function money(value) { return Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
@@ -90,8 +92,10 @@ function redistributeComponents(components, titulos) {
 }
 
 export default function BaixaCompostaModal({
-  titulos = EMPTY_LIST, formas = EMPTY_LIST, contas = EMPTY_LIST, cartoes = EMPTY_LIST, cheques = EMPTY_LIST, ready = true, eligible = true, onClose, onConfirmed
+  titulos = EMPTY_LIST, formas:formasOriginais = EMPTY_LIST, contas = EMPTY_LIST, cartoes = EMPTY_LIST, cheques = EMPTY_LIST, ready = true, eligible = true, onClose, onConfirmed
 }) {
+  const {user}=useAuth();
+  const formas=useMemo(()=>formasOriginais.filter(f=>!ehPermuta(f)||podePermuta(user)),[formasOriginais,user]);
   const orderedTitles = useMemo(() => [...titulos].sort(compareOldestTitle), [titulos]);
   const titleType = String(orderedTitles[0]?.tipo || '').toUpperCase();
   const isReceivable = titleType === 'RECEBER';

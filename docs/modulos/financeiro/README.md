@@ -1,5 +1,20 @@
 # Modulo FINANCEIRO
 
+## Permutas realizadas: operacao e relatorio - 2026-10-18
+
+- Primeira etapa confirmada pelo usuario: registrar valores de permuta nas
+  baixas, sem limite/saldo de acordo e sem exigir recebimentos anteriores.
+  Nenhuma migration ou seed; legado preservado, inclusive BENS/tipo_permuta.
+- Cadastro da forma, uso na baixa e relatorio separados pelas granulares
+  `financeiro.permutas.cadastrar`, `financeiro.permutas.usar` e
+  `financeiro.permutas.relatorio`.
+  Exigem os acessos financeiros atuais; nao ampliam escopo de obras.
+- Na fila, PERMUTA integral sem conta; composicao monetaria informa o total
+  pago e a parte em permuta. Duas baixas atomicas, estorno do grupo e replay.
+  Relatorio /financeiro/permutas separa realizado pagar/receber e estornos.
+- [Escopo, operacao e QA](../../handoffs/2026-10-18-permutas-realizadas-mapa-datas.md).
+- [Mapa de datas, sem migracao global](../../datas/MAPA_E_PLANO_PADRONIZACAO.md).
+
 ## Titulos excluidos: consulta historica no PWA - 2026-10-18
 
 - Exclusao logica comprovada agora aparece como Titulo excluido, com data,

@@ -30,6 +30,7 @@ import {
 import { getEmpresasGrupo } from '../services/empresasGrupo';
 import { useAuth } from '../contexts/AuthContext';
 import { hasPermissao } from '../utils/acessoProduto';
+import {podePermuta,ehPermuta} from '../utils/permuta';
 import { getCpfCnpjError, getPixDocumentError, maskCpfCnpj, onlyDigits } from '../utils/formatters';
 import { categoriaFinanceiraMatchesSearch } from '../utils/categoriaFinanceira';
 import {
@@ -1459,7 +1460,7 @@ export default function FinanceiroCadastros() {
                   <select
                     className="input w-full"
                     value={formaPagamentoForm.tipo}
-                    onChange={(e) => setFormaPagamentoForm((c) => ({ ...c, tipo: e.target.value }))}
+                    onChange={(e) => setFormaPagamentoForm((c) => ({ ...c, tipo: e.target.value,...(e.target.value==='PERMUTA'?{gera_fatura:false,gera_boleto:false,exige_cartao:false,exige_cheque:false}:{}) }))}
                   >
                     <option value="BOLETO">Boleto</option>
                     <option value="PIX">Pix</option>
@@ -1468,6 +1469,7 @@ export default function FinanceiroCadastros() {
                     <option value="CARTAO_DEBITO">Cartão de débito</option>
                     <option value="CHEQUE">Cheque</option>
                     <option value="DINHEIRO">Dinheiro</option>
+                    {podePermuta(user,'cadastrar') && <option value="PERMUTA">Permuta</option>}
                     <option value="OUTROS">Outros</option>
                   </select>
                 </CampoForm>
@@ -1496,6 +1498,7 @@ export default function FinanceiroCadastros() {
                     <input
                       type="checkbox"
                       checked={Boolean(formaPagamentoForm[field])}
+                      disabled={ehPermuta(formaPagamentoForm)&&['gera_fatura','gera_boleto','exige_cartao','exige_cheque'].includes(field)}
                       onChange={(e) => setFormaPagamentoForm((c) => ({ ...c, [field]: e.target.checked }))}
                     />
                     {label}
@@ -1504,7 +1507,7 @@ export default function FinanceiroCadastros() {
               </FormSecao>
 
               <div className="app-actionbar">
-                <button type="submit" className="btn btn-primary" disabled={savingFormaPagamento}>
+                <button type="submit" className="btn btn-primary" disabled={savingFormaPagamento || (ehPermuta(formaPagamentoForm)&&!podePermuta(user,'cadastrar'))}>
                   {savingFormaPagamento ? 'Salvando...' : (formaPagamentoForm.id ? 'Salvar alteracoes' : 'Criar forma')}
                 </button>
                 {formaPagamentoForm.id && (
@@ -1532,7 +1535,7 @@ export default function FinanceiroCadastros() {
                     </div>
                     <div className="app-actionbar">
                       <span className={statusClass(forma.ativo)}>{forma.ativo ? 'ATIVA' : 'INATIVA'}</span>
-                      <button type="button" className="btn btn-outline" disabled={!podeGerenciarCadastros} onClick={() => setFormaPagamentoForm(pickFormaPagamentoFormData(forma))}>
+                      <button type="button" className="btn btn-outline" disabled={!podeGerenciarCadastros || (ehPermuta(forma)&&!podePermuta(user,'cadastrar'))} onClick={() => setFormaPagamentoForm(pickFormaPagamentoFormData(forma))}>
                         Editar
                       </button>
                     </div>

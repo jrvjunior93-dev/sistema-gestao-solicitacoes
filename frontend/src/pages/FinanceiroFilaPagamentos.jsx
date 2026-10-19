@@ -920,6 +920,8 @@ export default function FinanceiroFilaPagamentos() {
       const forma = instrumentos.formas.find(item => Number(item.id) === Number(draft.forma_pagamento_id));
       if (!forma) return { mensagem: 'Selecione uma forma de pagamento ativa.', correcao: 'Informe a forma efetivamente utilizada na linha.', filaId: row.id, campo: 'forma_pagamento_id' };
       const tipo = tipoInstrumentoFila(forma);
+      const partePermuta=valorEmCentavos(draft.valor_permuta||0);
+      if(partePermuta && (tipo!=='CONTA'||instrumentosLote||draft.parcelas_cheque?.length||draft.parcelas_cartao?.length||partePermuta<0||partePermuta>=valorEmCentavos(draft.valor_pago)||partePermuta>=valorEmCentavos(draft.valor_pago)+valorEmCentavos(draft.desconto||0)-valorEmCentavos(draft.juros||0)-valorEmCentavos(draft.multa||0))) return {mensagem:'Confira a parte em permuta.',correcao:'Informe um valor menor que o principal e o total. Para permuta integral, selecione PERMUTA.',filaId:row.id,campo:'forma_pagamento_id'};
       if (!instrumentosLote && tipo === 'CARTAO' && !draft.cartao_id && !draft.parcelas_cartao?.length) return { mensagem: 'Informe o cartão utilizado.', correcao: 'Selecione o cartão na linha; a conta vinculada será preenchida.', filaId: row.id, campo: 'forma_pagamento_id' };
       if (!instrumentosLote && tipo === 'CARTAO' && draft.parcelas_cartao?.length && (draft.parcelas_cartao.some(item =>
         !(Number(item.valor_pago) > 0) || !instrumentos.cartoes.some(card => Number(card.id) === Number(item.cartao_id)))
@@ -934,7 +936,7 @@ export default function FinanceiroFilaPagamentos() {
         return { mensagem: 'Confira os cheques e seus valores.', correcao: 'A soma dos cheques deve ser igual ao valor pago do título.', filaId: row.id, campo: 'forma_pagamento_id' };
       }
       if (!draft.data_baixa) return { mensagem: `A data da baixa do título ${row.titulo?.codigo || row.id} não foi informada.`, correcao: 'Preencha uma data válida na coluna Data da baixa.', filaId: row.id, campo: 'data_baixa' };
-      if (!somenteCarteira && !Number(draft.conta_bancaria_id)) return { mensagem: `A conta pagadora do título ${row.titulo?.codigo || row.id} não foi selecionada.`, correcao: 'Selecione uma conta na coluna Conta pagadora.', filaId: row.id, campo: 'conta_bancaria_id' };
+      if (!somenteCarteira && tipo!=='PERMUTA' && !Number(draft.conta_bancaria_id)) return { mensagem: `A conta pagadora do título ${row.titulo?.codigo || row.id} não foi selecionada.`, correcao: 'Selecione uma conta na coluna Conta pagadora.', filaId: row.id, campo: 'conta_bancaria_id' };
       if (!(Number(draft.valor_pago) > 0)) return { mensagem: `O valor pago do título ${row.titulo?.codigo || row.id} é inválido.`, correcao: 'Informe um valor maior que zero na coluna Valor pago.', filaId: row.id, campo: 'valor_pago' };
       for (const campo of ['desconto', 'juros', 'multa']) {
         if (!Number.isFinite(Number(draft[campo] || 0)) || Number(draft[campo] || 0) < 0) {
@@ -1425,6 +1427,7 @@ export default function FinanceiroFilaPagamentos() {
                   : null;
                 const beneficiary = beneficiaryData(title);
                 const account = selectedAccount(row);
+                const permutaIntegral = tipoInstrumentoFila(instrumentos.formas.find(f => Number(f.id) === Number(drafts[row.id]?.forma_pagamento_id))) === 'PERMUTA';
                 const editable = row.status === 'PENDENTE' && canSettle;
                 const selectable = selectableRows.some((item) => Number(item.id) === Number(row.id));
                 const accountOptions = compatibleAccounts(row);
@@ -1567,13 +1570,15 @@ export default function FinanceiroFilaPagamentos() {
                         onChange={(event) => updateDraft(row.id, { conta_bancaria_id: event.target.value })}
                         disabled={!editable || busy}
                         aria-label={`Conta pagadora de ${title.codigo || row.id}`}
+                        hidden={permutaIntegral}
+                        style={permutaIntegral ? {display:'none'} : undefined}
                       >
                         <option value="">Selecione</option>
                         {accountOptions.map((item) => (
                           <option key={item.id} value={item.id}>{item.nome} · {item.banco || 'Banco'} {item.conta || ''}</option>
                         ))}
                       </select>
-                      {editable && accountOptions.length === 0 ? <div className="mt-1 text-xs text-[var(--sem-danger)]">Nenhuma conta bancária ativa com empresa vinculada.</div> : null}
+                      {editable && !permutaIntegral && accountOptions.length === 0 ? <div className="mt-1 text-xs text-[var(--sem-danger)]">Nenhuma conta bancária ativa com empresa vinculada.</div> : null}
                     </td>
                     <td className="px-3 py-3 align-top">
                       <InstrumentoPagamentoFila row={row} draft={drafts[row.id]} instrumentos={instrumentos}
@@ -1585,7 +1590,9 @@ export default function FinanceiroFilaPagamentos() {
                         ? `Lote · empresas ${[...new Set(row.instrumento_pagamento_json.instrumentos.map(item => item.empresa_id))].map(id =>
                           accounts.find(item => Number(item.empresa_id) === Number(id))?.empresa?.nome ||
                           instrumentos.cheques.find(item => Number(item.empresa_id) === Number(id))?.empresa?.nome || `#${id}`).join(', ')}`
-                        : account?.empresa?.nome || account?.empresa?.razao_social || title.empresa?.nome || 'Definida pela conta'}</div>
+                        : permutaIntegral
+                          ? instrumentos.empresas?.find(e => Number(e.id) === Number(drafts[row.id]?.empresa_permuta_id))?.nome || title.empresa?.nome || 'Selecione a empresa'
+                          : account?.empresa?.nome || account?.empresa?.razao_social || title.empresa?.nome || 'Definida pela conta'}</div>
                     </td>
                     {['desconto', 'juros', 'multa'].map(campo => (
                       <td key={campo} className="px-3 py-3 align-top">

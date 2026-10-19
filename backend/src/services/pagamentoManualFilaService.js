@@ -316,7 +316,8 @@ async function listarInstrumentosFila() {
       include: [{ model: EmpresaGrupo, as: 'empresa', attributes: ['id', 'nome', 'ativo'], required: false }],
       order: [['data_vencimento', 'ASC'], ['id', 'ASC']] })
   ]);
-  return { formas, cartoes, cheques };
+  const empresas = await EmpresaGrupo.findAll({where:{ativo:true},attributes:['id','nome'],order:[['nome','ASC']]});
+  return { formas, cartoes, cheques, empresas };
 }
 
 async function resolverInstrumentoFila(titulo, payload, transaction, rateioInterno = false) {
@@ -753,16 +754,24 @@ async function processarItemFila(req, itemPayload, requestKey, transaction, liqu
   // Somente a liquidacao interna ja validada pode usar a empresa da carteira.
   // Nao ha flag no payload publico que dispense a conta dos demais pagamentos.
   const carteiraCompartilhada = liquidacao?.fonte?.usar_cheque_terceiro === true;
-  const conta = carteiraCompartilhada ? null : await ContaBancaria.findByPk(itemPayload.conta_bancaria_id, {
+  const instrumento = liquidacao?.instrumento || await resolverInstrumentoFila(titulo, {...itemPayload,
+    juros:itemPayload.juros??filaItem.juros,multa:itemPayload.multa??filaItem.multa,
+    desconto:itemPayload.desconto??filaItem.instrumento_pagamento_json?.desconto??0}, transaction);
+  const formaEfetiva = instrumento.forma_pagamento_id && await FormaPagamentoFinanceira.findByPk(instrumento.forma_pagamento_id,{transaction});
+  const permutaIntegral = tipoInstrumento(formaEfetiva) === 'PERMUTA';
+  if (permutaIntegral || Number(instrumento.valor_permuta)) await require('./permutaOperacionalDomain').exigirPermissaoPermuta(req);
+  if (permutaIntegral && itemPayload.conta_bancaria_id) throw createHttpError(400,'Permuta nao utiliza conta bancaria.');
+  const conta = carteiraCompartilhada || permutaIntegral || !itemPayload.conta_bancaria_id ? null : await ContaBancaria.findByPk(itemPayload.conta_bancaria_id, {
     transaction,
     lock: transaction.LOCK.UPDATE
   });
-  if (!carteiraCompartilhada && (!conta || conta.ativo === false || !conta.empresa_id)) {
+  if (!carteiraCompartilhada && !permutaIntegral && (!conta || conta.ativo === false || !conta.empresa_id)) {
     throw createHttpError(400, `A conta pagadora do titulo ${titulo.codigo || titulo.id} e invalida ou nao possui empresa.`);
   }
 
-  const empresaPagadoraId = carteiraCompartilhada ? liquidacao.fonte.empresa_id : conta.empresa_id;
   const empresaTituloId = await carregarEmpresaTitulo(titulo, transaction);
+  const empresaPagadoraId = carteiraCompartilhada ? liquidacao.fonte.empresa_id : permutaIntegral ? Number(instrumento.empresa_permuta_id)||empresaTituloId : conta.empresa_id;
+  if(permutaIntegral&&!empresaPagadoraId)throw createHttpError(400,'Selecione a empresa da permuta.');
   const baixaEntreEmpresas = titulo.compartilhamento_id
     ? await require('./tituloCompartilhadoPagamento').entreEmpresas(titulo, empresaPagadoraId, transaction)
     : Boolean(empresaTituloId && Number(empresaPagadoraId) !== empresaTituloId);
@@ -771,8 +780,8 @@ async function processarItemFila(req, itemPayload, requestKey, transaction, liqu
   const encargos = { juros: itemPayload.juros ?? filaItem.juros, multa: itemPayload.multa ?? filaItem.multa,
     desconto: itemPayload.desconto ?? filaItem.instrumento_pagamento_json?.desconto ?? 0 };
   const valores = calcularValoresFila(itemPayload.valor_pago, titulo.valor_saldo, encargos);
-  const instrumento = liquidacao?.instrumento || await resolverInstrumentoFila(titulo, { ...itemPayload, ...encargos }, transaction);
   const saldoAtual = roundCurrency(titulo.valor_saldo);
+  if ((permutaIntegral || Number(instrumento.valor_permuta)) && valores.principal>saldoAtual) throw createHttpError(409,'Ajuste o titulo antes de registrar permuta acima do saldo.');
   const tipoDivergencia = valores.divergencia;
   const divergente = Boolean(tipoDivergencia);
   const motivo = String(itemPayload.motivo || '').trim();
@@ -834,7 +843,8 @@ async function processarItemFila(req, itemPayload, requestKey, transaction, liqu
   const optionsBaixa = {
     transaction,
     autorizadoPorFilaPagamento: true,
-    skipSecurityEvent: true
+    skipSecurityEvent: true,
+    filaPermutaContexto: { filaId:filaItem.id, requestKey }
   };
   const baixa = liquidacao ? await liquidacao.baixar(titulo, valores, payloadBaixa, optionsBaixa)
     : await baixarInstrumentosFila(req, titulo.id, instrumento, valorPago, valores, payloadBaixa, optionsBaixa);
@@ -842,6 +852,7 @@ async function processarItemFila(req, itemPayload, requestKey, transaction, liqu
   await filaItem.update({
     ...commonUpdate,
     instrumento_pagamento_json: { ...commonUpdate.instrumento_pagamento_json,
+      ...(baixa.liquidacao_id ? {liquidacao_id:baixa.liquidacao_id} : {}),
       movimentos_financeiros_ids: baixa.movimentos_financeiros_ids },
     status: divergente ? 'DIVERGENTE' : 'BAIXADO',
     motivo: motivo || null,
@@ -853,6 +864,26 @@ async function processarItemFila(req, itemPayload, requestKey, transaction, liqu
 }
 
 async function baixarInstrumentosFila(req, tituloId, instrumento, totalPago, valores, payload, options) {
+  if (Number(instrumento.valor_permuta)) {
+    const forma = await FormaPagamentoFinanceira.findByPk(instrumento.forma_pagamento_id,{transaction:options.transaction});
+    if(!require('./permutaOperacionalDomain').aceitaComposicao(forma)) throw createHttpError(400,'A outra parte deve usar PIX, transferencia, boleto ou dinheiro.');
+    const plano = require('./permutaOperacionalDomain').planoPermuta(instrumento.valor_permuta,valores.principal,totalPago,tipoInstrumento(forma));
+    const contexto = options.filaPermutaContexto;
+    if (!contexto || instrumento.parcelas_cheque || instrumento.cartao_id) throw createHttpError(400,'Composicao de permuta invalida.');
+    const grupo = await PagamentoFilaLiquidacao.create({idempotency_key:crypto.createHash('sha256').update(`fila-permuta:${contexto.requestKey}:${contexto.filaId}`).digest('hex'),
+      request_hash:crypto.createHash('sha256').update(JSON.stringify([tituloId,payload,plano])).digest('hex'),status:'CONFIRMADO',criado_por:req.user.id,dados:{}},{transaction:options.transaction});
+    const partes = [
+      {...payload,valor:plano.permuta,juros:0,multa:0,desconto:0,forma_pagamento_id:null,forma_recebimento:'PERMUTA',conta_bancaria_id:null},
+      {...payload,valor:plano.principal_monetario}
+    ];
+    const ids=[]; let ultima;
+    for(const parte of partes) {
+      ultima = await baixarTitulo(req,tituloId,parte,{...options,filaLiquidacaoId:grupo.id});
+      ids.push(ultima.movimento_financeiro_id || ultima.movimento?.id);
+    }
+    await grupo.update({dados:{fila_ids:[contexto.filaId],componentes:[],alocacoes:ids.map(movimento_id=>({fila_id:contexto.filaId,titulo_financeiro_id:tituloId,movimento_id}))}},{transaction:options.transaction});
+    return {...ultima,liquidacao_id:grupo.id,movimentos_financeiros_ids:ids};
+  }
   if (!instrumento.parcelas_cheque) {
     const baixa = await baixarTitulo(req, tituloId, payload, options);
     return { ...baixa, movimentos_financeiros_ids: [baixa.movimento_financeiro_id || baixa.movimento?.id].filter(Boolean) };
@@ -870,6 +901,7 @@ async function baixarInstrumentosFila(req, tituloId, instrumento, totalPago, val
 }
 
 async function registrarBaixasFila(req, payload = {}) {
+  if (payload.itens.some(i=>Number(i.valor_permuta)) && (payload.instrumentos_lote || payload.itens.some(i=>i.parcelas_cartao?.length || i.parcelas_cheque?.length))) throw createHttpError(400,'Registre a composicao com permuta separadamente dos instrumentos compartilhados.');
   if (!payload.instrumentos_lote) conferirChequesUnicosLote(payload.itens);
   const requestKey = payload.idempotency_key || crypto.randomUUID();
   const resultados = await sequelize.transaction(async (transaction) => {

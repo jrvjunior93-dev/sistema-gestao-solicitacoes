@@ -20,6 +20,7 @@ import {
 } from '../services/financeiro';
 import { useAuth } from '../contexts/AuthContext';
 import { hasPermissao } from '../utils/acessoProduto';
+import {podePermuta} from '../utils/permuta';
 import { formatCurrencyInput, normalizeCurrencyTyping } from '../utils/formatters';
 import {
   Pagina,
@@ -1409,7 +1410,7 @@ export default function FinanceiroTituloDetalhe() {
                     }))}
                   >
                     <option value="">Não informar</option>
-                    {FORMAS_RECEBIMENTO.map((item) => (
+                    {FORMAS_RECEBIMENTO.filter(item=>item!=='PERMUTA'||podePermuta(user)).map((item) => (
                       <option key={item} value={item}>{item}</option>
                     ))}
                   </select>
@@ -1597,7 +1598,7 @@ export default function FinanceiroTituloDetalhe() {
                     aria-label="Conta bancaria"
                     onChange={(event) => selecionarContaBaixa(event.target.value)}
                     required={(contaBancariaObrigatoria(baixaForm.forma_recebimento) && !baixaPagaComChequeTerceiro) || baixaCartaoDebito}
-                    disabled={baixaUsaCartao}
+                    disabled={baixaUsaCartao || baixaForm.forma_recebimento==='PERMUTA'}
                   >
                     <option value="">
                       {baixaUsaCartao

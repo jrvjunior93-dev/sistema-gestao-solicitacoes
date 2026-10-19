@@ -58,7 +58,14 @@ function validateForbiddenTerms(filePath, content, errors) {
     : forbiddenPatterns;
 
   patternsToValidate.forEach((pattern) => {
-    if (pattern.test(content)) {
+    // Inventario mecanico deve conservar nomes de modelos/migrations/campos
+    // historicos. A excecao e somente para evidencia tabulada COLUNA_BANCO,
+    // neste arquivo gerado; prosa e todos os demais termos seguem validados.
+    const technicalInventory = relative(filePath) === 'docs/datas/INVENTARIO_CAMPOS_DATAS.md'
+      && pattern.source === 'SIENGE';
+    const textToValidate = technicalInventory ? content.split('\n').filter(line =>
+      !/^\| backend\/(?:src|migrations)\/[^|]+\.js:\d+ \| COLUNA_BANCO \| [^|]+ \| (?:DataTypes|Sequelize)\.DATE(?:ONLY)? \|\r?$/.test(line)).join('\n') : content;
+    if (pattern.test(textToValidate)) {
       errors.push(`${relative(filePath)} contem termo obsoleto: ${pattern}`);
     }
   });
@@ -189,4 +196,5 @@ function main() {
   console.log(`Documentacao valida: ${markdownFiles.length} arquivos Markdown e ${requiredModuleDocs.length} documentos canonicos.`);
 }
 
-main();
+if (require.main === module) main();
+module.exports = { validateForbiddenTerms };

@@ -1,5 +1,10 @@
 import { API_URL, authHeaders } from './api';
 import { mensagemDeErro } from './erroDeResposta';
+export async function getRelatorioPermutas(params={},signal) {
+  const query=new URLSearchParams(Object.entries(params).filter(([,v])=>v!==''&&v!=null)).toString();
+  const response=await fetch(`${API_URL}/financeiro/permutas/relatorio?${query}`,{headers:authHeaders(),signal,cache:'no-store'});
+  return parseJson(response,'Erro ao consultar permutas');
+}
 
 /* A escolha da mensagem é do `erroDeResposta` — uma regra, um arquivo.
    Aqui ficava a mesma dança de try/JSON.parse/SyntaxError repetida em 30

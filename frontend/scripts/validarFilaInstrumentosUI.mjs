@@ -22,6 +22,7 @@ const forms = [
 ];
 const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
   resolveId(source, importer) {
+    if (source.endsWith('/contexts/AuthContext')) return stub + 'auth';
     if (source.endsWith('/ThemeContext')) return stub + 'tema';
     if (importer?.endsWith('/PreferenciasContext.jsx') && source === './AuthContext') return stub + 'auth';
     if (importer?.endsWith('/ArquivosSolicitacaoFilaModal.jsx') && source === '../../services/financeiro') return stub + 'api';

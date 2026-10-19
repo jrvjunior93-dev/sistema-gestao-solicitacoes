@@ -19,6 +19,7 @@ import {
   HiOutlineXMark
 } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
+import {podePermuta,ehPermuta} from '../utils/permuta';
 import { mensagemEnvioFila } from '../utils/filaPagamentoMensagem';
 import { useFecharAoSair } from '../hooks/useFecharAoSair';
 import StatusBadge from '../components/StatusBadge';
@@ -1744,8 +1745,8 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   const baixaMassaTipoSelecionado = String(selectedTitulosBaixaveis[0]?.tipo || fixedTipo || draftFilters.tipo || '').toUpperCase();
   const baixaMassaFormaLabel = baixaMassaTipoSelecionado === 'PAGAR' ? 'Forma de pagamento' : 'Forma de recebimento';
   const formasPagamentoBaixaMassa = useMemo(
-    () => formasPagamentoFiltradas.filter((forma) => Boolean(getFormaRecebimentoOperacional(forma))),
-    [formasPagamentoFiltradas]
+    () => formasPagamentoFiltradas.filter((forma) => Boolean(getFormaRecebimentoOperacional(forma)) && (!ehPermuta(forma)||podePermuta(user))),
+    [formasPagamentoFiltradas,user]
   );
   const chequesTerceirosDisponiveis = useMemo(
     () => chequesTerceiros.filter((cheque) => String(cheque?.status || '').toUpperCase() === 'EM_CARTEIRA'),

@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
+    "test:deploy-permutas-dev": "node scripts/validarDeployPermutasDev.js",
+    "test:permutas-operacionais": "node scripts/validarPermutasOperacionais.js",
+    "test:permutas-relatorio-local": "node scripts/validarPermutasRelatorio.js",
     "test:pwa-titulos-excluidos": "node scripts/validarTitulosExcluidosAutorizacao.js && node scripts/validarPainelAutorizacoesSqlLocal.js",
     "test:fila-remetente": "node scripts/validarFilaRemetente.js && node scripts/validarPainelAutorizacoesSqlLocal.js",
     "test:deploy-pwa-saldo-dev": "node scripts/validarDeployPwaSaldoDev.js",

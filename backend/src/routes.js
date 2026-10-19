@@ -2378,6 +2378,12 @@ router.post('/painel-gestor/olho/abrir', criticalRateLimit, PainelGestorControll
 // ConfiguracaoSistema (ex.: areas-obra) -> allowConfiguracoesStatusVinculos.
 router.get('/configuracoes/painel-gestor/pin', allowConfiguracoesStatusVinculos, PainelGestorController.pinConfiguracao);
 router.put('/configuracoes/painel-gestor/pin', allowConfiguracoesStatusVinculos, criticalRateLimit, PainelGestorController.pinDefinir);
+router.get('/financeiro/permutas/relatorio', permit({resource:'FINANCEIRO_PERMUTAS_RELATORIO',custom:async req=>{
+  try {await require('./services/permutaOperacionalDomain').exigirPermissaoPermuta(req,'relatorio');return true;}catch{return 'Acesso negado ao relatorio de permutas';}
+}}),async(req,res)=>{
+  try{return res.json(await require('./services/permutaRelatorioService').relatorio(req,req.query));}
+  catch(error){return require('./utils/controllerError').responderErroController(res,error,'Erro ao consultar permutas');}
+});
 router.get('/financeiro/baixas', allowFinanceiro, validateRequest({ query: validateFinanceBaixasQuery }), TituloFinanceiroController.baixas);
 router.get('/financeiro/financiamentos-bancarios', allowFinanceiro, validateRequest({ query: validateFinanceFinanciamentoBancarioQuery }), FinanciamentoBancarioController.index);
 router.post('/financeiro/financiamentos-bancarios', allowFinanceiro, criticalRateLimit, validateRequest({ body: validateFinanceFinanciamentoBancarioCreateBody }), FinanciamentoBancarioController.create);

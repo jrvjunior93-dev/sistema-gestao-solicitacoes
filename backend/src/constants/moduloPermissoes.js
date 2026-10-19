@@ -352,6 +352,15 @@ const MODULO_PERMISSION_GROUPS = [
         ]
       },
       {
+        key: 'financeiro.permutas',
+        label: 'Permutas',
+        permissoes: [
+          { key: 'financeiro.permutas.cadastrar', label: 'Cadastrar formas de permuta', descricao: 'Cadastrar e alterar formas PERMUTA, sem alterar outros acessos de cadastro.' },
+          { key: 'financeiro.permutas.usar', label: 'Registrar permuta na baixa', descricao: 'Usar permuta nas baixas permitidas ao usuario, sem conceder acesso a titulos ou ao relatorio geral.' },
+          { key: 'financeiro.permutas.relatorio', label: 'Consultar relatorio de permutas', descricao: 'Consultar valores realizados e estornados no escopo financeiro atual, sem liberar baixas.' }
+        ]
+      },
+      {
         key: 'financeiro.cheques',
         label: 'Carteira de Cheques de Terceiros',
         permissoes: [
