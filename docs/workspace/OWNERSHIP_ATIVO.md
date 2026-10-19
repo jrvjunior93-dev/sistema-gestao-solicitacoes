@@ -1,16 +1,35 @@
 # Ownership Ativo
 
+## Correcao do deploy financeiro interrompido - 2026-10-19
+
+- Reserva agente desta conversa, sem delegacao: preflightFinanceiroProducao20261019
+  e seu teste (inventario Git independente do cwd e lista vazia bloqueada);
+  promoverSchemaProducao20261018 somente para extrair guardas compartilhadas;
+  novo aplicarMigrationCartaoParcelamentoProducao/teste, roteiro de retomada,
+  mensagem segura do verificarFinanceiroProducao, README e handoff.
+- Reserva documental desta mesma sessao: QUADRO_AGENTES, SESSOES_ATIVAS e
+  HANDOFF_GLOBAL somente registros desta promocao/correcao; sem editar terceiros.
+- Operador confirmou em producao a unica pendencia 202610190001. Roteiro a67
+  avancou codigo/testes e parou antes do restart. Gate anterior de lista vazia
+  era invalido; preservar a simulacao financeira, que nao executou regularizacao.
+- Nenhum runtime funcional, migration de produto, .env, DEV ou worktree alheio
+  sera alterado. Aplicacao real apenas pelo operador, com backup/timer e allowlist.
+- Correcao e validacoes locais concluidas: guardas antigas/novas, Git real
+  raiz/backend, SQL/cartao/DEV, sintaxe Node/Bash, docs e diff-check aprovados.
+  Ownership desta correcao liberado para commit/PR/merge autorizado.
+
 ## Publicacao MAIN financeiro apos preflight real - 2026-10-19
 
 - Sessao codex-promocao-financeiro-20261019: em_andamento. Evidencia do
-  operador recebida: UUID produtivo/TLS/PILOT/12h, schema alvo sem pendencias,
+  operador recebida: UUID produtivo/TLS/PILOT/12h; inventario inicial de schema
+  alvo invalidado posteriormente (lista vazia), migration 202610190001 pendente;
   simulacao em memoria aprovada, nenhum registro alterado (17:15:44 UTC).
 - Reserva: novo verificarFinanceiroProducao20261019.js, roteiro de deploy e
   teste isolado; extracao somente da verificacao SQL reutilizavel em
   verificarCartaoParcelamentoMySqlDev.js, mantendo suas guardas DEV intactas;
   README financeiro, handoff e registros desta promocao no worktree isolado.
 - Nenhum runtime funcional, arquivo do outro agente ou dado real sera alterado.
-  Producao nao precisa reaplicar migration; script deve recusar pendencias.
+  Roteiro original recusou a pendencia antes do restart; retomada restrita acima.
 - Roteiro/SQL/testes/documentacao concluidos. Guardas DEV/producao, suites
   integradas, build, sintaxe Bash e diff aprovados. Reserva encerrada e ownership
   liberado para PR/merge autorizado; EC2/deploy ficam exclusivamente com operador.

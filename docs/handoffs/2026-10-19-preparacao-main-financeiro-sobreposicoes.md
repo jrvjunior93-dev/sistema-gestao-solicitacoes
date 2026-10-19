@@ -12,8 +12,9 @@ DEV congelada: db1d2253c7ee12cb6e13cf6e61ad7a40a8154987.
 Delta DEV: permuta/relatorio/mapa de datas (39f368be), multiplas fontes/centros/
 cancelamento (4ffdb9ae), parcelas do cartao (d9f00c5d), sobreposicoes/historico
 do outro agente (db1d2253). Nova migration estrutural unica:
-202610190001_cartao_parcelamento_baixa.js. Preflight real posterior confirmou
-nenhuma pendencia no alvo: schema registrado como ja aplicado em producao.
+202610190001_cartao_parcelamento_baixa.js. CORRECAO posterior ao deploy a67:
+o inventario do preflight estava vazio e nao comprovava ausencia de pendencias.
+Operador confirmou essa migration pendente; ver handoff de retomada abaixo.
 
 ## Preparacao local
 
@@ -36,6 +37,8 @@ validarPreflightFinanceiroProducao20261019.js. O preflight e portatil: copiar
 somente o JS para /home/ubuntu/preflight-financeiro-producao-20261019.cjs;
 executar com --verificar no backend do checkout main, sem atualizar arquivos.
 Antes, git fetch origin main refactor/frontend, para obter os objetos do alvo.
+Versao corrigida exige conferirProducao exportado pelo helper operacional novo;
+nao usar o JS inicial com checksum antigo para comprovar schema sem pendencias.
 
 Reusa guardas de producao existentes (caminho, PM2/watch, env, PILOT/TLS/12h).
 Conexao MySQL independente, UUID e TLS conferidos; SELECT parametrizado, limite
@@ -75,8 +78,10 @@ Operador executou o arquivo SHA256
 89F7749B70DF41136818D9D78424AC347A55BA926DC1B1320D59337560032AD9, timer
 ativo e checkout ff459840. Corte UTC 2026-10-19 17:15:44, UUID produtivo
 5ed4b970-009f-11f1-809c-0ad0e0c90c53, TLS/JSON/PILOT/12h preservados.
-Main atual sem pendencias e alvo db1d2253 tambem sem pendencias. Nao reaplicar
-DDL com base apenas no delta de arquivos: o banco ja registra a nova migration.
+Main antiga sem pendencias; o resultado de ausencia de pendencias no ALVO foi
+invalidado: git ls-tree relativo a backend/ retornava lista vazia. O banco NAO
+registrava a migration nova. A simulacao financeira abaixo continua sendo apenas
+em memoria e nao executou regularizacao. Corrigido com --full-tree e fail-closed.
 
 Simulacao em memoria conferida sem mutacoes: SOL-5426 saldo proposto 7055.00;
 SOL-5419 saldo proposto 1876.67, preservando 938.33 liquidados. Zero movimentos
@@ -109,12 +114,12 @@ Nenhuma URL/credencial foi alterada ou incluida no Git.
 
 ## Proximo passo exato
 
-Publicar branch de integracao e tag de recuperacao, abrir PR e concluir merge
-autorizado para main com SHA esperado. Conferir SHA remoto final e entregar
-roteiro fixado nessa versao ao operador. Agente nao acessa EC2/SQL reais nem
-faz deploy. Depois do health, homologar UI e permissao nas telas publicadas;
-nao criar pagamentos ficticios em producao. Regularizacao dos quatro titulos
-continua separada e nao e executada pelo roteiro.
+PR20 integrado em a67e3de9. Operador atualizou checkout, instalou dependencias
+e passou suites; parou antes do restart ao encontrar schema pendente. Retomar
+conforme [correcao operacional](2026-10-19-retomada-migration-cartao-producao.md),
+com allowlist de migration unica. Nao repetir o roteiro antigo sem DDL para
+resolver esta pendencia. Agente nao acessa EC2/SQL reais nem faz deploy.
+Regularizacao dos quatro titulos continua separada e nao e executada pelo roteiro.
 
 Rollback nunca automatico: schema nao deve sofrer down. Retorno ao codigo
 anterior exige conferir se ja houve baixas com parcelas novas, porque o legado

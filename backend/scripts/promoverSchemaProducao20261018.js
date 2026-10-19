@@ -21,9 +21,8 @@ const COLUNAS = [
 ];
 const booleano = value => ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase());
 
-async function executar({ modo, cwd, env, validateRequiredEnv, db, schema, execFileSync,
-  runtimeEnv = process.env, fileSystem = fs, log = console.log }) {
-  if (!['--verificar', '--aplicar', '--concluido'].includes(modo)) throw Error('Use --verificar, --aplicar ou --concluido.');
+async function conferirProducao({ cwd, env, validateRequiredEnv, db, execFileSync,
+  runtimeEnv = process.env, fileSystem = fs }) {
   validateRequiredEnv();
   if (cwd !== BACKEND || env.deploymentEnvironment !== 'production' || Number(env.port) !== 8000
     || env.dbHost !== 'gestao-solicitacoes-db.cn820k66sdx7.us-east-2.rds.amazonaws.com'
@@ -65,6 +64,12 @@ async function executar({ modo, cwd, env, validateRequiredEnv, db, schema, execF
     || !tls.find(row => row.Variable_name === 'Ssl_version')?.Value) throw Error('Conexao MySQL sem TLS. Pare sem aplicar.');
   const [json] = await db.query(JSON_SQL);
   if (Number(json[0]?.item_ok) !== 7) throw Error('Semantica JSON MySQL divergente. Pare sem aplicar.');
+}
+
+async function executar({ modo, cwd, env, validateRequiredEnv, db, schema, execFileSync,
+  runtimeEnv = process.env, fileSystem = fs, log = console.log }) {
+  if (!['--verificar', '--aplicar', '--concluido'].includes(modo)) throw Error('Use --verificar, --aplicar ou --concluido.');
+  await conferirProducao({ cwd, env, validateRequiredEnv, db, execFileSync, runtimeEnv, fileSystem });
   const state = await schema.getMigrationState();
   if (!state.tableExists || state.pending.some(nome => !MIGRATIONS.includes(nome))) throw Error('Pendencias fora do pacote: ' + state.pending.join(', '));
   const conferirColunas = async (pendentes) => {
@@ -104,4 +109,4 @@ if (require.main === module) {
     schema: require('../src/database/runMigrations'), execFileSync: require('node:child_process').execFileSync })
     .catch(e => { console.error(e.message); process.exitCode = 1; }).finally(() => db.close());
 }
-module.exports = { executar, BACKEND, MIGRATIONS, IDENTIDADE_SQL, TLS_SQL, JSON_SQL, COLUNAS_SQL };
+module.exports = { executar, conferirProducao, BACKEND, MIGRATIONS, IDENTIDADE_SQL, TLS_SQL, JSON_SQL, COLUNAS_SQL };

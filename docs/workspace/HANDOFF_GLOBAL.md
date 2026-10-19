@@ -1,5 +1,15 @@
 # Handoff Global
 
+## Retomada cartao MAIN - 2026-10-19
+
+- Correcao operacional validada localmente, ownership liberado para publicacao,
+  sem EC2 nem banco pelo agente.
+  Operador confirmou migration unica 202610190001 pendente apos deploy a67
+  interrompido antes do restart. Inventario anterior invalido por cwd/lista vazia.
+  Runtime/DEV preservados; roteiro novo aplica somente essa migration com backup/
+  timer, confirma schema/SQL e reinicia apenas producao. Nao regulariza titulos.
+  Handoff 2026-10-19-retomada-migration-cartao-producao.md.
+
 ## Preparacao financeiro MAIN - 2026-10-19
 
 - Em andamento, worktree isolado. Usuario confirmou DEV, backup e timer.
@@ -9,8 +19,9 @@
   nao acessa servidor nem executa regularizacao financeira.
   Preparacao local validada; preflight portatil e simulacao em memoria entregues
   ao operador. Proximo passo em 2026-10-19-preparacao-main-financeiro-sobreposicoes.md.
-  Evidencia real recebida e conferida: schema alvo sem pendencias e simulacao
-  sem mutacoes. Roteiro produtivo sem DDL/regularizacao e verificacao SQL aprovados;
+  Evidencia real recebida: simulacao sem mutacoes; inventario alvo posteriormente
+  invalidado (lista vazia/cwd). Migration 202610190001 pendente. Roteiro original
+  sem DDL interrompeu antes do restart; usar retomada documentada acima;
   ownership liberado para PR/merge autorizado. Deploy exclusivamente pelo operador.
 
 ## Promocao main cadastro no pagamento RH - 2026-10-15

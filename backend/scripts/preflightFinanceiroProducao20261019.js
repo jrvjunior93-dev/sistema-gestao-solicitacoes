@@ -1,5 +1,5 @@
 'use strict';
-// Portatil para execucao pelo operador ANTES de atualizar o checkout de producao.
+// Portatil para leitura do alvo Git; requer guardas corrigidas no checkout main.
 // Nenhum model/app/endpoint de escrita e importado. Simulador puro do SHA fixo.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -34,7 +34,20 @@ function carregarSimulador(lerFonte) {
   return carregar('backend/scripts/simularRegularizacaoTitulos.js').simular;
 }
 
+function conferirInventario(arquivos) {
+  assert(Array.isArray(arquivos) && arquivos.length > 0 && arquivos.includes(MIGRATION), 'INVENTARIO_MIGRATIONS_INCOMPLETO');
+  assert.equal(new Set(arquivos).size, arquivos.length, 'INVENTARIO_MIGRATIONS_DUPLICADO');
+  return arquivos;
+}
+
+function inventariarMigrations(git, alvo = ALVO) {
+  // --full-tree impede interpretar backend/migrations relativo a backend/.
+  return conferirInventario(git(['ls-tree', '--full-tree', '-r', '--name-only', alvo, 'backend/migrations'])
+    .split('\n').filter(f => /^backend\/migrations\/[^/]+\.js$/.test(f)).map(f => path.posix.basename(f)));
+}
+
 async function auditar({ conexao, arquivos, simular, log = console.log }) {
+  conferirInventario(arquivos);
   const [identidade] = await conexao.query('SELECT @@GLOBAL.server_uuid AS uuid, DATABASE() AS banco, UTC_TIMESTAMP() AS consulta_utc');
   assert(identidade[0]?.uuid === UUID && identidade[0]?.banco === 'gestao_solicitacoes', 'BANCO_PRODUCAO_DIFERENTE');
   const [tls] = await conexao.query("SHOW SESSION STATUS WHERE Variable_name IN ('Ssl_cipher','Ssl_version')");
@@ -97,34 +110,28 @@ async function main() {
   git(['merge-base','--is-ancestor', ALVO, 'origin/refactor/frontend']);
   const fontes = new Map([...MODULOS].map(file => [file, git(['show', `${ALVO}:${file}`])]));
   const simular = carregarSimulador(file => fontes.get(file));
-  const arquivos = git(['ls-tree','-r','--name-only',ALVO,'backend/migrations']).split('\n').filter(f => f.endsWith('.js')).map(f => path.posix.basename(f));
+  const arquivos = inventariarMigrations(git);
   const { env, validateRequiredEnv } = require(path.join(BACKEND, 'src/config/env'));
   const guard = require(path.join(BACKEND, 'scripts/promoverSchemaProducao20261018'));
+  assert.equal(typeof guard.conferirProducao, 'function', 'GUARDAS_PREFLIGHT_ANTIGAS: atualizar o helper operacional antes de usar este preflight');
   const mysql = require(path.join(BACKEND, 'node_modules/mysql2/promise'));
   let conexao;
   const conectar = async () => conexao ||= await mysql.createConnection({ host: env.dbHost, port: env.dbPort,
     user: env.dbUser, password: env.dbPassword, database: env.dbName, dateStrings: true,
     connectTimeout: 8000, multipleStatements: false,
     ...(env.dbSslCaFile ? { ssl: { ca: fs.readFileSync(env.dbSslCaFile), rejectUnauthorized: true, verifyIdentity: true } } : {}) });
-  const atuais = fs.readdirSync(path.join(BACKEND, 'migrations')).filter(f => f.endsWith('.js'));
-  const estado = async () => {
-    const [rows] = await (await conectar()).query('SELECT name FROM schema_migrations');
-    return { tableExists: true, pending: atuais.filter(f => !rows.some(r => r.name === f)) };
-  };
   try {
     // Guardas existentes conferem env/PM2/PILOT/12h/CA antes de abrir a conexao.
-    await guard.executar({ modo: '--verificar', cwd: BACKEND, env, validateRequiredEnv,
+    await guard.conferirProducao({ cwd: BACKEND, env, validateRequiredEnv,
       runtimeEnv: process.env, execFileSync: cp.execFileSync,
-      db: { query: async sql => (await conectar()).query(sql) },
-      schema: { getMigrationState: estado, assertMigrationsUpToDate: async () => assert.equal((await estado()).pending.length, 0) } });
-    assert.equal((await estado()).pending.length, 0, 'SCHEMA_ATUAL_PENDENTE');
+      db: { query: async sql => (await conectar()).query(sql) } });
     console.log(JSON.stringify({ checkout_atual: git(['rev-parse','HEAD']), alvo: ALVO,
       fontes_simulador_sha256: [...fontes].map(([arquivo, fonte]) => ({ arquivo, sha256: crypto.createHash('sha256').update(fonte).digest('hex') })) }));
     await auditar({ conexao, arquivos, simular });
   } finally { if (conexao) await conexao.end(); }
 }
 
-module.exports = { auditar, carregarSimulador, ALVO, MIGRATION, MODULOS, UUID };
+module.exports = { auditar, carregarSimulador, conferirInventario, inventariarMigrations, ALVO, MIGRATION, MODULOS, UUID };
 if (require.main === module) main().catch(e => {
   console.error('PREFLIGHT INTERROMPIDO:', e.code || e.name,
     e.name === 'AssertionError' ? e.message : 'Confira ambiente/schema/estado atual. Nenhuma regularizacao executada; nao compartilhe credenciais.');

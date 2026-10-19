@@ -1,8 +1,14 @@
 # Sessoes Ativas
 
+- codex-correcao-deploy-financeiro-20261019: finalizado local, agente unico, worktree
+  isolado da promocao. Corrige inventario Git/cwd e retoma migration unica
+  202610190001 confirmada pelo operador; sem runtime/DEV/regularizacao.
+  QA/sintaxe/docs/diff aprovados; ownership liberado para commit/PR/merge.
+
 - codex-promocao-financeiro-20261019: finalizado local, integracao isolada de
   main ff459840 e DEV db1d2253; backup/timer e homologacao DEV confirmados.
-  Preflight/simulacao real conferidos, schema alvo sem pendencias. Roteiro
+  Simulacao real conferida; inventario inicial de schema alvo invalidado, lista
+  vazia por cwd. Pendencia 202610190001 confirmada depois pelo operador. Roteiro
   sem DDL/regularizacao e QA aprovados; ownership liberado para PR/merge.
 
 - codex-promocao-compra-direta-admissao-main-20261015: integracao validada,
