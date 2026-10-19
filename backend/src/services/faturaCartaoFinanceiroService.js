@@ -1,5 +1,6 @@
 const {
   CartaoFinanceiro,
+  CartaoBaixaParcela,
   ContaBancaria,
   FaturaCartaoFinanceiro,
   FaturaCartaoTitulo,
@@ -31,40 +32,41 @@ function toDateOnly(date) {
 }
 
 function clampDay(year, monthIndex, day) {
-  return Math.min(Math.max(Number(day || 1), 1), new Date(year, monthIndex + 1, 0).getDate());
+  return Math.min(Math.max(Number(day || 1), 1), new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate());
 }
 
 function addMonths(base, amount) {
-  return new Date(base.getFullYear(), base.getMonth() + amount, base.getDate());
+  // Ancora no dia 1: fechamento em 29/30/31 nao pode pular fevereiro.
+  return new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + amount, 1));
 }
 
 function buildDate(year, monthIndex, day) {
-  return new Date(year, monthIndex, clampDay(year, monthIndex, day));
+  return new Date(Date.UTC(year, monthIndex, clampDay(year, monthIndex, day)));
 }
 
 function calcularDatasFatura(cartao, dataCompra, parcelaOffset = 0) {
-  const compra = new Date(`${dataCompra}T00:00:00`);
+  const compra = new Date(`${dataCompra}T12:00:00Z`);
   if (Number.isNaN(compra.getTime())) {
     throw createHttpError(400, 'Data de compra invalida para calcular fatura.');
   }
 
   const fechamentoDia = Number(cartao.dia_fechamento || 1);
   const vencimentoDia = Number(cartao.dia_vencimento || 1);
-  const fechamentoBase = new Date(
-    compra.getFullYear(),
-    compra.getMonth() + (compra.getDate() <= fechamentoDia ? 0 : 1) + Number(parcelaOffset || 0),
+  const fechamentoBase = new Date(Date.UTC(
+    compra.getUTCFullYear(),
+    compra.getUTCMonth() + (compra.getUTCDate() <= fechamentoDia ? 0 : 1) + Number(parcelaOffset || 0),
     1
-  );
-  const dataFechamento = buildDate(fechamentoBase.getFullYear(), fechamentoBase.getMonth(), fechamentoDia);
+  ));
+  const dataFechamento = buildDate(fechamentoBase.getUTCFullYear(), fechamentoBase.getUTCMonth(), fechamentoDia);
   const vencimentoMonthOffset = vencimentoDia > fechamentoDia ? 0 : 1;
   const vencimentoBase = addMonths(dataFechamento, vencimentoMonthOffset);
-  const dataVencimento = buildDate(vencimentoBase.getFullYear(), vencimentoBase.getMonth(), vencimentoDia);
+  const dataVencimento = buildDate(vencimentoBase.getUTCFullYear(), vencimentoBase.getUTCMonth(), vencimentoDia);
   const dataInicioBase = addMonths(dataFechamento, -1);
-  const dataInicio = buildDate(dataInicioBase.getFullYear(), dataInicioBase.getMonth(), fechamentoDia);
-  dataInicio.setDate(dataInicio.getDate() + 1);
+  const dataInicio = buildDate(dataInicioBase.getUTCFullYear(), dataInicioBase.getUTCMonth(), fechamentoDia);
+  dataInicio.setUTCDate(dataInicio.getUTCDate() + 1);
 
   return {
-    competencia: `${dataFechamento.getFullYear()}-${String(dataFechamento.getMonth() + 1).padStart(2, '0')}`,
+    competencia: `${dataFechamento.getUTCFullYear()}-${String(dataFechamento.getUTCMonth() + 1).padStart(2, '0')}`,
     data_inicio: toDateOnly(dataInicio),
     data_fechamento: toDateOnly(dataFechamento),
     data_vencimento: toDateOnly(dataVencimento)
@@ -96,7 +98,10 @@ async function recalcularFaturaCartao(faturaId, { transaction = null, leituraCor
   const encargos = movimentos.reduce((total, movimento) => roundCurrency(total + (movimento.fila_liquidacao_id
     ? Number(movimento.valor_quitacao || 0) : Number(movimento.juros || 0)
     + Number(movimento.multa || 0) - Number(movimento.desconto || 0))), 0);
-  const totalComEncargos = roundCurrency(valorTotal + encargos);
+  const parcelas = await CartaoBaixaParcela.findAll({ where: { fatura_cartao_id: faturaId, status: 'ATIVA' },
+    attributes: ['valor'], transaction, ...(leituraCorrente && transaction ? { lock: transaction.LOCK.UPDATE } : {}) });
+  const totalParcelas = parcelas.reduce((sum, parte) => roundCurrency(sum + Number(parte.valor)), 0);
+  const totalComEncargos = roundCurrency(valorTotal + encargos + totalParcelas);
   await FaturaCartaoFinanceiro.update(
     { valor_total: totalComEncargos },
     { where: { id: faturaId }, transaction }
@@ -140,6 +145,9 @@ async function obterOuCriarFaturaCartao({ cartaoId, dataCompra, parcelaOffset = 
 }
 
 async function vincularTituloAFatura({ titulo, fatura, transaction = null, leituraCorrente = false }) {
+  const parcelamentoAtivo = await CartaoBaixaParcela.findOne({ where: { titulo_financeiro_id: titulo.id, status: 'ATIVA' },
+    transaction, ...(transaction ? { lock: transaction.LOCK.UPDATE } : {}) });
+  if (parcelamentoAtivo) throw createHttpError(409, 'O titulo possui compra parcelada nas faturas. Use o parcelamento na baixa, sem vincular novamente o total do titulo.');
   await FaturaCartaoTitulo.findOrCreate({
     where: { titulo_financeiro_id: titulo.id },
     defaults: {
@@ -193,8 +201,18 @@ async function incluirComprasRateadas(faturas, transaction = null) {
     fila_liquidacao_id: { [Op.ne]: null }, status: 'ATIVO', tipo_movimento: 'BAIXA', forma_recebimento: 'CARTAO_CREDITO' },
     include: [{ model: TituloFinanceiro, as: 'titulo', required: true,
       include: [{ model: Parceiro, as: 'parceiro', attributes: ['id', 'nome', 'cpf_cnpj'] }] }], transaction });
+  const parcelas = await CartaoBaixaParcela.findAll({ where: { fatura_cartao_id: { [Op.in]: faturas.map(item => item.id) }, status: 'ATIVA' },
+    include: [{ model: TituloFinanceiro, as: 'titulo', required: true,
+      include: [{ model: Parceiro, as: 'parceiro', attributes: ['id', 'nome', 'cpf_cnpj'] }] }], transaction });
   for (const fatura of faturas) {
     const partes = compras.filter(item => Number(item.fatura_cartao_id) === Number(fatura.id));
+    // Mesmo contrato de leitura dos rateios; parcela nao e uma segunda BAIXA.
+    partes.push(...parcelas.filter(item => Number(item.fatura_cartao_id) === Number(fatura.id)).map(item => ({
+      id: `parcela-${item.id}`, parcela_cartao_id: item.id, titulo_financeiro_id: item.titulo_financeiro_id,
+      titulo: item.titulo, valor_quitacao: item.valor, numero_parcela: item.numero_parcela,
+      quantidade_parcelas: item.quantidade_parcelas, data_compra: item.data_compra,
+      movimento_financeiro_id: item.movimento_financeiro_id, status: item.status
+    })));
     fatura.setDataValue('compras_rateadas', partes);
     // Sequelize nao cria getter para campos dinamicos nao mapeados.
     fatura.compras_rateadas = partes;
@@ -388,7 +406,7 @@ async function baixarFaturaCartao(req, faturaId, payload = {}, { transaction: ex
       });
     }
 
-    const valorFatura = roundCurrency(await recalcularFaturaCartao(fatura.id, { transaction }));
+    const valorFatura = roundCurrency(await recalcularFaturaCartao(fatura.id, { transaction, leituraCorrente: true }));
     if (valorFatura <= 0) {
       throw createHttpError(400, 'Fatura de cartao sem valor para pagamento.');
     }

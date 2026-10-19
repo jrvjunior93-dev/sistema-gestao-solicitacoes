@@ -40,7 +40,7 @@ const { registrarAtencaoSolicitacao } = require('../services/solicitacaoAtencaoS
 const { apropriacaoPodeReceberLancamento } = require('../services/apropriacaoSelecaoService');
 const { findSetorByCapability, isGeoToken, resolveSetorPersistenciaValue, userHasSetorCapability } = require('../services/setorCapabilityService');
 const { normalizeTipoSolicitacaoBehavior, normalizeTipoSolicitacaoCodigo } = require('../services/tipoSolicitacaoBehaviorService');
-const { assertTipoDisponivelNoDestino } = require('../services/tipoSolicitacaoDisponibilidadeService');
+const { assertTipoCompraDisponivelNoDestino } = require('../services/tipoSolicitacaoDisponibilidadeService');
 const {
   buildCotacaoItemKey,
   calcularValorMercadoriasCotacao,
@@ -4375,7 +4375,7 @@ module.exports = {
       const tipoSolicitacao = compraDireta
         ? await buscarTipoSolicitacaoCompraDireta(tipo_solicitacao_id, transaction)
         : await buscarTipoSolicitacaoCompra(transaction);
-      await assertTipoDisponivelNoDestino(obra, tipoSolicitacao, { transaction });
+      await assertTipoCompraDisponivelNoDestino(obra, tipoSolicitacao, { transaction });
       const fluxoCompra = compraDireta
         ? await montarFluxoAprovacaoCompraDireta({
             transaction

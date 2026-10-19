@@ -44,6 +44,9 @@ async function main() {
   assert.equal(result[0].valor_saldo, '76.67'); assert.equal(result[0].valor_baixado, '83.33');
   assert.equal(result[1].valor_saldo, '153.33');
   assert.equal(result[0].renegociacao_titulos[0].valor, '110.00');
+  assert.equal(result[0].historico_titulo_original.status, 'RENEGOCIADO');
+  assert.equal(result[0].historico_titulo_original.valor_saldo, '0.00');
+  assert.equal(result[0].historico_titulo_original.valor_original, '150.00');
   assert.equal(titulos[0].status, 'RENEGOCIADO'); assert.equal(titulos[0].valor_saldo, '0.00');
   const registros = [{ titulo: Modelo.build(titulos[0], { raw: true, isNewRecord: false }) }];
   await projetarAssociacoes(registros, 'titulo');

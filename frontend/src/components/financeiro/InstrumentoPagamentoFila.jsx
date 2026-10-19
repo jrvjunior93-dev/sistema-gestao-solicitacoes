@@ -3,8 +3,12 @@ import ChequePagamentoFields from './ChequePagamentoFields';
 import OverlayModal from '../ui/OverlayModal';
 import { useWorkspaceState, useWorkspaceWork } from '../../navigation/WorkspaceContext';
 import { revisaoFila } from '../../navigation/filaWorkspaceDraft';
+import {useAuth} from '../../contexts/AuthContext';
+import {podePermuta,ehPermuta,aceitaComposicaoPermuta} from '../../utils/permuta';
 import ChequesParceladosFilaModal from './ChequesParceladosFilaModal';
 import CartoesRateadosFilaModal from './CartoesRateadosFilaModal';
+import ParcelamentoCartaoCampos from './ParcelamentoCartaoCampos';
+import { comCalendarioCartao } from '../../utils/parcelamentoCartao.mjs';
 
 const CHEQUE_FIELDS = ['cheque_numero', 'cheque_emitente', 'titular_documento',
   'cheque_banco', 'cheque_agencia', 'cheque_conta', 'data_emissao', 'data_vencimento'];
@@ -16,7 +20,7 @@ export function tipoInstrumentoFila(forma) {
   const text = `${forma?.tipo || ''} ${forma?.codigo || ''} ${forma?.nome || ''}`
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
   if (forma?.exige_cartao || forma?.gera_fatura || /CARTAO|CREDITO|DEBITO/.test(text)) return 'CARTAO';
-  return text.includes('CHEQUE') ? 'CHEQUE' : 'CONTA';
+  return text.includes('CHEQUE') ? 'CHEQUE' : ehPermuta(forma) ? 'PERMUTA' : 'CONTA';
 }
 
 export function cartoesCompativeisFila(forma, cartoes) {
@@ -29,9 +33,16 @@ export function payloadInstrumentoFila(draft, formas) {
   const forma = formas.find(item => Number(item.id) === Number(draft.forma_pagamento_id));
   const tipo = tipoInstrumentoFila(forma);
   const result = { forma_pagamento_id: Number(draft.forma_pagamento_id) || undefined };
+  if (tipo==='PERMUTA' || Number(draft.valor_permuta)) {
+    if(tipo==='PERMUTA' && draft.empresa_permuta_id)result.empresa_permuta_id=Number(draft.empresa_permuta_id);
+    for(const k of ['documento_referencia','categoria_bem','descricao_bem'])if(draft[k])result[k]=draft[k];
+    if(tipo!=='PERMUTA')result.valor_permuta=Number(draft.valor_permuta);
+  }
   if (tipo === 'CARTAO') return draft.parcelas_cartao?.length ? { ...result,
-    parcelas_cartao: draft.parcelas_cartao.map(item => ({ cartao_id: Number(item.cartao_id), valor_pago: Number(item.valor_pago) })) }
-    : { ...result, cartao_id: Number(draft.cartao_id) || undefined };
+    parcelas_cartao: draft.parcelas_cartao.map(item => ({ cartao_id: Number(item.cartao_id), valor_pago: Number(item.valor_pago),
+      ...(item.parcelamento_cartao ? { parcelamento_cartao: item.parcelamento_cartao } : {}) })) }
+    : { ...result, cartao_id: Number(draft.cartao_id) || undefined,
+      ...(draft.parcelamento_cartao ? { parcelamento_cartao: draft.parcelamento_cartao } : {}) };
   if (tipo === 'CHEQUE') {
     if (draft.parcelas_cheque?.length) return { ...result, parcelas_cheque: draft.parcelas_cheque.map(parcela => ({
       valor_pago: Number(parcela.valor_pago), ...payloadInstrumentoFila({ ...parcela, forma_pagamento_id: draft.forma_pagamento_id }, formas),
@@ -48,6 +59,8 @@ export function payloadInstrumentoFila(draft, formas) {
 
 export default function InstrumentoPagamentoFila({ row, draft = {}, instrumentos, conta, disabled, onChange, podeCadastrarCheque = false,
   editorKey = row.id }) {
+  const {user}=useAuth();
+  const podeUsarPermuta=podePermuta(user);
   const [edicaoParcelas, setEdicaoParcelas] = useWorkspaceState(`fila:parcelasCheque:${editorKey}`, null);
   const [edicaoCartoes, setEdicaoCartoes] = useWorkspaceState(`fila:cartoes:${editorKey}`, null);
   useWorkspaceWork(Boolean(edicaoCartoes), false, `fila:cartoesWork:${editorKey}`);
@@ -66,7 +79,7 @@ export default function InstrumentoPagamentoFila({ row, draft = {}, instrumentos
   const chequeOpen = Boolean(chequeDraft);
   useEffect(() => { if (chequeOpen) chequeFormRef.current?.querySelector('input')?.focus(); }, [chequeOpen]);
   useWorkspaceWork(Boolean(chequeDraft), false, `fila:chequeWork:${editorKey}`);
-  const { formas = [], cartoes = [], cheques = [] } = instrumentos;
+  const { formas = [], cartoes = [], cheques = [], empresas = [] } = instrumentos;
   const forma = formas.find(item => Number(item.id) === Number(draft.forma_pagamento_id));
   const tipo = tipoInstrumentoFila(forma);
   const label = row.titulo?.codigo || row.id;
@@ -85,8 +98,15 @@ export default function InstrumentoPagamentoFila({ row, draft = {}, instrumentos
     onChange(chequeDraft);
     setChequeDraft(null);
   }
+  if (disabled && row.instrumento_pagamento_json?.multiplas_fontes) return <div className="text-xs space-y-1">
+    <strong>Múltiplas fontes</strong>
+    {(row.instrumento_pagamento_json.fontes_titulo || []).map(parte => {
+      const fonte = row.instrumento_pagamento_json.instrumentos?.[parte.componente];
+      return <div key={parte.componente}>{fonte?.forma_nome || fonte?.tipo || 'Fonte'} · {Number(parte.valor).toLocaleString('pt-BR', {style:'currency',currency:'BRL'})}</div>;
+    })}
+  </div>;
   if (disabled) return <span className="text-xs">{forma?.nome || row.titulo?.formaPagamento?.nome || '—'}
-    {row.instrumento_pagamento_json?.liquidacao_id ? ` · ${row.instrumento_pagamento_json.instrumentos?.length || 0} instrumento(s) compartilhados no grupo` : ''}
+    {Number(row.instrumento_pagamento_json?.valor_permuta) ? ` · Permuta R$ ${Number(row.instrumento_pagamento_json.valor_permuta).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : row.instrumento_pagamento_json?.liquidacao_id ? ` · ${row.instrumento_pagamento_json.instrumentos?.length || 0} instrumento(s) compartilhados no grupo` : ''}
     {draft.parcelas_cartao?.length ? ` · ${draft.parcelas_cartao.length} cartão(ões)` : ''}
     {draft.cartao_id ? ` · ${cartoes.find(item => Number(item.id) === Number(draft.cartao_id))?.nome || `Cartão #${draft.cartao_id}`}` : ''}
     {draft.cheque_numero ? ` · Cheque ${draft.cheque_numero}` : ''}
@@ -101,36 +121,57 @@ export default function InstrumentoPagamentoFila({ row, draft = {}, instrumentos
       <select className="input input-sm w-full" aria-label={`Forma de pagamento de ${label}`}
         value={draft.forma_pagamento_id || ''} onChange={event => {
           onChange({ forma_pagamento_id: event.target.value, conta_bancaria_id: '',
-          parcelas_cheque: [], parcelas_cartao: [], cartao_id: '', origem_cheque: '', usar_cheque_terceiro: false, cheque_terceiro_id: '', cheque_numero: '', cheque_emitente: '',
+          valor_permuta:'',empresa_permuta_id:'',documento_referencia:'',categoria_bem:'',descricao_bem:'',
+          parcelas_cheque: [], parcelas_cartao: [], cartao_id: '', parcelamento_cartao: undefined, origem_cheque: '', usar_cheque_terceiro: false, cheque_terceiro_id: '', cheque_numero: '', cheque_emitente: '',
           titular_documento: '', cheque_banco: '', cheque_agencia: '', cheque_conta: '', data_emissao: '', data_vencimento: '' });
           setChequeDraft(null);
           setEdicaoParcelas(null);
           setEdicaoCartoes(null);
         }}>
-        <option value="">Selecione</option>{formas.map(item => <option key={item.id} value={item.id}>{item.nome}</option>)}
+        <option value="">Selecione</option>{formas.filter(item=>!ehPermuta(item)||podeUsarPermuta).map(item => <option key={item.id} value={item.id}>{item.nome}</option>)}
       </select>
     </label>
+    {tipo==='PERMUTA' && podeUsarPermuta && <label className="block text-xs">Empresa da permuta<select className="input input-sm w-full" value={draft.empresa_permuta_id||row.titulo?.empresa_id||''} onChange={e=>onChange({empresa_permuta_id:e.target.value})}>
+      <option value="">Selecione</option>{empresas.map(e=><option key={e.id} value={e.id}>{e.nome}</option>)}
+    </select></label>}
+    {podeUsarPermuta && tipo==='CONTA' && aceitaComposicaoPermuta(forma) && <label className="block text-xs">Parte em permuta (R$)
+      <input type="number" min="0" step="0.01" className="input input-sm w-full" value={draft.valor_permuta||''}
+        onChange={e=>onChange({valor_permuta:e.target.value})} />
+    </label>}
+    {podeUsarPermuta && (tipo==='PERMUTA'||Number(draft.valor_permuta)>0) && <>
+      <label className="block text-xs">Categoria da permuta<select className="input input-sm w-full" value={draft.categoria_bem||''} onChange={e=>onChange({categoria_bem:e.target.value})}>
+        <option value="">Selecione</option>{['VEICULO','IMOVEL','TERRENO','SERVICO','MATERIAL','CREDITO','OUTROS'].map(v=><option key={v}>{v}</option>)}
+      </select></label>
+      <label className="block text-xs">Referência da permuta<input className="input input-sm w-full" maxLength={120} value={draft.documento_referencia||''} onChange={e=>onChange({documento_referencia:e.target.value})}/></label>
+    </>}
     {tipo === 'CARTAO' && <>
       <button type="button" className="btn btn-outline btn-sm" onClick={() => setEdicaoCartoes({ revisao: revisaoFila(row),
-        parcelas: draft.parcelas_cartao?.length ? draft.parcelas_cartao : [{ cartao_id: draft.cartao_id || '', valor_pago: draft.valor_pago }] })}>
+        parcelas: draft.parcelas_cartao?.length ? draft.parcelas_cartao : [{ cartao_id: draft.cartao_id || '', valor_pago: draft.valor_pago, parcelamento_cartao: draft.parcelamento_cartao }] })}>
         {draft.parcelas_cartao?.length ? `Editar ${draft.parcelas_cartao.length} cartão(ões)` : 'Mais de um cartão'}</button>
       {draft.parcelas_cartao?.length ? <p className="text-xs">{draft.parcelas_cartao.length} cartão(ões) informado(s).
         <button type="button" className="underline ml-2" onClick={() => onChange({ parcelas_cartao: [] })}>Usar cartão único</button></p> :
       <label className="block text-xs">Cartão utilizado
         <select className="input input-sm w-full" aria-label={`Cartão de ${label}`} value={draft.cartao_id || ''}
           onChange={event => { const card = cartoes.find(item => Number(item.id) === Number(event.target.value));
-            onChange({ cartao_id: event.target.value, conta_bancaria_id: card?.conta_bancaria_id || '' }); }}>
+            onChange({ cartao_id: event.target.value, conta_bancaria_id: card?.conta_bancaria_id || '',
+              parcelamento_cartao: card?.tipo === 'CREDITO' ? comCalendarioCartao({ quantidade_parcelas: 1, data_compra: draft.data_baixa }, card) : undefined }); }}>
           <option value="">Selecione</option>{compativeis.map(item => <option key={item.id} value={item.id}>{item.nome} · {item.tipo}</option>)}
         </select>
       </label>
       }
+      {!draft.parcelas_cartao?.length && <ParcelamentoCartaoCampos label={String(label)}
+        permiteParcelamento={forma?.permite_parcelamento !== false}
+        cartao={cartoes.find(item => Number(item.id) === Number(draft.cartao_id))} value={draft.parcelamento_cartao}
+        dataMovimento={draft.data_baixa} valor={draft.valor_pago} disabled={disabled}
+        onChange={parcelamento_cartao => onChange({ parcelamento_cartao })} />}
       <p className="text-xs text-[var(--c-muted)]">Crédito: baixa do título e lançamento na fatura. Débito: saída da conta vinculada.</p>
     </>}
     {edicaoCartoes && tipo === 'CARTAO' && <CartoesRateadosFilaModal label={label} parcelas={edicaoCartoes.parcelas}
-      cartoes={compativeis} total={draft.valor_pago} conflito={disabled || edicaoCartoes.revisao !== revisaoFila(row)}
+      permiteParcelamento={forma?.permite_parcelamento !== false}
+      cartoes={compativeis} total={draft.valor_pago} dataMovimento={draft.data_baixa} conflito={disabled || edicaoCartoes.revisao !== revisaoFila(row)}
       onChange={parcelas => setEdicaoCartoes(current => ({ ...current, parcelas }))} onFechar={() => setEdicaoCartoes(null)}
       onConfirmar={parcelas => { const card = cartoes.find(item => Number(item.id) === Number(parcelas[0].cartao_id));
-        onChange({ parcelas_cartao: parcelas, cartao_id: '', conta_bancaria_id: card?.conta_bancaria_id || '' }); setEdicaoCartoes(null); }} />}
+        onChange({ parcelas_cartao: parcelas, cartao_id: '', parcelamento_cartao: undefined, conta_bancaria_id: card?.conta_bancaria_id || '' }); setEdicaoCartoes(null); }} />}
     {tipo === 'CHEQUE' && <>
       <button type="button" className="btn btn-outline btn-sm" onClick={() => {
         setChequeDraft(null);

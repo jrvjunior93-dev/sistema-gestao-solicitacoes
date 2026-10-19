@@ -1005,6 +1005,11 @@ export function canDeleteTitulosFinanceiros(user) {
   return userHasSetorCapability(user, 'eh_setor_financeiro') || normalizeToken(user?.perfil) === 'FINANCEIRO';
 }
 
+export function canCancelTitulosFinanceiros(user) {
+  if (!hasEnabledModule(user, 'FINANCEIRO')) return false;
+  return isBusinessAdmin(user) || (hasConfiguredAreaPermissions(user) && hasPermissao(user, 'financeiro.titulos.cancelar'));
+}
+
 export function canImportTitulosFinanceiros(user) {
   if (!hasEnabledModule(user, 'FINANCEIRO')) return false;
   if (isBusinessAdmin(user)) return true;

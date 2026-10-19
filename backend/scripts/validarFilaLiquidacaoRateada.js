@@ -195,9 +195,12 @@ async function main() {
   assert.equal(cents(state.movimentos.filter(row => row.empresa_id === 2).reduce((sum, row) => sum + row.valor, 0)), 15000);
   await queueModule.exports.estornarBaixaFila(req, 2, { motivo: 'QA duas carteiras', idempotency_key: 'duas-r' });
   assert(state.cheques.every(row => row.status === 'EM_CARTEIRA')); assert.equal(state.chequeEventos.length, 4);
-  // Excecao e apenas carteira compartilhada, nao Pix/cartao/proprio ou flag publica.
+  // PERMUTA tambem dispensa banco: a forma e resolvida no servico, nao no
+  // validator estrutural. PIX continua exigindo conta no caminho canonico.
   const semConta = { ...base, conta_bancaria_id: undefined };
-  assert.throws(() => validate({ itens: [{ ...semConta, forma_pagamento_id: 3 }] }), /Conta pagadora/);
+  await preparar();
+  await assert.rejects(queueModule.exports.registrarBaixasFila(req, validate({ itens: [{ ...semConta, forma_pagamento_id: 3 }] })), /conta pagadora/i);
+  assert.equal(state.movimentos.length, 0);
   assert.throws(() => payloadCheque([semConta]), /Conta pagadora/);
   assert.throws(() => validate({ itens: [{ ...base, empresa_id: 2, usar_cheque_terceiro: true, cheque_terceiro_id: 77 }] }), /empresa_id/);
   assert.throws(() => validate({ idempotency_key: 'x', itens: [base], instrumentos_lote: { tipo: 'CHEQUE', forma_pagamento_id: 4,

@@ -1468,6 +1468,11 @@ async function canDeleteTitulosFinanceiros(user) {
   return userHasFinanceiroSector(user);
 }
 
+async function canCancelTitulosFinanceiros(user) {
+  // Nova acao critica nao herda acesso legado de setor/editar/excluir.
+  return isBusinessAdmin(user) || userHasAreaPermissionWhenConfigured(user, ['financeiro.titulos.cancelar']);
+}
+
 async function canImportTitulosFinanceiros(user) {
   if (isBusinessAdmin(user)) return true;
 
@@ -3360,6 +3365,7 @@ module.exports = {
   canViewSolicitacaoFinanceiro,
   canOperateSolicitacaoFinanceiro,
   canDeleteTitulosFinanceiros,
+  canCancelTitulosFinanceiros,
   canImportTitulosFinanceiros,
   canAccessFiscal,
   canAccessSst,

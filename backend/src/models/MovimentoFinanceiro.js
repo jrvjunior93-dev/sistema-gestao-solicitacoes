@@ -167,6 +167,8 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: true
     },
+    cartao_baixa_chave: { type: DataTypes.STRING(80), allowNull: true, unique: true },
+    cartao_baixa_hash: { type: DataTypes.STRING(64), allowNull: true },
     estornado_em: {
       type: DataTypes.DATE,
       allowNull: true
