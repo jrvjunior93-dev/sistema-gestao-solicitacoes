@@ -1,5 +1,13 @@
 # Handoff Global
 
+## Preparacao financeiro MAIN - 2026-10-19
+
+- Em andamento, worktree isolado. Usuario confirmou DEV, backup e timer.
+  Origem db1d2253 inclui cartao/permuta/multiplas fontes/cancelamento e
+  correcao do outro agente para sobreposicoes/historico de titulos.
+  Exige leitura/simulacao EC2 de producao antes de publicar/aplicar; agente
+  nao acessa servidor nem executa regularizacao financeira.
+
 ## Promocao main cadastro no pagamento RH - 2026-10-15
 
 - Usuario homologou dev e autorizou main; backup/timer conferidos. EC2 main

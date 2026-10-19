@@ -1,5 +1,12 @@
 # Quadro de Agentes
 
+## Financeiro e sobreposicoes MAIN - 2026-10-19
+
+- Sessao codex-promocao-financeiro-20261019: em_andamento. Preservar main
+  ff459840 e incorporar DEV db1d2253; rodar suites integradas/backend/UI/build.
+  Preparar preflight de producao somente leitura e simulacao, sem regularizacao
+  automatica. Merge/publicacao main aguardam evidencia do operador EC2.
+
 ## Promocao main Compra Direta/admissao - 2026-10-15
 
 - Integracao autorizada main1341e1a3/devd72a9c93, sem delegacao; backup/timer

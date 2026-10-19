@@ -1,5 +1,16 @@
 # Ownership Ativo
 
+## Preparacao MAIN financeiro e sobreposicoes - 2026-10-19
+
+- Sessao codex-promocao-financeiro-20261019, agente unico, em_andamento.
+  Main ff459840 / DEV db1d2253 congelados. Usuario confirmou os dois pacotes
+  homologados no DEV, backup cifrado conferido e timer ativo.
+- Reserva exclusiva no worktree isolado: integracao de historicos e documentos
+  desta promocao; novo preflight somente leitura e roteiro/testes de producao.
+  Nao editar runtime funcional, worktree do outro agente ou auditorias privadas.
+- Producao requer leitura/simulacao pelo operador antes de publicar main.
+  Nao executar EC2, migrations, regularizacao, cancelamento ou restart pelo agente.
+
 ## Promocao MAIN: remetente, filtros e historico excluido - 2026-10-18
 
 - Usuario homologou2e146629 no DEV, autorizou promover para main e confirmou
