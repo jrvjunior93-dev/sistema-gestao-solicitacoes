@@ -1,5 +1,16 @@
 # Ownership Ativo
 
+## Promocao cheques/contrato MAIN - 2026-10-20
+
+- codex-promocao-cheques-contrato-main-20261020, agente unico, em_andamento.
+  Usuario homologou DEV1f02c745 e autorizou promover para main e9df5094;
+  backup recente no Drive cifrado e timer ativo confirmados nesta promocao.
+- Reserva: integracao documental README/handoffs e quatro controles workspace;
+  roteiro produtivo de cheques e seu QA somente para incluir novo teste do
+  contrato antes do restart e exigir ancestralidade do pacote homologado.
+- Integrar historicos, preservar runtime homologado e hotfixes main. Sem
+  migration/dependencia nova, EC2/SSH/banco real ou alteracao do DEV.
+
 ## Promocao cheques datas/moeda para main - 2026-10-19
 
 - Sessao codex-promocao-cheques-main-20261019, agente unico, finalizado local.

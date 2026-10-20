@@ -1,5 +1,12 @@
 # Quadro de Agentes
 
+## Promocao cheques/contrato MAIN - 2026-10-20
+
+- Agente unico, em_andamento. Integrar DEV1f02 homologado com main e9df,
+  preservar ambos historicos, executar QA e publicar PR/merge autorizado.
+  Reserva roteiro produtivo/QA/docs; sem DDL/EC2/banco ou alteracao do DEV.
+  Backup cifrado/timer confirmados pelo operador especificamente nesta promocao.
+
 ## Promocao cheques main - 2026-10-19
 
 - codex-promocao-cheques-main-20261019, finalizado local, agente unico.

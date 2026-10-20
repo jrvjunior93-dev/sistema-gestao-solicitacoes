@@ -1,5 +1,9 @@
 # Sessoes Ativas
 
+- codex-promocao-cheques-contrato-main-20261020: em_andamento, agente unico,
+  DEV1f02 homologado/main e9df congelada. Backup/timer confirmados; reservas
+  integracao/roteiro/QA/docs no ownership. Sem EC2/banco/DDL ou alteracao DEV.
+
 - codex-promocao-cheques-main-20261019: finalizado local, agente unico, homologacao
   DEV719/e01 confirmada. Integrar main9e4 sem perder guardas/historicos.
   Sem EC2/banco/DDL ou alteracao do DEV; backup/timer confirmado pelo usuario.
