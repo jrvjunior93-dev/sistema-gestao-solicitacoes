@@ -1,5 +1,9 @@
 # Sessoes Ativas
 
+- codex-promover-imagens-comprovantes-main-20261020: em_andamento, agente unico,
+  DEVf835 homologado/main b315 congelada. Backup/timer confirmados, reservas
+  integracao/roteiro/QA/docs no ownership. Sem EC2/banco/DDL ou alteracao DEV.
+
 - codex-promocao-cheques-contrato-main-20261020: finalizado local, agente unico,
   DEV1f02 homologado/main e9df congelada. Backup/timer confirmados; reservas
   integracao/roteiro/QA/docs no ownership. Sem EC2/banco/DDL ou alteracao DEV.

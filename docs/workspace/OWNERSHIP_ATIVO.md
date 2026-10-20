@@ -1,5 +1,17 @@
 # Ownership Ativo
 
+## Promocao imagens comprovantes MAIN - 2026-10-20
+
+- codex-promover-imagens-comprovantes-main-20261020, agente unico, em_andamento.
+  Usuario homologou DEVf8356739 e autorizou promover para main b31531d0;
+  backup recente no Drive cifrado e timer ativo confirmados nesta promocao.
+- Reserva: integracao do pacote conhecido JPG/JPEG/PNG sem mudar runtime
+  homologado, docs/README/handoff/quatro controles; roteiro produtivo de
+  cheques e seu QA somente para incluir verificacoes de comprovantes antes
+  do restart e exigir ancestralidade do pacote. Preservar hotfixes main.
+- Sem EC2/SSH/banco/S3 reais, migration/dependencia nova ou alteracao do DEV.
+  Bundle anterior privado verificado; outputs nao serao publicados.
+
 ## Promocao cheques/contrato MAIN - 2026-10-20
 
 - codex-promocao-cheques-contrato-main-20261020, agente unico, finalizado local.

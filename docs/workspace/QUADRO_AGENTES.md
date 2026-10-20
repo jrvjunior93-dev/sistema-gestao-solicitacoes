@@ -1,5 +1,12 @@
 # Quadro de Agentes
 
+## Promocao imagens comprovantes MAIN - 2026-10-20
+
+- Agente unico, em_andamento; integrar DEVf835 homologado com main b315,
+  preservar historicos/hotfixes, validar e publicar PR/merge autorizado.
+  Backup cifrado/timer confirmados para esta promocao; reservas no ownership.
+- Roteiro produtivo/QA/docs, sem DDL/EC2/banco real ou alteracao do DEV.
+
 ## Promocao cheques/contrato MAIN - 2026-10-20
 
 - Agente unico, finalizado local. Integrar DEV1f02 homologado com main e9df,
