@@ -20,6 +20,7 @@ git merge-base --is-ancestor 9e4faf4e75dbf9c59c01eaee742f125b4e5dd315 HEAD
 git merge-base --is-ancestor e01e7bbf7ca35a99fa81f0ac387a5b6a23eb20a8 "$versao_prod"
 git merge-base --is-ancestor 1f02c745558cabf465d84ef4b0e92e9c27f09f23 "$versao_prod"
 git merge-base --is-ancestor f83567393bc96b70a4aaa593ddcc8a6459501060 "$versao_prod"
+git merge-base --is-ancestor 93f75d67f773b9687bbf7acb9cf4664243f42c84 "$versao_prod"
 git diff --quiet 9e4faf4e75dbf9c59c01eaee742f125b4e5dd315 "$versao_prod" -- \
   backend/migrations backend/package.json backend/package-lock.json frontend/package.json frontend/package-lock.json
 
@@ -35,6 +36,7 @@ test "$env_hash_prod" = "$(sha256sum backend/.env)"
 cd backend
 npm ci --omit=dev
 node scripts/validarDeployChequesProducao.js
+node scripts/validarEncerramentoSemPedidoHistorico.js
 node scripts/validarUploadComprovantesFila.js
 node scripts/validarFilaComprovantePendente.js
 node scripts/validarComprovanteCompartilhadoSchema.js
@@ -62,4 +64,4 @@ timeout 60s node scripts/verificarReenvioAutorizacaoProducao.js --verificar
 cd ..
 test "$env_hash_prod" = "$(sha256sum backend/.env)"
 git log -1 --oneline
-echo 'PRODUCAO atualizada: comprovantes manuais PDF/JPG/JPEG/PNG e importador apenas PDF. Cheques/descontos/contrato preservados. Sem migration/baixa automatica; .env/PILOT/TLS/12h preservados. DEV nao alterado.'
+echo 'PRODUCAO atualizada: motivo do encerramento sem pedido no historico, comprovantes e cheques preservados. Sem migration/backfill/baixa automatica; .env/PILOT/TLS/12h preservados. DEV nao alterado.'

@@ -1,5 +1,33 @@
 # Modulo COMPRAS
 
+## Promocao MAIN motivo encerramento - 2026-10-20
+
+- DEV93f75 homologado: novos encerramentos sem pedido mostram somente o motivo
+  no texto do historico principal, preservando data/autor/acao/status/metadados.
+- Roteiro produtivo existente de cheques exige pacote93f75 e executa o QA
+  antes de restart exclusivo backend-solicitacoes; .env/schema/TLS/12h/PILOT
+  preservados, sem migration/dependencia/backfill ou alteracao do DEV.
+- [Escopo, evidencias e recuperacao](../../handoffs/2026-10-20-promocao-main-motivo-encerramento.md).
+
+## Motivo de encerramento sem pedido no historico - 2026-10-20
+
+Novos encerramentos pelo botao `Encerrar sem pedido` incluem a justificativa
+no texto do evento `COTACAO_ENCERRADA_SEM_PEDIDO` do historico da solicitacao
+principal: somente o motivo informado, sem resumo do encerramento ou do saldo.
+Data, responsavel, acao e transicao de status do registro continuam visiveis.
+O motivo continua salvo no fechamento e nos metadados existentes. Antes,
+esses dados existiam, mas o texto exibido pelo historico nao os incluia.
+
+Sem alteracao de UI, limites da justificativa (10 a 2000 caracteres), permissoes,
+escopo, confirmacao, idempotencia, status ou pedidos existentes. Registro usa
+a mesma transacao; falha no historico impede concluir o encerramento. Reenvio
+idempotente nao duplica o evento. Sem migration/backfill de encerramentos antigos.
+
+Validacao isolada: `node scripts/validarEncerramentoSemPedidoHistorico.js` no
+backend; servico/controller reais com modelos/transacao em memoria, sem banco.
+Regressao: `node scripts/validarCompraCotacaoEnvio.js`. Handoff em
+[motivo no historico](../../handoffs/2026-10-20-encerramento-sem-pedido-historico.md).
+
 ## Boletos dos titulos de pedido na fila e historico - 2026-10-16
 
 Os arquivos enviados por Compras na geracao dos titulos do pedido conservam

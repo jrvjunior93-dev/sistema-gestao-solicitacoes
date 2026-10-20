@@ -8,7 +8,7 @@ assert(script.indexOf('p.watch') < merge);
 assert(script.indexOf('configurarSessao12hDev.js --verificar') < merge);
 assert(script.indexOf('validarDatasCheques.js') > merge && script.indexOf('validarDatasCheques.js') < restart);
 assert(script.indexOf('validarChequesLoteContrato.js') > merge && script.indexOf('validarChequesLoteContrato.js') < restart);
-for (const teste of ['validarUploadComprovantesFila.js', 'validarFilaComprovantePendente.js',
+for (const teste of ['validarEncerramentoSemPedidoHistorico.js', 'validarUploadComprovantesFila.js', 'validarFilaComprovantePendente.js',
   'validarComprovanteCompartilhadoSchema.js', 'validarComprovantesPdfFila.js']) {
   assert(script.indexOf(teste) > merge && script.indexOf(teste) < restart, teste);
 }
