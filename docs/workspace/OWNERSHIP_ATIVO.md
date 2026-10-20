@@ -1,5 +1,16 @@
 # Ownership Ativo
 
+## Promocao MAIN motivo encerramento sem pedido - 2026-10-20
+
+- codex-promover-motivo-encerramento-main-20261020, agente unico, em_andamento.
+  DEV93f75d67 homologado, promocao main e2e13d44 autorizada; backup Drive cifrado
+  e timer ativo confirmados para esta promocao. Sem EC2/banco real pelo agente.
+- Reserva: integracao do delta homologado, docs Compras/handoff/quatro controles;
+  roteiro produtivo existente de cheques e QA apenas para incluir teste do
+  motivo apos merge/antes de restart e exigir ancestralidade93f75.
+- Preservar hotfixes main, UI/ACL/transaction/pedidos e runtime DEV. Sem
+  migration/dependencia/backfill ou alteracao DEV; outputs privados intactos.
+
 ## Promocao imagens comprovantes MAIN - 2026-10-20
 
 - codex-promover-imagens-comprovantes-main-20261020, agente unico, finalizado local.

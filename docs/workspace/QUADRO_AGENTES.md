@@ -1,5 +1,12 @@
 # Quadro de Agentes
 
+## Promocao MAIN motivo encerramento - 2026-10-20
+
+- Agente unico, em_andamento. Integrar DEV93f75 homologado com main e2e13,
+  preservar historicos/hotfixes, validar e publicar PR/merge autorizado.
+  Backup cifrado/timer confirmados; reservas roteiro/QA/docs no ownership.
+- Sem EC2/banco real/DDL/backfill, sem alteracao do DEV.
+
 ## Promocao imagens comprovantes MAIN - 2026-10-20
 
 - Agente unico, finalizado local; integrar DEVf835 homologado com main b315,

@@ -1,5 +1,9 @@
 # Sessoes Ativas
 
+- codex-promover-motivo-encerramento-main-20261020: em_andamento, agente unico,
+  DEV93f75 homologado/main e2e13 congelada. Backup/timer confirmados; reservar
+  integracao/roteiro/QA/docs, sem EC2/banco/DDL/backfill ou alteracao DEV.
+
 - codex-promover-imagens-comprovantes-main-20261020: finalizado local, agente unico,
   DEVf835 homologado/main b315 congelada. Backup/timer confirmados, reservas
   integracao/roteiro/QA/docs no ownership. Sem EC2/banco/DDL ou alteracao DEV.
