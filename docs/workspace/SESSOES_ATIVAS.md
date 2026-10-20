@@ -1,5 +1,17 @@
 # Sessoes Ativas
 
+- codex-historico-encerramento-sem-pedido-20261020-publicacao: finalizado local,
+  agente unico, baseDEVf835/main e2e13d44. Commit/push DEV autorizado; reservar
+  delta/roteiro/QA/docs, sem EC2/banco/DDL/main ou publicacao de outputs privados.
+  Texto refinado somente motivo; QA runtime/roteiro/cotacao/guardas/sintaxe/docs/
+  diff aprovados, ownership liberado para commit/push DEV autorizado.
+
+- codex-historico-encerramento-sem-pedido-20261020: finalizado local, agente unico,
+  baseDEVf835; reserva servico de pedidos apenas texto do historico, QA e docs.
+  Sem alteracao de tela, permissao, financeiro, main/EC2 ou commit/push.
+  QA do motivo/historico/replay/rollback/ACL, regressao cotacao e Node/docs/diff
+  aprovados; ownership liberado e handoff salvo, sem reescrever historico antigo.
+
 - codex-fila-comprovantes-imagens-20261020-publicacao: finalizado local, agente unico,
   commit/push DEV autorizado, reserva delta/roteiro/QA/docs. Sem EC2/banco real,
   DDL ou producao; main b315 e outputs preservados.

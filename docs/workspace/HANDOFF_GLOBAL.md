@@ -1,5 +1,27 @@
 # Handoff Global
 
+## Publicacao DEV motivo encerramento - 2026-10-20
+
+- Commit/push DEV autorizado, basef835/main e2e13d44 conferidas. Usuario refinou
+  o texto: somente motivo, sem prefixo/resumo/saldo, mantendo data/autor/status.
+- Roteiro DEV existente executa novo QA apos merge e antes de restart exclusivo
+  backend-dev, preservando bootstrap antigo, PM2/watch/8001, hash.env/schema/12h.
+- Motivo/cotacao/ACL/replay/rollback e todos testes do roteiro, guardas/Node/
+  Bash/docs/diff aprovados; ownership liberado para publicacao autorizada.
+  Sem frontend alterado/DDL/EC2/main/backfill; outputs privados nao publicados.
+
+## Motivo encerramento sem pedido - 2026-10-20
+
+- Usuario pediu motivo no historico principal; baseDEVf835, agente unico.
+  Motivo ja salvo em fechamento/log/metadata, mas descricao exibida nao trazia.
+  Uma linha inclui motivo na descricao/observacao do mesmo evento/transacao.
+- Sem UI/ACL/rotas/status/pedidos/migration/EC2/main/publicacao/backfill.
+  Servico/controller isolados reproduzem defeito e aprovam texto/autor/status,
+  limites/metadata/ACL/escopo/replay/rollback. Regressao cotacao/Node/docs/diff
+  aprovada; ownership liberado, delta local sem commit/push.
+- Handoff 2026-10-20-encerramento-sem-pedido-historico.md; homologar DEV apos
+  publicacao autorizada, sem encerrar solicitacoes reais em producao para teste.
+
 ## Publicacao DEV imagens comprovantes - 2026-10-20
 
 - Usuario autorizou commit/push DEV e comandos EC2 sem producao. Base1f02/main

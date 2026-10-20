@@ -1,5 +1,24 @@
 # Quadro de Agentes
 
+## Publicacao DEV motivo encerramento - 2026-10-20
+
+- Agente unico, finalizado local, commit/push DEV autorizado; reservas no ownership.
+  Revalidar motivo/historico/replay/ACL/rollback e incluir QA no roteiro DEV
+  apos merge e antes do restart; sem DDL/EC2/main ou backfill.
+- Usuario refinou para somente motivo no texto; data/autor/status preservados.
+  QA completo do roteiro, cotacao/motivo/replay/ACL/rollback, Node/Bash/docs/diff
+  aprovados; ownership liberado para publicacao autorizada.
+
+## Motivo encerramento sem pedido - 2026-10-20
+
+- Agente unico, finalizado local, baseDEVf835. Incluir justificativa ja salva na
+  descricao exibida no historico principal. Preservar autor/status/transaction/
+  metadados, ACL, idempotencia e pedidos existentes; reservas no ownership.
+- Somente backend/teste/docs, sem UI/EC2/DDL/main/publicacao ou backfill.
+- Novo QA reproduz ausencia antiga e confirma texto completo, autor/status,
+  metadata/limites/ACL/escopo/replay/rollback. Regressao cotacao/Node/docs/diff
+  aprovados; ownership liberado, delta local sem commit/push.
+
 ## Publicacao DEV imagens comprovantes - 2026-10-20
 
 - Agente unico, finalizado local; commit/push DEV autorizado. Reservas no ownership.

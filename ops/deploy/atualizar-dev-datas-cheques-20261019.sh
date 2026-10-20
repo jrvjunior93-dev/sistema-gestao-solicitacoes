@@ -33,6 +33,7 @@ test "$env_hash_dev" = "$(sha256sum backend/.env)"
 cd backend
 npm ci --omit=dev
 node scripts/validarDeployDatasChequesDev.js
+node scripts/validarEncerramentoSemPedidoHistorico.js
 node scripts/validarUploadComprovantesFila.js
 node scripts/validarFilaComprovantePendente.js
 node scripts/validarComprovanteCompartilhadoSchema.js
@@ -58,4 +59,4 @@ timeout 45s node scripts/configurarSessao12hDev.js --verificar
 cd ..
 test "$env_hash_dev" = "$(sha256sum backend/.env)"
 git log -1 --oneline
-echo 'DEV atualizado: comprovantes manuais PDF/JPG/JPEG/PNG, importador apenas PDF, cheques e descontos/contrato preservados. Sem migration/.env/flags alterados; producao nao alterada.'
+echo 'DEV atualizado: motivo do encerramento sem pedido no historico, comprovantes manuais e cheques preservados. Sem migration/.env/flags alterados; producao nao alterada.'

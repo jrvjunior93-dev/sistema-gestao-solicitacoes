@@ -1,5 +1,33 @@
 # Ownership Ativo
 
+## Publicacao DEV motivo encerramento sem pedido - 2026-10-20
+
+- Usuario autorizou commit/push refactor/frontend e comandos DEV. Agente unico,
+  finalizado local, baseDEVf835/main e2e13d44 conferidas. Reservar delta local
+  conhecido, roteiro atualizar-dev-datas-cheques-20261019.sh e seu QA apenas
+  para executar o novo teste do historico apos merge e antes do restart DEV.
+- Sem EC2/banco real, main/producao, migration/dependencia ou backfill.
+  Outputs privados e demais worktrees intactos; publicar arquivos revisados.
+- Refinamento atual do usuario: descricao do evento deve mostrar somente o
+  motivo, sem prefixo/resumo/saldo; metadados/data/autor/status preservados.
+- QA motivo/servico/controller/ACL/replay/rollback, regressao cotacao e todos
+  testes do roteiro, guardas/Bash/Node/docs/diff aprovados. Ownership liberado
+  para commit/push DEV autorizado; operador homologa com SHA pinado.
+
+## Motivo do encerramento sem pedido no historico - 2026-10-20
+
+- codex-historico-encerramento-sem-pedido-20261020, agente unico, finalizado local.
+  Usuario pediu registrar motivo no historico da solicitacao. BaseDEVf8356739.
+- Reserva: pedidoCompraService.js SOMENTE descricao do evento de encerramento
+  sem pedido na solicitacao principal; novo teste isolado de historico/replay/
+  transacao, README Compras, handoff e quatro controles workspace.
+- Motivo ja persiste no fechamento/metadata; tornar visivel no texto existente,
+  sem alterar UI/ACL/rotas/status/pedidos/saldos, sem reescrever passado.
+- Sem EC2/SSH/banco real, migrations, main/producao, commit/push ou deploy.
+- Correcao minima/QA de motivo/autor/status/metadata, limites/ACL/escopo,
+  replay/rollback e regressao cotacao/Node/docs/diff aprovados. Ownership
+  liberado; handoff salvo para publicacao/homologacao futura autorizada.
+
 ## Publicacao DEV imagens dos comprovantes - 2026-10-20
 
 - Usuario autorizou commit/push para refactor/frontend e comandos DEV. Agente
