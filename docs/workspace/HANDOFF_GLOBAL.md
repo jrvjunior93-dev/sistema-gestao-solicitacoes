@@ -1,5 +1,27 @@
 # Handoff Global
 
+## Publicacao DEV imagens comprovantes - 2026-10-20
+
+- Usuario autorizou commit/push DEV e comandos EC2 sem producao. Base1f02/main
+  b315 conferidas; sem EC2/banco/S3 reais, DDL/dependencia/configuracao novos.
+- Roteiro DEV existente inclui upload/manual/schema/parser antes de restart,
+  preserva bootstrap antigo, hash.env, PM2/watch8001, sessao12h/flags/schema.
+- Backend completo do roteiro, UI imagens1366/390 e build repetidos/aprovados;
+  guardas/sintaxe/docs/diff conferidos, ownership liberado para commit/push.
+  Publicar apenas delta conhecido, sem outputs privados. Operador homologa
+  JPG/JPEG/PNG individual/compartilhado e PDF automatico sem outra baixa.
+
+## Imagens comprovantes manuais fila - 2026-10-20
+
+- BaseDEV1f02, agente unico, sem producao/EC2/banco real/publicacao. Upload
+  manual PDF/JPG/JPEG/PNG separado da importacao PDF; dois endpoints manuais
+  mantem guardas, limites, assinatura/scanner e historico, sem baixa automatica.
+- Backend de upload real loopback com AV/log simulados, servico/historico/
+  replay/rollback/escopo, parser/schema/cheques e UI imagens1366/390 aprovados.
+  Captura390 inspecionada. Suite completa/rolagem/build/docs586/19/Node/diff
+  aprovados, ownership liberado. Delta local sem commit/push; handoff
+  2026-10-20-imagens-comprovantes-fila.md.
+
 ## Publicacao DEV cheques/contrato - 2026-10-20
 
 - Commit/push refactor/frontend e comandos DEV autorizados. Basee01/main e9df

@@ -1,5 +1,39 @@
 # Ownership Ativo
 
+## Publicacao DEV imagens dos comprovantes - 2026-10-20
+
+- Usuario autorizou commit/push para refactor/frontend e comandos DEV. Agente
+  unico, finalizado local, baseDEV1f02c745/main b31531d0 conferidas por fetch.
+- Reserva do delta conhecido de imagens e docs, atualizar-dev-datas-cheques-20261019.sh
+  e validarDeployDatasChequesDev.js apenas para incluir os QAs antes do restart.
+- Sem EC2/SSH/banco real, migration/dependencia, main ou producao. Outputs
+  privados e demais worktrees intactos. Publicar somente arquivos revisados.
+- QA backend completo do roteiro, UI imagens1366/390, build, guardas/sintaxe/
+  docs/diff aprovados. Ownership liberado para commit/push DEV autorizado.
+  Operador atualiza EC2 com SHA pinado, sem DDL/configuracao/producao.
+
+## Imagens nos comprovantes manuais da fila - 2026-10-20
+
+- codex-fila-comprovantes-imagens-20261020, agente unico, finalizado;
+  baseDEV1f02c745, main b31531d0 preservada. Usuario autorizou implementar/testar
+  JPG/JPEG/PNG manual individual/compartilhado; importacao automatica so PDF.
+- Reserva: uploadComprovantesPagamento.js, novo comprovanteFilaArquivoDomain.js,
+  routes.js SOMENTE duas rotas de anexo manual, pagamentoManualFilaService.js
+  SOMENTE validacao/metadados/upload manual; FinanceiroFilaPagamentos.jsx,
+  novo helper de formatos frontend; testes backend/UI de comprovante, README,
+  handoff e quatro controles workspace. Nao ampliar ACL ou validadores globais.
+- Preservar 12MB, assinaturas binarias, antivirus configurado, permissao/escopo,
+  S3 separado por destino, hash/replay/locks/rollback e historico, sem baixa.
+- Sem EC2/banco real, migration/dependencia, commit/push ou producao.
+- Reserva complementar de QA: validarUploadComprovantesFila.js,
+  validarFilaComprovantePendente.js, validarComprovanteCompartilhadoSchema.js,
+  validarFilaInstrumentosUI.mjs e novo filaComprovantesImagensQA.mjs;
+  filaPaginacaoQA/filaRolagemQA somente rotulo atualizado do mesmo campo.
+- QA upload HTTP loopback/assinatura/scanner isolado, servico/historico/escopo/
+  rollback/replay, parser/schema/cheques, UI imagens/completa/rolagem1366/390,
+  build, docs586/19, Node/diff aprovados. Captura390 inspecionada. Ownership
+  liberado, delta local sem commit/push; handoff salvo para homologacao futura.
+
 ## Publicacao DEV cheques/contrato - 2026-10-20
 
 - Usuario autorizou commit/push para refactor/frontend e comandos DEV.

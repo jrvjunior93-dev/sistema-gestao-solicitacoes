@@ -1,5 +1,24 @@
 # Quadro de Agentes
 
+## Publicacao DEV imagens comprovantes - 2026-10-20
+
+- Agente unico, finalizado local; commit/push DEV autorizado. Reservas no ownership.
+  Revalidar delta e adicionar testes isolados do upload/servico/schema/parser
+  ao roteiro existente, depois do merge e antes do restart exclusivo backend-dev.
+- Sem DDL/EC2/banco/main; outputs privados nao serao publicados.
+- Roteiro/QAs backend, UI imagens1366/390, build, guardas/Node/Bash/docs/diff
+  aprovados. Ownership liberado para publicar delta conhecido; EC2 pelo operador.
+
+## Imagens comprovantes fila - 2026-10-20
+
+- Agente unico, finalizado, baseDEV1f02. Separar upload manual PDF/JPG/JPEG/PNG
+  do importador PDF; mesma permissao/escopo e seguranca binaria/antivirus.
+  Preservar historico/replay/rollback e preview de imagens, sem baixa automatica.
+  Reservas no ownership. Sem EC2/DDL/main/publicacao, frontend compacto existente.
+- Backend/seguranca HTTP loopback, parser/schema/cheques, historico/ACL/replay/
+  rollback, UI imagens/completa/rolagem, build/docs586/19/Node/diff aprovados.
+  Ownership liberado, handoff salvo; sem commit/push ou alteracao de producao.
+
 ## Publicacao DEV cheques/contrato - 2026-10-20
 
 - Usuario autorizou commit/push DEV. Agente unico, finalizado local,

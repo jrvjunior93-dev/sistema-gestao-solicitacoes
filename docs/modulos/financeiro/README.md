@@ -1,5 +1,17 @@
 # Modulo FINANCEIRO
 
+## Comprovantes manuais PDF e imagens - 2026-10-20
+
+- Anexo individual e mesmo comprovante compartilhado aceitam PDF/JPG/JPEG/PNG,
+  ate12MB por arquivo. Importacao automatica continua exclusivamente PDF.
+- Extensao/MIME/assinatura, scanner configurado, permissoes/escopo e limites
+  mantidos. Metadados PDF/JPEG/PNG usam colunas existentes; S3 recebe ContentType
+  coerente e chave por destino. Sem migration ou permissao nova.
+- Anexar nao registra baixa nem muda valores/contas/datas; hash/replay/locks,
+  historico da solicitacao, escopo de arquivo e remocoes preservados. Imagem
+  abre na previa existente, sem forcar PDF. Nao ha OCR/conversao automatica.
+- [Mapa e validacoes](../../handoffs/2026-10-20-imagens-comprovantes-fila.md).
+
 ## Cheques de lote com descontos e contrato - 2026-10-20
 
 - Instrumentos compartilhados sao partes de uma unica liquidacao: o contrato
