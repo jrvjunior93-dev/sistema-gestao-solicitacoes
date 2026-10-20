@@ -1,5 +1,18 @@
 # Handoff Global
 
+## Promocao MAIN motivo encerramento - 2026-10-20
+
+- Usuario homologou DEV93f75 e autorizou promover main e2e13, backup cifrado/
+  timer confirmados. Integracao preserva historicos/hotfixes e runtime DEV.
+  Novos eventos exibem somente motivo, sem prefixo/resumo; data/autor/status
+  e metadados intactos. Sem backfill, UI, migration ou dependencia nova.
+- Roteiro produtivo de cheques exige93f75 e inclui QA motivo antes do restart;
+  bootstrap antigo/UUID/TLS/schema/12h/PILOT/push/hash.env preservados.
+  Motivo/cotacao/ACL/replay/rollback, suites backend/guardas/build/Node/Bash/docs/
+  diff aprovados. Bundle privado anterior verificado, ownership liberado para
+  commit/PR/merge autorizado; EC2 apenas pelo operador. Handoff
+  2026-10-20-promocao-main-motivo-encerramento.md.
+
 ## Promocao MAIN comprovantes imagens - 2026-10-20
 
 - DEVf835 homologado, main b315 congelada e promocao autorizada; backup Drive
@@ -69,6 +82,28 @@
   invalidado (lista vazia/cwd). Migration 202610190001 pendente. Roteiro original
   sem DDL interrompeu antes do restart; usar retomada documentada acima;
   ownership liberado para PR/merge autorizado. Deploy exclusivamente pelo operador.
+
+## Publicacao DEV motivo encerramento - 2026-10-20
+
+- Commit/push DEV autorizado, basef835/main e2e13d44 conferidas. Usuario refinou
+  o texto: somente motivo, sem prefixo/resumo/saldo, mantendo data/autor/status.
+- Roteiro DEV existente executa novo QA apos merge e antes de restart exclusivo
+  backend-dev, preservando bootstrap antigo, PM2/watch/8001, hash.env/schema/12h.
+- Motivo/cotacao/ACL/replay/rollback e todos testes do roteiro, guardas/Node/
+  Bash/docs/diff aprovados; ownership liberado para publicacao autorizada.
+  Sem frontend alterado/DDL/EC2/main/backfill; outputs privados nao publicados.
+
+## Motivo encerramento sem pedido - 2026-10-20
+
+- Usuario pediu motivo no historico principal; baseDEVf835, agente unico.
+  Motivo ja salvo em fechamento/log/metadata, mas descricao exibida nao trazia.
+  Uma linha inclui motivo na descricao/observacao do mesmo evento/transacao.
+- Sem UI/ACL/rotas/status/pedidos/migration/EC2/main/publicacao/backfill.
+  Servico/controller isolados reproduzem defeito e aprovam texto/autor/status,
+  limites/metadata/ACL/escopo/replay/rollback. Regressao cotacao/Node/docs/diff
+  aprovada; ownership liberado, delta local sem commit/push.
+- Handoff 2026-10-20-encerramento-sem-pedido-historico.md; homologar DEV apos
+  publicacao autorizada, sem encerrar solicitacoes reais em producao para teste.
 
 ## Publicacao DEV imagens comprovantes - 2026-10-20
 

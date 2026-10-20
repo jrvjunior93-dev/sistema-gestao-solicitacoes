@@ -2124,7 +2124,7 @@ async function encerrarSaldoSolicitacaoCompraSemPedido({
     solicitacao,
     usuarioId,
     acao: 'COTACAO_ENCERRADA_SEM_PEDIDO',
-    descricao: `Cotacao encerrada sem gerar novos pedidos. Saldo nao comprado: ${saldoTotal}.`,
+    descricao: fechamento.justificativa,
     statusAnterior,
     statusNovo: 'ENCERRADO',
     metadados: {

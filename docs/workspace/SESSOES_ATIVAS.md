@@ -1,5 +1,11 @@
 # Sessoes Ativas
 
+- codex-promover-motivo-encerramento-main-20261020: finalizado local, agente unico,
+  DEV93f75 homologado/main e2e13 congelada. Backup/timer confirmados; reservar
+  integracao/roteiro/QA/docs, sem EC2/banco/DDL/backfill ou alteracao DEV.
+  Backend/guardas/build/Node/Bash/docs/diff aprovados; runtime identico DEV e
+  bundle anterior verificado, ownership liberado para commit/PR/merge autorizado.
+
 - codex-promover-imagens-comprovantes-main-20261020: finalizado local, agente unico,
   DEVf835 homologado/main b315 congelada. Backup/timer confirmados, reservas
   integracao/roteiro/QA/docs no ownership. Sem EC2/banco/DDL ou alteracao DEV.
@@ -33,6 +39,18 @@
   Simulacao real conferida; inventario inicial de schema alvo invalidado, lista
   vazia por cwd. Pendencia 202610190001 confirmada depois pelo operador. Roteiro
   sem DDL/regularizacao e QA aprovados; ownership liberado para PR/merge.
+
+- codex-historico-encerramento-sem-pedido-20261020-publicacao: finalizado local,
+  agente unico, baseDEVf835/main e2e13d44. Commit/push DEV autorizado; reservar
+  delta/roteiro/QA/docs, sem EC2/banco/DDL/main ou publicacao de outputs privados.
+  Texto refinado somente motivo; QA runtime/roteiro/cotacao/guardas/sintaxe/docs/
+  diff aprovados, ownership liberado para commit/push DEV autorizado.
+
+- codex-historico-encerramento-sem-pedido-20261020: finalizado local, agente unico,
+  baseDEVf835; reserva servico de pedidos apenas texto do historico, QA e docs.
+  Sem alteracao de tela, permissao, financeiro, main/EC2 ou commit/push.
+  QA do motivo/historico/replay/rollback/ACL, regressao cotacao e Node/docs/diff
+  aprovados; ownership liberado e handoff salvo, sem reescrever historico antigo.
 
 - codex-fila-comprovantes-imagens-20261020-publicacao: finalizado local, agente unico,
   commit/push DEV autorizado, reserva delta/roteiro/QA/docs. Sem EC2/banco real,
