@@ -13,6 +13,7 @@ let rows = [], proofs = [], histories = [], attachments = [], uploads = 0, locks
   changeDuringUpload = false, allowSettlement = false, settlements = 0, historyFails = false;
 let transactionTail = Promise.resolve(), audits = [], actor = { id: 99, perfil: 'SUPERADMIN', ativo: true }, auditFails = false;
 let tamperAtStart = false, canAttach = true;
+let uploadMimes = [];
 const req = { user: { id: 99 } };
 const record = data => ({ ...data, async update(changes) { Object.assign(this, changes); return this; },
   toJSON() { return { ...this }; } });
@@ -81,9 +82,10 @@ CNPJ: 22.222.222/0001-22`;
 const deps = {
   crypto, sequelize: require('sequelize'), '../models': models,
   'pdf-parse': { PDFParse: class { async getText() { return { text: receiptText }; } async destroy() {} } },
-  './s3': { async uploadToS3() { uploads++; if (changeDuringUpload) rows[0].status = 'NAO_PAGO'; return `isolado://comprovante-${uploads}`; } },
+  './s3': { async uploadToS3(file) { uploads++; uploadMimes.push(file.mimetype); if (changeDuringUpload) rows[0].status = 'NAO_PAGO'; return `isolado://comprovante-${uploads}`; } },
   './securityLogService': { registrarEventoSeguranca: async () => {} },
   './pagamentoFilaComprovanteDomain': domain,
+  './comprovanteFilaArquivoDomain': require('../src/services/comprovanteFilaArquivoDomain'),
   './pagamentoFilaInstrumentoDomain': require('../src/services/pagamentoFilaInstrumentoDomain'),
   './pagamentoFilaChequesDomain': require('../src/services/pagamentoFilaChequesDomain'),
   './pagamentoFilaFiltrosDomain': require('../src/services/pagamentoFilaFiltrosDomain'),
@@ -124,6 +126,7 @@ function reset(status = 'BAIXADO', movimento = 10) {
     comprovante_hash: null, comprovante_url: null,
     titulo: { id: 100, codigo: 'TIT-QA', solicitacao_id: 200, empresa_id: 1, status: 'QUITADO', valor_saldo: 0, data_vencimento: '2026-10-20' } })];
   proofs = []; histories = []; attachments = []; uploads = 0; settlements = 0; allowSettlement = false; historyFails = false;
+  uploadMimes = [];
   audits = []; actor = { id: 99, perfil: 'SUPERADMIN', ativo: true }; auditFails = false;
   tamperAtStart = false;
 }
@@ -180,7 +183,7 @@ async function main() {
     reset(status, null); await assert.rejects(fila.anexarComprovanteFila(req, 1, file('invalid.pdf')), /nao permite/);
   }
   reset(); await assert.rejects(fila.anexarComprovanteFila(req, -1, file('invalid.pdf')), /valido/);
-  await assert.rejects(fila.anexarComprovanteFila(req, 1, { buffer: Buffer.from('not pdf') }), /PDF valido/);
+  await assert.rejects(fila.anexarComprovanteFila(req, 1, { buffer: Buffer.from('not pdf') }), /PDF, JPG, JPEG ou PNG/);
   rows[0].somente_consulta = true; await assert.rejects(fila.anexarComprovanteFila(req, 1, file('invalid.pdf')), /nao permite/);
   reset(); rows.push(record({ id: 2, status: 'BAIXADO', movimento_financeiro_id: 11, comprovante_hash: hash(file('duplicate.pdf')) }));
   await fila.anexarComprovanteFila(req, 1, file('duplicate.pdf'));
@@ -237,6 +240,47 @@ async function main() {
   doisDestinos(); changeDuringUpload = true;
   await assert.rejects(fila.anexarComprovanteFilaLote(req, [1, 2], input), /nao permite|mudou/);
   changeDuringUpload = false; assert.equal(proofs.length, 0);
+  // Mesmas regras transacionais para imagem manual, nunca interpretada pelo PDF.
+  for (const [nome, mime, bytes, tipo] of [
+    ['foto.JPG', 'image/jpeg', Buffer.from([255,216,255,224,0,16]), 'JPEG'],
+    ['foto.jpeg', '', Buffer.from([255,216,255,224,0,17]), 'JPEG'],
+    ['foto.png', 'image/png', Buffer.from([137,80,78,71,13,10,26,10,0]), 'PNG']
+  ]) {
+    const imagem = { originalname: nome, mimetype: mime, buffer: bytes };
+    reset(); const original = financial(rows[0]);
+    await fila.anexarComprovanteFila(req, 1, imagem);
+    assert.equal(proofs[0].tipo, tipo); assert.equal(rows[0].comprovante_tipo, tipo);
+    assert.equal(uploadMimes[0], tipo === 'PNG' ? 'image/png' : 'image/jpeg');
+    assert.equal(imagem.mimetype, mime, 'Normalizacao do S3 nao altera arquivo de entrada');
+    assert.equal(histories.length, 1); assert.equal(attachments[0].nome_original, nome);
+    assert.deepEqual(financial(rows[0]), original); assert.equal(settlements, 0);
+    await fila.anexarComprovanteFila(req, 1, imagem);
+    assert.equal(proofs.length, 1); assert.equal(uploads, 1); assert.equal(histories.length, 1);
+    doisDestinos(); const originais = rows.map(financial);
+    canAttach = false;
+    await assert.rejects(fila.anexarComprovanteFilaLote(req, [1,2], imagem), /Acesso negado/);
+    canAttach = true;
+    await fila.anexarComprovanteFilaLote(req, [1,2], imagem);
+    assert.equal(proofs.length, 2); assert(proofs.every(p => p.tipo === tipo));
+    assert.notEqual(proofs[0].url, proofs[1].url); assert.deepEqual(rows.map(financial), originais);
+    assert.equal(settlements, 0);
+    await Promise.all([fila.anexarComprovanteFilaLote(req, [1,2], imagem), fila.anexarComprovanteFilaLote(req, [2,1], imagem)]);
+    assert.equal(proofs.length, 2); assert.equal(histories.length, 1);
+    doisDestinos(); auditFails = true;
+    await assert.rejects(fila.anexarComprovanteFilaLote(req, [1,2], imagem), /Auditoria/);
+    auditFails = false; assert.equal(proofs.length, 0); assert.equal(attachments.length, 0);
+    assert(rows.every(r => !r.comprovante_hash));
+  }
+  for (const invalido of [
+    { originalname: 'falso.jpg', mimetype: 'image/jpeg', buffer: Buffer.from('%PDF-QA') },
+    { originalname: 'falso.png', mimetype: 'image/png', buffer: Buffer.from([255,216,255]) },
+    { originalname: 'script.svg', mimetype: 'image/svg+xml', buffer: Buffer.from('<svg/>') },
+    { originalname: 'grande.png', buffer: Buffer.alloc(12 * 1024 * 1024 + 1) }
+  ]) {
+    reset(); await assert.rejects(fila.anexarComprovanteFila(req, 1, invalido));
+    assert.equal(uploads, 0); assert.equal(proofs.length, 0); assert.equal(histories.length, 0);
+  }
+  console.log('Imagens manuais: JPG/JPEG/PNG, tipos persistidos, historico, fila sem baixa, destino/ACL, concorrencia/replay, rollback e falsificacao/tamanho aprovados.');
   // Mesmo arquivo no importador tambem pode ser reutilizado em outro destino.
   doisDestinos(); await pdf.linkReceipts(req, [input], [{fila_id:1,arquivo_hash:hash(input)}]);
   await pdf.linkReceipts(req, [input], [{fila_id:2,arquivo_hash:hash(input)}]);

@@ -1,5 +1,17 @@
 # Handoff Global
 
+## Promocao MAIN comprovantes imagens - 2026-10-20
+
+- DEVf835 homologado, main b315 congelada e promocao autorizada; backup Drive
+  cifrado/timer confirmados. Integracao preserva historicos/hotfixes e runtime
+  byte a byte do DEV. Sem DDL/dependencia/configuracao/operacao financeira nova.
+- Roteiro produtivo existente exige pacote f835 e inclui QAs de comprovantes
+  antes do restart exclusivo backend-solicitacoes; bootstrap antigo, hash.env,
+  UUID/TLS/schema/12h/PILOT/push preservados. Nao toca DEV nem importa imagens.
+- Backend/guardas/UI imagens1366/390/build/docs/sintaxe/diff aprovados; bundle
+  anterior privado verificado, ownership liberado para commit/PR/merge autorizado.
+  EC2 somente pelo operador. Handoff 2026-10-20-promocao-main-comprovantes-imagens.md.
+
 ## Promocao MAIN cheques/contrato - 2026-10-20
 
 - DEV1f02 homologado, promocao main e9df autorizada, backup cifrado/timer
@@ -57,6 +69,28 @@
   invalidado (lista vazia/cwd). Migration 202610190001 pendente. Roteiro original
   sem DDL interrompeu antes do restart; usar retomada documentada acima;
   ownership liberado para PR/merge autorizado. Deploy exclusivamente pelo operador.
+
+## Publicacao DEV imagens comprovantes - 2026-10-20
+
+- Usuario autorizou commit/push DEV e comandos EC2 sem producao. Base1f02/main
+  b315 conferidas; sem EC2/banco/S3 reais, DDL/dependencia/configuracao novos.
+- Roteiro DEV existente inclui upload/manual/schema/parser antes de restart,
+  preserva bootstrap antigo, hash.env, PM2/watch8001, sessao12h/flags/schema.
+- Backend completo do roteiro, UI imagens1366/390 e build repetidos/aprovados;
+  guardas/sintaxe/docs/diff conferidos, ownership liberado para commit/push.
+  Publicar apenas delta conhecido, sem outputs privados. Operador homologa
+  JPG/JPEG/PNG individual/compartilhado e PDF automatico sem outra baixa.
+
+## Imagens comprovantes manuais fila - 2026-10-20
+
+- BaseDEV1f02, agente unico, sem producao/EC2/banco real/publicacao. Upload
+  manual PDF/JPG/JPEG/PNG separado da importacao PDF; dois endpoints manuais
+  mantem guardas, limites, assinatura/scanner e historico, sem baixa automatica.
+- Backend de upload real loopback com AV/log simulados, servico/historico/
+  replay/rollback/escopo, parser/schema/cheques e UI imagens1366/390 aprovados.
+  Captura390 inspecionada. Suite completa/rolagem/build/docs586/19/Node/diff
+  aprovados, ownership liberado. Delta local sem commit/push; handoff
+  2026-10-20-imagens-comprovantes-fila.md.
 
 ## Publicacao DEV cheques/contrato - 2026-10-20
 

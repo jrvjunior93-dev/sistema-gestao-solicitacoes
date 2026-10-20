@@ -46,7 +46,7 @@ export async function validarRolagemFila(page) {
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.getByRole('button', { name: 'Anexar mesmo comprovante (2)', exact: true }).click();
     const modal = page.getByRole('dialog', { name: 'Anexar mesmo comprovante', exact: true });
-    await modal.getByLabel('Comprovante compartilhado PDF', { exact: true }).setInputFiles({ name: 'rolagem.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-QA') });
+    await modal.getByLabel('Comprovante compartilhado', { exact: true }).setInputFiles({ name: 'rolagem.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-QA') });
     await modal.getByRole('button', { name: 'Anexar aos 2 selecionados', exact: true }).click();
     await modal.waitFor({ state: 'detached' });
     assert.deepEqual(await page.evaluate(() => window.__shared.ids), [1, 51]);

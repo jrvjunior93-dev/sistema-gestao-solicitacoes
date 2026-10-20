@@ -33,6 +33,10 @@ test "$env_hash_dev" = "$(sha256sum backend/.env)"
 cd backend
 npm ci --omit=dev
 node scripts/validarDeployDatasChequesDev.js
+node scripts/validarUploadComprovantesFila.js
+node scripts/validarFilaComprovantePendente.js
+node scripts/validarComprovanteCompartilhadoSchema.js
+node scripts/validarComprovantesPdfFila.js
 node scripts/validarDatasCheques.js
 node scripts/validarChequesLoteContrato.js
 node scripts/validarFilaLiquidacaoRateada.js
@@ -54,4 +58,4 @@ timeout 45s node scripts/configurarSessao12hDev.js --verificar
 cd ..
 test "$env_hash_dev" = "$(sha256sum backend/.env)"
 git log -1 --oneline
-echo 'DEV atualizado: datas/moeda dos cheques e liquidacao com descontos/contrato. Sem migration/.env/flags alterados; producao nao alterada.'
+echo 'DEV atualizado: comprovantes manuais PDF/JPG/JPEG/PNG, importador apenas PDF, cheques e descontos/contrato preservados. Sem migration/.env/flags alterados; producao nao alterada.'
