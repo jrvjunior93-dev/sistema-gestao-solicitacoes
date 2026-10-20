@@ -1,5 +1,22 @@
 # Modulo FINANCEIRO
 
+## Cheques de lote com descontos e contrato - 2026-10-20
+
+- Instrumentos compartilhados sao partes de uma unica liquidacao: o contrato
+  e a solicitacao sao sincronizados somente apos todos os componentes, na
+  mesma transacao, sem tratar cada cheque como pagamento parcial definitivo.
+- Descontos/principal/desembolso e centavos do rateio permanecem inalterados;
+  movimentos e historicos individuais sao preservados. Falha final reverte o
+  grupo inteiro, incluindo utilizacao de cheque da carteira.
+- Estorno continua integral e protegido por permissoes/escopo: sincroniza
+  apos reverter todas as partes e antes de reabrir a fila com o saldo atual.
+  Regra de baixa avulsa e protecoes de saldo/permissao/replay permanecem.
+- Sem migration ou alteracao automatica de contratos/titulos existentes.
+  [Reproducao e validacao](../../handoffs/2026-10-20-cheques-lote-contrato.md).
+- Publicacao DEV autorizada: roteiro de datas dos cheques reutilizado com QA
+  do contrato/lote antes do restart. Preserva schema/.env/flags, sem DDL,
+  e reinicia apenas backend-dev; EC2 operada pelo usuario com SHA pinado.
+
 ## Moeda nos cheques - 2026-10-19
 
 - Valor dos cheques no editor individual e de lote usa mascara BRL existente

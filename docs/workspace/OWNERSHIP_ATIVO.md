@@ -1,5 +1,35 @@
 # Ownership Ativo
 
+## Publicacao DEV cheques/contrato - 2026-10-20
+
+- Usuario autorizou commit/push para refactor/frontend e comandos DEV.
+  Agente unico, finalizado local. BaseDEVe01e7bbf/main e9df5094 conferidas.
+- Reserva do delta local cheques/contrato, README/handoff/quatro controles;
+  atualizar-dev-datas-cheques-20261019.sh e validarDeployDatasChequesDev.js
+  somente para executar o novo QA antes do restart, mantendo bootstrap antigo.
+- Sem EC2/SSH/banco real, migration ou mudanca da main/producao. Publicar
+  somente arquivos conhecidos; outputs privados e demais worktrees intactos.
+- QA runtime/guardas/Bash/Node/docs585/19/diff aprovado novamente; UI/build
+  aprovados na implementacao, frontend inalterado. Ownership liberado para
+  commit/push autorizado, roteiro pinado somente pelo operador no DEV.
+
+## Cheques compartilhados e contrato - 2026-10-20
+
+- codex-cheques-contrato-lote-20261020, agente unico, finalizado local; base
+  refactor/frontende01e7bbf. Usuario autorizou implementar/testar sem producao.
+- Reserva exclusiva: tituloFinanceiroService.js (adiamento interno da sincronizacao
+  por componente com guardas), pagamentoFilaLiquidacaoService.js e
+  pagamentoManualFilaService.js (conclusao atomica/estorno do grupo), novo teste
+  isolado de contrato/cheques/descontos; README financeiro, handoff e quatro
+  controles workspace. Sem refatoracao dos demais fluxos.
+- Reproduzir 4 titulos41023,11, desconto16273,11, tres cheques8250. Conciliar
+  somente estado completo, sem alterar valores, ACL, historico ou transacoes.
+- Sem EC2/SSH/banco real, migration, commit/push ou alteracao da main/producao.
+- QA novo reproduz4499,99 e aprova lote41023,11/desconto16273,11/3cheques8250;
+  estorno/escopo/replay/rollback/carteira, avulso e contextos internos protegidos.
+  Suites backend/contratos, UI direcionada1366/390, build, docs585/19 e
+  sintaxe/diff aprovados. Ownership liberado, handoff salvo para publicacao futura.
+
 ## Publicacao DEV moeda dos cheques - 2026-10-19
 
 - Usuario autorizou commit/push do delta BRL para refactor/frontend e comandos

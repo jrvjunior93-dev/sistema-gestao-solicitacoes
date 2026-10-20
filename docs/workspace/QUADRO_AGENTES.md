@@ -1,5 +1,24 @@
 # Quadro de Agentes
 
+## Publicacao DEV cheques/contrato - 2026-10-20
+
+- Usuario autorizou commit/push DEV. Agente unico, finalizado local,
+  validado delta homologavel
+  na basee01, preservando main e9df. Incluir QA do contrato no roteiro existente
+  antes do restart; sem DDL/configuracao/EC2. Reservas no ownership.
+- Runtime/guardas/Bash/Node/docs585/19/diff aprovados novamente; UI/build
+  anteriores aprovados, ownership liberado para publicacao Git autorizada.
+
+## Contrato e cheques de lote - 2026-10-20
+
+- codex-cheques-contrato-lote-20261020, finalizado local, agente unico, baseDEVe01.
+  Adiar sincronizacao de contrato/solicitacao durante os componentes, concluir
+  no estado completo da transacao; preservar estorno/ACL/replay/rollback.
+  Reservas no ownership, sem banco/EC2/migration/main ou publicacao.
+- Reproducao antiga4499,99 e novo lote real em memoria aprovados, contratos,
+  carteira/estorno/replay/rollback/escopo, UI direcionada/build/docs585/19 e
+  sintaxe/diff aprovados. Ownership liberado; delta local sem commit/push.
+
 ## Publicacao DEV moeda cheques - 2026-10-19
 
 - Usuario autorizou commit/push para refactor/frontend e comandos DEV. Agente
