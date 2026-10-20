@@ -1,8 +1,10 @@
 # Sessoes Ativas
 
-- codex-promover-imagens-comprovantes-main-20261020: em_andamento, agente unico,
+- codex-promover-imagens-comprovantes-main-20261020: finalizado local, agente unico,
   DEVf835 homologado/main b315 congelada. Backup/timer confirmados, reservas
   integracao/roteiro/QA/docs no ownership. Sem EC2/banco/DDL ou alteracao DEV.
+  Runtime/guardas/UI imagens/build/docs/sintaxe/diff aprovados, bundle anterior
+  privado verificado; ownership liberado para commit/PR/merge autorizado.
 
 - codex-promocao-cheques-contrato-main-20261020: finalizado local, agente unico,
   DEV1f02 homologado/main e9df congelada. Backup/timer confirmados; reservas
@@ -31,6 +33,18 @@
   Simulacao real conferida; inventario inicial de schema alvo invalidado, lista
   vazia por cwd. Pendencia 202610190001 confirmada depois pelo operador. Roteiro
   sem DDL/regularizacao e QA aprovados; ownership liberado para PR/merge.
+
+- codex-fila-comprovantes-imagens-20261020-publicacao: finalizado local, agente unico,
+  commit/push DEV autorizado, reserva delta/roteiro/QA/docs. Sem EC2/banco real,
+  DDL ou producao; main b315 e outputs preservados.
+  Backend/roteiro/guardas, UI imagens/build/docs/sintaxe/diff aprovados,
+  ownership liberado para publicacao autorizada e comandos pinados DEV.
+
+- codex-fila-comprovantes-imagens-20261020: finalizado, agente unico na base
+  DEV1f02. Reserva backend de upload/manual/duas rotas, UI/helpers/testes/docs.
+  Importador permanece PDF, sem permissao nova/DDL/EC2/main/commit/push.
+  Backend/HTTP seguranca/servico/historico, UI imagens/completa/rolagem e build,
+  docs586/19/sintaxe/diff aprovados; ownership liberado, delta local preservado.
 
 - codex-cheques-contrato-lote-20261020-publicacao: finalizado local, commit/push DEV
   autorizado. Reserva delta/roteiro/QA/docs; main e9df e outputs preservados.

@@ -32,7 +32,7 @@ export async function validarPaginacaoFila(page) {
     const anexar=async()=>{
       await page.getByRole('button',{name:'Anexar mesmo comprovante (2)',exact:true}).click();
       const modal=page.getByRole('dialog',{name:'Anexar mesmo comprovante',exact:true});
-      await modal.getByLabel('Comprovante compartilhado PDF',{exact:true}).setInputFiles({name:'recibo-paginas.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-QA')});
+      await modal.getByLabel('Comprovante compartilhado',{exact:true}).setInputFiles({name:'recibo-paginas.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-QA')});
       await modal.getByRole('button',{name:'Anexar aos 2 selecionados',exact:true}).click();
       return modal;
     };

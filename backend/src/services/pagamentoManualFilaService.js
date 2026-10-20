@@ -618,11 +618,9 @@ async function vincularArquivoFila(req, filaIds, file, lote) {
   if (!Array.isArray(filaIds) || !filaIds.length || filaIds.length > 100
     || filaIds.some(id => !['number', 'string'].includes(typeof id) || !/^[1-9]\d*$/.test(String(id)) || !Number.isSafeInteger(Number(id)))
     || new Set(filaIds.map(Number)).size !== filaIds.length || !file?.buffer?.length) {
-    throw createHttpError(400, 'Selecione um comprovante PDF valido.');
+    throw createHttpError(400, 'Selecione um comprovante valido em PDF, JPG, JPEG ou PNG.');
   }
-  if (file.buffer.length > 12 * 1024 * 1024 || file.buffer.subarray(0, 5).toString() !== '%PDF-') {
-    throw createHttpError(400, 'O comprovante selecionado nao e um PDF valido.');
-  }
+  const formato = require('./comprovanteFilaArquivoDomain').validarComprovanteFila(file);
   const ids = filaIds.map(Number).sort((a, b) => a - b);
   const hash = crypto.createHash('sha256').update(file.buffer).digest('hex');
   const podeAnexar = item => podeAnexarComprovanteFila(item) && (!lote
@@ -643,7 +641,7 @@ async function vincularArquivoFila(req, filaIds, file, lote) {
   }
   for (const [id, url] of uploads) if (url === false) {
     // Chave por destino: compartilhar bytes nao compartilha ACL de arquivo/S3.
-    uploads.set(id, await uploadToS3(file, `financeiro/fila-pagamentos/${id}/comprovantes`));
+    uploads.set(id, await uploadToS3({ ...file, mimetype: formato.mime }, `financeiro/fila-pagamentos/${id}/comprovantes`));
   }
   return sequelize.transaction(async transaction => {
     const itens = []; let criados = 0;
@@ -658,10 +656,10 @@ async function vincularArquivoFila(req, filaIds, file, lote) {
         }
         const vinculadoEm = new Date();
         const nome = String(file.originalname || 'Comprovante.pdf').slice(0, 255);
-        await PagamentoManualFilaComprovante.create({ fila_id: id, nome, url: uploads.get(id), hash, tipo: 'PDF',
+        await PagamentoManualFilaComprovante.create({ fila_id: id, nome, url: uploads.get(id), hash, tipo: formato.tipo,
           vinculado_por: req.user?.id || null, vinculado_em: vinculadoEm }, { transaction });
         if (!item.comprovante_hash) await item.update({ comprovante_nome: nome, comprovante_url: uploads.get(id),
-          comprovante_hash: hash, comprovante_tipo: 'PDF', comprovante_vinculado_por: req.user?.id || null,
+          comprovante_hash: hash, comprovante_tipo: formato.tipo, comprovante_vinculado_por: req.user?.id || null,
           comprovante_vinculado_em: vinculadoEm }, { transaction });
         criados++;
       }

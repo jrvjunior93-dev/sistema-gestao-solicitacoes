@@ -14,6 +14,7 @@ import { validarFiltrosDpFila } from './filaFiltrosDpQA.mjs';
 import { validarPaginacaoFila } from './filaPaginacaoQA.mjs';
 import { validarRolagemFila } from './filaRolagemQA.mjs';
 import { validarDatasChequesFila } from './datasChequesFilaQA.mjs';
+import { validarImagensComprovantesFila } from './filaComprovantesImagensQA.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const stub = '\0qa-fila-instrumentos-';
 const forms = [
@@ -36,7 +37,7 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
   load(id) {
     if (id === stub + 'tema') return `export const useTheme=()=>({tema:{}});`;
     if (id === stub + 'auth') return `const qaQuery=new URLSearchParams(location.search);if(!qaQuery.has('persistir-modo')){if(qaQuery.has('rolagem'))localStorage.removeItem('financeiro-fila-pagamentos:modo-lista');else localStorage.setItem('financeiro-fila-pagamentos:modo-lista',JSON.stringify({numerada:true}));}export const useAuth=()=>({user:{id:Number(new URLSearchParams(location.search).get('usuario')||1)},authReady:true,isAuthenticated:true});`;
-    if (id === stub + 'permissoes') return `const noResolve=new URLSearchParams(location.search).has('sem-resolver');export const canAccessFinanceiro=()=>true,canBaixarFilaPagamentos=()=>!window.__readOnly,hasPermissao=(_,key)=>!(key==='financeiro.titulos.estornar'&&(window.__noReverse||window.__readOnly)),canImportarComprovantesFilaPagamentos=()=>false,canReportarFilaPagamentos=()=>true,canResolverFilaPagamentos=()=>!window.__readOnly&&!noResolve;`;
+    if (id === stub + 'permissoes') return `const noResolve=new URLSearchParams(location.search).has('sem-resolver');export const canAccessFinanceiro=()=>true,canBaixarFilaPagamentos=()=>!window.__readOnly,hasPermissao=(_,key)=>!(key==='financeiro.titulos.estornar'&&(window.__noReverse||window.__readOnly)),canImportarComprovantesFilaPagamentos=()=>new URLSearchParams(location.search).has('importar')&&!window.__readOnly,canReportarFilaPagamentos=()=>true,canResolverFilaPagamentos=()=>!window.__readOnly&&!noResolve;`;
     if (id === stub + 'padrao') return `export{default as Pagina}from'/src/components/padrao/Pagina.jsx';export{default as BlocoConteudo}from'/src/components/padrao/BlocoConteudo.jsx';export{default as PageHeader}from'/src/components/padrao/PageHeader.jsx';const avisar={erro:console.error,sucesso:()=>{},alerta:message=>window.__alerts.push(message)};const confirmar=async()=>({ok:true,texto:'Correção QA'});export const Avisos=()=>null;export const useAvisos=()=>({avisos:[],fechar:()=>{},limpar:()=>{},avisar});export const useConfirmacao=()=>({confirmar});`;
     if (id === stub + 'api') return `
       const onlyConsult=new URLSearchParams(location.search).has('somente-consulta');
@@ -47,6 +48,7 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
         (window.__filterQueries ||= []).push(params);
         const paid=window.__paid,receipt=window.__receipt,saldo=window.__saldo||200;
         const row={id:1,status:paid?'BAIXADO':'PENDENTE',movimento_financeiro_id:paid?10:null,valor_informado:paid?200:null,valor_previsto:saldo,juros:window.__juros||0,multa:window.__multa||0,conta_bancaria_id:5,data_baixa:paid?'2026-10-08':null,pendente_comprovante:paid&&!receipt,comprovante_hash:receipt||!window.__receiptScenario?'qa':null,comprovante_url:receipt||!window.__receiptScenario?'qa':null,titulo:{id:1,codigo:'TIT-QA',status:paid?'QUITADO':'ABERTO',valor_saldo:paid?0:saldo,forma_pagamento_id:1,solicitacao_id:100,solicitacao:{id:100,codigo:'SOL-QA'}}};
+        if(window.__uploadedName)row.comprovante_nome=window.__uploadedName;
         row.titulo.descricao='SOL-QA - MEDIÇÃO';
         row.titulo.observacoes='Entrega conferida. Pagamento conforme combinado.';
         if(new URLSearchParams(location.search).has('arquivos'))row.titulo.solicitacao.boletos=[{id:1,nome:'boleto.PDF',tipo:'BOLETO_COMPRA'},{id:2,nome:'foto.jpeg',tipo:'BOLETO_FRETE'}];
@@ -102,14 +104,15 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
       export const getContasFilaPagamentos=async()=>[{id:5,nome:'Conta QA',ativo:true,empresa_id:1},{id:6,nome:'Outra conta',ativo:true,empresa_id:2}];
       export const getInstrumentosFilaPagamentos=async()=>({formas:${JSON.stringify(forms)},cartoes:[{id:10,nome:'Crédito QA',tipo:'CREDITO',conta_bancaria_id:5,dia_fechamento:15,dia_vencimento:25},{id:11,nome:'Crédito outra conta',tipo:'CREDITO',conta_bancaria_id:6,dia_fechamento:15,dia_vencimento:25},{id:20,nome:'Débito QA',tipo:'DEBITO',conta_bancaria_id:5}],cheques:[{id:77,codigo:'CH-QA',numero_cheque:'007',titular_nome:'Cliente QA',valor:new URLSearchParams(location.search).has('parcelas')?100:200,empresa_id:1},{id:88,codigo:'CH-OUTRA',valor:200,empresa_id:2},{id:89,codigo:'CH-LOTE',valor:426,empresa_id:2,empresa:{id:2,nome:'Empresa carteira QA',ativo:true}},{id:90,codigo:'CH-LEGADO',valor:426,empresa_id:null}]});
       export const registrarBaixasFilaPagamentos=async(itens,key,instrumentos_lote)=>{window.__settles.push({itens,key,instrumentos_lote});if(window.__settleError)throw Error(window.__settleError);if(window.__receiptScenario)window.__paid=true;return{baixados:1,divergentes:0,pendentes_comprovante:window.__receiptScenario?1:0}};
-      export const anexarComprovanteFilaPagamento=async()=>{window.__uploads++;window.__receipt=true};
+      export const anexarComprovanteFilaPagamento=async(id,file)=>{window.__uploads++;window.__receipt=true;window.__uploadedName=file.name};
       export const anexarComprovanteFilaPagamentoLote=async(ids,file)=>{window.__sharedCalls=(window.__sharedCalls||0)+1;await new Promise(r=>setTimeout(r,150));window.__shared={ids,name:file.name};return {quantidade:ids.length,criados:ids.length}};
       export const getArquivosSolicitacaoFila=async()=>new URLSearchParams(location.search).has('arquivos')
         ? ['boleto.PDF','foto.jpeg','planta.png','animacao.gif','foto.webp','arquivo.docx','arquivo.svg'].map((nome,i)=>({id:'qa-'+i,nome_original:nome,caminho_arquivo:'https://bucket.example.test/qa/'+nome,tipo:i===0?'BOLETO_COMPRA':i===1?'BOLETO_FRETE':'BOLETO',createdAt:'2026-10-08T12:00:00Z'})) : [];
       export const estornarBaixaFilaPagamento=async(id,motivo,key)=>{window.__reverseCalls=(window.__reverseCalls||0)+1;window.__reversed={id,motivo,key};};
       export const resolverFilaPagamento=async(id,action,motivo)=>{window.__returned={id,action,motivo};};
       export const previewBaixaCompostaFila=async()=>{throw Error('Composicao fora desta fixture');},confirmarBaixaCompostaFila=async()=>{throw Error('Composicao fora desta fixture');};
-      export const aprovarDivergenciasFilaPagamentos=async()=>{},getComprovanteFilaPagamento=async()=>{},informarNaoPagamentoFila=async()=>{},previewComprovantesFilaPagamentos=async()=>{},vincularComprovantesFilaPagamentos=async()=>{};`;
+      export const getComprovanteFilaPagamento=async()=>window.__uploadedName?{nome:window.__uploadedName,url:'http://127.0.0.1:5308/arquivo-imagem-qa.png'}:undefined;
+      export const aprovarDivergenciasFilaPagamentos=async()=>{},informarNaoPagamentoFila=async()=>{},previewComprovantesFilaPagamentos=async()=>{window.__importCalls=(window.__importCalls||0)+1},vincularComprovantesFilaPagamentos=async()=>{};`;
   },
   configureServer(server) { server.middlewares.use('/qa-fila', async (_, res) => {
     res.setHeader('Content-Type', 'text/html');
@@ -132,7 +135,10 @@ try {
     if (new URL(route.request().url()).origin === 'http://127.0.0.1:5308') return route.continue();
     unexpected.push(route.request().url()); return route.abort();
   });
-  if (process.argv.includes('--datas-cheques')) {
+  if (process.argv.includes('--comprovantes-imagens')) {
+    await validarImagensComprovantesFila(page,root);
+    assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
+  } else if (process.argv.includes('--datas-cheques')) {
     await validarDatasChequesFila(page,root);
     assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
   } else if (process.argv.includes('--boletos-pedido')) {
@@ -706,7 +712,7 @@ try {
     assert.equal(await page.getByRole('button',{name:'Baixa em massa (1)',exact:true}).count(),1,'Baixa nao inclui os ja pagos');
     await page.getByRole('button',{name:'Anexar mesmo comprovante (2)',exact:true}).click();
     const compartilhado = page.getByRole('dialog',{name:'Anexar mesmo comprovante',exact:true});
-    await compartilhado.getByLabel('Comprovante compartilhado PDF',{exact:true}).setInputFiles({name:'recibo-grupo.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-QA-grupo')});
+    await compartilhado.getByLabel('Comprovante compartilhado',{exact:true}).setInputFiles({name:'recibo-grupo.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-QA-grupo')});
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
     await page.screenshot({path:path.join(root,`../outputs/comprovante-compartilhado-${width}.png`),fullPage:true});
     await compartilhado.getByRole('button',{name:'Anexar aos 2 selecionados',exact:true}).evaluate(el=>{el.click();el.click()});

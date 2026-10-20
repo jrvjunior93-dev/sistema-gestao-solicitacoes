@@ -1,5 +1,13 @@
 # Modulo FINANCEIRO
 
+## Promocao MAIN comprovantes de imagem - 2026-10-20
+
+- DEVf835 homologado; promocao preserva runtime, hotfixes main e importador PDF.
+  Sem migration/dependencia/permissao nova ou outra baixa ao anexar.
+- Roteiro produtivo existente de cheques inclui os QAs de comprovantes antes
+  do restart, exige pacote f835 e preserva .env/TLS/PILOT/12h/schema/DEV.
+- [Escopo, evidencias e recuperacao](../../handoffs/2026-10-20-promocao-main-comprovantes-imagens.md).
+
 ## Promocao MAIN cheques/contrato - 2026-10-20
 
 - DEV1f02 homologado com tres cheques8250 e descontos16273,11; runtime
@@ -68,6 +76,18 @@
   SHA main, backup/timer, identidade/schema/TLS/PILOT/12h e .env preservado.
   Sem migration nova ou restauracao de titulos; restart somente producao.
 - [Escopo, guardas e conferencia](../../handoffs/2026-10-18-promocao-main-pwa-historico.md).
+
+## Comprovantes manuais PDF e imagens - 2026-10-20
+
+- Anexo individual e mesmo comprovante compartilhado aceitam PDF/JPG/JPEG/PNG,
+  ate12MB por arquivo. Importacao automatica continua exclusivamente PDF.
+- Extensao/MIME/assinatura, scanner configurado, permissoes/escopo e limites
+  mantidos. Metadados PDF/JPEG/PNG usam colunas existentes; S3 recebe ContentType
+  coerente e chave por destino. Sem migration ou permissao nova.
+- Anexar nao registra baixa nem muda valores/contas/datas; hash/replay/locks,
+  historico da solicitacao, escopo de arquivo e remocoes preservados. Imagem
+  abre na previa existente, sem forcar PDF. Nao ha OCR/conversao automatica.
+- [Mapa e validacoes](../../handoffs/2026-10-20-imagens-comprovantes-fila.md).
 
 ## Cheques de lote com descontos e contrato - 2026-10-20
 

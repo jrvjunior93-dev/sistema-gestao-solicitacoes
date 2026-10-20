@@ -1,4 +1,5 @@
 import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
+import { COMPROVANTE_MANUAL_ACCEPT, erroComprovanteManual } from '../utils/comprovanteFilaArquivo';
 import ParticipacoesTitulo from '../components/financeiro/ParticipacoesTitulo';
 import useConsultaSerial from '../hooks/useConsultaSerial';
 import PaginacaoConsulta from '../components/padrao/PaginacaoConsulta';
@@ -978,6 +979,8 @@ export default function FinanceiroFilaPagamentos() {
 
   async function anexarComprovante(row, arquivos) {
     if (!canSettle || !arquivos?.length) return;
+    const erro = arquivos.map(erroComprovanteManual).find(Boolean);
+    if (erro) { avisar.erro(erro); return; }
     return executarOperacao(() => performAnexarComprovante(row, arquivos));
   }
 
@@ -1001,7 +1004,7 @@ export default function FinanceiroFilaPagamentos() {
 
   async function abrirComprovante(filaId, comprovanteId, nome) {
     try {
-      await abrirPreview(() => getComprovanteFilaPagamento(filaId, comprovanteId), { nome: nome || 'Comprovante.pdf', mime: 'application/pdf' });
+      await abrirPreview(() => getComprovanteFilaPagamento(filaId, comprovanteId), { nome: nome || 'Comprovante.pdf' });
     } catch (error) {
       avisar.erro(error?.message || 'Não foi possível abrir o comprovante.');
     }
@@ -1087,7 +1090,7 @@ export default function FinanceiroFilaPagamentos() {
     const total = targetRows.reduce((sum, row) => sum + Number(dados[row.id]?.valor_pago || 0), 0);
     const { ok } = await confirmar({
       titulo: targetRows.length === 1 ? 'Registrar baixa deste título?' : 'Registrar baixas selecionadas?',
-      mensagem: `${targetRows.length} título(s), total informado ${currency(total)}. ${instrumentosLote ? 'Conjunto único de instrumentos rateado entre os títulos; o estorno será do grupo completo. ' : ''}O comprovante pode ser anexado depois; a baixa sem PDF será listada em Pendentes de comprovante. Valores divergentes exigem justificativa: pagamentos parciais registram a baixa parcial e valores acima do saldo aguardam autorização.`,
+      mensagem: `${targetRows.length} título(s), total informado ${currency(total)}. ${instrumentosLote ? 'Conjunto único de instrumentos rateado entre os títulos; o estorno será do grupo completo. ' : ''}O comprovante pode ser anexado depois; a baixa sem comprovante será listada em Pendentes de comprovante. Valores divergentes exigem justificativa: pagamentos parciais registram a baixa parcial e valores acima do saldo aguardam autorização.`,
       rotuloConfirmar: targetRows.length === 1 ? 'Registrar baixa' : 'Registrar baixas',
       destrutiva: false
     });
@@ -1108,7 +1111,7 @@ export default function FinanceiroFilaPagamentos() {
         motivo: String(dados[row.id].motivo || '').trim() || undefined
       })), key, instrumentosLote);
       avisar.sucesso(`${result?.baixados || 0} baixa(s) registrada(s). ${result?.divergentes || 0} divergência(s) sinalizada(s).`);
-      if (result?.pendentes_comprovante) avisar.alerta(`${result.pendentes_comprovante} pagamento(s) pendente(s) de comprovante. Anexe os PDFs pelo card Pendentes de comprovante.`);
+      if (result?.pendentes_comprovante) avisar.alerta(`${result.pendentes_comprovante} pagamento(s) pendente(s) de comprovante. Anexe os arquivos pelo card Pendentes de comprovante.`);
       setSelected([]);
       limparEdicoes(targetRows.map(row => row.id));
       setBaixaMassa(null);
@@ -1341,7 +1344,7 @@ export default function FinanceiroFilaPagamentos() {
         ))}
       </div>
       {status === 'PENDENTE_COMPROVANTE' && <p className="text-sm text-[var(--c-muted)]" role="status">
-        Estes pagamentos já têm baixa registrada. Anexe os comprovantes na linha ou importe os PDFs; não é necessário registrar outra baixa.
+        Estes pagamentos já têm baixa registrada. Anexe PDF, JPG, JPEG ou PNG na linha ou importe os PDFs; não é necessário registrar outra baixa.
       </p>}
 
       <BlocoConteudo
@@ -1551,13 +1554,13 @@ export default function FinanceiroFilaPagamentos() {
                       ) : null}
                       {podeAnexarMais ? (
                         <label className="btn btn-outline btn-sm btn-icon-only inline-flex cursor-pointer focus-within:ring-2 focus-within:ring-[var(--module-financeiro)]"
-                          title={comprovantes.length ? 'Adicionar comprovantes PDF' : 'Anexar comprovantes PDF'}
+                          title={comprovantes.length ? 'Adicionar comprovantes (PDF, JPG, JPEG ou PNG)' : 'Anexar comprovantes (PDF, JPG, JPEG ou PNG)'}
                           data-fila-id={row.id} data-fila-campo="comprovante">
                           <HiOutlineDocumentArrowUp className="h-4 w-4" aria-hidden="true" />
                           <input
                             className="sr-only"
                             type="file"
-                            accept="application/pdf,.pdf"
+                            accept={COMPROVANTE_MANUAL_ACCEPT}
                             multiple
                             disabled={busy}
                             aria-label={`Comprovantes de pagamento de ${title.codigo || row.id}`}
@@ -1792,13 +1795,14 @@ export default function FinanceiroFilaPagamentos() {
       {comprovanteLote && canSettle && filaAutorizada && <OverlayModal rotulo="Anexar mesmo comprovante" largura="660px" onFechar={busy ? undefined : () => setComprovanteLote(null)}>
         <div className="p-4 space-y-4">
           <h2 className="app-bloco-titulo">Anexar mesmo comprovante · {comprovanteLote.ids.length} título(s)</h2>
-          <p className="app-note">O PDF será anexado a todos os selecionados. Não altera valores, contas, datas ou pagamentos e não registra baixa. Um arquivo já vinculado ao mesmo título não será duplicado.</p>
+          <p className="app-note">O arquivo será anexado a todos os selecionados. Não altera valores, contas, datas ou pagamentos e não registra baixa. Um arquivo já vinculado ao mesmo título não será duplicado.</p>
           <details><summary>Conferir títulos selecionados</summary><ul>{linhasOperacao.filter(r => comprovanteLote.ids.includes(Number(r.id))).map(r => <li key={r.id}>{r.titulo?.codigo || r.id} · {r.titulo?.descricao}</li>)}</ul></details>
-          <label className="block text-sm">Comprovante PDF (até 12 MB)
-            <input aria-label="Comprovante compartilhado PDF" type="file" accept="application/pdf,.pdf" disabled={busy}
+          <label className="block text-sm">Comprovante PDF, JPG, JPEG ou PNG (até 12 MB)
+            <input aria-label="Comprovante compartilhado" type="file" accept={COMPROVANTE_MANUAL_ACCEPT} disabled={busy}
               onChange={e => { const arquivo = e.target.files?.[0];
-                if (arquivo && (arquivo.size > 12 * 1024 * 1024 || !arquivo.name.toLowerCase().endsWith('.pdf'))) {
-                  avisar.erro('Selecione um PDF de até 12 MB.'); e.target.value = ''; setComprovanteLote(v => ({ ...v, arquivo: null })); return;
+                const erro = arquivo && erroComprovanteManual(arquivo);
+                if (erro) {
+                  avisar.erro(erro); e.target.value = ''; setComprovanteLote(v => ({ ...v, arquivo: null })); return;
                 }
                 setComprovanteLote(v => ({ ...v, arquivo: arquivo || null }));
               }} />

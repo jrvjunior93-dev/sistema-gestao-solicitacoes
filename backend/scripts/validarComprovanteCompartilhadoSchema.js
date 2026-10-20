@@ -51,6 +51,6 @@ const queryInterface = {
     assert(linha.includes('allowRhDpPagamentoWrite, criticalRateLimit, validateRequest('));
   }
   const lote = routes.split('\n').find(l => l.includes("/financeiro/fila-pagamentos/comprovantes/compartilhar'"));
-  assert(lote.includes("allowFilaPagamentosBaixa, uploadRateLimit, uploadComprovantesPagamento.single('file')"));
+  assert(lote.includes("allowFilaPagamentosBaixa, uploadRateLimit, uploadComprovantesPagamento.manual.single('file')"));
   console.log('Schema compartilhado: migration idempotente/sem dados, protecao fila/hash, nomes legados, model alinhado e rollback nao destrutivo aprovados. Sem banco/rede.');
 })().catch(e => { console.error(e); process.exitCode = 1; });

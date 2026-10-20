@@ -2,10 +2,12 @@
 
 ## Promocao imagens comprovantes MAIN - 2026-10-20
 
-- Agente unico, em_andamento; integrar DEVf835 homologado com main b315,
+- Agente unico, finalizado local; integrar DEVf835 homologado com main b315,
   preservar historicos/hotfixes, validar e publicar PR/merge autorizado.
   Backup cifrado/timer confirmados para esta promocao; reservas no ownership.
 - Roteiro produtivo/QA/docs, sem DDL/EC2/banco real ou alteracao do DEV.
+- Runtime identico DEV, hotfixes main preservados; testes backend/guardas/UI
+  imagens/build/docs/sintaxe/diff aprovados, ownership liberado para PR/merge.
 
 ## Promocao cheques/contrato MAIN - 2026-10-20
 
@@ -57,6 +59,25 @@
   isolado/snapshot e evidencia EC2 recebidos. CORRECAO: inventario inicial do
   alvo vazio, nao comprovava schema concluido. Migration 202610190001 pendente;
   roteiro sem DDL/regularizacao aprovado e ownership liberado para PR/merge.
+
+## Publicacao DEV imagens comprovantes - 2026-10-20
+
+- Agente unico, finalizado local; commit/push DEV autorizado. Reservas no ownership.
+  Revalidar delta e adicionar testes isolados do upload/servico/schema/parser
+  ao roteiro existente, depois do merge e antes do restart exclusivo backend-dev.
+- Sem DDL/EC2/banco/main; outputs privados nao serao publicados.
+- Roteiro/QAs backend, UI imagens1366/390, build, guardas/Node/Bash/docs/diff
+  aprovados. Ownership liberado para publicar delta conhecido; EC2 pelo operador.
+
+## Imagens comprovantes fila - 2026-10-20
+
+- Agente unico, finalizado, baseDEV1f02. Separar upload manual PDF/JPG/JPEG/PNG
+  do importador PDF; mesma permissao/escopo e seguranca binaria/antivirus.
+  Preservar historico/replay/rollback e preview de imagens, sem baixa automatica.
+  Reservas no ownership. Sem EC2/DDL/main/publicacao, frontend compacto existente.
+- Backend/seguranca HTTP loopback, parser/schema/cheques, historico/ACL/replay/
+  rollback, UI imagens/completa/rolagem, build/docs586/19/Node/diff aprovados.
+  Ownership liberado, handoff salvo; sem commit/push ou alteracao de producao.
 
 ## Publicacao DEV cheques/contrato - 2026-10-20
 
