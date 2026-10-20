@@ -1,5 +1,14 @@
 # Modulo FINANCEIRO
 
+## Promocao MAIN cheques/contrato - 2026-10-20
+
+- DEV1f02 homologado com tres cheques8250 e descontos16273,11; runtime
+  preservado na integracao com main e9df, sem migration/dependencia nova.
+- Roteiro produtivo existente de cheques agora exige pacote1f02 e roda seu
+  QA isolado antes do restart. Preserva .env/TLS/PILOT/12h e reinicia somente
+  backend-solicitacoes; nenhuma baixa ou regularizacao automatica.
+- [Gates, validacoes e recuperacao](../../handoffs/2026-10-20-promocao-main-cheques-contrato.md).
+
 ## Promocao cheques para main - 2026-10-19
 
 - Datas/preservacao de lote719 e moedae01 homologados no DEV, sem migration
@@ -59,6 +68,23 @@
   SHA main, backup/timer, identidade/schema/TLS/PILOT/12h e .env preservado.
   Sem migration nova ou restauracao de titulos; restart somente producao.
 - [Escopo, guardas e conferencia](../../handoffs/2026-10-18-promocao-main-pwa-historico.md).
+
+## Cheques de lote com descontos e contrato - 2026-10-20
+
+- Instrumentos compartilhados sao partes de uma unica liquidacao: o contrato
+  e a solicitacao sao sincronizados somente apos todos os componentes, na
+  mesma transacao, sem tratar cada cheque como pagamento parcial definitivo.
+- Descontos/principal/desembolso e centavos do rateio permanecem inalterados;
+  movimentos e historicos individuais sao preservados. Falha final reverte o
+  grupo inteiro, incluindo utilizacao de cheque da carteira.
+- Estorno continua integral e protegido por permissoes/escopo: sincroniza
+  apos reverter todas as partes e antes de reabrir a fila com o saldo atual.
+  Regra de baixa avulsa e protecoes de saldo/permissao/replay permanecem.
+- Sem migration ou alteracao automatica de contratos/titulos existentes.
+  [Reproducao e validacao](../../handoffs/2026-10-20-cheques-lote-contrato.md).
+- Publicacao DEV autorizada: roteiro de datas dos cheques reutilizado com QA
+  do contrato/lote antes do restart. Preserva schema/.env/flags, sem DDL,
+  e reinicia apenas backend-dev; EC2 operada pelo usuario com SHA pinado.
 
 ## Moeda nos cheques - 2026-10-19
 

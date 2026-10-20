@@ -1265,7 +1265,7 @@ async function estornarBaixaFila(req, id, payload) {
 }
 
 async function estornarLiquidacaoFila(req, anchorId, grupoId, payload) {
-  const { obterGrupoParaEstorno, devolverCarteiraGrupo } = require('./pagamentoFilaLiquidacaoService');
+  const { obterGrupoParaEstorno, devolverCarteiraGrupo, sincronizarSolicitacoesLiquidacao } = require('./pagamentoFilaLiquidacaoService');
   return sequelize.transaction(async transaction => {
     // Trava titulos antes do grupo, mesma ordem da liquidacao, evitando inversao.
     const referencia = await PagamentoFilaLiquidacao.findByPk(grupoId, { transaction });
@@ -1277,6 +1277,7 @@ async function estornarLiquidacaoFila(req, anchorId, grupoId, payload) {
     const { grupo, filas } = await obterGrupoParaEstorno(req, grupoId, transaction);
     if (grupo.status === 'ESTORNADO') return { fila_id: Number(anchorId), reaberto_ids: grupo.dados.reaberto_ids, idempotente: true };
     const reabertos = [];
+    const revertidos = [];
     for (const fila of filas) {
       const current = await PagamentoManualFilaItem.findByPk(fila.id, { transaction, lock: transaction.LOCK.UPDATE });
       if (!['BAIXADO', 'DIVERGENTE', 'RESOLVIDO'].includes(current.status) || current.instrumento_pagamento_json?.estorno
@@ -1285,8 +1286,17 @@ async function estornarLiquidacaoFila(req, anchorId, grupoId, payload) {
       let titulo;
       for (const parte of grupo.dados.alocacoes.filter(item => Number(item.fila_id) === Number(fila.id))) {
         titulo = await estornarMovimentoTitulo(req, current.titulo_financeiro_id, parte.movimento_id,
-          { observacoes: payload.motivo }, { transaction, skipSecurityEvent: true, estornoFila: true, filaLiquidacaoId: grupo.id });
+          { observacoes: payload.motivo }, { transaction, skipSecurityEvent: true, estornoFila: true,
+            filaLiquidacaoId: grupo.id, adiarSincronizacaoSolicitacao: true });
       }
+      revertidos.push({ current, autorizacao, titulo });
+    }
+    // Estornar todas as partes antes de recalcular contratos e de fotografar
+    // o saldo da nova fila. Historicos individuais e guarda de escopo permanecem.
+    await sincronizarSolicitacoesLiquidacao(req, revertidos.map(item => item.titulo), transaction,
+      'Status atualizado automaticamente apos estorno do grupo de baixa financeira.');
+    for (const { current, autorizacao, titulo: anterior } of revertidos) {
+      const titulo = await TituloFinanceiro.findByPk(anterior.id, { transaction, lock: transaction.LOCK.UPDATE });
       assertTituloDisponivelParaBaixa(titulo);
       if (!titulo || !['ABERTO', 'PARCIAL'].includes(titulo.status) || Number(titulo.valor_saldo) <= 0) throw createHttpError(409, 'Saldo do grupo nao ficou disponivel.');
       const novo = await PagamentoManualFilaItem.create({ titulo_financeiro_id: titulo.id, status: 'PENDENTE',

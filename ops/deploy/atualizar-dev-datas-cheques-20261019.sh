@@ -34,6 +34,7 @@ cd backend
 npm ci --omit=dev
 node scripts/validarDeployDatasChequesDev.js
 node scripts/validarDatasCheques.js
+node scripts/validarChequesLoteContrato.js
 node scripts/validarFilaLiquidacaoRateada.js
 node scripts/validarCarteiraChequesBaixaComposta.js
 node scripts/validarFilaBaixaComposta.js
@@ -53,4 +54,4 @@ timeout 45s node scripts/configurarSessao12hDev.js --verificar
 cd ..
 test "$env_hash_dev" = "$(sha256sum backend/.env)"
 git log -1 --oneline
-echo 'DEV atualizado: datas de cheques e preservacao da baixa em massa. Sem migration/.env/flags alterados; producao nao alterada.'
+echo 'DEV atualizado: datas/moeda dos cheques e liquidacao com descontos/contrato. Sem migration/.env/flags alterados; producao nao alterada.'

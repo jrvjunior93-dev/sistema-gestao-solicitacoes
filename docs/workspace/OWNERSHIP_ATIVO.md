@@ -2,7 +2,7 @@
 
 ## Promocao cheques/contrato MAIN - 2026-10-20
 
-- codex-promocao-cheques-contrato-main-20261020, agente unico, em_andamento.
+- codex-promocao-cheques-contrato-main-20261020, agente unico, finalizado local.
   Usuario homologou DEV1f02c745 e autorizou promover para main e9df5094;
   backup recente no Drive cifrado e timer ativo confirmados nesta promocao.
 - Reserva: integracao documental README/handoffs e quatro controles workspace;
@@ -10,6 +10,10 @@
   contrato antes do restart e exigir ancestralidade do pacote homologado.
 - Integrar historicos, preservar runtime homologado e hotfixes main. Sem
   migration/dependencia nova, EC2/SSH/banco real ou alteracao do DEV.
+- QA backend/contratos/carteira/composta/cartao, guardas produtivas/preflight,
+  UI direcionada1366/390/build, docs592/19, Node/Bash/diff aprovados. Runtime
+  identico ao DEV; bundle anterior privado verificado. Ownership liberado
+  para commit/PR/merge autorizado. EC2 somente pelo operador.
 
 ## Promocao cheques datas/moeda para main - 2026-10-19
 
@@ -103,6 +107,36 @@
   Produto e dependencias conferidos contra2e146629; reserva encerrada,
   ownership liberado para commit/push main autorizados. Roteiro e limites em
   docs/handoffs/2026-10-18-promocao-main-pwa-historico.md.
+
+## Publicacao DEV cheques/contrato - 2026-10-20
+
+- Usuario autorizou commit/push para refactor/frontend e comandos DEV.
+  Agente unico, finalizado local. BaseDEVe01e7bbf/main e9df5094 conferidas.
+- Reserva do delta local cheques/contrato, README/handoff/quatro controles;
+  atualizar-dev-datas-cheques-20261019.sh e validarDeployDatasChequesDev.js
+  somente para executar o novo QA antes do restart, mantendo bootstrap antigo.
+- Sem EC2/SSH/banco real, migration ou mudanca da main/producao. Publicar
+  somente arquivos conhecidos; outputs privados e demais worktrees intactos.
+- QA runtime/guardas/Bash/Node/docs585/19/diff aprovado novamente; UI/build
+  aprovados na implementacao, frontend inalterado. Ownership liberado para
+  commit/push autorizado, roteiro pinado somente pelo operador no DEV.
+
+## Cheques compartilhados e contrato - 2026-10-20
+
+- codex-cheques-contrato-lote-20261020, agente unico, finalizado local; base
+  refactor/frontende01e7bbf. Usuario autorizou implementar/testar sem producao.
+- Reserva exclusiva: tituloFinanceiroService.js (adiamento interno da sincronizacao
+  por componente com guardas), pagamentoFilaLiquidacaoService.js e
+  pagamentoManualFilaService.js (conclusao atomica/estorno do grupo), novo teste
+  isolado de contrato/cheques/descontos; README financeiro, handoff e quatro
+  controles workspace. Sem refatoracao dos demais fluxos.
+- Reproduzir 4 titulos41023,11, desconto16273,11, tres cheques8250. Conciliar
+  somente estado completo, sem alterar valores, ACL, historico ou transacoes.
+- Sem EC2/SSH/banco real, migration, commit/push ou alteracao da main/producao.
+- QA novo reproduz4499,99 e aprova lote41023,11/desconto16273,11/3cheques8250;
+  estorno/escopo/replay/rollback/carteira, avulso e contextos internos protegidos.
+  Suites backend/contratos, UI direcionada1366/390, build, docs585/19 e
+  sintaxe/diff aprovados. Ownership liberado, handoff salvo para publicacao futura.
 
 ## Publicacao DEV moeda dos cheques - 2026-10-19
 
