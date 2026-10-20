@@ -3961,6 +3961,9 @@ async function sincronizarRealizacaoCompraPorTitulo({
 
 
 async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
+  if (options.adiarSincronizacaoSolicitacao === true && !options.filaLiquidacaoId) {
+    throw createHttpError(403, 'Sincronizacao adiada exige liquidacao interna da fila.');
+  }
   if (options.filaLiquidacaoId && (!options.transaction || options.autorizadoPorFilaPagamento !== true)) {
     throw createHttpError(403, 'Liquidacao compartilhada exige transacao interna da fila.');
   }
@@ -4182,12 +4185,16 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
       transaction
     });
 
-    await sincronizarStatusSolicitacaoPorBaixaTitulos({
-      solicitacaoId: titulo.solicitacao_id,
-      usuarioId: req.user?.id || null,
-      setor: getSetorUsuario(req),
-      transaction
-    });
+    // Componentes do mesmo grupo nao sao pagamentos parciais independentes:
+    // o orquestrador sincroniza uma vez, no estado completo e na mesma transacao.
+    if (options.adiarSincronizacaoSolicitacao !== true) {
+      await sincronizarStatusSolicitacaoPorBaixaTitulos({
+        solicitacaoId: titulo.solicitacao_id,
+        usuarioId: req.user?.id || null,
+        setor: getSetorUsuario(req),
+        transaction
+      });
+    }
 
     if (cartaoBaixa.fatura) {
       if (options.filaLiquidacaoId) await recalcularFaturaCartao(cartaoBaixa.fatura.id, { transaction, leituraCorrente: true });
@@ -4804,6 +4811,10 @@ async function baixarTituloPorConciliacoes(req, tituloId, payload = {}) {
 }
 
 async function estornarMovimentoTitulo(req, tituloId, movimentoId, payload = {}, internalOptions = {}) {
+  if (internalOptions.adiarSincronizacaoSolicitacao === true &&
+    (!internalOptions.transaction || !internalOptions.filaLiquidacaoId || internalOptions.estornoFila !== true)) {
+    throw createHttpError(403, 'Sincronizacao adiada exige estorno interno do grupo da fila.');
+  }
   const ownTransaction = !internalOptions.transaction;
   const transaction = internalOptions.transaction || await sequelize.transaction();
   let conciliacoesReabertas = [];
@@ -4838,6 +4849,10 @@ async function estornarMovimentoTitulo(req, tituloId, movimentoId, payload = {},
     }
     if (movimento.fila_liquidacao_id && Number(internalOptions.filaLiquidacaoId) !== Number(movimento.fila_liquidacao_id)) {
       throw createHttpError(409, 'Este pagamento possui instrumentos compartilhados. Estorne o grupo completo pela fila de pagamentos.');
+    }
+    if (internalOptions.adiarSincronizacaoSolicitacao === true &&
+      Number(movimento.fila_liquidacao_id) !== Number(internalOptions.filaLiquidacaoId)) {
+      throw createHttpError(403, 'Movimento nao pertence ao grupo da sincronizacao adiada.');
     }
 
     let faturaEstornoFila;
@@ -4978,13 +4993,15 @@ async function estornarMovimentoTitulo(req, tituloId, movimentoId, payload = {},
       transaction
     });
 
-    await sincronizarStatusSolicitacaoPorBaixaTitulos({
-      solicitacaoId: titulo.solicitacao_id,
-      usuarioId: req.user?.id || null,
-      setor: getSetorUsuario(req),
-      transaction,
-      observacao: 'Status atualizado automaticamente apos estorno de baixa financeira.'
-    });
+    if (internalOptions.adiarSincronizacaoSolicitacao !== true) {
+      await sincronizarStatusSolicitacaoPorBaixaTitulos({
+        solicitacaoId: titulo.solicitacao_id,
+        usuarioId: req.user?.id || null,
+        setor: getSetorUsuario(req),
+        transaction,
+        observacao: 'Status atualizado automaticamente apos estorno de baixa financeira.'
+      });
+    }
 
     if (titulo.solicitacao_id) {
       await Historico.create({

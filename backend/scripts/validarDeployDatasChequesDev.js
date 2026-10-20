@@ -7,6 +7,7 @@ const merge = script.indexOf('git merge --ff-only'), restart = script.indexOf('p
 assert(script.indexOf('p.watch') < merge);
 assert(script.indexOf('configurarSessao12hDev.js --verificar') < merge);
 assert(script.indexOf('validarDatasCheques.js') > merge && script.indexOf('validarDatasCheques.js') < restart);
+assert(script.indexOf('validarChequesLoteContrato.js') > merge && script.indexOf('validarChequesLoteContrato.js') < restart);
 assert(script.lastIndexOf('configurarSessao12hDev.js --verificar') > restart);
 assert.equal((script.match(/pm2 restart backend-dev/g) || []).length, 1);
 assert(script.match(/test "\$env_hash_dev"/g).length >= 3);

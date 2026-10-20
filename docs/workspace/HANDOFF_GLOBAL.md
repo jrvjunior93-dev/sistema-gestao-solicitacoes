@@ -1,5 +1,17 @@
 # Handoff Global
 
+## Promocao MAIN cheques/contrato - 2026-10-20
+
+- DEV1f02 homologado, promocao main e9df autorizada, backup cifrado/timer
+  confirmados. Integracao preservou ambos historicos, scripts main e runtime
+  identico ao DEV. Sem DDL/dependencia/configuracao/operacao financeira automatica.
+- Roteiro produtivo de cheques inclui novo QA antes do restart e exige pacote1f02;
+  guardas antigas antes do merge, .env/TLS/PILOT/12h/schema preservados e
+  restart somente backend-solicitacoes. Sem EC2/banco real pelo agente.
+- Suites backend/guardas/UI direcionada/build/docs592/19/sintaxe/diff aprovadas,
+  bundle anterior privado verificado; ownership liberado para commit/PR/merge.
+  Handoff 2026-10-20-promocao-main-cheques-contrato.md.
+
 ## Promocao cheques main - 2026-10-19
 
 - Usuario homologou datas719 e moedae01, autorizou promocao main9e4 e confirmou
@@ -45,6 +57,26 @@
   invalidado (lista vazia/cwd). Migration 202610190001 pendente. Roteiro original
   sem DDL interrompeu antes do restart; usar retomada documentada acima;
   ownership liberado para PR/merge autorizado. Deploy exclusivamente pelo operador.
+
+## Publicacao DEV cheques/contrato - 2026-10-20
+
+- Commit/push refactor/frontend e comandos DEV autorizados. Basee01/main e9df
+  conferidas, sem EC2/banco real/DDL/main pelo agente. Roteiro existente inclui
+  novo teste de lote/contrato depois do merge e antes de restart apenas DEV.
+- Testes runtime/guardas/Bash/Node/docs585/19/diff repetidos e aprovados;
+  UI/build aprovados na implementacao, frontend inalterado. Ownership liberado
+  para publicacao Git autorizada. Preservar outputs e demais worktrees.
+
+## Cheques e contrato no lote - 2026-10-20
+
+- Implementacao local na baseDEVe01, agente unico, sem main/producao/EC2/banco.
+  Defeito4499,99 reproduzido com baixa/reconciliacao reais e models em memoria.
+- Adiar sincronizacao por componente, concluir uma vez por solicitacao apos
+  grupo inteiro; estorno reverte tudo antes da sincronizacao/snapshot da fila.
+  Preserva descontos16273,11, 3 cheques8250, historico/ACL/mutex/transacao/replay.
+- Backend/contratos/carteira/composta/cartao, UI direcionada1366/390, build,
+  docs585/19/sintaxe/diff aprovados. Ownership liberado, delta local sem
+  commit/push. Handoff 2026-10-20-cheques-lote-contrato.md. Sem migration.
 
 ## Publicacao DEV moeda dos cheques - 2026-10-19
 

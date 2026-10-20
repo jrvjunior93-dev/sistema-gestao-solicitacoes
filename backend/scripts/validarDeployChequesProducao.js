@@ -11,7 +11,7 @@ for (const nome of ['verificarFinanceiroProducao20261019.js', 'verificarReenvioA
   assert(shell.indexOf(`${nome} --verificar`, merge) < restart);
   assert(shell.lastIndexOf(`${nome} --verificar`) > restart);
 }
-for (const nome of ['validarDatasCheques.js', 'validarFilaLiquidacaoRateada.js',
+for (const nome of ['validarDatasCheques.js', 'validarChequesLoteContrato.js', 'validarFilaLiquidacaoRateada.js',
   'validarCarteiraChequesBaixaComposta.js', 'validarFilaBaixaComposta.js',
   'validarCartaoParcelamentoBaixa.js', 'validarBloqueioProprietario.js']) {
   assert(shell.indexOf(nome) > merge && shell.indexOf(nome) < restart);
@@ -23,7 +23,7 @@ for (const trecho of ['[[ "$versao_prod" =~ ^[0-9a-f]{40}$ ]]',
   'test -z "$(git status --porcelain --untracked-files=no)"', 'flock -n 9',
   'systemctl is-active --quiet fluxy-prod-db-backup.timer',
   'git merge-base --is-ancestor HEAD', 'git merge-base --is-ancestor 9e4faf4e',
-  'git merge-base --is-ancestor e01e7bbf', 'git diff --quiet 9e4faf4e',
+  'git merge-base --is-ancestor e01e7bbf', 'git merge-base --is-ancestor 1f02c745', 'git diff --quiet 9e4faf4e',
   'backend/migrations', 'backend/package-lock.json', 'frontend/package-lock.json',
   'env -u CONFIRM_PROD_BACKUP -u CONFIRM_PROD_BACKUP_TIMER -u ALLOW_SCHEMA_MIGRATIONS',
   'http://127.0.0.1:8000/health']) assert(shell.includes(trecho), trecho);

@@ -18,6 +18,7 @@ git merge-base --is-ancestor "$versao_prod" origin/main
 git merge-base --is-ancestor HEAD "$versao_prod"
 git merge-base --is-ancestor 9e4faf4e75dbf9c59c01eaee742f125b4e5dd315 HEAD
 git merge-base --is-ancestor e01e7bbf7ca35a99fa81f0ac387a5b6a23eb20a8 "$versao_prod"
+git merge-base --is-ancestor 1f02c745558cabf465d84ef4b0e92e9c27f09f23 "$versao_prod"
 git diff --quiet 9e4faf4e75dbf9c59c01eaee742f125b4e5dd315 "$versao_prod" -- \
   backend/migrations backend/package.json backend/package-lock.json frontend/package.json frontend/package-lock.json
 
@@ -34,6 +35,7 @@ cd backend
 npm ci --omit=dev
 node scripts/validarDeployChequesProducao.js
 node scripts/validarDatasCheques.js
+node scripts/validarChequesLoteContrato.js
 node scripts/validarFilaLiquidacaoRateada.js
 node scripts/validarCarteiraChequesBaixaComposta.js
 node scripts/validarFilaBaixaComposta.js
@@ -55,4 +57,4 @@ timeout 60s node scripts/verificarReenvioAutorizacaoProducao.js --verificar
 cd ..
 test "$env_hash_prod" = "$(sha256sum backend/.env)"
 git log -1 --oneline
-echo 'PRODUCAO atualizada: datas e moeda dos cheques. Sem migration/baixa automatica; .env/PILOT/TLS/12h preservados. DEV nao alterado.'
+echo 'PRODUCAO atualizada: cheques com descontos e contrato. Sem migration/baixa automatica; .env/PILOT/TLS/12h preservados. DEV nao alterado.'

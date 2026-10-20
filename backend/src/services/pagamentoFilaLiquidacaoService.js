@@ -2,10 +2,20 @@
 const { Op } = require('sequelize');
 const { PagamentoFilaLiquidacao, PagamentoManualFilaItem, MovimentoFinanceiro, TituloFinanceiro,
   ContaBancaria, CartaoFinanceiro, ChequeTerceiro, ChequeTerceiroMovimento, EmpresaGrupo } = require('../models');
-const { baixarTitulo, consumirChequeTerceiroPagamento, carregarTituloPorId } = require('./tituloFinanceiroService');
+const { baixarTitulo, consumirChequeTerceiroPagamento, carregarTituloPorId,
+  sincronizarStatusSolicitacaoPorBaixaTitulos } = require('./tituloFinanceiroService');
 const { planejarRateioFila, hashLiquidacao } = require('./pagamentoFilaRateioDomain');
 const { conferirChequesUnicosLote } = require('./pagamentoFilaChequesDomain');
 function erro(statusCode, message) { const error = new Error(message); error.statusCode = statusCode; throw error; }
+async function sincronizarSolicitacoesLiquidacao(req, titulos, transaction, observacao) {
+  if (!transaction) erro(403, 'Sincronizacao do grupo exige transacao interna.');
+  const ids = [...new Set(titulos.map(titulo => Number(titulo?.solicitacao_id)).filter(id => id > 0))].sort((a, b) => a - b);
+  for (const solicitacaoId of ids) await sincronizarStatusSolicitacaoPorBaixaTitulos({
+    solicitacaoId, usuarioId: req.user?.id || null,
+    setor: req.user?.setor?.codigo || req.user?.area || req.user?.setor?.nome || 'FINANCEIRO',
+    transaction, observacao
+  });
+}
 async function conferirEscopo(req, itens, transaction) {
   for (const item of itens) {
     // Estorno usa exatamente o escopo existente, inclusive renegociacoes.
@@ -93,7 +103,8 @@ async function registrarLiquidacaoFila(req, itens, config, key, transaction, { p
             natureza_intercompany_baixa: entreEmpresas ? 'OPERACIONAL_TERCEIRO' : undefined,
             tipo_intercompany: entreEmpresas ? 'TRANSFERENCIA_OPERACIONAL' : undefined,
             motivo_intercompany: entreEmpresas ? `Instrumento compartilhado da fila #${grupo.id}.` : undefined },
-          { ...options, filaLiquidacaoId: grupo.id, skipTituloIntercompanyUpdate: true });
+          { ...options, filaLiquidacaoId: grupo.id, skipTituloIntercompanyUpdate: true,
+            adiarSincronizacaoSolicitacao: true });
           primeira ||= baixa;
           const movimentoId = baixa.movimento_financeiro_id || baixa.movimento?.id;
           ids.push(movimentoId);
@@ -112,6 +123,9 @@ async function registrarLiquidacaoFila(req, itens, config, key, transaction, { p
     await consumirChequeTerceiroPagamento({ req, chequeTerceiroId: componente.cheque_terceiro_id,
       movimento, valor: componente.valor_pago, transaction });
   }
+  // Nao reconciliar contrato entre cheques/cartoes: a primeira parte poderia
+  // encerrar o saldo antes das demais. Falha aqui desfaz TODO o grupo.
+  await sincronizarSolicitacoesLiquidacao(req, [...titulos.values()], transaction);
   await grupo.update({ dados: { fila_ids: itens.map(item => item.fila_id), componentes, alocacoes: movimentos } }, { transaction });
   return resultados;
 }
@@ -135,4 +149,4 @@ async function devolverCarteiraGrupo(req, grupo, transaction) {
       data_evento: new Date().toISOString().slice(0, 10), observacoes: `Estorno do grupo da fila #${grupo.id}.`, criado_por: req.user.id }, { transaction });
   }
 }
-module.exports = { registrarLiquidacaoFila, obterGrupoParaEstorno, devolverCarteiraGrupo };
+module.exports = { registrarLiquidacaoFila, obterGrupoParaEstorno, devolverCarteiraGrupo, sincronizarSolicitacoesLiquidacao };

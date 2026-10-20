@@ -1,5 +1,11 @@
 # Sessoes Ativas
 
+- codex-promocao-cheques-contrato-main-20261020: finalizado local, agente unico,
+  DEV1f02 homologado/main e9df congelada. Backup/timer confirmados; reservas
+  integracao/roteiro/QA/docs no ownership. Sem EC2/banco/DDL ou alteracao DEV.
+  Runtime/guardas/UI/build/docs592/19/sintaxe/diff aprovados, bundle anterior
+  privado verificado; ownership liberado para commit/PR/merge autorizado.
+
 - codex-promocao-cheques-main-20261019: finalizado local, agente unico, homologacao
   DEV719/e01 confirmada. Integrar main9e4 sem perder guardas/historicos.
   Sem EC2/banco/DDL ou alteracao do DEV; backup/timer confirmado pelo usuario.
@@ -21,6 +27,17 @@
   Simulacao real conferida; inventario inicial de schema alvo invalidado, lista
   vazia por cwd. Pendencia 202610190001 confirmada depois pelo operador. Roteiro
   sem DDL/regularizacao e QA aprovados; ownership liberado para PR/merge.
+
+- codex-cheques-contrato-lote-20261020-publicacao: finalizado local, commit/push DEV
+  autorizado. Reserva delta/roteiro/QA/docs; main e9df e outputs preservados.
+  Sem EC2, banco real, migration ou alteracao de configuracao.
+  QA runtime/guardas/sintaxe/docs585/19/diff aprovado, ownership liberado.
+
+- codex-cheques-contrato-lote-20261020: finalizado local, agente unico na base
+  refactor/frontende01. Usuario autorizou implementar/testar lote com descontos
+  sem producao. Reserva backend/QA/docs; sem banco/EC2/DDL/commit/push.
+  Backend/contratos/carteira/estorno/replay/rollback/escopo, UI/build/docs585/19
+  e sintaxe/diff aprovados; ownership liberado, handoff salvo.
 
 - codex-cheques-moeda-20261019-publicacao: QA finalizado, ownership liberado
   para commit/push DEV autorizado. UI/build/backend/guardas aprovados.
