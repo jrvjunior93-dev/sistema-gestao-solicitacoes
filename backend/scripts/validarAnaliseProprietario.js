@@ -17,10 +17,13 @@ const req = { user, headers: {}, ip: '127.0.0.1' };
 let state, scope = null, auditFails = false, eventFails = false, serial = false, challenge = null, pushFails = false, pushes = 0, avisosAtivos = true;
 let transactionTail = Promise.resolve();
 const locks = [];
+const selectionChallenges = new Map();
+const webauthnMetrics = { generate: 0, verify: 0, invalid: false };
 const env = { paymentOwnerApprovalMode: 'PILOT', paymentOwnerApprovalTtlHours: 24, webauthnRpId: 'qa.invalid', webauthnOrigins: ['https://qa.invalid'] };
 const models = {};
 const names = ['ConfiguracaoSistema', 'TituloFinanceiro', 'Solicitacao', 'Historico', 'StatusArea', 'SecurityEventLog',
   'PagamentoManualFilaItem', 'PagamentoAutorizacaoItem', 'PagamentoAutorizacaoLote', 'PagamentoAutorizacaoEvento',
+  'TituloCompartilhadoOrigem',
   'Anexo', 'PagamentoAutorizacaoDocumento', 'PagamentoAutorizador', 'WebauthnCredential', 'PaymentIntent',
   'FormaPagamentoFinanceira', 'CartaoFinanceiro', 'ChequeTerceiro', 'ContaBancaria', 'ContratoParcela', 'Contrato',
   'ContratoMedicao', 'MedicaoParcela', 'TituloRenegociacaoAlocacao', 'User', 'Notificacao', 'NotificacaoDestinatario'];
@@ -78,10 +81,13 @@ models.sequelize = { async transaction(callback) {
     transactionTail = new Promise(resolve => { liberar = resolve; });
     await anterior;
   }
-  const before = structuredClone(state);
-  try { return await callback({ LOCK: { UPDATE: 'UPDATE' } }); }
+  const before = structuredClone(state), afterCommit = [];
+  let result;
+  try { result = await callback({ LOCK: { UPDATE: 'UPDATE' }, afterCommit: fn => afterCommit.push(fn) }); }
   catch (error) { state = before; throw error; }
   finally { liberar?.(); }
+  for (const fn of afterCommit) await fn();
+  return result;
 } };
 const services = new Map();
 const stubs = {
@@ -96,12 +102,13 @@ const stubs = {
   './tituloFinanceiroService': {}, './tituloBloqueioRetornoObraService': { assertTituloDisponivelParaBaixa(title) {
     require('../src/services/tituloBloqueioRetornoObraPolicy').assertTituloDisponivelParaBaixa(title);
     if (title.bloqueio_retorno_obra) throw Object.assign(new Error('Retorno pendente'), { statusCode: 409 });
-  } }, './s3': {}, './fileAccessService': {},
+  } }, './s3': { copyStorageObject: async (source, prefix) => `${prefix}/qa-copia-${source}` }, './fileAccessService': {},
   './faturaCartaoFinanceiroService': {},
   './securityLogService': { registrarEventoSeguranca: async () => {}, getRequestIp: () => req.ip },
   './webauthnChallengeStore': {
-    saveChallenge: async (_, value) => { challenge = value; },
-    consumeChallenge: async () => { const value = challenge; challenge = null; return value; }
+    saveChallenge: async (ctx, value) => { if (ctx.purpose === 'authorize-selection') selectionChallenges.set(JSON.stringify(ctx), value); else challenge = value; },
+    consumeChallenge: async () => { const value = challenge; challenge = null; return value; },
+    consumeChallengeAtomic: async ctx => { const key = JSON.stringify(ctx), value = selectionChallenges.get(key);selectionChallenges.delete(key);return value; }
   },
   './webPushService': { isConfigured: () => false, hasActiveSubscription: async () => false, sendPendingAuthorizationNotification: async () => {},
     sendQueueRetryNotification: async () => { pushes++; if (pushFails) throw Error('Provedor indisponivel QA'); } },
@@ -119,8 +126,8 @@ function load(name) {
   if (services.has(name)) return services.get(name);
   const sandbox = { module: { exports: {} }, console, Date, Buffer, Uint8Array, structuredClone,
     __webauthn: {
-      generateAuthenticationOptions: async () => ({ challenge: 'qa' }),
-      verifyAuthenticationResponse: async () => ({ verified: true, authenticationInfo: { newCounter: 1 } })
+      generateAuthenticationOptions: async () => { webauthnMetrics.generate++; return { challenge: 'qa' }; },
+      verifyAuthenticationResponse: async () => { webauthnMetrics.verify++; return { verified: !webauthnMetrics.invalid, authenticationInfo: { newCounter: 1 } }; }
     },
     require(dependency) {
     if (Object.hasOwn(stubs, dependency)) return stubs[dependency];
@@ -146,6 +153,8 @@ const analysisStatus = analysis.STATUS_ANALISE_PROPRIETARIO;
 function reset() {
   state = Object.fromEntries(names.map((name) => [name, []])); scope = null; auditFails = false; eventFails = false;
   serial = false; challenge = null; pushFails = false; pushes = 0; avisosAtivos = true; locks.length = 0; env.paymentOwnerApprovalMode = 'PILOT';
+  selectionChallenges.clear();
+  Object.assign(webauthnMetrics, { generate: 0, verify: 0, invalid: false });
   state.TituloFinanceiro = [
     { id: 1, codigo: 'TIT-1', tipo: 'PAGAR', status: 'ABERTO', obra_id: 7, valor_saldo: 100, solicitacao_id: 6 },
     { id: 2, codigo: 'TIT-2', tipo: 'PAGAR', status: 'PARCIAL', obra_id: 7, valor_saldo: 50, solicitacao_id: 6 },
@@ -711,5 +720,7 @@ async function testarMedicoesIndependentes() {
   await load('pagamentoAutorizacaoReenvioService').notificarEnvioPendente(dono, lote.id);
   assert.equal(state.Notificacao.length, 2, 'Nova pendencia de outro item no mesmo lote gera aviso proprio');
   assert.equal(pushes, 2);
+  await require('./validarAutorizacaoSelecao')({ digital, queue, models, reset, req, user, env, locks, webauthnMetrics,
+    getState: () => state, scope: value => { scope = value; }, serial: () => { serial = true; } });
   console.log('OK: analise/locks/escopo, decisao commitada com envio pendente, alerta nominal deduplicado/concorrente, push falho, ACL/PAUSED, reenvio individual/replay sem nova passkey e demais protecoes. Sem banco/rede.');
 })().catch((error) => { console.error(error); process.exitCode = 1; });

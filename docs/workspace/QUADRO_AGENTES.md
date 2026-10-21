@@ -1,5 +1,27 @@
 # Quadro de Agentes
 
+## Publicacao DEV autorizacao unica - 2026-10-21
+
+- Commit/push DEV e roteiro autorizados. Agente unico; delta/QA/docs/roteiro
+  e guardas reservados no ownership. Base publicada771f8041/main60f327d7.
+- Roteiro pinned/ff-only, PM2/8001/sem watch, schema readonly, .env preservado,
+  sem DDL/dependencias. Somente backend-dev, nenhuma operacao real pelo agente.
+- Main/producao e outputs privados fora da publicacao; homologar selecao entre
+  lotes e uma passkey real no DEV apos atualizacao pelo operador.
+- Backend/rollback/ACL/replay/concorrencia e regressoes, UI130 titulos320/390/1366,
+  build11,72s/631 modulos, Node/Bash/guardas/docs592/19/diff aprovados.
+  Ownership liberado para publicacao DEV autorizada.
+
+## PWA autorizacao unica entre lotes - 2026-10-21
+
+- Implementacao/testes locais para refactor/frontend autorizados; agente unico,
+  finalizado e ownership liberado. Uma passkey vincula selecao completa;
+  decisao/fila atomicas, somente selecionados, ACL/dossie/counter preservados.
+- QA rollback no segundo lote e no counter, replay/concorrencia/escopo/ACL,
+  UI130 titulos entre obras/paginas/lotes320/390/1366, regressoes e build aprovados.
+- Sem EC2/DB/Redis/S3/passkey reais, main/producao, DDL/dependencias/commit/push.
+  Handoff proprio salvo; homologar integracoes reais no DEV apos publicacao.
+
 ## Publicacao DEV periodo de registro - 2026-10-21
 
 - Usuario autorizou commit/push refactor/frontend e roteiro DEV deste filtro.

@@ -1,5 +1,36 @@
 # Ownership Ativo
 
+## Publicacao DEV autorizacao unica - 2026-10-21
+
+- Usuario autorizou commit/push refactor/frontend e comandos de atualizacao DEV.
+- Agente unico, validado para publicacao, ownership liberado: delta da autorizacao unica/QA/docs, novo roteiro
+  atualizar-dev-autorizacao-unica-20261021.sh e validarDeployAutorizacaoUnicaDev.js,
+  README Financeiro/handoff e quatro controles workspace.
+- Publicar fast-forward apenas DEV; excluir outputs privados. Sem main/producao,
+  EC2/DB/Redis reais pelo agente, DDL/dependencias/.env/flags. O operador reinicia
+  exclusivamente backend-dev apos identidade/schema readonly e regressoes locais.
+- Backend transacional/ACL/replay/concorrencia, UI130 titulos320/390/1366,
+  regressoes, build, Node/Bash/guardas/docs592/19 e diff aprovados. Publicar DEV.
+
+## PWA autorizacao unica entre lotes - 2026-10-21
+
+- Usuario autorizou implementar/testar em refactor/frontend, sem producao.
+- Agente unico, finalizado local, ownership liberado: novo pagamentoAutorizacaoSelecaoService.js;
+  pagamentoAutorizacaoService.js somente adaptador da selecao,
+  pagamentoManualFilaService.js somente transacao interna no wrapper,
+  PagamentoAutorizacaoController.js, routes.js somente novas rotas protegidas;
+  frontend services/pagamentoAutorizacao.js e AutorizacoesPorObra.jsx;
+  validarAnaliseProprietario.js/harness, novo validarAutorizacaoSelecao.js,
+  validarAutorizacoesPorObra.mjs, README Financeiro/handoff e controles.
+- Uma passkey vincula selecao completa; autorizacao + fila em transacao unica.
+  Preservar legado/rejeicao/reenvio, ACL/escopo/limite nominal/dossie/counter,
+  challenge atomico, locks estaveis e rollback/repeticao. Sem DDL/dependencias.
+- Sem EC2/DB/Redis/S3 reais, main/producao, commit/push/deploy nesta etapa.
+- QA backend transacional/ACL/replay/concorrencia e UI130 titulos entre obras/
+  paginas/lotes320/390/1366, regressoes PWA/reenvio, build, Node/diff/docs592/19 aprovados.
+  Handoff 2026-10-21-pwa-autorizacao-unica-selecao.md; homologacao real no DEV
+  ainda pendente. Publicacao somente mediante novo pedido.
+
 ## Publicacao DEV periodo de registro - 2026-10-21
 
 - Usuario autorizou commit/push refactor/frontend e roteiro para EC2 DEV.

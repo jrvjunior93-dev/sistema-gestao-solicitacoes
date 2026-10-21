@@ -1,5 +1,31 @@
 # Handoff Global
 
+## Publicacao DEV autorizacao unica - 2026-10-21
+
+- Publicacao DEV autorizada; base771f8041, main60f327d7 fora do escopo.
+  Roteiro proprio para cinco arquivos runtime/novo servico da selecao,
+  schema readonly/PM2/8001/watch, .env preservado, sem DDL/dependencias.
+- Rodar suites isoladas antes do restart exclusivo backend-dev. Operador
+  homologa dois lotes, uma passkey, somente selecionados, historico e ACL.
+  Sem EC2/DB/Redis reais pelo agente, producao ou outputs privados no commit.
+- Fechamento: backend/regressoes/UI130 titulos320/390/1366 aprovados,
+  build11,72s/631 modulos, Node/Bash/guardas/docs592/19/diff aprovados;
+  ownership liberado para publicacao DEV autorizada.
+
+## PWA autorizacao unica entre lotes - 2026-10-21
+
+- Novo servico da selecao+rotas protegidas; uma passkey para IDs/dossies/revisoes,
+  transacao unica da decisao a fila, mesmos bloqueadores/ACL/limites por lote.
+  Rejeicao/reenvio/legado preservados. Cancelar mantem marcados; resposta perdida
+  consulta toda a selecao sem repetir POST/assinatura. Somente selecionados.
+- Testes backend isolados comprovam rollback tardio/segundo lote, replay/abas,
+  ACL/escopo inclusive compartilhado/anexos; UI130 titulos entre obras/paginas/
+  lotes com uma passkey/POST,320/390/1366 e regressoes aprovados; build aprovado.
+- Ownership liberado; detalhes em handoff2026-10-21-pwa-autorizacao-unica-selecao.
+  Sem EC2/integracoes reais/main/producao/migration/dependencias/commit/push.
+  Proximo: pedido de publicacao DEV com roteiro novo, seguido de homologacao
+  MySQL/Redis/passkey real pelo operador, nao por operacoes em producao.
+
 ## Publicacao DEV periodo de registro - 2026-10-21
 
 - Commit/push refactor/frontend autorizado, pacote isolado do periodo/QA/docs.

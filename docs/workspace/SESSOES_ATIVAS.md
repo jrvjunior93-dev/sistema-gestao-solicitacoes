@@ -1,5 +1,18 @@
 # Sessoes Ativas
 
+- codex-publicacao-dev-autorizacao-unica-20261021: agente unico, commit/push DEV
+  e comandos autorizados; delta/QA/docs/roteiro/guardas reservados. Sem main,
+  producao, EC2/DB/Redis reais pelo agente. Excluir outputs privados.
+  Backend/regressoes/UI130 titulos320/390/1366/build/Node/Bash/guardas/docs592/19/
+  diff aprovados; ownership liberado para publicacao/homologacao DEV.
+
+- codex-pwa-autorizacao-unica-selecao-20261021: finalizado local, agente unico,
+  ownership liberado. Uma passkey/POST autoriza e enfileira selecao entre lotes
+  atomicamente; cancelamento preserva marcados e resposta perdida reconcilia.
+  QA backend/rollback/ACL/replay/concorrencia, UI130 titulos320/390/1366,
+  regressoes e build aprovados. Handoff salvo; sem integracoes reais/EC2/main,
+  producao/migration/dependencias/commit/push. Aguardar pedido de publicacao DEV.
+
 - codex-periodo-registro-publicacao-20261021: agente unico, publicacao DEV
   autorizada; reservar delta/QA/docs/roteiro/guardas. Sem EC2/DB real/DDL/main,
   producao ou outputs privados no commit. Roteiro reinicia somente backend-dev.
