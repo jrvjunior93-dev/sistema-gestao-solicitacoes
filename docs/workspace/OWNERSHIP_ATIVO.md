@@ -1,5 +1,16 @@
 # Ownership Ativo
 
+## Promocao RH, centros e pedidos MAIN - 2026-10-21
+
+- Usuario confirmou backup cifrado/timer ativo e autorizou todos os commits
+  pendentes: 2d161b85, ba4a41b2 e a00a15f6. RH homologado no DEV.
+- Agente unico reserva integracao sobre main80df6534, conflitos documentais,
+  roteiro atualizar-producao-rh-pedidos-centros-20261021.sh, seu QA e handoff,
+  quatro controles workspace. Preservar ajustes exclusivos main e historicos.
+- Sem alteracao funcional adicional, EC2/DB/S3/Redis reais, DDL, dependencias,
+  .env/flags, memoria ou operacao financeira pelo agente. DEV remoto intocado.
+- Outputs privados fora do commit; validar integracao antes de publicar main.
+
 ## Promocao main tres pendencias DEV - 2026-10-21
 
 - Usuario autorizou promover5dbdd55a/44ee71b2/771f8041 preservando main.
