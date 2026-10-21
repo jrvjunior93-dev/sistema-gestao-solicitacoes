@@ -59,6 +59,11 @@ window.__cartoes=[{id:10,nome:'Crédito QA',tipo:'CREDITO',ativo:true,conta_banc
 window.__formas=[{id:1,nome:'Cartão de crédito',tipo:'CARTAO_CREDITO',ativo:true,gera_fatura:true,exige_cartao:true},{id:2,nome:'Cartão de débito',tipo:'CARTAO_DEBITO',ativo:true,exige_cartao:true}];
 window.__titulo={id:1,codigo:'TIT-CARTAO-QA',tipo:'PAGAR',status:'ABERTO',valor_original:2740,valor_saldo:2740,valor_baixado:0,empresa_id:1,obra_id:1,parceiro_id:1,descricao:'Compra QA',movimentos:[],empresa:{id:1,nome:'Empresa QA'},obra:{id:1,nome:'Obra QA'},parceiro:{id:1,nome:'Credor QA'}};
 window.__rows=[{id:1,status:'PENDENTE',valor_previsto:2740,juros:0,multa:0,titulo:window.__titulo}];
+if(new URLSearchParams(location.search).has('saldo')){
+  Object.assign(window.__titulo,{status:'PARCIAL',valor_original:40810,valor_saldo:35853.30,valor_baixado:4956.70,
+    movimentos:[{id:7755,tipo_movimento:'BAIXA',status:'ATIVO',forma_recebimento:'PIX',valor:4956.70,data_movimento:'2026-10-20'}]});
+  window.__rows[0].valor_previsto=35853.30;
+}
 function Host({children}){const memory=useMemo(()=>createWorkspaceMemory(),[]);return <WorkspacePageContext.Provider value={{key:'cartao-parcelamento-qa',memory,snapshot:true,active:true}}>{children}</WorkspacePageContext.Provider>}
 createRoot(document.getElementById('root')).render(<BrowserRouter><ThemeContext.Provider value={{tema:TEMA_PADRAO}}><main className='layout-main'><Host><Routes><Route path='/fila' element={<Queue/>}/><Route path='/titulo/:id' element={<Detail/>}/></Routes></Host></main></ThemeContext.Provider></BrowserRouter>);`;
 const stub='\0cartao-parcelamento-';
@@ -131,6 +136,35 @@ try{
       const multi=await page.evaluate(()=>window.__writes[1]);
       assert.deepEqual(multi.instrumentos.componentes.map(p=>p.parcelamento_cartao.quantidade_parcelas),['3','2']);
     }
+    await page.goto(base+'/fila?saldo');
+    await page.getByLabel('Forma de pagamento de TIT-CARTAO-QA',{exact:true}).selectOption('1');
+    await page.getByLabel('Cartão de TIT-CARTAO-QA',{exact:true}).selectOption('10');
+    const pixAntes=await page.evaluate(()=>JSON.stringify(window.__titulo.movimentos));
+    await page.getByLabel('Desconto de TIT-CARTAO-QA',{exact:true}).fill('6853.30');
+    assert.equal(Number(await page.getByLabel('Valor pago de TIT-CARTAO-QA',{exact:true}).inputValue()),29000);
+    await page.getByLabel('Parcelas do cartão de TIT-CARTAO-QA',{exact:true}).fill('6');
+    const saldoData=page.getByLabel('Data da compra de TIT-CARTAO-QA',{exact:true});
+    await saldoData.fill('20/10/2026');await saldoData.blur();
+    await page.getByRole('button',{name:'Ver parcelas',exact:true}).click();
+    modal=page.getByRole('dialog',{name:'Prévia das parcelas de TIT-CARTAO-QA',exact:true});await modal.waitFor();
+    assert.equal(await modal.locator('tbody tr').count(),6);
+    const parcelasTexto=await modal.locator('tbody tr').allTextContents();
+    parcelasTexto.forEach((texto,index)=>assert.match(texto,index<2?/4\.833,34/:/4\.833,33/));
+    assert.match(await modal.locator('tfoot').innerText(),/29\.000,00/);
+    assert.equal(await page.evaluate(()=>window.__writes.length),0);
+    await page.screenshot({path:path.join(out,`fila-saldo-modal-${width}.png`)});
+    await modal.getByRole('button',{name:'Voltar para o pagamento',exact:true}).click();
+    await page.getByRole('button',{name:'Registrar baixa',exact:true}).first().click();
+    await page.waitForFunction(()=>window.__writes.length===1);
+    const saldoEnvio=await page.evaluate(()=>window.__writes[0].itens[0]);
+    assert.equal(Number(saldoEnvio.valor_pago),29000);assert.equal(Number(saldoEnvio.desconto),6853.30);
+    assert.equal(saldoEnvio.parcelamento_cartao.quantidade_parcelas,'6');
+    assert.equal(saldoEnvio.parcelamento_cartao.data_compra,'2026-10-20');
+    assert.equal(await page.evaluate(()=>JSON.stringify(window.__titulo.movimentos)),pixAntes);
+    await page.goto(base+'/fila?saldo&readonly');
+    await page.getByText('TIT-CARTAO-QA',{exact:true}).first().waitFor();
+    assert.equal(await page.getByRole('button',{name:'Registrar baixa',exact:true}).count(),0);
+    assert.equal(await page.evaluate(()=>window.__writes.length),0);
     await page.goto(base+'/titulo/1');
     await page.getByRole('button',{name:'Registrar baixa',exact:true}).click();
     const form=page.getByRole('dialog',{name:'Registrar baixa',exact:true});await form.waitFor();
@@ -154,6 +188,6 @@ try{
     await page.goto(base+'/titulo/1?readonly');assert.equal(await page.getByRole('button',{name:'Registrar baixa',exact:true}).count(),0);
   }
   assert.deepEqual(errors,[]);
-  console.log('OK: calendarios frontend/backend iguais em UTC/BR/NZ, centavos, fila/detalhe reais, modal sobreposto desktop/mobile, Escape/retorno, previa sem baixa, payloads, duplo clique/retry idempotente e permissao de leitura. Sem API/banco externos.');
+  console.log('OK: calendarios frontend/backend iguais em UTC/BR/NZ, centavos, fila/detalhe reais, saldo apos PIX com desconto e cartao29000 em6x, modal sobreposto desktop/mobile, Escape/retorno, previa sem baixa, payloads, duplo clique/retry idempotente e permissao de leitura. Sem API/banco externos.');
 }catch(error){await page?.screenshot({path:path.join(out,'falha.png'),fullPage:true});console.error(await page?.locator('[role="dialog"]').allTextContents());throw error;}
 finally{await browser?.close();await server.close();}

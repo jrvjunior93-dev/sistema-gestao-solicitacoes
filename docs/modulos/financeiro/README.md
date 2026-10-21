@@ -1,5 +1,27 @@
 # Modulo FINANCEIRO
 
+## Promocao MAIN pendencias DEV - 2026-10-21
+
+Usuario autorizou promover5dbdd55a (lista unica da fatura),44ee71b2 (quitacao
+de saldo com cartao apos PIX e JOIN Obras do relatorio de permutas) e771f8041
+(periodo de registro das solicitacoes). Integracao sobre main eb12d9d7 conserva
+autorizacao unica por passkey, hotfixes e scripts produtivos. Runtime final
+backend/frontend coincide com DEV828ed2ec; nao copiar package.json DEV por
+cima do produtivo (main conserva script de QA exclusivo). Sem dependencias/DDL.
+
+Roteiro `ops/deploy/atualizar-producao-pendencias-20261021.sh`: SHA fixo/ff-only,
+base de pacote eb12d9d7 e instalado minimo60f327d7, backup/timer/PM2 PROD8000/
+online/sem watch, UUID/TLS/schema/12h/flags/push em leitura antes/depois, .env
+por hash, testes isolados e restart somente backend-solicitacoes. Se a EC2
+ainda estiver na main60, inclui a autorizacao unica previamente aprovada;
+nao exige executar os dois roteiros em sequencia. Sem npm install/ci, migrations,
+baixas, estornos, cancelamentos ou regularizacoes automaticas. EC2 so operador.
+
+Conferir lista da fatura e relatorio de permutas em leitura apos atualizar
+backend/health e frontend main na Vercel. O caso PIX/cartao/desconto foi provado
+em memoria/DEV; nao repetir a baixa real somente para testar producao.
+[Escopo, evidencias e recuperacao](../../handoffs/2026-10-21-promocao-main-pendencias-dev.md).
+
 ## Autorizacao unica da selecao no PWA - 2026-10-21
 
 Na visao Por obra, autorizar usa uma unica passkey para todos os titulos
@@ -132,6 +154,80 @@ for automatico, concluir backend antes de usar a nova autorizacao no PWA.
   SHA main, backup/timer, identidade/schema/TLS/PILOT/12h e .env preservado.
   Sem migration nova ou restauracao de titulos; restart somente producao.
 - [Escopo, guardas e conferencia](../../handoffs/2026-10-18-promocao-main-pwa-historico.md).
+
+## Cartao na fila com PIX anterior e desconto - 2026-10-21
+
+A baixa simples por credito com `parcelamento_cartao` validado pode quitar o
+saldo remanescente de um titulo com pagamentos anteriores. Continua exigindo
+quitacao integral do saldo atual; o fluxo legado sem essa configuracao conserva
+a restricao de ausencia de baixa anterior. Permissoes e demais bloqueadores
+permanecem nos mesmos pontos, sem migracao de dados ou alteracao de schema.
+
+Exemplo validado: original40810, PIX anterior4956,70, saldo35853,30,
+desconto6853,30 e cartao29000 em6x. Somente29000 entram nas faturas:
+duas parcelas4833,34 e quatro4833,33. PIX/historico anteriores sao preservados;
+estorno da compra nova reabre35853,30 sem estornar o PIX. Fatura processada
+continua bloqueando a operacao correspondente.
+
+QA backend: `node backend/scripts/validarFilaCartaoSaldoRemanescente.js`,
+tambem integrado a `validarCartaoParcelamentoBaixa.js`. QA UI real com API
+simulada: executar `node scripts/validarCartaoParcelamentoUI.mjs` a partir de
+`frontend/` (1366/390, desconto, previa6x, payload e usuario somente leitura).
+Sem banco/rede externos. [Handoff e protecoes](../../handoffs/2026-10-21-fila-cartao-saldo-remanescente.md).
+
+Publicacao DEV autorizada junto com a correcao de `Obras` do relatorio de
+permutas. Roteiro `ops/deploy/atualizar-dev-saldo-cartao-permutas-20261021.sh`
+recebe SHA fixo da refactor/frontend: exige base instalada93f75 ou posterior,
+fast-forward, PM2 DEV online/sem watch, identidade MySQL/schema e sessao12h.
+Confere dependencias/migrations inalteradas e limita runtime aos dois servicos;
+roda regressoes e `verificarPermutasMySqlDev.js --verificar` somente leitura,
+depois reinicia exclusivamente backend-dev. Nao altera .env/flags ou producao.
+Sem instalar dependencias nem executar migrations. Homologacao financeira manual
+somente no DEV, com PIX anterior preservado, desconto e cartao6x; conferir tambem
+relatorio de permutas sem datas e com filtros/permissoes habituais.
+
+## Lista unica no detalhe da fatura de cartao - 2026-10-21
+
+`FinanceiroFaturaCartaoDetalhe` apresenta em uma unica `TabelaPadrao` os
+titulos diretamente vinculados e as compras/parcelas vindas de
+`compras_rateadas`, inclusive compras 1/1. Colunas: titulo/descricao,
+parceiro, data da compra, parcela, vencimento, status, valor nesta fatura
+e saldo do titulo. Dados antigos sem data/parcela continuam sem essa
+informacao; nao inferir a compra pela emissao ou vencimento.
+
+Helper `faturaCartaoItens.mjs` e somente uma projecao de leitura: titulo
+direto conserva `valor_original`; parcela/rateio usa `valor_quitacao` da
+parte e nunca o total original do titulo. Identidades de titulo, parcela
+e movimento sao separadas; partes distintas do mesmo titulo permanecem
+visiveis, e a mesma entidade repetida no payload nao duplica linha.
+Totais/saldo da fatura, contagem de titulos, regras de baixa, permissoes,
+API, banco e historico nao foram alterados. A lista nao recalcula o total
+financeiro e nao cria novos vinculos ou movimentos.
+
+Preferencias da lista usam a nova chave `tabela:fatura-cartao-detalhe:unificada`
+para apresentar as novas colunas sem herdar ocultacoes das duas listas antigas.
+QA: `node frontend/scripts/validarFaturaItensUnificados.mjs` e
+`node frontend/scripts/validarFaturasWorkspace.mjs` (tambem executa o unitario).
+Handoff: [lista unica e validacoes](../../handoffs/2026-10-21-fatura-lista-unica.md).
+
+Atualizacao DEV deste pacote usa
+`ops/deploy/atualizar-dev-fatura-lista-unica-20261021.sh` com SHA publicado fixo.
+Como so muda UI/QA/docs, nao instala dependencias, nao aplica migrations e nao
+reinicia backend. Confere checkout/PM2/watch/schema/.env e executa o QA unitario;
+a exibicao depende do deploy do frontend DEV na Vercel. Nunca executar em main.
+
+## Relatorio de permutas: referencia Obras - 2026-10-20
+
+Consulta usa `LEFT JOIN Obras`, alinhada ao modelo Obra e ao nome real da
+tabela no MySQL. Operador confirmou no DEV `lower_case_table_names=0`,
+tabela `Obras` e `ER_NO_SUCH_TABLE` para a referencia anterior `obras`.
+Sem migration, rename, ajuste de configuracao, dados ou permissoes.
+
+`validarPermutasRelatorio.js` confere identificadores de tabela com casing
+exato contra o modelo/schema antes de cada SELECT SQLite; a referencia antiga
+e rejeitada explicitamente. SQLite sozinho nao detecta diferenca de casing.
+Filtros, periodo integral, somas, estornos/legado, paginacao e ACL preservados.
+Handoff: [correcao e validacoes](../../handoffs/2026-10-20-permutas-obras-case.md).
 
 ## Comprovantes manuais PDF e imagens - 2026-10-20
 

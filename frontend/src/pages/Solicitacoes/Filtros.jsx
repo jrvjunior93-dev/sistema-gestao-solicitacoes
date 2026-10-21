@@ -84,7 +84,7 @@ const FILTROS_DISPONIVEIS = [
   { id: 'numero_sienge', rotulo: 'Número do pedido', padrao: false },
   { id: 'valor_min', rotulo: 'Valor mínimo', padrao: false },
   { id: 'valor_max', rotulo: 'Valor máximo', padrao: false },
-  { id: 'data_registro', rotulo: 'Data de registro', padrao: false },
+  { id: 'data_registro', rotulo: 'Período de registro', padrao: false },
   { id: 'data_vencimento', rotulo: 'Período Data Resposta/Pagamento', padrao: false },
   { id: 'responsavel', rotulo: 'Responsável', padrao: false }
 ];
@@ -98,12 +98,13 @@ const CHAVE_FILTROS_VISIVEIS = 'solicitacoes:filtros-visiveis';
 /*
   N53 (05/09) — QUAIS CHAVES DE `filtros` CADA MARCA DO SELETOR GOVERNA.
 
-  Quase todas são um para um, mas "Periodo Data Resposta/Pagamento" governa
-  TRÊS (a data exata e as duas pontas do período). Esconder tem de limpar as
+  Quase todas são um para um, mas cada periodo de datas governa
+  TRÊS chaves (a data exata legada e as duas pontas). Esconder tem de limpar as
   três: deixar uma ponta para trás recriaria o defeito em miniatura — lista
   recortada por uma data que não está em campo nenhum.
 */
 const CHAVES_DO_FILTRO = {
+  data_registro: ['data_registro', 'data_inicio', 'data_fim'],
   data_vencimento: ['data_vencimento', 'data_vencimento_inicio', 'data_vencimento_fim']
 };
 
@@ -157,6 +158,8 @@ const FILTROS_VAZIOS = {
   valor_min: '',
   valor_max: '',
   data_registro: '',
+  data_inicio: '',
+  data_fim: '',
   data_vencimento: '',
   data_vencimento_inicio: '',
   data_vencimento_fim: '',
@@ -342,13 +345,22 @@ export default function Filtros({
       aoMudar: (valor) => definirCampo('valor_max', valor)
     },
     isFiltroVisivel('data_registro') && {
-      id: 'data_registro',
-      rotulo: 'Data de registro',
+      id: 'data_inicio',
+      rotulo: 'Data de registro de',
       tipo: 'date',
       min: '1900-01-01',
       max: '2200-12-31',
-      valor: filtros.data_registro || '',
-      aoMudar: (valor) => definirCampo('data_registro', valor)
+      valor: filtros.data_inicio || '',
+      aoMudar: (valor) => definirCampo('data_inicio', valor)
+    },
+    isFiltroVisivel('data_registro') && {
+      id: 'data_fim',
+      rotulo: 'Data de registro até',
+      tipo: 'date',
+      min: '1900-01-01',
+      max: '2200-12-31',
+      valor: filtros.data_fim || '',
+      aoMudar: (valor) => definirCampo('data_fim', valor)
     },
     mostrarPeriodoVencimento && {
       id: 'data_vencimento_inicio',
@@ -388,6 +400,8 @@ export default function Filtros({
     filtros.valor_min,
     filtros.valor_max,
     filtros.data_registro,
+    filtros.data_inicio,
+    filtros.data_fim,
     filtros.data_vencimento,
     filtros.data_vencimento_inicio,
     filtros.data_vencimento_fim,

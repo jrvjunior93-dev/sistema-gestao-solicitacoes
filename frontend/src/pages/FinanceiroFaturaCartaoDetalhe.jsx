@@ -5,6 +5,7 @@ import useWorkspaceRecordDraft from '../navigation/useWorkspaceRecordDraft';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { hasPermissao } from '../utils/acessoProduto';
+import { itensDaFatura, parcelaDaFatura } from '../utils/faturaCartaoItens.mjs';
 import {
   baixarFaturaCartaoFinanceiro,
   getContasBancarias,
@@ -159,6 +160,7 @@ export default function FinanceiroFaturaCartaoDetalhe() {
     };
   }, []);
 
+  const itens = useMemo(() => itensDaFatura(fatura), [fatura]);
   const resumo = useMemo(() => ({
     total: Number(fatura?.valor_total || 0),
     aberto: getValorAberto(fatura),
@@ -333,7 +335,7 @@ export default function FinanceiroFaturaCartaoDetalhe() {
 
           <BlocoConteudo
             titulo="Títulos da fatura"
-            descricao="Lista completa dos títulos vinculados a esta fatura."
+            descricao="Títulos, compras e parcelas com os valores desta fatura."
           >
             <TabelaPadrao
               colunas={[
@@ -341,9 +343,9 @@ export default function FinanceiroFaturaCartaoDetalhe() {
                   id: 'titulo',
                   titulo: 'Título',
                   tipo: 'codigo',
-                  render: (titulo) => (
+                  render: ({ titulo, tituloId }) => (
                     <div>
-                      <div className="font-semibold text-[var(--c-text)]">{titulo.codigo || `Titulo #${titulo.id}`}</div>
+                      <div className="font-semibold text-[var(--c-text)]">{titulo.codigo || `Titulo #${tituloId}`}</div>
                       <div className="text-xs text-[var(--c-muted)]">{titulo.descricao || 'Sem descricao'}</div>
                     </div>
                   )
@@ -354,37 +356,27 @@ export default function FinanceiroFaturaCartaoDetalhe() {
                   // R17: o parceiro NOMEIA o titulo da fatura.
                   tipo: 'identidade',
                   noCard: 'titulo',
-                  render: (titulo) => titulo.parceiro?.nome || 'Parceiro nao informado'
+                  render: ({ titulo }) => titulo.parceiro?.nome || 'Parceiro nao informado'
                 },
-                { id: 'vencimento', titulo: 'Vencimento', tipo: 'data', render: (titulo) => formatDate(titulo.data_vencimento) },
+                { id: 'data-compra', titulo: 'Data da compra', tipo: 'data', render: item => formatDate(item.dataCompra) },
+                { id: 'parcela', titulo: 'Parcela', tipo: 'codigo', render: parcelaDaFatura },
+                { id: 'vencimento', titulo: 'Vencimento', tipo: 'data', render: ({ titulo }) => formatDate(titulo.data_vencimento) },
                 {
                   id: 'status',
                   titulo: 'Status',
                   tipo: 'status',
-                  render: (titulo) => <span className={statusBadgeClasse(titulo.status)}>{titulo.status || 'ABERTO'}</span>
+                  render: ({ titulo }) => <span className={statusBadgeClasse(titulo.status)}>{titulo.status || '—'}</span>
                 },
-                { id: 'valor', titulo: 'Valor', tipo: 'valor', render: (titulo) => <span className="font-semibold">{formatCurrency(titulo.valor_original)}</span> },
-                { id: 'saldo', titulo: 'Saldo', tipo: 'valor', render: (titulo) => formatCurrency(titulo.valor_saldo) }
+                { id: 'valor', titulo: 'Valor nesta fatura', tipo: 'valor', render: item => <span className="font-semibold">{item.valorNestaFatura == null ? '—' : formatCurrency(item.valorNestaFatura)}</span> },
+                { id: 'saldo', titulo: 'Saldo do título', tipo: 'valor', render: ({ titulo }) => titulo.valor_saldo == null ? '—' : formatCurrency(titulo.valor_saldo) }
               ]}
-              itens={fatura.titulos || []}
+              itens={itens}
               vazio="Nenhum título vinculado a esta fatura."
-              storageKey="tabela:fatura-cartao-detalhe:titulos"
-              chaveWorkspace="fatura:titulos"
+              storageKey="tabela:fatura-cartao-detalhe:unificada"
+              chaveWorkspace="fatura:itens-unificados"
               rotuloRolagem="Titulos da fatura"
             />
           </BlocoConteudo>
-          {Boolean(fatura.compras_rateadas?.length) && <BlocoConteudo titulo="Compras e parcelas nesta fatura"
-            descricao="Valores desta fatura, sem repetir o total do título em cada parcela.">
-            <TabelaPadrao colunas={[
-              { id: 'titulo', titulo: 'Título', tipo: 'codigo', render: item => item.titulo?.codigo || `#${item.titulo_financeiro_id}` },
-              { id: 'descricao', titulo: 'Descrição', render: item => item.titulo?.descricao || '—' },
-              { id: 'parceiro', titulo: 'Parceiro', tipo: 'identidade', render: item => item.titulo?.parceiro?.nome || '—' },
-              { id: 'data', titulo: 'Data da compra', tipo: 'data', render: item => formatDate(item.data_compra || item.data_movimento) },
-              { id: 'parcela', titulo: 'Parcela', render: item => item.numero_parcela ? `${item.numero_parcela}/${item.quantidade_parcelas}` : '—' },
-              { id: 'valor', titulo: 'Valor nesta fatura', tipo: 'valor', render: item => formatCurrency(item.valor_quitacao) }
-            ]} itens={fatura.compras_rateadas} vazio="Nenhuma compra rateada." storageKey="tabela:fatura-cartao-detalhe:rateios"
-              chaveWorkspace="fatura:rateios" rotuloRolagem="Compras rateadas nesta fatura" />
-          </BlocoConteudo>}
         </>
       )}
 

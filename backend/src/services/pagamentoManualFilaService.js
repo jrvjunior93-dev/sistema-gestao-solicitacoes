@@ -358,9 +358,11 @@ async function resolverInstrumentoFila(titulo, payload, transaction, rateioInter
     if (Number(payload.conta_bancaria_id) !== Number(cartao.conta_bancaria_id)) {
       throw createHttpError(400, 'A conta pagadora deve ser a vinculada ao cartao utilizado.');
     }
-    // A fatura existente soma o valor integral do titulo. Nao vincular saldo parcial
-    // ou valor divergente como se toda a compra tivesse sido realizada no cartao.
-    if (!rateioInterno && tipoCartao === 'CREDITO' && (Number(titulo.valor_baixado || 0) > 0 ||
+    // O fluxo legado vincula o titulo inteiro a fatura e exige ausencia de baixa
+    // anterior. O parcelamento validado registra somente o valor da compra nova,
+    // podendo quitar o saldo remanescente sem levar pagamentos antigos a fatura.
+    // Em ambos os casos, a baixa simples da fila deve quitar todo o saldo atual.
+    if (!rateioInterno && tipoCartao === 'CREDITO' && ((Number(titulo.valor_baixado || 0) > 0 && !instrumento.parcelamento_cartao) ||
       calcularValoresFila(payload.valor_pago, titulo.valor_saldo, payload).principal !== roundCurrency(titulo.valor_saldo))) {
       throw createHttpError(400, 'Pagamento com cartao de credito deve quitar o titulo integralmente, sem baixa anterior.');
     }

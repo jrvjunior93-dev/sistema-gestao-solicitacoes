@@ -1,5 +1,18 @@
 # Handoff Global
 
+## Promocao MAIN tres pacotes DEV pendentes - 2026-10-21
+
+- Usuario autorizou5dbdd55a/44ee71b2/771f8041; backup cifrado/timer confirmados.
+  Integracao main eb12 + DEV828 preserva ambos historicos e passkey unica.
+- Runtime sem conflito e identico DEV; docs de ambos preservados, package.json/
+  scripts main intactos, sem DDL/dependencias/flags/envios reais ou EC2 pelo agente.
+- Roteiro PROD proprio, SHA/base/ff-only/backup/timer/PM2 online8000/sem watch,
+  schema/TLS/UUID/12h/push readonly, QA e restart somente backend-solicitacoes.
+  Handoff 2026-10-21-promocao-main-pendencias-dev.md; tag/bundle anterior verificado.
+- Backend/ACL/rollback/SQL/periodo/financeiro e UI cartao/fatura/filtros/workspace/
+  passkey aprovados, build13,55s/631 modulos, Node/Bash/guardas/docs603/19/diff.
+  Runtime identico DEV e main preservada; ownership liberado para PR/merge.
+
 ## Promocao main autorizacao unica - 2026-10-21
 
 - DEV828ed2ec homologado entre lotes/passkey unica, promocao isolada autorizada,
@@ -97,6 +110,122 @@
   invalidado (lista vazia/cwd). Migration 202610190001 pendente. Roteiro original
   sem DDL interrompeu antes do restart; usar retomada documentada acima;
   ownership liberado para PR/merge autorizado. Deploy exclusivamente pelo operador.
+
+## Publicacao DEV autorizacao unica - 2026-10-21
+
+- Publicacao DEV autorizada; base771f8041, main60f327d7 fora do escopo.
+  Roteiro proprio para cinco arquivos runtime/novo servico da selecao,
+  schema readonly/PM2/8001/watch, .env preservado, sem DDL/dependencias.
+- Rodar suites isoladas antes do restart exclusivo backend-dev. Operador
+  homologa dois lotes, uma passkey, somente selecionados, historico e ACL.
+  Sem EC2/DB/Redis reais pelo agente, producao ou outputs privados no commit.
+- Fechamento: backend/regressoes/UI130 titulos320/390/1366 aprovados,
+  build11,72s/631 modulos, Node/Bash/guardas/docs592/19/diff aprovados;
+  ownership liberado para publicacao DEV autorizada.
+
+## PWA autorizacao unica entre lotes - 2026-10-21
+
+- Novo servico da selecao+rotas protegidas; uma passkey para IDs/dossies/revisoes,
+  transacao unica da decisao a fila, mesmos bloqueadores/ACL/limites por lote.
+  Rejeicao/reenvio/legado preservados. Cancelar mantem marcados; resposta perdida
+  consulta toda a selecao sem repetir POST/assinatura. Somente selecionados.
+- Testes backend isolados comprovam rollback tardio/segundo lote, replay/abas,
+  ACL/escopo inclusive compartilhado/anexos; UI130 titulos entre obras/paginas/
+  lotes com uma passkey/POST,320/390/1366 e regressoes aprovados; build aprovado.
+- Ownership liberado; detalhes em handoff2026-10-21-pwa-autorizacao-unica-selecao.
+  Sem EC2/integracoes reais/main/producao/migration/dependencias/commit/push.
+  Proximo: pedido de publicacao DEV com roteiro novo, seguido de homologacao
+  MySQL/Redis/passkey real pelo operador, nao por operacoes em producao.
+
+## Publicacao DEV periodo de registro - 2026-10-21
+
+- Commit/push refactor/frontend autorizado, pacote isolado do periodo/QA/docs.
+  Novo roteiro atualizar-dev-periodo-registro-20261021.sh com SHA/bases/ff-only,
+  PM2/8001/sem watch, identidade/schema/sessao, .env por hash e QA antes do restart.
+- Delta novo backend somente controller; sem migrations/dependencias/flags.
+  Somente backend-dev reiniciado pelo operador; agente nao acessa EC2/DB real.
+- Main/producao e outputs privados fora da publicacao. Handoff do periodo
+  atualizado com roteiro e passos de homologacao DEV.
+- Backend/regressoes/unidade/ACL, UI1366/390/retorno/403, build16,42s/631 modulos,
+  guardas/Node/Bash, docs591/19 e diff aprovados. Ownership liberado para publicacao.
+
+## Periodo de registro das solicitacoes - 2026-10-21
+
+- Implementacao local do par de datas na lista, usando createdAt e query
+  data_inicio/fim. Limites inclusivos/opcionais, registro separado de vencimento.
+- Preservar data exata salva como dia unico, sessao/aba/URL/exportacao/live update,
+  visibilidade/limpeza, permissoes e demais operacoes da lista.
+- Detectada guarda inoperante Object.keys com operadores Sequelize Symbol;
+  troca pontual por Reflect.ownKeys, teste vermelho antes/verde depois.
+- Sem EC2/DB real/main/producao/migration/commit/push; handoff
+  docs/handoffs/2026-10-21-solicitacoes-periodo-registro.md.
+- Backend/UTC-BR-NZ/unidade/sessao/exportacao/live update, UI1366/390,
+  retorno workspace/legado/403/troca de usuario/escopo e regressoes aprovados.
+  Build12,90s/631 modulos, Node/diff e docs591/19 aprovados; ownership liberado.
+
+## Publicacao DEV saldo cartao e permutas - 2026-10-21
+
+- Usuario autorizou commit/push saldo/cartao e incluiu demais ajustes pendentes:
+  correcao Obras do relatorio de permutas. Nenhuma implementacao de NSDocs ou
+  fallback de forma prevista em Contas a Receber faz parte deste pacote.
+- Roteiro DEV novo com SHA/base93f75/fast-forward, identidade/schema/sessao/PM2,
+  dependencias/migrations intactas e runtime limitado aos dois servicos.
+  MySQL permutas somente leitura antes do restart exclusivo backend-dev.
+- Sem EC2 pelo agente/main/producao; excluir outputs privados. Testes backend,
+  regressoes SQL/ACL e guardas do deploy aprovados; UI/build/docs no fechamento.
+- Fechamento aprovado: UI1366/390, build, Node/Bash/guardas/docs590/19/diff.
+  Ownership liberado para commit/push autorizado; operador executa deploy DEV.
+
+## Saldo remanescente no cartao da fila - 2026-10-21
+
+- Finalizado local para refactor/frontend: credito com parcelamento validado
+  pode quitar saldo apos PIX anterior, preservando o legado sem configuracao.
+  Exemplo40810 = PIX4956,70 + desconto6853,30 + cartao29000 em6x.
+- Apenas compra nova nas faturas; PIX/historico anteriores preservados.
+  Testados ACL da rota com operador comum, parcial/excesso, contas/debito,
+  cancelado/bloqueado, faturas processadas, replay, estorno e rollback atomico.
+- Backend/regressoes/Node, UI1366/390, build/docs590/19/diff aprovados.
+  Sem EC2/DB real/migration/dependencias/main/producao/commit/push.
+  Handoff: docs/handoffs/2026-10-21-fila-cartao-saldo-remanescente.md.
+  Ownership liberado; permutas locais e outputs privados preservados.
+
+## Publicacao DEV lista unica da fatura - 2026-10-21
+
+- Publicacao do delta de UI autorizada na refactor/frontend, base93f75.
+  Preparar roteiro especifico sem DDL/dependencias/reinicio, com guardas de
+  caminho/branch/clean/SHA/base/PM2/watch/.env e schema somente leitura.
+- Excluir correcoes locais de permutas e outputs privados; sem main/producao
+  ou EC2 pelo agente. Repetir QA/build/docs/diff antes de commit/push.
+- Guardas estaticas/Node/Bash, unidade/regressao backend, build/docs/diff
+  aprovados; UI1366/390 repetida apos build e aprovada sem disputar dist. Ownership
+  liberado para commit/push autorizado; operador atualiza DEV com SHA fixo.
+
+## Lista unica da fatura - 2026-10-21
+
+- Implementacao local para refactor/frontend: unica TabelaPadrao para titulos
+  diretos e compras/parcelas 1/1/parceladas/rateadas. Valor por parte preservado,
+  sem repetir total original do titulo nem deduplicar partes legitimas.
+- Compra/parcela/vencimento/status/saldo visiveis; ausencias nao inventadas.
+  Backend, totais oficiais, permissao e protecoes de baixa inalterados.
+- Unidade/UI1366/390, regressao faturas/cartao/ACL/replay/rascunho/conflito,
+  build/navegacao/abas/docs589/19/Node/diff aprovados. Layout geral127->125;
+  falhas restantes fora do escopo, nenhuma atual nesta tela.
+- Ownership liberado; handoff 2026-10-21-fatura-lista-unica.md. Sem EC2/banco
+  real/migration/main/producao/commit/push. Permutas anteriores e outputs
+  preservados; aguardar autorizacao de publicacao para homologacao DEV.
+
+## Permutas Obras e diagnostico Contas a Receber - 2026-10-20
+
+- BaseDEV93f75, agente unico. Operador confirmou tabela Obras, casing MySQL0
+  e ER_NO_SUCH_TABLE para obras. JOIN corrigido; teste confere modelo/schema
+  case-sensitive antes do SQLite e rejeita forma antiga explicitamente.
+- SQL/filtros/legado/estornos/escopo/ACL, permuta operacional/guardas DEV,
+  Node/docs/diff aprovados. Sem migration/UI/configuracao/EC2/main/publicacao.
+- Adicional readonly: contrato guarda forma prevista na parcela; titulo nao
+  recebe forma_pagamento_id e Contas a Receber so mostra formaPagamento.
+  Nao alterar baixas/contratos; implementacao separada depende de autorizacao.
+- Ownership liberado, delta local sem commit/push; handoff
+  2026-10-20-permutas-obras-case.md.
 
 ## Publicacao DEV motivo encerramento - 2026-10-20
 

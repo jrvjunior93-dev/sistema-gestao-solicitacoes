@@ -1,5 +1,13 @@
 # Sessoes Ativas
 
+- codex-promocao-pendencias-main-20261021: agente unico, base main eb12/DEV828,
+  tres pacotes autorizados, backup/timer confirmados. Integracao/roteiro PROD/
+  QA/docs reservados; preservar main/passkey e DEV remoto. Sem EC2/banco real,
+  DDL/dependencias/flags ou operacao financeira real pelo agente.
+  Backend/regressoes/ACL/SQL/periodo/rollback/passkey e UI cartao/fatura/filtros/
+  workspace/passkey130 titulos, build/Node/Bash/guardas/docs603/19/diff/escopo
+  aprovados; ownership liberado para commit/PR/merge autorizado.
+
 - codex-promocao-passkey-unica-main-20261021: agente unico, base main60f327d7,
   DEV828 homologado e promocao isolada autorizada; backup/timer confirmados.
   Reservar delta/roteiro PROD/QA/docs, preservar main e demais pacotes DEV.
@@ -47,6 +55,62 @@
   Simulacao real conferida; inventario inicial de schema alvo invalidado, lista
   vazia por cwd. Pendencia 202610190001 confirmada depois pelo operador. Roteiro
   sem DDL/regularizacao e QA aprovados; ownership liberado para PR/merge.
+
+- codex-publicacao-dev-autorizacao-unica-20261021: agente unico, commit/push DEV
+  e comandos autorizados; delta/QA/docs/roteiro/guardas reservados. Sem main,
+  producao, EC2/DB/Redis reais pelo agente. Excluir outputs privados.
+  Backend/regressoes/UI130 titulos320/390/1366/build/Node/Bash/guardas/docs592/19/
+  diff aprovados; ownership liberado para publicacao/homologacao DEV.
+
+- codex-pwa-autorizacao-unica-selecao-20261021: finalizado local, agente unico,
+  ownership liberado. Uma passkey/POST autoriza e enfileira selecao entre lotes
+  atomicamente; cancelamento preserva marcados e resposta perdida reconcilia.
+  QA backend/rollback/ACL/replay/concorrencia, UI130 titulos320/390/1366,
+  regressoes e build aprovados. Handoff salvo; sem integracoes reais/EC2/main,
+  producao/migration/dependencias/commit/push. Aguardar pedido de publicacao DEV.
+
+- codex-periodo-registro-publicacao-20261021: agente unico, publicacao DEV
+  autorizada; reservar delta/QA/docs/roteiro/guardas. Sem EC2/DB real/DDL/main,
+  producao ou outputs privados no commit. Roteiro reinicia somente backend-dev.
+  Backend/regressoes/unidade/ACL, UI1366/390/retorno/403, build/guardas/Node/Bash/
+  docs591/19/diff aprovados. Ownership liberado para publicacao autorizada.
+
+- codex-solicitacoes-periodo-registro-20261021: finalizado local, agente unico.
+  Par de campos no padrao atual, legado/sessao/URL/exportacao/live update,
+  guarda Symbol no controller. Reservas no ownership; sem EC2/DB/main/push.
+  Backend/UTC-BR-NZ, unidade/retorno/403/escopo/UI1366/390, build/Node/diff/docs591/19
+  aprovados; ownership liberado e handoff salvo. Aguardar pedido de publicacao.
+
+- codex-saldo-cartao-permutas-publicacao-20261021: agente unico, publicacao DEV
+  autorizada para os dois ajustes pendentes/QA/docs/roteiro com SHA fixo.
+  Sem EC2/banco/DDL/main/producao; excluir outputs privados. Reservas no ownership.
+  Backend/cartao/SQL/ACL, UI1366/390, build, Node/Bash/guardas/docs590/19/diff
+  aprovados; ownership liberado para commit/push autorizado e homologacao DEV.
+
+- codex-fila-cartao-saldo-remanescente-20261021: finalizado local, agente unico,
+  baseDEV5dbdd55a. Guarda credito/QA/docs reservados; sem EC2/banco/DDL/main/push.
+  Permutas locais preservadas e NSDocs nao autorizada para implementacao.
+  QA backend/ACL/estorno/rollback/replay, UI1366/390, build, Node/diff e docs590/19
+  aprovados. Handoff salvo, ownership liberado; sem commit/push.
+
+- codex-fatura-lista-unica-20261021-publicacao: validado para publicacao, agente unico;
+  commit/push refactor/frontend autorizado. Delta/roteiro/QA/docs reservados,
+  sem migration/reinicio/EC2/main. Excluir permutas locais e outputs privados.
+  Guardas/Node/Bash/unidade/backend/build/docs/diff aprovados; UI1366/390 apos
+  build aprovada. Ownership liberado para commit/push; operador homologa DEV.
+
+- codex-fatura-lista-unica-20261021: finalizado local, agente unico, baseDEV93f75.
+  Tela/helper/QA/docs reservados para unificar exibicao; preservar financas,
+  ACL e protecoes da baixa. Sem EC2/banco/migration/main/publicacao.
+  Unidade/UI1366/390, regressao faturas/cartao, build/navegacao/abas/docs/Node/diff
+  aprovados; layout global com falhas preexistentes, reduzidas127->125.
+  Handoff salvo, ownership liberado; sem commit/push.
+
+- codex-permutas-obras-case-20261020: finalizado local, agente unico, baseDEV93f75.
+  Reserva JOIN Obras/teste/docs; sem main/EC2/DDL/publicacao. Diagnostico
+  adicional readonly: forma de pagamento de contrato de venda em Contas a Receber.
+  Casing/modelo/schema/SQL/filtros/ACL, operacao/guardas/Node/docs/diff aprovados,
+  ownership liberado; diagnostico comercial registrado, sem commit/push.
 
 - codex-historico-encerramento-sem-pedido-20261020-publicacao: finalizado local,
   agente unico, baseDEVf835/main e2e13d44. Commit/push DEV autorizado; reservar

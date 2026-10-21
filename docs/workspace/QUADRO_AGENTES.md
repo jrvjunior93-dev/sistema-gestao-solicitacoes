@@ -1,5 +1,15 @@
 # Quadro de Agentes
 
+## Promocao MAIN tres pacotes DEV pendentes - 2026-10-21
+
+- Agente unico, integrar5dbdd55a/44ee71b2/771f8041 sobre main eb12 preservando
+  hotfixes/passkey/historicos/scripts; reserva de roteiro PROD/QA/docs no ownership.
+- Backup cifrado/timer reconfirmados, tag/bundle preparados; sem EC2/banco real,
+  DDL/dependencias/flags/escrita financeira. Operador executa roteiro pinado.
+- Backend/ACL/replay/rollback/SQL/periodo, UI cartao/fatura/workspace/filtros/
+  passkey130 titulos, build13,55s/631, Node/Bash/guardas/docs603/19/diff/escopo
+  aprovados; ownership liberado para commit/PR/merge autorizado.
+
 ## Promocao main autorizacao unica - 2026-10-21
 
 - Agente unico, integracao isolada main60f327d7 + somente delta DEV828 homologado.
@@ -79,6 +89,94 @@
   isolado/snapshot e evidencia EC2 recebidos. CORRECAO: inventario inicial do
   alvo vazio, nao comprovava schema concluido. Migration 202610190001 pendente;
   roteiro sem DDL/regularizacao aprovado e ownership liberado para PR/merge.
+
+## Publicacao DEV autorizacao unica - 2026-10-21
+
+- Commit/push DEV e roteiro autorizados. Agente unico; delta/QA/docs/roteiro
+  e guardas reservados no ownership. Base publicada771f8041/main60f327d7.
+- Roteiro pinned/ff-only, PM2/8001/sem watch, schema readonly, .env preservado,
+  sem DDL/dependencias. Somente backend-dev, nenhuma operacao real pelo agente.
+- Main/producao e outputs privados fora da publicacao; homologar selecao entre
+  lotes e uma passkey real no DEV apos atualizacao pelo operador.
+- Backend/rollback/ACL/replay/concorrencia e regressoes, UI130 titulos320/390/1366,
+  build11,72s/631 modulos, Node/Bash/guardas/docs592/19/diff aprovados.
+  Ownership liberado para publicacao DEV autorizada.
+
+## PWA autorizacao unica entre lotes - 2026-10-21
+
+- Implementacao/testes locais para refactor/frontend autorizados; agente unico,
+  finalizado e ownership liberado. Uma passkey vincula selecao completa;
+  decisao/fila atomicas, somente selecionados, ACL/dossie/counter preservados.
+- QA rollback no segundo lote e no counter, replay/concorrencia/escopo/ACL,
+  UI130 titulos entre obras/paginas/lotes320/390/1366, regressoes e build aprovados.
+- Sem EC2/DB/Redis/S3/passkey reais, main/producao, DDL/dependencias/commit/push.
+  Handoff proprio salvo; homologar integracoes reais no DEV apos publicacao.
+
+## Publicacao DEV periodo de registro - 2026-10-21
+
+- Usuario autorizou commit/push refactor/frontend e roteiro DEV deste filtro.
+  Agente unico; delta/QA/docs/roteiro e guardas reservados no ownership.
+- SHA/bases/ff-only, PM2/identidade/schema/.env, runtime novo limitado ao
+  controller, testes antes do restart apenas backend-dev. Sem DDL/dependencias.
+- Sem EC2/DB real/main/producao pelo agente; outputs privados excluidos.
+- Backend/regressoes/unidade/ACL, UI1366/390/retorno/403, build, guardas/Node/Bash,
+  docs591/19/diff aprovados. Ownership liberado para commit/push DEV autorizado.
+
+## Periodo de registro das solicitacoes - 2026-10-21
+
+- Agente unico, finalizado local, ownership liberado: filtros inicial/final em createdAt, legado/sessao/
+  URL/aba/exportacao/live update e limpeza. Reservas no ownership.
+- Controller: corrigir somente deteccao de operadores Symbol do intervalo.
+  Regressao reproduzida antes e aprovada depois; nenhuma mudanca de ACL.
+- Sem EC2/DB real/migration/main/producao/commit/push. Handoff proprio salvo.
+- Backend/unidade/exportacao/live update/sessao, UI1366/390/retorno/403/escopo,
+  regressoes vencimento/edicao/preferencias, build/Node/diff/docs591/19 aprovados.
+
+## Publicacao DEV saldo cartao e permutas - 2026-10-21
+
+- Usuario autorizou publicar os dois deltas pendentes na refactor/frontend.
+  Agente unico, reservas no ownership: implementacao/QA/docs e roteiro DEV.
+- Guardas limitam runtime a pagamentoManualFilaService/permutaRelatorioService,
+  sem DDL/dependencias/.env; MySQL readonly antes de reiniciar somente backend-dev.
+- Sem EC2/banco pelo agente/main/producao; outputs privados fora da publicacao.
+- Backend/cartao/SQL/ACL, UI1366/390, build, guardas/Node/Bash/docs590/19/diff
+  aprovados; ownership liberado para commit/push DEV autorizado.
+
+## Saldo remanescente no cartao da fila - 2026-10-21
+
+- Agente unico, finalizado local; ownership liberado. Guarda pontual no credito parcelado da fila,
+  QA real de PIX4956,70 + desconto6853,30 + cartao29000 em6x. Reservas no ownership.
+- Sem UI runtime/migration/EC2/banco/main/publicacao; preservar protecoes e legado.
+- Backend/ACL/estorno/rollback/replay, UI1366/390, build, Node/diff e docs590/19
+  aprovados. Handoff salvo; aguardando eventual autorizacao de publicacao DEV.
+
+## Publicacao DEV lista unica da fatura - 2026-10-21
+
+- Agente unico, validado para publicacao; usuario autorizou commit/push DEV deste ajuste.
+- Reservar delta/QA/docs e roteiro especifico com guardas antes do merge,
+  sem migration/dependencias/reinicio. Excluir permutas/outputs; sem main/EC2.
+- Guardas/Node/Bash/unidade/regressao/build/docs/diff aprovados; UI1366/390
+  repetida apos build e aprovada. Ownership liberado para publicacao/homologacao.
+
+## Lista unica da fatura - 2026-10-21
+
+- Agente unico, finalizado local; reserva da tela, helper de leitura, QA e docs.
+- Mostrar data da compra, parcela e valor nesta fatura para os dois vinculos,
+  sem alterar totais/ACL/baixa. Sem banco/EC2/main/publicacao. Reservas no ownership.
+- Unidade/UI1366/390, faturas/parcelamento/permissoes, build/navegacao/abas,
+  docs/Node/diff aprovados; layout global127->125, sem falha nesta tela.
+  Ownership liberado e handoff salvo; aguarda publicacao autorizada.
+
+## Permutas Obras e diagnostico Contas a Receber - 2026-10-20
+
+- Agente unico, finalizado local. Corrigir JOIN confirmado pelo operador e reforcar
+  teste contra casing real do modelo/schema. Reservas no ownership; sem
+  main/EC2/DDL/publicacao. Preservar filtro/status/totais/ACL e dados antigos.
+- Adicional: ler origem da forma de pagamento dos titulos de contrato de venda;
+  usuario esclareceu pagina Contas a Receber. Sem escrita nesses dados/fluxo.
+- JOIN Obras e regressao case-sensitive aprovados; filtros/legado/escopo/ACL,
+  permutas operacionais/guardas DEV/Node/docs/diff aprovados. Diagnostico
+  comercial registrado sem implementacao, ownership liberado; sem commit/push.
 
 ## Publicacao DEV motivo encerramento - 2026-10-20
 
