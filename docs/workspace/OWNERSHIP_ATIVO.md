@@ -1,5 +1,16 @@
 # Ownership Ativo
 
+## Promocao main tres pendencias DEV - 2026-10-21
+
+- Usuario autorizou promover5dbdd55a/44ee71b2/771f8041 preservando main.
+  Backup recente no Drive cifrado e timer ativo reconfirmados nesta sessao.
+- Agente unico, reserva ativa: integracao origin/main eb12d9d7 com DEV828ed2ec
+  (tres deltas restantes), resolucao documental, roteiro PROD/QA/handoff e
+  README Financeiro/Solicitacoes/quatro controles. Sem outros ajustes novos.
+- Preservar autorizacao unica, hotfixes/scripts main, ACL/historico/financeiro.
+  Sem EC2/banco real, DDL/dependencias/.env/flags ou operacao financeira real.
+  Tag/bundle main anterior preparados e bundle completo verificado fora da EC2.
+
 ## Promocao main autorizacao unica - 2026-10-21
 
 - Usuario homologou DEV entre lotes/passkey unica e autorizou promocao isolada.
