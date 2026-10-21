@@ -42,7 +42,7 @@ for (const [id, status, tituloStatus] of [[4,'QUITADO','QUITADO'],[5,'PARCIALMEN
 }
 const nomes = id => 'Obra ' + String(id).padStart(3, '0');
 const originais = structuredClone(items);
-let fail = false, failLot = 0, invalidar = 0, active = 0, maxActive = 0, slow = false, modoDetalhe = false;
+let fail = false, failLot = 0, invalidar = 0, active = 0, maxActive = 0, slow = false, modoDetalhe = false, loseSelectionResponse = false;
 let sinalDecisao, liberarDecisao;
 const chamadas = [], decisoes = [], errors = [], unexpected = [];
 const page = await browser.newPage({ viewport: { width: 1366, height: 900 } }); page.on('pageerror', e => errors.push(e.message));
@@ -50,6 +50,25 @@ await page.route('**/*', async route => {
   const url = new URL(route.request().url()), p = url.searchParams;
   const json = (v, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(v) });
   if (url.pathname.includes('/autorizacoes-pagamento/')) {
+    if (url.pathname.includes('/painel/selecao/')) {
+      const body = route.request().postDataJSON();
+      assert(Array.isArray(body.item_ids));
+      const selected = body.item_ids.map(id => items.find(i => i.id === id));
+      assert(selected.every(Boolean));
+      if (selected.some(i => i.lote_id === failLot)) return json({ message: 'Falha QA no próximo lote' }, 403);
+      if (url.pathname.endsWith('/opcoes')) return json({ selecao_id: 'qa-selecao', publicKey: { challenge: 'qa' } });
+      assert.equal(body.credential.id, 'qa-credential');assert.equal(body.selecao_id, 'qa-selecao');
+      if (selected.some(i => i.id === invalidar)) return json({ message: 'Um ou mais títulos mudaram ou foram invalidados na conferência do servidor.' }, 409);
+      if (sinalDecisao) await new Promise(resolve => { liberarDecisao = resolve; sinalDecisao(); sinalDecisao = null; });
+      const lotes = [...new Set(selected.map(i => i.lote_id))];
+      decisoes.push({ id: lotes.length === 1 ? lotes[0] : 'SELECAO', body: { ...body,
+        decisoes: body.item_ids.map(item_id => ({ item_id, decisao: 'AUTORIZAR' })) } });
+      for (const i of selected) {
+        assert.equal(i.status, 'PENDENTE');i.status = 'ENFILEIRADO';i.situacao_financeira = 'NA_FILA';i.fila_item_id = i.id + 9000;
+      }
+      if (loseSelectionResponse) { loseSelectionResponse = false;return json({ message: 'Resposta perdida depois do commit em QA' }, 502); }
+      return json({ selecao_id: body.selecao_id, itens: selected, envio_pendente: false });
+    }
     if(url.pathname.includes('/painel/fila-direta/')) {
       const body=route.request().postDataJSON();
       assert(body.decisoes.every(d=>d.fila_id>0 && d.titulo_id>0 && !('item_id' in d) && d.motivo.trim() && d.versao));
@@ -132,7 +151,7 @@ const buscarObra = async obra => {
   const resposta = page.waitForResponse(r => r.url().includes('/painel/obras') && new URL(r.url()).searchParams.get('obra') === obra);
   await page.getByLabel('Obra / centro de custo').fill(obra); await resposta; await pronto();
 };
-const limpar = () => page.getByRole('button', { name: 'Limpar seleção de todas as páginas' }).click();
+const limpar = async () => { const button = page.getByRole('button', { name: 'Limpar seleção de todas as páginas' });if (await button.isEnabled()) await button.click(); };
 try {
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/qa-obras`);
   await page.locator('.pa-obra').first().waitFor(); await pronto(); assert(chamadas.length > 0);
@@ -219,14 +238,14 @@ try {
   items[2].titulo.status = 'QUITADO'; items[2].titulo.valor_saldo = 0; items[2].titulo.valor_baixado = 100; items[2].situacao_financeira = 'QUITADO';
   await page.getByRole('button', { name: 'Autorizar', exact: true }).click();
   await page.getByRole('status').getByText(/A situação de um ou mais títulos mudou/).waitFor(); assert.equal(decisoes.length, 2); assert.equal(await page.getByRole('region', { name: 'Conferência da decisão' }).count(), 0); await pronto();
-  // Falha parcial entre dois lotes nao desfaz o primeiro nem confirma o segundo.
+  // Uma falha entre lotes nao autoriza/envia nenhum dos selecionados.
   await page.getByLabel('Selecionar TIT-10', { exact: true }).check(); await page.getByLabel('Selecionar TIT-11', { exact: true }).check(); failLot = 111;
   await page.getByRole('button', { name: 'Autorizar', exact: true }).click(); await page.getByRole('button', { name: 'Confirmar autorização com passkey' }).click();
-  await page.getByRole('status').getByText(/1 título\(s\) já confirmado/).waitFor(); await pronto(); assert.equal(items[9].status, 'ENFILEIRADO'); assert.equal(items[10].status, 'PENDENTE'); await limpar(); failLot = 0;
+  await page.getByRole('status').getByText(/Falha QA no próximo lote/).waitFor(); await pronto(); assert.equal(items[9].status, 'PENDENTE'); assert.equal(items[10].status, 'PENDENTE'); await limpar(); failLot = 0;
   // Servidor pode invalidar material sob lock: HTTP200 nao significa aprovado.
   invalidar = 12; await page.getByLabel('Selecionar TIT-12', { exact: true }).check();
   await page.getByRole('button', { name: 'Autorizar', exact: true }).click(); await page.getByRole('button', { name: 'Confirmar autorização com passkey' }).click();
-  await page.getByRole('status').getByText(/Um ou mais títulos mudaram ou foram invalidados/).waitFor(); await pronto(); assert.equal(items[11].status, 'INVALIDADO'); invalidar = 0;
+  await page.getByRole('status').getByText(/Um ou mais títulos mudaram ou foram invalidados/).waitFor(); await pronto(); assert.equal(items[11].status, 'PENDENTE'); invalidar = 0;await limpar();
   await page.getByLabel('Selecionar TIT-13', { exact: true }).check(); await page.getByRole('button', { name: 'Rejeitar', exact: true }).click();
   assert(await page.getByLabel('Motivo para rejeição').isVisible());
   assert(await page.getByRole('button', { name: 'Conferir rejeição', exact: true }).isDisabled());
@@ -428,15 +447,31 @@ try {
   await aplicarStatus('AGUARDANDO'); await abrirObra(1);
   await page.getByLabel('Selecionar TIT-125',{exact:true}).check();
   await page.getByLabel('Selecionar TIT-126',{exact:true}).check();
-  await page.evaluate(()=>{window.__cancelPasskeyAt=window.__passkeys+2;window.__cancelPasskeyName='NotAllowedError';});
+  await page.evaluate(()=>{window.__cancelPasskeyAt=window.__passkeys+1;window.__cancelPasskeyName='NotAllowedError';});
   const antesInterromper=decisoes.length;
   await page.getByRole('button',{name:'Autorizar',exact:true}).click();
   await page.getByRole('button',{name:'Confirmar autorização com passkey',exact:true}).click();
-  await page.getByRole('status').getByText(/1 título\(s\) já confirmado\(s\); os demais não foram alterados/).waitFor(); await pronto();
-  assert.equal(decisoes.length,antesInterromper+1,'Segundo lote cancelado nao envia decisao');
-  assert.equal(items[124].status,'ENFILEIRADO');assert.equal(items[125].status,'PENDENTE');
+  await page.getByRole('status').getByText(/Confirmação por passkey não concluída.*Nenhuma decisão foi enviada/).waitFor(); await pronto();
+  assert.equal(decisoes.length,antesInterromper,'Cancelar confirmacao unica nao envia nenhum lote');
+  assert.equal(items[124].status,'PENDENTE');assert.equal(items[125].status,'PENDENTE');
   assert(await page.getByLabel('Selecionar TIT-126',{exact:true}).isChecked());
-  assert(!/Nenhuma decisão foi enviada|w3\.org|timed out/.test(await page.getByRole('status').innerText()),'Nao negar confirmacoes anteriores');
+  const passkeysAntes = await page.evaluate(()=>window.__passkeys);
+  await page.getByRole('button',{name:'Autorizar',exact:true}).click();
+  await page.getByRole('button',{name:'Confirmar autorização com passkey',exact:true}).evaluate(el=>{el.click();el.click();});
+  await page.getByRole('status').getByText(/2 título\(s\) confirmado\(s\) e enviado\(s\).*única autorização/).waitFor();await pronto();
+  assert.equal(await page.evaluate(()=>window.__passkeys),passkeysAntes+1,'Uma passkey para dois lotes');
+  assert.equal(decisoes.length,antesInterromper+1,'Um POST global, inclusive com duplo clique');
+  assert.deepEqual(decisoes.at(-1).body.item_ids,[125,126]);
+  assert.equal(items[124].status,'ENFILEIRADO');assert.equal(items[125].status,'ENFILEIRADO');
+  assert(await page.getByRole('button',{name:'Limpar seleção de todas as páginas',exact:true}).isDisabled(),'Sucesso limpa toda a selecao');
+  await page.getByLabel('Selecionar TIT-123',{exact:true}).check();
+  await page.getByLabel('Selecionar TIT-124',{exact:true}).check();loseSelectionResponse=true;
+  const antesRespostaPerdida=decisoes.length;
+  await page.getByRole('button',{name:'Autorizar',exact:true}).click();
+  await page.getByRole('button',{name:'Confirmar autorização com passkey',exact:true}).click();
+  await page.getByRole('status').getByText(/A atualização confirmou 2 título\(s\) enviado\(s\)/).waitFor();await pronto();
+  assert.equal(decisoes.length,antesRespostaPerdida+1,'Resposta perdida nao repete POST');
+  assert(await page.getByRole('button',{name:'Limpar seleção de todas as páginas',exact:true}).isDisabled(),'GET reconciliado limpa selecao apos commit');
   // Novo universo: digitais + diretos, inclusive saldo parcial. Nenhum lote
   // ficticio e nenhum ID de fila enviado como item_id digital.
   await limpar();await page.getByRole('button',{name:'Voltar às obras',exact:true}).click();await pronto();
@@ -538,6 +573,28 @@ try {
     await page.screenshot({path:path.join(output,'titulo-excluido-'+width+'.png'),fullPage:false});
   }
   assert.equal(decisoes.length,antesHistorico,'Consultar excluidos nao executa acao financeira');
+  // Selecao grande entre paginas e obras: uma unica credencial e um POST.
+  await detalhe.getByRole('button',{name:'Voltar à lista',exact:true}).click();await pronto();
+  items.splice(0,items.length,...structuredClone(originais));modoDetalhe=false;
+  await page.getByRole('button',{name:'Limpar filtros',exact:true}).click();await pronto();
+  await abrirObra(1);await page.getByRole('checkbox',{name:'Selecionar os disponíveis desta página'}).check();
+  await page.getByRole('navigation',{name:'Paginação de títulos'}).getByRole('button',{name:'Próxima'}).click();await pronto();
+  await page.getByRole('checkbox',{name:'Selecionar os disponíveis desta página'}).check();
+  await abrirObra(2);await page.getByRole('checkbox',{name:'Selecionar os disponíveis desta página'}).check();
+  await page.getByText(/^130 selecionado\(s\)/).waitFor();
+  await page.getByRole('button',{name:'Autorizar',exact:true}).click();
+  await page.getByRole('region',{name:'Conferência da decisão'}).getByText(/Uma única confirmação por passkey/).waitFor();
+  for(const width of [320,390,1366]) {
+    await page.setViewportSize({width,height:900});
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Conferencia unica sem overflow '+width);
+    await page.screenshot({path:path.join(output,'autorizacao-unica-'+width+'.png'),fullPage:false});
+  }
+  const antesGrande=decisoes.length, passkeysGrande=await page.evaluate(()=>window.__passkeys);
+  await page.getByRole('button',{name:'Confirmar autorização com passkey',exact:true}).click();
+  await page.getByRole('status').getByText(/130 título\(s\) confirmado\(s\) e enviado\(s\)/).waitFor();await pronto();
+  assert.equal(decisoes.length,antesGrande+1);assert.equal(await page.evaluate(()=>window.__passkeys),passkeysGrande+1);
+  assert.equal(decisoes.at(-1).body.item_ids.length,130);assert.equal(new Set(decisoes.at(-1).body.item_ids).size,130);
+  assert(await page.getByRole('button',{name:'Limpar seleção de todas as páginas',exact:true}).isDisabled());
   assert.equal(maxActive, 1, 'Leituras seriais, sem N+1/polling concorrente'); assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
-  console.log('UI por obra/titulo: desktop/tablet/mobile/escuro, selecao/paginas/cursor/historico, passkey/motivo/revalidacao/duplo clique/ACL, tres bases de data/limpeza automatica/total pago sem estorno, fila direta/autor/parcial/rejeicao e grupos mistos sem lote ficticio aprovados. APIs isoladas.');
+  console.log('UI por obra/titulo: uma passkey/POST para130 titulos entre lotes/paginas/obras, cancelamento sem escrita, falha sem parcial, resposta perdida reconciliada, duplo clique e320/390/1366; regressoes de filtros/detalhe/ACL/rejeicao/historico preservadas. APIs isoladas.');
 } finally { liberarDecisao?.(); await page.close(); await browser.close(); await server.close(); }

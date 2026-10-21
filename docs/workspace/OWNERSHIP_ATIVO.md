@@ -4,12 +4,15 @@
 
 - Usuario homologou DEV entre lotes/passkey unica e autorizou promocao isolada.
   Backup recente conferido no Drive cifrado e timer ativo confirmados nesta sessao.
-- Agente unico, reserva ativa: somente delta828ed2ec de runtime/QA/docs, resolucao
+- Agente unico, finalizado local, ownership liberado: somente delta828ed2ec de runtime/QA/docs, resolucao
   de docs de controle, novo roteiro/QA de deploy PROD e handoff Financeiro.
 - Branch codex/promocao-passkey-unica-main-20261021 nasce de main60f327d7.
   Outros pacotes DEV (fatura/saldo-cartao/permutas/periodo) fora do escopo.
 - Sem EC2 pelo agente, DDL/dependencias/.env/flags ou regularizacao de dados.
   Bundle privado local validado e tag de snapshot main60f327d7 preparados.
+- QA backend/ACL/rollback/replay/concorrencia e regressoes cheques/anexos,
+  UI130 titulos320/390/1366, build12,99s/630 modulos, Node/Bash/guardas/docs598/19/
+  diff e escopo aprovados. Liberado para PR/merge autorizado; EC2 so operador.
 
 ## Promocao MAIN motivo encerramento sem pedido - 2026-10-20
 

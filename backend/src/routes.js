@@ -2264,6 +2264,8 @@ router.get('/financeiro/autorizacoes-pagamento/capabilities', PagamentoAutorizac
 router.get('/financeiro/autorizacoes-pagamento', PagamentoAutorizacaoController.index);
 router.get('/financeiro/autorizacoes-pagamento/painel/obras', PagamentoAutorizacaoController.works);
 router.get('/financeiro/autorizacoes-pagamento/painel/titulos', PagamentoAutorizacaoController.titles);
+router.post('/financeiro/autorizacoes-pagamento/painel/selecao/autenticacao/opcoes', criticalRateLimit, PagamentoAutorizacaoController.selectionOptions);
+router.post('/financeiro/autorizacoes-pagamento/painel/selecao/autorizar', criticalRateLimit, PagamentoAutorizacaoController.authorizeSelection);
 router.post('/financeiro/autorizacoes-pagamento/painel/fila-direta/autenticacao/opcoes', criticalRateLimit, PagamentoAutorizacaoController.directQueueOptions);
 router.post('/financeiro/autorizacoes-pagamento/painel/fila-direta/rejeitar', criticalRateLimit, PagamentoAutorizacaoController.rejectDirectQueue);
 router.post('/financeiro/autorizacoes-pagamento', criticalRateLimit, PagamentoAutorizacaoController.create);

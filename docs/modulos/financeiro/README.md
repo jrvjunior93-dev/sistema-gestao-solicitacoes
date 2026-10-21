@@ -1,5 +1,61 @@
 # Modulo FINANCEIRO
 
+## Autorizacao unica da selecao no PWA - 2026-10-21
+
+Na visao Por obra, autorizar usa uma unica passkey para todos os titulos
+selecionados, inclusive entre lotes, obras e paginas diferentes. A decisao e
+o envio para a fila compartilham uma unica transacao: falha em qualquer item
+desfaz a tentativa inteira, inclusive historico/counter. Itens nao selecionados
+permanecem pendentes; os lotes originais e seus vinculos nao sao fundidos.
+
+Novos POSTs autenticados/rate-limited sob `/financeiro/autorizacoes-pagamento`:
+`/painel/selecao/autenticacao/opcoes` e `/painel/selecao/autorizar`. Challenge
+individual por usuario/selecao, TTL300s e consumo Redis atomico, vinculado a IDs,
+snapshots, valores, hashes/revisoes dos dossies e finalidade AUTORIZAR.
+Revalida ACL nominal/DECIDE, escopo integral de titulos compartilhados, limite
+por lote, preparador diferente do autorizador, passkey ativa/UV/origin/RPID,
+estado financeiro/documentos e bloqueadores da fila canonica. Locks ordenados,
+transacao unica e challenge descartavel impedem duplicacao em repeticoes.
+Limite operacional: 1.000 itens por selecao e 200 por lote, conservando o limite
+financeiro nominal de cada lote. Material alterado rejeita toda a selecao sem
+invalidacao ou envio parcial; precisa ser conferido antes de nova tentativa.
+
+Sucesso retira somente os itens confirmados da selecao. Cancelar a passkey
+preserva os marcados. Se a resposta do POST se perder, GETs dos selecionados
+em todas as paginas conferem o estado e retiram os ja decididos; nao repetem
+automaticamente a assinatura ou o envio. Eventos mantem lote/item/autor e
+incluem selecao_id/hash; diagnosticos seguros limitam a amostra a20 IDs.
+Rejeicao, revogacao, reenvio e APIs legadas mantem seus fluxos anteriores.
+
+QA: `node backend/scripts/validarAutorizacaoSelecao.js` e, em frontend/,
+`node scripts/validarAutorizacoesPorObra.mjs`. Backend real com persistencia e
+Redis/WebAuthn isolados; UI real com API/passkey simuladas, incluindo130 itens,
+rollback tardio, replay/concorrencia, resposta perdida e320/390/1366px. Sem
+migration/dependencias ou integracoes reais pelo agente nesta etapa. Usuario
+homologou no DEV titulos de lotes diferentes com uma unica passkey e autorizou
+promocao isolada para main em21/10, sem incluir outros pacotes DEV pendentes.
+[Handoff e validacoes](../../handoffs/2026-10-21-pwa-autorizacao-unica-selecao.md).
+
+Publicacao DEV autorizada em21/10: roteiro
+`ops/deploy/atualizar-dev-autorizacao-unica-20261021.sh` recebe SHA fixo publicado,
+exige base771f8041 no alvo, checkout instalado93f75 ou posterior e fast-forward.
+Confere PM2 DEV/8001/online/sem watch, identidade/schema/sessao12h em leitura,
+dependencias/migrations inalteradas e runtime limitado aos cinco arquivos do
+pacote. Roda QA isolado antes de reiniciar somente backend-dev, confere health e
+preserva hash do .env. Nao instala dependencias, roda DDL ou muda flags. Operador
+executa na EC2 DEV e usa frontend DEV do mesmo SHA; o agente nao acessa a EC2.
+
+Promocao MAIN: roteiro
+`ops/deploy/atualizar-producao-autorizacao-unica-20261021.sh` exige base60f327d7,
+SHA main fixo/fast-forward, backup/timer confirmados/ativo, PM2 produtivo
+online8000/sem watch, identidade/TLS/schema/flags/sessao12h/push em leitura,
+dependencias/migrations inalteradas e .env por hash. Suites isoladas antes de
+reiniciar somente backend-solicitacoes, health e pos-check; sem DDL, instalacao,
+teste financeiro real ou acesso EC2 pelo agente. Frontend depende das novas
+rotas: preferir liberar frontend Vercel apos backend/health; se o deploy da main
+for automatico, concluir backend antes de usar a nova autorizacao no PWA.
+[Promocao, testes e recuperacao](../../handoffs/2026-10-21-promocao-main-autorizacao-unica.md).
+
 ## Promocao MAIN comprovantes de imagem - 2026-10-20
 
 - DEVf835 homologado; promocao preserva runtime, hotfixes main e importador PDF.

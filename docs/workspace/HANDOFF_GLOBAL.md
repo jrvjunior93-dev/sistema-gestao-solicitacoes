@@ -1,5 +1,20 @@
 # Handoff Global
 
+## Promocao main autorizacao unica - 2026-10-21
+
+- DEV828ed2ec homologado entre lotes/passkey unica, promocao isolada autorizada,
+  backup Drive cifrado/timer confirmados. Base main60f327d7, sem outros pacotes DEV.
+- Delta runtime sem conflito, cinco conflitos documentais preservam main;
+  wrapper da fila recebe somente transaction opcional, regras main preservadas.
+- Roteiro produtivo pinado/ff-only/base/backup/timer/PM2 online8000/sem watch,
+  schema/TLS/UUID/12h/flags/push readonly antes/depois e .env preservado.
+  Sem DDL/dependencias/envios reais; restart somente backend-solicitacoes.
+- Bundle/tag main anterior preparados; sem EC2/banco pelo agente/alteracao DEV.
+  Handoff 2026-10-21-promocao-main-autorizacao-unica.md.
+- Backend/ACL/replay/rollback/concorrencia, cheques/anexos/historico,
+  UI130 titulos320/390/1366, build12,99s/630 modulos, Node/Bash/guardas/docs598/19/
+  diff aprovados; escopo isolado conferido, ownership liberado para PR/merge.
+
 ## Promocao MAIN motivo encerramento - 2026-10-20
 
 - Usuario homologou DEV93f75 e autorizou promover main e2e13, backup cifrado/
