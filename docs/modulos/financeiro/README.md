@@ -1,5 +1,35 @@
 # Modulo FINANCEIRO
 
+## Lista unica no detalhe da fatura de cartao - 2026-10-21
+
+`FinanceiroFaturaCartaoDetalhe` apresenta em uma unica `TabelaPadrao` os
+titulos diretamente vinculados e as compras/parcelas vindas de
+`compras_rateadas`, inclusive compras 1/1. Colunas: titulo/descricao,
+parceiro, data da compra, parcela, vencimento, status, valor nesta fatura
+e saldo do titulo. Dados antigos sem data/parcela continuam sem essa
+informacao; nao inferir a compra pela emissao ou vencimento.
+
+Helper `faturaCartaoItens.mjs` e somente uma projecao de leitura: titulo
+direto conserva `valor_original`; parcela/rateio usa `valor_quitacao` da
+parte e nunca o total original do titulo. Identidades de titulo, parcela
+e movimento sao separadas; partes distintas do mesmo titulo permanecem
+visiveis, e a mesma entidade repetida no payload nao duplica linha.
+Totais/saldo da fatura, contagem de titulos, regras de baixa, permissoes,
+API, banco e historico nao foram alterados. A lista nao recalcula o total
+financeiro e nao cria novos vinculos ou movimentos.
+
+Preferencias da lista usam a nova chave `tabela:fatura-cartao-detalhe:unificada`
+para apresentar as novas colunas sem herdar ocultacoes das duas listas antigas.
+QA: `node frontend/scripts/validarFaturaItensUnificados.mjs` e
+`node frontend/scripts/validarFaturasWorkspace.mjs` (tambem executa o unitario).
+Handoff: [lista unica e validacoes](../../handoffs/2026-10-21-fatura-lista-unica.md).
+
+Atualizacao DEV deste pacote usa
+`ops/deploy/atualizar-dev-fatura-lista-unica-20261021.sh` com SHA publicado fixo.
+Como so muda UI/QA/docs, nao instala dependencias, nao aplica migrations e nao
+reinicia backend. Confere checkout/PM2/watch/schema/.env e executa o QA unitario;
+a exibicao depende do deploy do frontend DEV na Vercel. Nunca executar em main.
+
 ## Comprovantes manuais PDF e imagens - 2026-10-20
 
 - Anexo individual e mesmo comprovante compartilhado aceitam PDF/JPG/JPEG/PNG,

@@ -1,5 +1,34 @@
 # Ownership Ativo
 
+## Publicacao DEV lista unica da fatura - 2026-10-21
+
+- Usuario autorizou commit/push somente deste ajuste na refactor/frontend e
+  comandos para atualizar/testar DEV. Agente unico; reserva encerrada para publicacao.
+- Reservados: delta da lista unica/QA/docs, novo roteiro
+  atualizar-dev-fatura-lista-unica-20261021.sh e seu teste estatico de guardas.
+- Atualizacao so UI: sem DDL/dependencias/reinicio, guarda PM2/watch/.env,
+  branch/caminho/SHA e backend financeiro identico a base93f75. Sem EC2 pelo agente.
+- Permutas locais e outputs privados ficam fora do commit; main/producao intactas.
+- Roteiro/guardas/Node/Bash, unidade/regressao backend, build/docs/diff
+  aprovados; UI1366/390 repetida apos build e aprovada (dist compartilhado pelo harness).
+  Ownership liberado para commit/push autorizado; operador executa deploy DEV.
+
+## Lista unica da fatura de cartao - 2026-10-21
+
+- Agente unico desta conversa, finalizado local, base refactor/frontend 93f75d67.
+- Reservados: frontend/src/pages/FinanceiroFaturaCartaoDetalhe.jsx, novo helper
+  frontend/src/utils/faturaCartaoItens.mjs, QA unitario e validarFaturasWorkspace.mjs,
+  README Financeiro, handoff desta tarefa e controles workspace.
+- Unificar somente a leitura/apresentacao de titulos diretos e compras/parcelas.
+  Preservar valores da API, identidades das parcelas/movimentos distintos,
+  totais oficiais, saldo, ACL, conflito de rascunho e baixa contra duplo envio.
+- Sem backend financeiro, banco/EC2, migration, main/producao ou commit/push.
+  Delta anterior de permutas e outputs privados preservados sem publicacao.
+- Unidade/UI1366/390, regressao faturas/parcelamento/ACL/duplo envio, build,
+  navegacao/abas, docs589/19, Node/diff aprovados. Layout global127->125;
+  falhas remanescentes preexistentes fora desta tela. Ownership liberado.
+  Handoff: docs/handoffs/2026-10-21-fatura-lista-unica.md.
+
 ## Publicacao DEV motivo encerramento sem pedido - 2026-10-20
 
 - Usuario autorizou commit/push refactor/frontend e comandos DEV. Agente unico,

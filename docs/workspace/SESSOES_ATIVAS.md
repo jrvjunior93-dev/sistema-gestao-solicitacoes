@@ -1,5 +1,18 @@
 # Sessoes Ativas
 
+- codex-fatura-lista-unica-20261021-publicacao: validado para publicacao, agente unico;
+  commit/push refactor/frontend autorizado. Delta/roteiro/QA/docs reservados,
+  sem migration/reinicio/EC2/main. Excluir permutas locais e outputs privados.
+  Guardas/Node/Bash/unidade/backend/build/docs/diff aprovados; UI1366/390 apos
+  build aprovada. Ownership liberado para commit/push; operador homologa DEV.
+
+- codex-fatura-lista-unica-20261021: finalizado local, agente unico, baseDEV93f75.
+  Tela/helper/QA/docs reservados para unificar exibicao; preservar financas,
+  ACL e protecoes da baixa. Sem EC2/banco/migration/main/publicacao.
+  Unidade/UI1366/390, regressao faturas/cartao, build/navegacao/abas/docs/Node/diff
+  aprovados; layout global com falhas preexistentes, reduzidas127->125.
+  Handoff salvo, ownership liberado; sem commit/push.
+
 - codex-historico-encerramento-sem-pedido-20261020-publicacao: finalizado local,
   agente unico, baseDEVf835/main e2e13d44. Commit/push DEV autorizado; reservar
   delta/roteiro/QA/docs, sem EC2/banco/DDL/main ou publicacao de outputs privados.

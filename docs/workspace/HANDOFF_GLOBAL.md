@@ -1,5 +1,30 @@
 # Handoff Global
 
+## Publicacao DEV lista unica da fatura - 2026-10-21
+
+- Publicacao do delta de UI autorizada na refactor/frontend, base93f75.
+  Preparar roteiro especifico sem DDL/dependencias/reinicio, com guardas de
+  caminho/branch/clean/SHA/base/PM2/watch/.env e schema somente leitura.
+- Excluir correcoes locais de permutas e outputs privados; sem main/producao
+  ou EC2 pelo agente. Repetir QA/build/docs/diff antes de commit/push.
+- Guardas estaticas/Node/Bash, unidade/regressao backend, build/docs/diff
+  aprovados; UI1366/390 repetida apos build e aprovada sem disputar dist. Ownership
+  liberado para commit/push autorizado; operador atualiza DEV com SHA fixo.
+
+## Lista unica da fatura - 2026-10-21
+
+- Implementacao local para refactor/frontend: unica TabelaPadrao para titulos
+  diretos e compras/parcelas 1/1/parceladas/rateadas. Valor por parte preservado,
+  sem repetir total original do titulo nem deduplicar partes legitimas.
+- Compra/parcela/vencimento/status/saldo visiveis; ausencias nao inventadas.
+  Backend, totais oficiais, permissao e protecoes de baixa inalterados.
+- Unidade/UI1366/390, regressao faturas/cartao/ACL/replay/rascunho/conflito,
+  build/navegacao/abas/docs589/19/Node/diff aprovados. Layout geral127->125;
+  falhas restantes fora do escopo, nenhuma atual nesta tela.
+- Ownership liberado; handoff 2026-10-21-fatura-lista-unica.md. Sem EC2/banco
+  real/migration/main/producao/commit/push. Permutas anteriores e outputs
+  preservados; aguardar autorizacao de publicacao para homologacao DEV.
+
 ## Publicacao DEV motivo encerramento - 2026-10-20
 
 - Commit/push DEV autorizado, basef835/main e2e13d44 conferidas. Usuario refinou

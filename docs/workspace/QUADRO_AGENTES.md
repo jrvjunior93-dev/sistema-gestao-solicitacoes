@@ -1,5 +1,22 @@
 # Quadro de Agentes
 
+## Publicacao DEV lista unica da fatura - 2026-10-21
+
+- Agente unico, validado para publicacao; usuario autorizou commit/push DEV deste ajuste.
+- Reservar delta/QA/docs e roteiro especifico com guardas antes do merge,
+  sem migration/dependencias/reinicio. Excluir permutas/outputs; sem main/EC2.
+- Guardas/Node/Bash/unidade/regressao/build/docs/diff aprovados; UI1366/390
+  repetida apos build e aprovada. Ownership liberado para publicacao/homologacao.
+
+## Lista unica da fatura - 2026-10-21
+
+- Agente unico, finalizado local; reserva da tela, helper de leitura, QA e docs.
+- Mostrar data da compra, parcela e valor nesta fatura para os dois vinculos,
+  sem alterar totais/ACL/baixa. Sem banco/EC2/main/publicacao. Reservas no ownership.
+- Unidade/UI1366/390, faturas/parcelamento/permissoes, build/navegacao/abas,
+  docs/Node/diff aprovados; layout global127->125, sem falha nesta tela.
+  Ownership liberado e handoff salvo; aguarda publicacao autorizada.
+
 ## Publicacao DEV motivo encerramento - 2026-10-20
 
 - Agente unico, finalizado local, commit/push DEV autorizado; reservas no ownership.
