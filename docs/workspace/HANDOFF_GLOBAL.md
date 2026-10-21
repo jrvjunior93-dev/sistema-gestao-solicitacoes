@@ -1,5 +1,25 @@
 # Handoff Global
 
+## Publicacao DEV pedido/reabertura/logs - 2026-10-21
+
+- Usuario autorizou commit/push refactor/frontend e roteiro EC2 DEV.
+- Base2d161b85/main80df6534 conferidas. Sem push main, EC2/dados reais ou memoria.
+- QA backend/regressoes/UI26 itens1366/390 repetidos; guardas Node/Bash/docs596/19/
+  diff aprovados. Roteiro atualizar-dev-pedido-reabertura-20261021.sh,
+  schema readonly/PM28001/ff-only/pacotes so QA/.env intacto; restart so backend-dev.
+- Handoff: docs/handoffs/2026-10-21-pedido-reabertura.md. Ownership liberado.
+
+## Reabertura e novo fechamento de pedido - 2026-10-21
+
+- Usuario autorizou implementar/testar em DEV, base2d161b85. Concluido local,
+  ownership liberado. Colecoes separadas/saldo enxuto;202 apos escrita confirmada,
+ 503 incerto/GET sem replay; novo fechamento e logs sem SQL/dados pessoais.
+- Botao preserva endpoint/permissao/entrega/GEO/status/financeiro atuais.
+- QA backend/SQL offline, UI26 itens1366/390, regressoes, build12,68s/631,
+  Node/docs596/19/diff aprovados. Teste antigo do menu RH desatualizado registrado.
+- Handoff: docs/handoffs/2026-10-21-pedido-reabertura.md. Publicar so se solicitado.
+- Sem producao/EC2/dados reais, memoria, migration ou publicacao nesta etapa.
+
 ## Publicacao DEV RH e destinos gerenciais - 2026-10-21
 
 - Autorizado publicar os dois pacotes DEV e passar comandos, sem producao.

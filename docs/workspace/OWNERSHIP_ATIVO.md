@@ -1,5 +1,32 @@
 # Ownership Ativo
 
+## Publicacao DEV pedido/reabertura/logs - 2026-10-21
+
+- Commit/push refactor/frontend e comandos EC2 DEV autorizados pelo usuario.
+- Agente unico, validado para publicacao e ownership liberado: pacote pedido validado, roteiro de deploy/QA
+  exclusivo DEV, README Compras/handoff/quatro controles. Outputs fora do commit.
+- Remotos conferidos: DEV2d161b85/main80df6534. Publicar somente DEV sem force.
+- Sem execucao real na EC2, producao/main, memoria, migrations, dependencias,
+  .env ou flags. Homologacao real pertence ao operador apos atualizar DEV.
+- Backend/regressoes e UI26 itens1366/390 repetidos e aprovados; guardas de
+  deploy/Node/Bash/docs596/19/diff aprovados. Main fora do push.
+
+## Reabertura e novo fechamento de pedido - 2026-10-21
+
+- Agente unico, entrega local concluida, ownership liberado: pedidoCompraService.js (carregamento/reabertura/
+  status/detalhe), PedidoCompraController.js (reabertura/status), pagina
+  modules/solicitacao-compra/pages/PedidoCompraDetalhe.jsx e cliente se necessario;
+  novos QAs/regressoes/scripts npm, README Compras, handoff e quatro controles.
+- Usuario acrescentou logs seguros do fluxo; reservar observability/pedidoCompraOperacao.js
+  e testes de privacidade/falha do logger. Sem registrar SQL/body/segredos/anexos.
+- Base refactor/frontend2d161b85, branch codex/pedido-reabertura-20261021.
+- Preservar ACL, historico, regras financeiras/GEO, entrega, alocacoes e fretes.
+  Testar somente modelos/API isolados; sem producao/EC2/banco/S3 reais, heap,
+  migration, commit/push/deploy nesta implementacao. Outputs privados excluidos.
+- QA backend/SQL offline/ACL/rollback/replay/logs e UI26 itens1366/390/rede/202/
+  rascunhos/rota anterior/GEO aprovados; regressoes, build12,68s/631 modulos,
+  Node/docs596/19/diff aprovados. Teste antigo menu RH desatualizado documentado.
+
 ## Publicacao DEV RH e destinos gerenciais - 2026-10-21
 
 - Usuario autorizou commit/push refactor/frontend e comandos exclusivos DEV.

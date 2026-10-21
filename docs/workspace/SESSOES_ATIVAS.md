@@ -1,5 +1,16 @@
 # Sessoes Ativas
 
+- codex-pedido-reabertura-publicacao-20261021: agente unico, commit/push DEV
+  autorizados; base2d161b85, main80df6534 somente leitura. QA backend/regressoes/
+  UI26 itens1366/390/guardas Node/Bash/docs596/19/diff aprovados. Ownership
+  liberado para publicacao. Sem EC2/producao/dados reais/memoria ou outputs.
+
+- codex-pedido-reabertura-20261021: agente unico, implementacao/QA DEV
+  autorizada para reabertura, novo fechamento e logs seguros. Concluida local,
+  ownership liberado, base2d161b85. Backend/SQL offline/UI26 itens1366/390/
+  regressoes/build12,68s/Node/docs596/19/diff aprovados. Limite do teste antigo
+  menu RH documentado. Sem producao/EC2/banco reais, heap ou publicacao.
+
 - codex-publicacao-dev-rh-centros-20261021: agente unico; commit/push DEV
   autorizado para RH e distribuicao gerencial, validado para publicacao e ownership liberado.
   OOM producao confirmado; RAM3,7GiB/sem swap, resize adiado pelo usuario.

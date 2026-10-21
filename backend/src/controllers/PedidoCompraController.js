@@ -55,6 +55,7 @@ const {
 const { canAccessSolicitacaoFile } = require('../services/fileAccessService');
 const { listarUsuariosElegiveisDelegacaoCompras } = require('../services/comprasDelegacaoService');
 const { publishComprasRealtimeEventSafe } = require('../services/comprasRealtimeService');
+const { iniciarOperacaoPedido } = require('../observability/pedidoCompraOperacao');
 
 async function carregarUsuarioCompras(userId) {
   if (!userId) {
@@ -132,6 +133,28 @@ async function buildHistoricoPrecoScope(req) {
   }
 
   return obraIds;
+}
+
+// A escrita ja terminou. Uma falha de leitura nao pode virar rollback de um
+// commit nem induzir o operador a repetir uma acao que foi registrada.
+async function responderPedidoConfirmado(req, res, pedidoConfirmado, observacao) {
+  try {
+    observacao.etapa('LEITURA_APOS_COMMIT');
+    const detalhe = await obterPedidoDetalhe(req.params.id, {
+      obraIdsHistoricoPreco: await buildHistoricoPrecoScope(req)
+    });
+    if (!detalhe) throw new Error('Detalhe indisponivel apos gravacao do pedido.');
+    return res.json(detalhe);
+  } catch (error) {
+    observacao.falha(error);
+    return res.status(202).json({
+      id: Number(req.params.id),
+      status: pedidoConfirmado?.status || null,
+      operacao_confirmada: true,
+      detalhe_pendente: true,
+      operacao_id: observacao.id
+    });
+  }
 }
 
 async function validarEscopoPedidoCompra(usuario, pedido, res) {
@@ -396,26 +419,35 @@ module.exports = {
   },
 
   async updateStatus(req, res) {
-    const transaction = await PedidoCompra.sequelize.transaction();
+    const observacao = iniciarOperacaoPedido({ acao: 'STATUS', pedidoId: req.params.id });
+    let transaction;
 
     try {
+      observacao.etapa('TRANSACAO');
+      transaction = await PedidoCompra.sequelize.transaction();
+      observacao.etapa('AUTORIZACAO');
       const usuario = await validarAcessoPedidos(req, res, { gerenciar: true });
       if (!usuario) {
+        observacao.negar('ACESSO_GESTAO');
         await transaction.rollback();
         return;
       }
 
       if (!(await canAlterarStatusComprasPedidos(usuario))) {
+        observacao.negar('PERMISSAO_STATUS');
         await transaction.rollback();
         return res.status(403).json({ error: 'Acesso negado para alterar status de pedidos de compra' });
       }
 
+      observacao.etapa('ESCOPO');
       if (!(await carregarPedidoCompraNoEscopo(req, res, usuario, req.params.id))) {
+        observacao.negar('PEDIDO_AUSENTE_OU_FORA_ESCOPO');
         await transaction.rollback();
         return;
       }
 
-      await atualizarStatusPedido({
+      observacao.etapa('ATUALIZAR_STATUS');
+      const pedidoConfirmado = await atualizarStatusPedido({
         pedidoId: req.params.id,
         status: req.body?.status,
         motivo: req.body?.motivo,
@@ -423,64 +455,82 @@ module.exports = {
         transaction
       });
 
+      observacao.etapa('COMMIT');
       await transaction.commit();
+      observacao.confirmar();
       void publishComprasRealtimeEventSafe({
         action: 'PEDIDO_STATUS_ATUALIZADO',
         pedidoId: req.params.id,
         actor: usuario
       });
-      const pedido = await obterPedidoDetalhe(req.params.id, {
-        obraIdsHistoricoPreco: await buildHistoricoPrecoScope(req)
-      });
-      return res.json(pedido);
+      return await responderPedidoConfirmado(req, res, pedidoConfirmado, observacao);
     } catch (error) {
-      await transaction.rollback();
-      console.error(error);
+      observacao.falha(error);
+      if (transaction?.finished === 'commit') return res.status(503).json({
+        error: 'Nao foi possivel confirmar o resultado da alteracao. Consulte o estado atual do pedido.', operacao_id: observacao.id
+      });
+      if (transaction && !transaction.finished) await transaction.rollback();
       return responderErroController(res, error, 'Erro ao atualizar status do pedido', { status: 400 });
+    } finally {
+      observacao.finalizar();
     }
   },
 
   async reabrirCotacao(req, res) {
-    const transaction = await PedidoCompra.sequelize.transaction();
+    const observacao = iniciarOperacaoPedido({ acao: 'REABRIR', pedidoId: req.params.id });
+    let transaction;
 
     try {
+      observacao.etapa('TRANSACAO');
+      transaction = await PedidoCompra.sequelize.transaction();
+      observacao.etapa('AUTORIZACAO');
       const usuario = await validarAcessoPedidos(req, res, { gerenciar: true });
       if (!usuario) {
+        observacao.negar('ACESSO_GESTAO');
         await transaction.rollback();
         return;
       }
 
       if (!(await canReabrirComprasPedidos(usuario))) {
+        observacao.negar('PERMISSAO_REABERTURA');
         await transaction.rollback();
         return res.status(403).json({ error: 'Acesso negado para reabrir pedido de compra' });
       }
 
+      observacao.etapa('ESCOPO');
       if (!(await carregarPedidoCompraNoEscopo(req, res, usuario, req.params.id))) {
+        observacao.negar('PEDIDO_AUSENTE_OU_FORA_ESCOPO');
         await transaction.rollback();
         return;
       }
 
-      await reabrirPedidoParaCotacao({
+      observacao.etapa('REABRIR_PEDIDO');
+      const pedidoConfirmado = await reabrirPedidoParaCotacao({
         pedidoId: req.params.id,
         usuarioId: usuario.id,
         motivo: req.body?.motivo,
+        observacao,
         transaction
       });
 
+      observacao.etapa('COMMIT');
       await transaction.commit();
+      observacao.confirmar();
       void publishComprasRealtimeEventSafe({
         action: 'PEDIDO_REABERTO',
         pedidoId: req.params.id,
         actor: usuario
       });
-      const pedido = await obterPedidoDetalhe(req.params.id, {
-        obraIdsHistoricoPreco: await buildHistoricoPrecoScope(req)
-      });
-      return res.json(pedido);
+      return await responderPedidoConfirmado(req, res, pedidoConfirmado, observacao);
     } catch (error) {
-      await transaction.rollback();
-      console.error(error);
+      observacao.falha(error);
+      if (transaction?.finished === 'commit') return res.status(503).json({
+        error: 'Nao foi possivel confirmar o resultado da reabertura. Consulte o estado atual do pedido.', operacao_id: observacao.id
+      });
+      if (transaction && !transaction.finished) await transaction.rollback();
       return responderErroController(res, error, 'Erro ao reabrir pedido para cotacao', { status: 400 });
+    } finally {
+      observacao.finalizar();
     }
   },
 

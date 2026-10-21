@@ -1,5 +1,24 @@
 # Quadro de Agentes
 
+## Publicacao DEV pedido/reabertura/logs - 2026-10-21
+
+- Commit/push e comandos DEV autorizados; base2d161b85, main80df6534 intocada.
+- Agente unico, ownership liberado para publicacao apos QA backend/regressoes/
+  UI26 itens1366/390 repetidos. Guardas Node/Bash/docs596/19/diff aprovados.
+- Roteiro pinned/ff-only/PM28001/schema readonly, so backend-dev; sem DDL,
+  dependencias, .env/flags/memoria ou acesso real a EC2 pelo agente. Excluir outputs.
+
+## Reabertura e novo fechamento de pedido - 2026-10-21
+
+- Implementacao/testes autorizados DEV2d161b85, agente unico, concluida local,
+  ownership liberado. Colecoes separadas/saldo enxuto, resposta pos-commit,
+  novo fechamento via endpoint/ACL existentes e logs seguros. Sem financeiro novo.
+- Backend/SQL offline/ACL/historico/replay/logger, UI26 itens1366/390/rede/202/
+  rascunhos/rota anterior/GEO, regressoes, build12,68s/Node/docs596/19/diff aprovados.
+  Expectativa antiga do menu RH falha em validarAcessoPedidos.mjs; documentada,
+  sem delta nessa navegacao/ACL. Handoff 2026-10-21-pedido-reabertura.
+- Sem producao/EC2/dados reais, migrations, memoria, commit/push/deploy.
+
 ## Publicacao DEV RH e destinos gerenciais - 2026-10-21
 
 - Commit/push DEV e comandos autorizados; dois pacotes validados, sem pedidos.

@@ -1,5 +1,53 @@
 # Modulo COMPRAS
 
+## Reabertura e novo fechamento do pedido - 2026-10-21
+
+Implementacao local para DEV baseada em refactor/frontend2d161b85. Os loaders
+de cotacao/pedido carregam colecoes hasMany separadamente (itens, manuais,
+fornecedores/respostas, alocacoes, pedidos/itens, logs e fretes/rateios), sem
+limitar ou descartar registros. A sincronizacao de status por saldo le apenas
+quantidades/alocacoes/status, sem repetir o grafo completo da cotacao. Preserva
+a mesma transacao nos carregamentos internos e as regras de saldo existentes.
+
+Reabertura e alteracao de status distinguem commit de leitura do detalhe:
+se a escrita foi confirmada e o detalhe falhar, respondem202 com recibo
+operacao_confirmada/detalhe_pendente, sem rollback pos-commit. Commit com
+resultado incerto responde503. A tela exige consulta por GET antes de permitir
+outra escrita; nunca repete PATCH automaticamente. Campos locais permanecem.
+
+Pedido editavel exibe a acao secundaria `Fechar com o fornecedor`, usando o
+PATCH/status existente com FECHADO_FORNECEDOR. Exige a permissao atual de
+alterar status; entrega confirmada, financeiro, GEO, historico e sincronizacoes
+continuam no servico original. Fechamento usa lock UPDATE/idempotencia por
+estado; botoes compartilham trava contra duplo envio. Edicoes nao salvas
+impedem fechar. Nao cria titulos ou baixa valores pelo novo botao.
+
+Logs `[PEDIDO_OPERACAO]` no stdout/PM2 registram inicio, marcos pesados,
+falha/negativa e fim, com UTC, PID, ID do pedido/operacao, etapa, duracao,
+memoria e causa tecnica classificada. Sem SQL, stack, body, justificativa,
+nomes, documentos ou credenciais. Falha do logger nao impede a operacao.
+Cobrem as execucoes que chegam ao controller de reabertura/status; rejeicoes
+anteriores dos middlewares conservam seu tratamento atual. OOM fatal pode
+interromper o processo antes do log final; correlacionar PID/marcos com o
+erro nativo. Nao alterar heap, flags ou producao para habilitar estes logs.
+
+QA: `npm run test:pedido-reabertura` em backend e frontend. Servicos/controller
+em memoria, SQL MySQL gerado sem conexao e tela/HTTP reais com API interceptada;
+26 itens,1366/390, entrega/GEO/ACL, rollback/replay, recibo202, commit incerto,
+resposta perdida, rascunho e rota anterior. Sem EC2/DB/S3 reais ou migrations.
+Handoff: [reabertura segura](../../handoffs/2026-10-21-pedido-reabertura.md).
+
+Limite de regressao: validarAcessoPedidos.mjs para numa expectativa antiga
+do menu RH (rota global adicional); teste, navegacao e ACL nao foram alterados
+nesta entrega. Negativas/positivas de acesso ao pedido sao cobertas pelo novo
+QA e validarAcessoPedidosEscopo.js. Homologacao real em DEV continua pendente.
+
+Publicacao DEV autorizada posteriormente com roteiro exclusivo
+`ops/deploy/atualizar-dev-pedido-reabertura-20261021.sh`: SHA fixado, identidade/
+schema somente leitura, ff-only, .env preservado e restart somente backend-dev.
+Sem migrations, dependencias, flags ou ajuste de memoria. Frontend pelo deploy
+DEV da Vercel; main/producao fora da publicacao. Roteiro/guardas no handoff acima.
+
 ## Motivo de encerramento sem pedido no historico - 2026-10-20
 
 Novos encerramentos pelo botao `Encerrar sem pedido` incluem a justificativa

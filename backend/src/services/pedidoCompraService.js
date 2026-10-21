@@ -345,6 +345,7 @@ async function carregarSolicitacaoPedidos(id, transaction, { incluirPedidos = tr
     {
       model: SolicitacaoCompraItem,
       as: 'itens',
+      separate: true,
       include: [
         { model: Insumo, as: 'insumo', attributes: ['id', 'nome', 'codigo'] },
         { model: Unidade, as: 'unidade', attributes: ['id', 'sigla'] }
@@ -352,11 +353,13 @@ async function carregarSolicitacaoPedidos(id, transaction, { incluirPedidos = tr
     },
     {
       model: SolicitacaoCompraItemManual,
-      as: 'itensManuais'
+      as: 'itensManuais',
+      separate: true
     },
     {
       model: SolicitacaoCompraFornecedor,
       as: 'fornecedores',
+      separate: true,
       include: [
         {
           model: FornecedorCompra,
@@ -366,6 +369,7 @@ async function carregarSolicitacaoPedidos(id, transaction, { incluirPedidos = tr
         {
           model: SolicitacaoCompraRespostaItem,
           as: 'respostas',
+          separate: true,
           where: { deleted_at: null },
           required: false,
           attributes: [
@@ -391,6 +395,7 @@ async function carregarSolicitacaoPedidos(id, transaction, { incluirPedidos = tr
     {
       model: SolicitacaoCompraAlocacao,
       as: 'alocacoes',
+      separate: true,
       required: false
     }
   ];
@@ -399,10 +404,12 @@ async function carregarSolicitacaoPedidos(id, transaction, { incluirPedidos = tr
     include.push({
       model: PedidoCompra,
       as: 'pedidos',
+      separate: true,
       include: [
         {
           model: PedidoCompraItem,
-          as: 'itens'
+          as: 'itens',
+          separate: true
         },
         {
           model: FornecedorCompra,
@@ -1057,7 +1064,19 @@ async function sincronizarStatusSolicitacaoCompraPorSaldo({
   forcarRevisao = false,
   transaction
 }) {
-  const solicitacao = await carregarSolicitacaoPedidos(solicitacaoId, transaction, { incluirPedidos: true });
+  // Sincronizar status precisa de quantidades/status, nao de ofertas, PDFs,
+  // logs e itens de todos os pedidos. Colecoes separadas evitam produto cartesiano.
+  const solicitacao = await SolicitacaoCompra.findByPk(solicitacaoId, {
+    transaction,
+    attributes: ['id', 'status', 'encerrado_em', 'solicitacao_principal_id'],
+    include: [
+      { model: SolicitacaoCompraItem, as: 'itens', separate: true, attributes: ['id', 'quantidade'] },
+      { model: SolicitacaoCompraItemManual, as: 'itensManuais', separate: true, attributes: ['id', 'quantidade'] },
+      { model: SolicitacaoCompraAlocacao, as: 'alocacoes', separate: true,
+        attributes: ['id', 'status', 'item_tipo', 'solicitacao_compra_item_id', 'solicitacao_compra_item_manual_id', 'quantidade_alocada'] },
+      { model: PedidoCompra, as: 'pedidos', separate: true, attributes: ['id', 'status'] }
+    ]
+  });
   if (!solicitacao || isSolicitacaoCompraCancelada(solicitacao.status)) {
     return solicitacao;
   }
@@ -2296,12 +2315,13 @@ async function isSolicitacaoCompraComPedidosFechadosComFornecedor(solicitacao) {
   ));
 }
 
-async function reabrirPedidoParaCotacao({ pedidoId, usuarioId, motivo, aprovacaoGeoId = null, transaction }) {
+async function reabrirPedidoParaCotacao({ pedidoId, usuarioId, motivo, aprovacaoGeoId = null, transaction, observacao }) {
   const motivoNormalizado = String(motivo || '').trim();
   if (!motivoNormalizado) {
     throw new Error('Informe o motivo da reabertura.');
   }
 
+  observacao?.etapa('LOCK_PEDIDO');
   const pedido = await PedidoCompra.findByPk(Number(pedidoId), {
     transaction,
     lock: transaction?.LOCK?.UPDATE
@@ -2315,6 +2335,7 @@ async function reabrirPedidoParaCotacao({ pedidoId, usuarioId, motivo, aprovacao
     throw new Error('Pedido cancelado nao pode ser reaberto.');
   }
 
+  observacao?.etapa('PROTECAO_FINANCEIRO_GEO');
   if (aprovacaoGeoId) {
     const aprovacao = await PedidoCompraReabertura.findOne({
       where: {
@@ -2334,6 +2355,7 @@ async function reabrirPedidoParaCotacao({ pedidoId, usuarioId, motivo, aprovacao
     await assertPedidoPodeReabrirDiretamente(pedido.id, transaction);
   }
 
+  observacao?.etapa('LOCK_SOLICITACAO');
   const solicitacao = await SolicitacaoCompra.findByPk(pedido.solicitacao_compra_id, {
     transaction,
     lock: transaction?.LOCK?.UPDATE,
@@ -2372,6 +2394,7 @@ async function reabrirPedidoParaCotacao({ pedidoId, usuarioId, motivo, aprovacao
     );
   }
 
+  observacao?.etapa('HISTORICO_REABERTURA');
   await registrarLogSolicitacaoCompra({
     solicitacaoCompraId: pedido.solicitacao_compra_id,
     usuarioId,
@@ -2404,12 +2427,14 @@ async function reabrirPedidoParaCotacao({ pedidoId, usuarioId, motivo, aprovacao
     transaction
   });
 
+  observacao?.etapa('SINCRONIZAR_SALDOS');
   await sincronizarStatusSolicitacaoCompraPorSaldo({
     solicitacaoId: pedido.solicitacao_compra_id,
     usuarioId,
     forcarRevisao: true,
     transaction
   });
+  observacao?.etapa('SINCRONIZAR_COTACOES');
   await sincronizarStatusCotacoesAposPedido({
     solicitacaoId: pedido.solicitacao_compra_id,
     fornecedorCompraId: pedido.fornecedor_compra_id,
@@ -2742,6 +2767,7 @@ async function obterPedidoDetalhe(id, { obraIdsHistoricoPreco = null } = {}) {
       {
         model: PedidoCompraItem,
         as: 'itens',
+        separate: true,
         include: [
           {
             model: SolicitacaoCompraItem,
@@ -2762,6 +2788,7 @@ async function obterPedidoDetalhe(id, { obraIdsHistoricoPreco = null } = {}) {
           {
             model: PedidoCompraItemLog,
             as: 'logs',
+            separate: true,
             include: [{ model: User, as: 'usuario', attributes: ['id', 'nome'] }]
           }
         ]
@@ -2769,6 +2796,7 @@ async function obterPedidoDetalhe(id, { obraIdsHistoricoPreco = null } = {}) {
       {
         model: PedidoCompraFrete,
         as: 'fretes',
+        separate: true,
         include: [
           {
             model: FornecedorCompra,
@@ -2792,6 +2820,7 @@ async function obterPedidoDetalhe(id, { obraIdsHistoricoPreco = null } = {}) {
           {
             model: PedidoCompraFreteRateio,
             as: 'rateios',
+            separate: true,
             include: [{ model: PedidoCompraItem, as: 'item', attributes: ['id', 'descricao', 'unidade', 'quantidade_pedido', 'valor_total'] }]
           }
         ]
@@ -3103,7 +3132,8 @@ async function adicionarRespostaAoPedido({ pedidoId, respostaItemId, usuarioId, 
 }
 
 async function atualizarStatusPedido({ pedidoId, status, motivo, usuarioId, transaction }) {
-  const pedido = await PedidoCompra.findByPk(Number(pedidoId), { transaction });
+  // Mesmo lock da reabertura: dois cliques/envios nao duplicam fechamento/historico.
+  const pedido = await PedidoCompra.findByPk(Number(pedidoId), { transaction, lock: transaction?.LOCK?.UPDATE });
   if (!pedido) {
     throw new Error('Pedido nao encontrado.');
   }
