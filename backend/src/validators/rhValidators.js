@@ -347,9 +347,16 @@ function normalizePagamentoPayload(value) {
 function validateRhColaboradorQuery(query = {}) {
   ensureAllowedKeys(
     query,
-    ['q', 'empresa_grupo_id', 'obra_id', 'setor_id', 'tipo_vinculo', 'status'],
+    ['q', 'empresa_grupo_id', 'obra_id', 'setor_id', 'tipo_vinculo', 'status', 'incluir_demissoes_pendentes'],
     'Consulta de colaboradores RH/DP'
   );
+
+  // Opt-in da lista operacional: manter a string "1" esperada pelo servico,
+  // sem aceitar objetos/arrays ou permitir que o cliente envie escopo interno.
+  const incluirDemissoesPendentes = query.incluir_demissoes_pendentes;
+  if (incluirDemissoesPendentes !== undefined && !['0', '1'].includes(incluirDemissoesPendentes)) {
+    throw new ValidationError('Incluir demissoes pendentes deve ser 0 ou 1.');
+  }
 
   return {
     q: parseOptionalText(query.q, 'Busca', 120),
@@ -357,7 +364,8 @@ function validateRhColaboradorQuery(query = {}) {
     obra_id: parseInteger(query.obra_id, 'Obra'),
     setor_id: parseInteger(query.setor_id, 'Setor'),
     tipo_vinculo: parseEnum(query.tipo_vinculo, 'Tipo de vinculo', RH_TIPOS_VINCULO),
-    status: parseEnum(query.status, 'Status', RH_STATUS_COLABORADOR)
+    status: parseEnum(query.status, 'Status', RH_STATUS_COLABORADOR),
+    incluir_demissoes_pendentes: incluirDemissoesPendentes
   };
 }
 

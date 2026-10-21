@@ -41,7 +41,8 @@ git show "$versao_dev:backend/scripts/validarDeployPedidoReaberturaDev.js" |
 git diff --quiet "$base_dev" "$versao_dev" -- backend/src \
   ':(exclude)backend/src/services/pedidoCompraService.js' \
   ':(exclude)backend/src/controllers/PedidoCompraController.js' \
-  ':(exclude)backend/src/observability/pedidoCompraOperacao.js'
+  ':(exclude)backend/src/observability/pedidoCompraOperacao.js' \
+  ':(exclude)backend/src/validators/rhValidators.js'
 git diff --quiet "$base_dev" "$versao_dev" -- frontend/src \
   ':(exclude)frontend/src/modules/solicitacao-compra/pages/PedidoCompraDetalhe.jsx'
 git merge --ff-only "$versao_dev"
@@ -50,7 +51,7 @@ test "$env_hash_dev" = "$(sha256sum backend/.env)"
 cd backend
 node scripts/validarDeployPedidoReaberturaDev.js
 for arquivo in src/services/pedidoCompraService.js src/controllers/PedidoCompraController.js \
-  src/observability/pedidoCompraOperacao.js; do
+  src/observability/pedidoCompraOperacao.js src/validators/rhValidators.js; do
   node --check "$arquivo"
 done
 # Modelos/API simulados ou validadores puros. Nao reabre pedidos nem cria titulos reais.
@@ -74,4 +75,4 @@ timeout 45s node scripts/configurarSessao12hDev.js --verificar
 cd ..
 test "$env_hash_dev" = "$(sha256sum backend/.env)"
 git log -1 --oneline
-echo 'DEV atualizado: reabertura, fechamento fornecedor e logs PEDIDO_OPERACAO. Sem migration/dependencias/.env/flags/memoria alterados. Homologue somente em DEV.'
+echo 'DEV atualizado: query de demissoes pendentes corrigida; reabertura/fechamento fornecedor/logs preservados. Sem migration/dependencias/.env/flags/memoria alterados. Homologue somente em DEV.'

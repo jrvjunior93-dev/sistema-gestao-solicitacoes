@@ -7,6 +7,7 @@ const validation = require('../src/middlewares/validation');
 const demissao = require('../src/services/rhDemissaoConclusaoDomain');
 const consulta = require('../src/services/rhSolicitacaoConsultaDomain');
 const { validateNumericIdParam, validateNumericIdParams } = require('../src/validators/securityValidators');
+const { validateRhColaboradorQuery } = require('../src/validators/rhValidators');
 const pedidos = [], anexos = [], documentos = [], historicos = [], colaboradores = [];
 const plain = obj => JSON.parse(JSON.stringify(obj));
 const tx = { LOCK: { UPDATE: 'UPDATE' } };
@@ -95,6 +96,21 @@ const controller = load('controllers/RhSolicitacaoController.js', {
 });
 const response = () => ({ code: 200, status(n) { this.code = n; return this; }, json(body) { this.data = body; return body; } });
 const req = (id, user, body = {}) => ({ params: { id: String(id) }, user, body });
+let consultasColaboradores = 0;
+const colaboradorController = load('controllers/RhColaboradorController.js', {
+  '../services/rhService': { listarColaboradoresRh: async filters => { consultasColaboradores++; return rh.listarColaboradoresRh(filters); } },
+  '../services/authorizationService': auth, '../services/setorCapabilityService': setores,
+  '../services/rhColaboradoresPlanilhaService': {},
+  '../utils/controllerError': require('../src/utils/controllerError')
+});
+// Middleware real -> controller real -> servico real com persistencia isolada.
+// Nao ignorar a sanitizacao da query como ocorria no teste original do opt-in.
+async function consultarColaboradores(query, usuario = obra.usuario) {
+  const request = { query: { ...query }, user: usuario }, res = response();
+  await validation.validateRequest({ query: validateRhColaboradorQuery })(request, res,
+    () => colaboradorController.index(request, res));
+  return res;
+}
 (async () => {
   const antiga = instancia({ id: 234, codigo: 'RH-000234', tipo: 'DEMISSAO', situacao: 'APROVADA', colaborador_id: 9, obra_id: 7, dados_json: {} });
   const real = instancia({ ...plain(antiga), id: 235, codigo: 'RH-000235', colaborador_id: 10 });
@@ -124,6 +140,41 @@ const req = (id, user, body = {}) => ({ params: { id: String(id) }, user, body }
   assert.equal(normal.length, 0, 'Sem opt-in nao incluir nenhum demitido');
   const filtro = { obra_id: 7, status: 'ATIVO', incluir_demissoes_pendentes: '1', obra_ids: [7], usuario_id_consulta: 3 };
   assert.deepEqual(Array.from(await rh.listarColaboradoresRh(filtro), c => c.id).sort(), [10, 11]);
+  const query = { obra_id: '7', status: 'ATIVO', incluir_demissoes_pendentes: '1' };
+  const estadoAntesConsulta = plain({ pedidos, anexos, documentos, historicos, colaboradores, vinculos });
+  const listaHttp = await consultarColaboradores(query);
+  assert.equal(listaHttp.code, 200, 'Query do frontend precisa atravessar o validador da rota sem erro400');
+  assert.deepEqual(Array.from(listaHttp.data, c => c.id).sort(), [10, 11], 'Middleware deve preservar o opt-in ate o servico');
+  assert.equal(validateRhColaboradorQuery(query).incluir_demissoes_pendentes, '1');
+  assert.equal((await consultarColaboradores({ obra_id: '7', status: 'ATIVO' })).data.length, 0);
+  assert.equal((await consultarColaboradores({ ...query, incluir_demissoes_pendentes: '0' })).data.length, 0);
+  assert.deepEqual(Array.from((await consultarColaboradores({ ...query, q: 'Pessoa' })).data, c => c.id), [10]);
+  assert.equal((await consultarColaboradores({ status: 'ATIVO', incluir_demissoes_pendentes: '1' })).data.length, 0,
+    'Flag sem obra nao amplia a consulta global');
+  const semStatus = { obra_id: '7' };
+  assert.deepEqual(plain((await consultarColaboradores({ ...semStatus, incluir_demissoes_pendentes: '1' })).data),
+    plain((await consultarColaboradores(semStatus)).data), 'Flag nao altera a semantica legada sem status ATIVO');
+  for (const valor of ['2', 'true', 'false', '', true, 1, null, {}, ['1'], ['0', '1']]) {
+    const chamadasAntes = consultasColaboradores;
+    assert.equal((await consultarColaboradores({ ...query, incluir_demissoes_pendentes: valor })).code, 400);
+    assert.equal(consultasColaboradores, chamadasAntes, 'Query invalida deve parar antes do controller/servico');
+  }
+  for (const extra of ['obra_ids', 'solicitacoes_obra_ids', 'usuario_id_consulta', 'extra']) {
+    assert.equal((await consultarColaboradores({ ...query, [extra]: '8' })).code, 400, 'Nao aceitar escopo enviado pelo cliente');
+  }
+  assert.equal((await consultarColaboradores({ ...query, status: 'DEMITIDO' })).code, 400);
+  assert.equal((await consultarColaboradores({ ...query, obra_id: 'invalida' })).code, 400);
+  escopo = [8]; assert.equal((await consultarColaboradores(query)).code, 403);
+  escopo = []; assert.equal((await consultarColaboradores(query)).data.length, 0);
+  escopo = [3];
+  const consultaReportada = await consultarColaboradores({ obra_id: '3', status: 'ATIVO', incluir_demissoes_pendentes: '1' });
+  assert.equal(consultaReportada.code, 200, 'Requisicao exata reportada em DEV nao pode falhar na whitelist');
+  assert.equal(consultaReportada.data.length, 0, 'Nao trazer pessoas de outra obra na fixture');
+  escopo = null;
+  assert.deepEqual(Array.from((await consultarColaboradores(query, dp.usuario)).data, c => c.id).sort(), [10, 11]);
+  escopo = [7];
+  assert.deepEqual(plain({ pedidos, anexos, documentos, historicos, colaboradores, vinculos }), estadoAntesConsulta,
+    'Listagem nunca grava cadastro, vinculo, documentos, historico ou valores');
   assert.equal((await rh.listarColaboradoresRh({ ...filtro, q: 'Pessoa' })).length, 1);
   assert.equal((await rh.listarColaboradoresRh({ ...filtro, obra_ids: [] })).length, 0);
   await assert.rejects(rh.listarColaboradoresRh({ ...filtro, obra_ids: [8] }), /Acesso negado/);
@@ -170,6 +221,7 @@ const req = (id, user, body = {}) => ({ params: { id: String(id) }, user, body }
   assert.deepEqual({ situacao: real.situacao, decidida_por: real.decidida_por, decidida_em: real.decidida_em }, aprovadoAntes);
   assert(consulta.normalizarConsulta(real).demissao_concluida);
   assert.deepEqual(Array.from(await rh.listarColaboradoresRh(filtro), c => c.id), [11], 'So sai da lista apos concluir');
+  assert.deepEqual(Array.from((await consultarColaboradores(query)).data, c => c.id), [11], 'Query normalizada respeita a conclusao DP');
   await assert.rejects(service.anexarNoPedido(real.id, {}, obra, arquivo), /ja foi decidida/);
   await assert.rejects(service.validarAnexo(anexo.id, { aceito: false, motivo: 'x' }, dp, real.id), /ja foi concluida/);
   // A nova demissao tambem conclui; nao so a excecao legada.
@@ -184,5 +236,6 @@ const req = (id, user, body = {}) => ({ params: { id: String(id) }, user, body }
   const routes = fs.readFileSync(path.join(__dirname, '../src/routes.js'), 'utf8');
   assert.match(routes, /solicitacoes\/:id\/concluir', allowRhDpSolicitacaoDecidir, criticalRateLimit/);
   assert.match(routes, /anexos\/:anexoId\/validar'.*validateNumericIdParams\(\['id', 'anexoId'\]/);
-  console.log('Demissao: novas/RH-000235, escopo e filtros, inativo ate concluir, upload DP/obra, ateste/parent ID, checklist, rollback, concorrencia/idempotencia, historico e cadastro/financeiro preservados. Sem banco/rede.');
+  assert.match(routes, /router\.get\('\/rh\/colaboradores', allowRhDpColaboradoresRead, validateRequest\(\{ query: validateRhColaboradorQuery \}\), RhColaboradorController\.index\)/);
+  console.log('Demissao: query real pelo middleware/controller/servico (opt-in1/0/ausente, formatos invalidos, escopo403/vazio/DP e campos internos negados), novas/RH-000235, inativo ate concluir, upload/ateste, checklist, rollback/replay e cadastro/vinculos/financeiro preservados. Sem banco/rede.');
 })().catch(e => { console.error(e); process.exitCode = 1; });

@@ -29,7 +29,7 @@ function validarRoteiro() {
     'node - --pacotes "$base_instalada" "$versao_dev"',
     'git diff --quiet "$base_dev" "$versao_dev" -- backend/src',
     'git diff --quiet "$base_dev" "$versao_dev" -- frontend/src']) antes(token);
-  for (const arquivo of ['services/pedidoCompraService.js', 'controllers/PedidoCompraController.js', 'observability/pedidoCompraOperacao.js']) {
+  for (const arquivo of ['services/pedidoCompraService.js', 'controllers/PedidoCompraController.js', 'observability/pedidoCompraOperacao.js', 'validators/rhValidators.js']) {
     antes(`':(exclude)backend/src/${arquivo}'`);
     assert(script.lastIndexOf(`src/${arquivo}`) > merge && script.lastIndexOf(`src/${arquivo}`) < restart);
   }
@@ -52,7 +52,7 @@ function validarRoteiro() {
     { ...pacote, scripts: { antigo: 'mudou' } }, { ...pacote, scripts: { ...pacote.scripts, postinstall: 'nao permitido' } }]) {
     assert.throws(() => validarPacotes(pacote, alvo));
   }
-  console.log('Deploy pedido DEV aprovado: SHA/ff-only, PM2/8001, identidade/schema readonly, runtime limitado, pacotes so QA, testes antes do restart exclusivo DEV, .env e memoria preservados.');
+  console.log('Deploy pedido/RH DEV aprovado: SHA/ff-only, PM2/8001, identidade/schema readonly, runtime limitado (inclui query RH), pacotes so QA, testes antes do restart exclusivo DEV, .env e memoria preservados.');
 }
 if (process.argv[2] === '--pacotes') {
   const [base, alvo] = process.argv.slice(3);

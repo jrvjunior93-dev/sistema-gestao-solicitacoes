@@ -1,5 +1,27 @@
 # Modulo RH/DP
 
+## Hotfix da query de demissoes pendentes - 2026-10-21
+
+- GET /rh/colaboradores agora aceita e preserva `incluir_demissoes_pendentes`
+  como string `0` ou `1`. O frontend ja enviava1, mas faltava a whitelist e o
+  retorno desse campo em validateRhColaboradorQuery, causando400 antes do
+  controller. Ausente/0 mantem a listagem anterior; formatos invalidos sao400.
+- Nao altera permissao da rota, escopo, controller/servicos, vinculos/cadastro,
+  conclusao DP, historico, anexos ou regras financeiras. Campos internos de
+  escopo continuam proibidos; so a listagem operacional opt-in inclui pendentes.
+- QA test:rhdp-demissao-conclusao agora atravessa validateRequest/validador,
+  RhColaboradorController.index e rhService reais com modelos em memoria.
+  Reproduziu400 antes do fix; cobre query reportada obra3, obra da fixture,
+  opt-in1/0/ausente, invalidos/arrays/objetos, tentativa de escopo via query,
+ 403 fora da obra, escopo vazio, DP, busca e retirada so apos concluir.
+- Testes comprovam consulta sem escrita em cadastro/vinculos/historico/valores.
+  Suite UI de demissao/lista390/1366 reaprovada, sem alterar frontend.
+- Publicacao exclusivamente refactor/frontend; roteiro DEV existente
+  ops/deploy/atualizar-dev-pedido-reabertura-20261021.sh inclui o validador RH
+  e QA corrigido antes de reiniciar somente backend-dev. Sem DDL, dependencias,
+  .env/flags/memoria ou operacao real na EC2 pelo agente.
+- [Handoff do hotfix](../../handoffs/2026-10-21-rh-demissao-query.md).
+
 ## Demissao: acompanhamento ate conclusao pelo DP - 2026-10-21
 
 - Publicacao DEV autorizada posteriormente, junto a distribuicao gerencial.

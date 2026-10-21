@@ -1,5 +1,14 @@
 # Handoff Global
 
+## Hotfix DEV query de demissoes pendentes - 2026-10-21
+
+- Usuario autorizou corrigir/testar/commitar/push refactor/frontend e comandos DEV.
+- Baseba4a41b2; main80df6534 intocada. Unico runtime rhValidators whitelist/DTO
+  da flag0/1; middleware/controller/servico e UI testados. ACL/escopo e stores
+  preservados. Roteiro DEV existente inclui o novo arquivo na guarda/sintaxe.
+- Handoff docs/handoffs/2026-10-21-rh-demissao-query.md. Sem frontend, banco real,
+  EC2/producao/migrations/dependencias/vinculos/financeiro/.env/flags/memoria.
+
 ## Publicacao DEV pedido/reabertura/logs - 2026-10-21
 
 - Usuario autorizou commit/push refactor/frontend e roteiro EC2 DEV.

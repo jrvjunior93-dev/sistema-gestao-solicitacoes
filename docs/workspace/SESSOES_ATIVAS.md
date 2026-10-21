@@ -1,5 +1,12 @@
 # Sessoes Ativas
 
+- codex-rh-demissao-query-20261021: agente unico, hotfix400 da query DEV,
+  implementacao/QA/commit/push autorizados. Runtime so rhValidators; cadeia
+  middleware/controller/servico, escopo/store, regressoes e UI390/1366 aprovados.
+  Roteiro/guarda DEV existente atualizado. Sem producao/EC2/DDL/dados reais,
+  vinculos/permissoes/financeiro/.env/memoria. Ownership liberado para publicacao;
+  Node/Bash/guardas/docs597/19/diff aprovados.
+
 - codex-pedido-reabertura-publicacao-20261021: agente unico, commit/push DEV
   autorizados; base2d161b85, main80df6534 somente leitura. QA backend/regressoes/
   UI26 itens1366/390/guardas Node/Bash/docs596/19/diff aprovados. Ownership

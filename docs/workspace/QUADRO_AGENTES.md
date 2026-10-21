@@ -1,5 +1,16 @@
 # Quadro de Agentes
 
+## Hotfix DEV query demissoes pendentes - 2026-10-21
+
+- Correcao/QA/commit/push DEV autorizados; baseba4a41b2/main80df6534 intocada.
+- Unico runtime rhValidators.js (whitelist/DTO string0/1); QA agora passa por
+  middleware/controller/servico reais em memoria.400 reproduzido antes e200 apos.
+- ACL/escopo/negativas/store sem escrita e regressoes RH/pedido/centros, UI390/1366
+  aprovados. Roteiro/guarda existente inclui validador RH e restart so backend-dev.
+- Agente unico, ownership liberado para publicacao; Node/Bash/docs597/19/diff
+  aprovados. Sem EC2/producao/dados
+  reais/DDL/dependencias/.env/flags/memoria ou alteracao de vinculos/financeiro.
+
 ## Publicacao DEV pedido/reabertura/logs - 2026-10-21
 
 - Commit/push e comandos DEV autorizados; base2d161b85, main80df6534 intocada.

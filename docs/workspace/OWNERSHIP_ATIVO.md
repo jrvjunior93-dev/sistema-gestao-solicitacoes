@@ -1,5 +1,18 @@
 # Ownership Ativo
 
+## Hotfix DEV consulta de demissoes pendentes - 2026-10-21
+
+- Usuario autorizou corrigir/testar/commitar/push refactor/frontend e comandos DEV.
+- Agente unico, validado para publicacao e ownership liberado: rhValidators.js somente query de colaboradores,
+  validarRhDemissaoConclusao.js (middleware/controller/servico/rota), roteiro/guarda
+  atualizar-dev-pedido-reabertura-20261021.sh e validarDeployPedidoReaberturaDev.js,
+  README RH/handoff/quatro controles. Outputs privados fora do commit.
+- Base DEVba4a41b2, branch codex/rh-demissao-query-20261021; main80df6534 intocada.
+- Nao alterar ACL, controller/servicos runtime, vinculos/cadastro/financeiro,
+  frontend, banco real, .env/flags/dependencias/migrations, memoria ou producao.
+- QA vermelho400 reproduzido antes; middleware/controller/servico e negativas,
+  regressoes backend, UI390/1366, guardas Node/Bash/docs597/19/diff aprovados.
+
 ## Publicacao DEV pedido/reabertura/logs - 2026-10-21
 
 - Commit/push refactor/frontend e comandos EC2 DEV autorizados pelo usuario.
