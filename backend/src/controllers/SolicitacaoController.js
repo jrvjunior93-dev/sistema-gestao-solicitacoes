@@ -2832,7 +2832,7 @@ module.exports = {
             intervaloData[Op.lte] = new Date(`${dataFimStr}T23:59:59.999`);
           }
         }
-        if (Object.keys(intervaloData).length > 0) {
+        if (Reflect.ownKeys(intervaloData).length > 0) {
           where.createdAt = intervaloData;
         }
       }

@@ -1,5 +1,33 @@
 # Ownership Ativo
 
+## Publicacao DEV periodo de registro - 2026-10-21
+
+- Usuario autorizou commit/push refactor/frontend e roteiro para EC2 DEV.
+- Agente unico, validado para publicacao, ownership liberado: delta do periodo/QA/docs, novo
+  ops/deploy/atualizar-dev-periodo-registro-20261021.sh e
+  backend/scripts/validarDeployPeriodoRegistroDev.js; handoff e controles.
+- Sem main/producao/EC2 pelo agente, DB real, migration/dependencias/.env/flags.
+  Excluir outputs privados; roteiro deve reiniciar somente backend-dev.
+- Backend/unidade/SQL de permutas/ACL/regressoes, UI1366/390 e navegacao/403,
+  build, guardas/Node/Bash, docs591/19 e diff aprovados. Publicar somente DEV.
+
+## Periodo de registro das solicitacoes - 2026-10-21
+
+- Agente unico, finalizado local, ownership liberado: frontend/src/pages/Solicitacoes/Filtros.jsx,
+  index.jsx, consultaSessao.js; novo QA frontend/scripts/validarPeriodoRegistroSolicitacoes.mjs;
+  QA backend/scripts/validarPeriodoRegistroSolicitacoes.js se necessario,
+  backend/src/controllers/SolicitacaoController.js somente guarda das chaves
+  Symbol de intervaloData (regressao reproduzida: Object.keys ignorava Op.gte/lte),
+  frontend/scripts/validarWorkspacePiloto.mjs somente integrar QA do periodo,
+  README Solicitacoes, handoff e quatro controles workspace.
+- Usuario pediu data de registro inicial/final no padrao Resposta/Pagamento.
+  Reutilizar data_inicio/data_fim ja aceitos pelo controller em createdAt;
+  preservar filtro legado, sessao/URL/aba, exportacao, visibilidade e ACL.
+- Sem producao/EC2/banco real, migration, commit/push ou alteracao financeira.
+- Backend/UTC-BR-NZ, unidade/sessao/exportacao/live update, UI1366/390 e retorno
+  workspace/legado/403/troca de usuario/escopo, build, Node/diff/docs591/19 aprovados.
+  Handoff 2026-10-21-solicitacoes-periodo-registro.md. Publicacao depende de pedido.
+
 ## Publicacao DEV saldo cartao e permutas - 2026-10-21
 
 - Usuario autorizou commit/push da correcao de saldo/cartao e depois incluiu

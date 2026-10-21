@@ -1,5 +1,31 @@
 # Handoff Global
 
+## Publicacao DEV periodo de registro - 2026-10-21
+
+- Commit/push refactor/frontend autorizado, pacote isolado do periodo/QA/docs.
+  Novo roteiro atualizar-dev-periodo-registro-20261021.sh com SHA/bases/ff-only,
+  PM2/8001/sem watch, identidade/schema/sessao, .env por hash e QA antes do restart.
+- Delta novo backend somente controller; sem migrations/dependencias/flags.
+  Somente backend-dev reiniciado pelo operador; agente nao acessa EC2/DB real.
+- Main/producao e outputs privados fora da publicacao. Handoff do periodo
+  atualizado com roteiro e passos de homologacao DEV.
+- Backend/regressoes/unidade/ACL, UI1366/390/retorno/403, build16,42s/631 modulos,
+  guardas/Node/Bash, docs591/19 e diff aprovados. Ownership liberado para publicacao.
+
+## Periodo de registro das solicitacoes - 2026-10-21
+
+- Implementacao local do par de datas na lista, usando createdAt e query
+  data_inicio/fim. Limites inclusivos/opcionais, registro separado de vencimento.
+- Preservar data exata salva como dia unico, sessao/aba/URL/exportacao/live update,
+  visibilidade/limpeza, permissoes e demais operacoes da lista.
+- Detectada guarda inoperante Object.keys com operadores Sequelize Symbol;
+  troca pontual por Reflect.ownKeys, teste vermelho antes/verde depois.
+- Sem EC2/DB real/main/producao/migration/commit/push; handoff
+  docs/handoffs/2026-10-21-solicitacoes-periodo-registro.md.
+- Backend/UTC-BR-NZ/unidade/sessao/exportacao/live update, UI1366/390,
+  retorno workspace/legado/403/troca de usuario/escopo e regressoes aprovados.
+  Build12,90s/631 modulos, Node/diff e docs591/19 aprovados; ownership liberado.
+
 ## Publicacao DEV saldo cartao e permutas - 2026-10-21
 
 - Usuario autorizou commit/push saldo/cartao e incluiu demais ajustes pendentes:

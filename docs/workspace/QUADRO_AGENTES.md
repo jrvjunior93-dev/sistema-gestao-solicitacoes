@@ -1,5 +1,25 @@
 # Quadro de Agentes
 
+## Publicacao DEV periodo de registro - 2026-10-21
+
+- Usuario autorizou commit/push refactor/frontend e roteiro DEV deste filtro.
+  Agente unico; delta/QA/docs/roteiro e guardas reservados no ownership.
+- SHA/bases/ff-only, PM2/identidade/schema/.env, runtime novo limitado ao
+  controller, testes antes do restart apenas backend-dev. Sem DDL/dependencias.
+- Sem EC2/DB real/main/producao pelo agente; outputs privados excluidos.
+- Backend/regressoes/unidade/ACL, UI1366/390/retorno/403, build, guardas/Node/Bash,
+  docs591/19/diff aprovados. Ownership liberado para commit/push DEV autorizado.
+
+## Periodo de registro das solicitacoes - 2026-10-21
+
+- Agente unico, finalizado local, ownership liberado: filtros inicial/final em createdAt, legado/sessao/
+  URL/aba/exportacao/live update e limpeza. Reservas no ownership.
+- Controller: corrigir somente deteccao de operadores Symbol do intervalo.
+  Regressao reproduzida antes e aprovada depois; nenhuma mudanca de ACL.
+- Sem EC2/DB real/migration/main/producao/commit/push. Handoff proprio salvo.
+- Backend/unidade/exportacao/live update/sessao, UI1366/390/retorno/403/escopo,
+  regressoes vencimento/edicao/preferencias, build/Node/diff/docs591/19 aprovados.
+
 ## Publicacao DEV saldo cartao e permutas - 2026-10-21
 
 - Usuario autorizou publicar os dois deltas pendentes na refactor/frontend.

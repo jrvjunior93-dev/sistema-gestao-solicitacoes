@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useWorkspace, useWorkspaceState, useWorkspaceRestored, useWorkspaceEdicaoSolicitacao, useWorkspaceWork } from '../../navigation/WorkspaceContext';
 import Filtros from './Filtros';
 import { consultarJanela } from './consultarJanela';
-import { lerConsultaSessao, salvarConsultaSessao } from './consultaSessao';
+import { lerConsultaSessao, salvarConsultaSessao, normalizarPeriodoRegistro } from './consultaSessao';
 import { API_URL, authHeaders } from '../../services/api';
 import { getSetores } from '../../services/setores';
 import { getTiposSolicitacao } from '../../services/tiposSolicitacao';
@@ -116,7 +116,8 @@ function validarDataIso(valor) {
 function obterErrosFiltrosData(filtros) {
   const erros = {};
   const campos = [
-    ['data_registro', 'Informe uma data de registro valida.'],
+    ['data_inicio', 'Informe uma data de registro inicial valida.'],
+    ['data_fim', 'Informe uma data de registro final valida.'],
     ['data_vencimento_inicio', 'Informe uma data inicial valida.'],
     ['data_vencimento_fim', 'Informe uma data final valida.']
   ];
@@ -124,10 +125,14 @@ function obterErrosFiltrosData(filtros) {
     if (!validarDataIso(filtros?.[campo])) erros[campo] = mensagem;
   });
 
-  const inicio = String(filtros?.data_vencimento_inicio || '').trim();
-  const fim = String(filtros?.data_vencimento_fim || '').trim();
-  if (!erros.data_vencimento_inicio && !erros.data_vencimento_fim && inicio && fim && inicio > fim) {
-    erros.data_vencimento_fim = 'A data final deve ser igual ou posterior a data inicial.';
+  for (const [campoInicio, campoFim] of [['data_inicio', 'data_fim'], ['data_vencimento_inicio', 'data_vencimento_fim']]) {
+    const inicio = String(filtros?.[campoInicio] || '').trim();
+    const fim = String(filtros?.[campoFim] || '').trim();
+    if (!erros[campoInicio] && !erros[campoFim] && inicio && fim && inicio > fim) {
+      erros[campoFim] = campoFim === 'data_fim'
+        ? 'A data de registro final deve ser igual ou posterior a inicial.'
+        : 'A data final deve ser igual ou posterior a data inicial.';
+    }
   }
   return erros;
 }
@@ -303,7 +308,7 @@ export default function Solicitacoes({ arquivadas = false }) {
   });
   const pularDebounceRef = useRef(false);
 
-  const [filtros, setFiltros] = useWorkspaceState('lista:filtros', {
+  const [estadoFiltros, setEstadoFiltros] = useWorkspaceState('lista:filtros', {
     codigo: '',
     descricao: '',
     numero_sienge: '',
@@ -314,12 +319,19 @@ export default function Solicitacoes({ arquivadas = false }) {
     valor_min: '',
     valor_max: '',
     data_registro: '',
+    data_inicio: '',
+    data_fim: '',
     data_vencimento: '',
     data_vencimento_inicio: '',
     data_vencimento_fim: '',
     responsavel: '',
     ...consultaSessaoInicial?.filtros
   });
+  const filtros = useMemo(() => normalizarPeriodoRegistro(estadoFiltros), [estadoFiltros]);
+  const setFiltros = useCallback((valor) => {
+    setEstadoFiltros((anterior) => normalizarPeriodoRegistro(typeof valor === 'function'
+      ? valor(normalizarPeriodoRegistro(anterior)) : valor));
+  }, [setEstadoFiltros]);
 
   const filtrosStorageKey = useMemo(() => {
     const identificador = user?.id || user?.email || user?.nome || user?.perfil || 'anon';
@@ -403,6 +415,8 @@ export default function Solicitacoes({ arquivadas = false }) {
         valor_min: '',
         valor_max: '',
         data_registro: '',
+        data_inicio: '',
+        data_fim: '',
         data_vencimento: '',
         data_vencimento_inicio: '',
         data_vencimento_fim: '',
@@ -412,14 +426,16 @@ export default function Solicitacoes({ arquivadas = false }) {
       setFiltroVisaoUrl('');
     }
 
-    const chavesSuportadas = ['area', 'status', 'codigo', 'data_vencimento_inicio', 'data_vencimento_fim'];
+    const chavesSuportadas = ['area', 'status', 'codigo', 'data_registro', 'data_inicio', 'data_fim', 'data_vencimento_inicio', 'data_vencimento_fim'];
     const sobrescritas = {};
     for (const chave of chavesSuportadas) {
       const valor = params.get(chave);
       if (valor !== null) sobrescritas[chave] = valor;
     }
     if (!visaoParam && Object.keys(sobrescritas).length > 0) {
-      setFiltros((prev) => ({ ...prev, ...sobrescritas }));
+      const temRegistroUrl = ['data_registro', 'data_inicio', 'data_fim'].some((chave) => params.has(chave));
+      setFiltros((prev) => ({ ...prev,
+        ...(temRegistroUrl ? { data_registro: '', data_inicio: '', data_fim: '' } : {}), ...sobrescritas }));
     }
 
     const idsParam = params.get('ids');
@@ -714,7 +730,10 @@ export default function Solicitacoes({ arquivadas = false }) {
       }
     }
 
-    if (filtros.data_registro && dataRegistro !== filtros.data_registro) {
+    if (filtros.data_inicio && (!dataRegistro || dataRegistro < filtros.data_inicio)) {
+      return false;
+    }
+    if (filtros.data_fim && (!dataRegistro || dataRegistro > filtros.data_fim)) {
       return false;
     }
 

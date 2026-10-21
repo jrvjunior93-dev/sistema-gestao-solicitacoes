@@ -1,5 +1,17 @@
 # Sessoes Ativas
 
+- codex-periodo-registro-publicacao-20261021: agente unico, publicacao DEV
+  autorizada; reservar delta/QA/docs/roteiro/guardas. Sem EC2/DB real/DDL/main,
+  producao ou outputs privados no commit. Roteiro reinicia somente backend-dev.
+  Backend/regressoes/unidade/ACL, UI1366/390/retorno/403, build/guardas/Node/Bash/
+  docs591/19/diff aprovados. Ownership liberado para publicacao autorizada.
+
+- codex-solicitacoes-periodo-registro-20261021: finalizado local, agente unico.
+  Par de campos no padrao atual, legado/sessao/URL/exportacao/live update,
+  guarda Symbol no controller. Reservas no ownership; sem EC2/DB/main/push.
+  Backend/UTC-BR-NZ, unidade/retorno/403/escopo/UI1366/390, build/Node/diff/docs591/19
+  aprovados; ownership liberado e handoff salvo. Aguardar pedido de publicacao.
+
 - codex-saldo-cartao-permutas-publicacao-20261021: agente unico, publicacao DEV
   autorizada para os dois ajustes pendentes/QA/docs/roteiro com SHA fixo.
   Sem EC2/banco/DDL/main/producao; excluir outputs privados. Reservas no ownership.
