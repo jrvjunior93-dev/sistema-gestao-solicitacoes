@@ -1,5 +1,19 @@
 # Ownership Ativo
 
+## Promocao main tres pendencias DEV - 2026-10-21
+
+- Usuario autorizou promover5dbdd55a/44ee71b2/771f8041 preservando main.
+  Backup recente no Drive cifrado e timer ativo reconfirmados nesta sessao.
+- Agente unico, finalizado local, ownership liberado: integracao origin/main eb12d9d7 com DEV828ed2ec
+  (tres deltas restantes), resolucao documental, roteiro PROD/QA/handoff e
+  README Financeiro/Solicitacoes/quatro controles. Sem outros ajustes novos.
+- Preservar autorizacao unica, hotfixes/scripts main, ACL/historico/financeiro.
+  Sem EC2/banco real, DDL/dependencias/.env/flags ou operacao financeira real.
+  Tag/bundle main anterior preparados e bundle completo verificado fora da EC2.
+- Backend/regressoes/ACL/rollback/SQL/periodo/passkey, UI cartao/fatura/filtros/
+  workspace1366/390 e130 titulos320/390/1366, build13,55s/631 modulos,
+  Node/Bash/guardas/docs603/19/diff/escopo aprovados. Liberado para PR/merge.
+
 ## Promocao main autorizacao unica - 2026-10-21
 
 - Usuario homologou DEV entre lotes/passkey unica e autorizou promocao isolada.
@@ -151,6 +165,140 @@
   Produto e dependencias conferidos contra2e146629; reserva encerrada,
   ownership liberado para commit/push main autorizados. Roteiro e limites em
   docs/handoffs/2026-10-18-promocao-main-pwa-historico.md.
+
+## Publicacao DEV autorizacao unica - 2026-10-21
+
+- Usuario autorizou commit/push refactor/frontend e comandos de atualizacao DEV.
+- Agente unico, validado para publicacao, ownership liberado: delta da autorizacao unica/QA/docs, novo roteiro
+  atualizar-dev-autorizacao-unica-20261021.sh e validarDeployAutorizacaoUnicaDev.js,
+  README Financeiro/handoff e quatro controles workspace.
+- Publicar fast-forward apenas DEV; excluir outputs privados. Sem main/producao,
+  EC2/DB/Redis reais pelo agente, DDL/dependencias/.env/flags. O operador reinicia
+  exclusivamente backend-dev apos identidade/schema readonly e regressoes locais.
+- Backend transacional/ACL/replay/concorrencia, UI130 titulos320/390/1366,
+  regressoes, build, Node/Bash/guardas/docs592/19 e diff aprovados. Publicar DEV.
+
+## PWA autorizacao unica entre lotes - 2026-10-21
+
+- Usuario autorizou implementar/testar em refactor/frontend, sem producao.
+- Agente unico, finalizado local, ownership liberado: novo pagamentoAutorizacaoSelecaoService.js;
+  pagamentoAutorizacaoService.js somente adaptador da selecao,
+  pagamentoManualFilaService.js somente transacao interna no wrapper,
+  PagamentoAutorizacaoController.js, routes.js somente novas rotas protegidas;
+  frontend services/pagamentoAutorizacao.js e AutorizacoesPorObra.jsx;
+  validarAnaliseProprietario.js/harness, novo validarAutorizacaoSelecao.js,
+  validarAutorizacoesPorObra.mjs, README Financeiro/handoff e controles.
+- Uma passkey vincula selecao completa; autorizacao + fila em transacao unica.
+  Preservar legado/rejeicao/reenvio, ACL/escopo/limite nominal/dossie/counter,
+  challenge atomico, locks estaveis e rollback/repeticao. Sem DDL/dependencias.
+- Sem EC2/DB/Redis/S3 reais, main/producao, commit/push/deploy nesta etapa.
+- QA backend transacional/ACL/replay/concorrencia e UI130 titulos entre obras/
+  paginas/lotes320/390/1366, regressoes PWA/reenvio, build, Node/diff/docs592/19 aprovados.
+  Handoff 2026-10-21-pwa-autorizacao-unica-selecao.md; homologacao real no DEV
+  ainda pendente. Publicacao somente mediante novo pedido.
+
+## Publicacao DEV periodo de registro - 2026-10-21
+
+- Usuario autorizou commit/push refactor/frontend e roteiro para EC2 DEV.
+- Agente unico, validado para publicacao, ownership liberado: delta do periodo/QA/docs, novo
+  ops/deploy/atualizar-dev-periodo-registro-20261021.sh e
+  backend/scripts/validarDeployPeriodoRegistroDev.js; handoff e controles.
+- Sem main/producao/EC2 pelo agente, DB real, migration/dependencias/.env/flags.
+  Excluir outputs privados; roteiro deve reiniciar somente backend-dev.
+- Backend/unidade/SQL de permutas/ACL/regressoes, UI1366/390 e navegacao/403,
+  build, guardas/Node/Bash, docs591/19 e diff aprovados. Publicar somente DEV.
+
+## Periodo de registro das solicitacoes - 2026-10-21
+
+- Agente unico, finalizado local, ownership liberado: frontend/src/pages/Solicitacoes/Filtros.jsx,
+  index.jsx, consultaSessao.js; novo QA frontend/scripts/validarPeriodoRegistroSolicitacoes.mjs;
+  QA backend/scripts/validarPeriodoRegistroSolicitacoes.js se necessario,
+  backend/src/controllers/SolicitacaoController.js somente guarda das chaves
+  Symbol de intervaloData (regressao reproduzida: Object.keys ignorava Op.gte/lte),
+  frontend/scripts/validarWorkspacePiloto.mjs somente integrar QA do periodo,
+  README Solicitacoes, handoff e quatro controles workspace.
+- Usuario pediu data de registro inicial/final no padrao Resposta/Pagamento.
+  Reutilizar data_inicio/data_fim ja aceitos pelo controller em createdAt;
+  preservar filtro legado, sessao/URL/aba, exportacao, visibilidade e ACL.
+- Sem producao/EC2/banco real, migration, commit/push ou alteracao financeira.
+- Backend/UTC-BR-NZ, unidade/sessao/exportacao/live update, UI1366/390 e retorno
+  workspace/legado/403/troca de usuario/escopo, build, Node/diff/docs591/19 aprovados.
+  Handoff 2026-10-21-solicitacoes-periodo-registro.md. Publicacao depende de pedido.
+
+## Publicacao DEV saldo cartao e permutas - 2026-10-21
+
+- Usuario autorizou commit/push da correcao de saldo/cartao e depois incluiu
+  as demais correcoes pendentes: JOIN Obras do relatorio de permutas.
+- Agente unico, validado para publicacao; ownership liberado: delta desses dois ajustes/QA/docs,
+  novo ops/deploy/atualizar-dev-saldo-cartao-permutas-20261021.sh e QA de guardas
+  backend/scripts/validarDeploySaldoCartaoPermutasDev.js, handoffs e controles.
+- Sem main/producao/EC2/banco real, DDL/dependencias/.env/flags. Publicar somente
+  refactor/frontend; excluir outputs privados. Nao implementar diagnosticos
+  de contrato/Contas a Receber ou NSDocs nesta publicacao.
+- Regressoes backend/cartao/SQL/ACL, UI1366/390, build, guardas Node/Bash,
+  docs590/19 e diff aprovados. Publicar fast-forward na refactor/frontend;
+  agente nao executa roteiro EC2. Handoff de saldo registra roteiro/homologacao.
+
+## Quitacao de saldo por cartao na fila - 2026-10-21
+
+- Agente unico, finalizado local, ownership liberado, base DEV5dbdd55a. Usuario autorizou implementar
+  e testar saldo com PIX anterior/desconto/cartao6x, sem alterar producao.
+- Reservados: pagamentoManualFilaService.js somente guarda de credito,
+  validarCartaoParcelamentoBaixa.js, novo QA validarFilaCartaoSaldoRemanescente.js,
+  validarCartaoParcelamentoUI.mjs somente cenario saldo/desconto, README Financeiro,
+  handoff desta tarefa e controles workspace.
+- Permitir baixa anterior apenas no fluxo validado parcelamento_cartao e com
+  quitacao integral do saldo atual. Preservar trava do cartao legado sem config,
+  pagamentos parciais/ACIMA_SALDO, ACL, faturas processadas, replay/locks/rollback.
+- Sem migration/dependencias, EC2/banco real, main/producao, commit ou push.
+  Permutas locais e outputs privados preservados; sem implementacao NSDocs.
+- QA backend real/memoria, ACL de rota, estorno/rollback/replay, UI1366/390,
+  build, Node/diff e docs590/19 aprovados. Handoff:
+  docs/handoffs/2026-10-21-fila-cartao-saldo-remanescente.md.
+
+## Publicacao DEV lista unica da fatura - 2026-10-21
+
+- Usuario autorizou commit/push somente deste ajuste na refactor/frontend e
+  comandos para atualizar/testar DEV. Agente unico; reserva encerrada para publicacao.
+- Reservados: delta da lista unica/QA/docs, novo roteiro
+  atualizar-dev-fatura-lista-unica-20261021.sh e seu teste estatico de guardas.
+- Atualizacao so UI: sem DDL/dependencias/reinicio, guarda PM2/watch/.env,
+  branch/caminho/SHA e backend financeiro identico a base93f75. Sem EC2 pelo agente.
+- Permutas locais e outputs privados ficam fora do commit; main/producao intactas.
+- Roteiro/guardas/Node/Bash, unidade/regressao backend, build/docs/diff
+  aprovados; UI1366/390 repetida apos build e aprovada (dist compartilhado pelo harness).
+  Ownership liberado para commit/push autorizado; operador executa deploy DEV.
+
+## Lista unica da fatura de cartao - 2026-10-21
+
+- Agente unico desta conversa, finalizado local, base refactor/frontend 93f75d67.
+- Reservados: frontend/src/pages/FinanceiroFaturaCartaoDetalhe.jsx, novo helper
+  frontend/src/utils/faturaCartaoItens.mjs, QA unitario e validarFaturasWorkspace.mjs,
+  README Financeiro, handoff desta tarefa e controles workspace.
+- Unificar somente a leitura/apresentacao de titulos diretos e compras/parcelas.
+  Preservar valores da API, identidades das parcelas/movimentos distintos,
+  totais oficiais, saldo, ACL, conflito de rascunho e baixa contra duplo envio.
+- Sem backend financeiro, banco/EC2, migration, main/producao ou commit/push.
+  Delta anterior de permutas e outputs privados preservados sem publicacao.
+- Unidade/UI1366/390, regressao faturas/parcelamento/ACL/duplo envio, build,
+  navegacao/abas, docs589/19, Node/diff aprovados. Layout global127->125;
+  falhas remanescentes preexistentes fora desta tela. Ownership liberado.
+  Handoff: docs/handoffs/2026-10-21-fatura-lista-unica.md.
+
+## Relatorio permutas: tabela Obras - 2026-10-20
+
+- codex-permutas-obras-case-20261020, agente unico, finalizado local, baseDEV93f75.
+  Usuario autorizou corrigir/testar referencia Obras apos evidencia DEV
+  lower_case_table_names=0, tabela Obras e ER_NO_SUCH_TABLE para obras.
+- Reserva: permutaRelatorioService.js somente JOIN Obras, validarPermutasRelatorio.js
+  para detectar casing contra modelo/schema antes de SQLite; README Financeiro,
+  handoff e quatro controles. Preservar ACL/filtros/somas/paginacao/legado.
+- Sem EC2/banco real, migration/configuracao/UI, main/producao ou commit/push.
+- Pedido adicional: diagnosticar forma de pagamento do contrato de venda na
+  pagina Contas a Receber somente por leitura; nao modificar contratos/titulos.
+- JOIN corrigido; teste casing exato/modelo/schema com erro antigo reproduzido,
+  SQL/filtros/ACL/escopo, operacao permuta, guardas DEV/Node/docs/diff aprovados.
+  Diagnostico comercial readonly registrado; ownership liberado e handoff salvo.
 
 ## Publicacao DEV motivo encerramento sem pedido - 2026-10-20
 

@@ -1,4 +1,5 @@
 // Faturas reais, servicos isolados em memoria; nenhuma baixa/banco real.
+import './validarFaturaItensUnificados.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
@@ -63,7 +64,8 @@ try{
       {id:10,titulo_financeiro_id:10,valor_quitacao:45,data_movimento:'2026-10-13',titulo:{codigo:'TIT-RATEIO-A',descricao:'Parte A',parceiro:{nome:'Credor A'}}},
       {id:11,titulo_financeiro_id:11,valor_quitacao:55,data_movimento:'2026-10-13',titulo:{codigo:'TIT-RATEIO-B',descricao:'Parte B',parceiro:{nome:'Credor B'}}}];});
     await alternate();await page.getByText('TIT-RATEIO-A',{exact:true}).waitFor();await page.getByText('TIT-RATEIO-B',{exact:true}).waitFor();
-    await page.getByText('Compras rateadas nesta fatura',{exact:true}).waitFor();
+    await page.getByRole('heading',{name:'Títulos da fatura',exact:true}).waitFor();
+    assert.equal(await page.getByRole('heading',{name:'Compras e parcelas nesta fatura',exact:true}).count(),0);
     assert.equal(await page.getByText(/^R\$\s45,00$/).count(),1);
     assert.equal(await page.getByText(/^R\$\s55,00$/).count(),1);
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
@@ -72,6 +74,44 @@ try{
     await page.getByRole('dialog',{name:'Registrar o pagamento desta fatura?',exact:true}).getByRole('button',{name:'Baixar fatura',exact:true}).click();
     await page.getByText(/Pagamento da fatura registrado/).waitFor();assert.equal(await page.evaluate(()=>window.writes.length),1);
     assert.equal(await conta.count(),0,'Fatura so de rateios pode pagar, mas nao oferece segunda baixa depois de PAGA');
+
+    await goto(true);await conta.waitFor();
+    await page.evaluate(()=>{
+      window.fatura.valor_total='555.34';
+      window.fatura.titulos=[{id:1,codigo:'TIT-LEGADO',descricao:'Compra antiga',parceiro:{nome:'Credor legado'},
+        status:'QUITADO',valor_original:'100.00',valor_saldo:'0.00',data_compra:'2026-09-17',numero_parcela:2,total_parcelas:6}];
+      const parte=(id,tituloId,codigo,valor,extra={})=>({id,titulo_financeiro_id:tituloId,valor_quitacao:valor,
+        titulo:{id:tituloId,codigo,descricao:'Compra QA',parceiro:{nome:'MONDAY.COM LTDA.'},status:'QUITADO',valor_original:'1200.00',valor_saldo:'0.00'},...extra});
+      window.fatura.compras_rateadas=[
+        parte('parcela-10',2,'TIT-MONDAY-A','198.00',{parcela_cartao_id:10,numero_parcela:1,quantidade_parcelas:1,data_compra:'2026-09-17'}),
+        parte('parcela-11',3,'TIT-MONDAY-B','198.00',{parcela_cartao_id:11,numero_parcela:1,quantidade_parcelas:1,data_compra:'2026-09-28'}),
+        parte('parcela-12',4,'TIT-PARCELADO','33.34',{parcela_cartao_id:12,numero_parcela:2,quantidade_parcelas:3,data_compra:'2026-08-10'}),
+        parte(10,5,'TIT-MULTIFONTE','12.00',{data_movimento:'2026-09-20'}),
+        parte(11,5,'TIT-MULTIFONTE','14.00',{data_movimento:'2026-09-20'})];
+      window.snapshot=JSON.stringify(window.fatura);
+    });
+    await alternate();await page.getByText('TIT-MONDAY-A',{exact:true}).waitFor();
+    assert.equal(await page.getByRole('heading',{name:'Títulos da fatura',exact:true}).count(),1);
+    assert.equal(await page.getByRole('heading',{name:'Compras e parcelas nesta fatura',exact:true}).count(),0);
+    for(const codigo of ['TIT-LEGADO','TIT-MONDAY-A','TIT-MONDAY-B','TIT-PARCELADO'])
+      assert.equal(await page.getByText(codigo,{exact:true}).count(),1);
+    assert.equal(await page.getByText('TIT-MULTIFONTE',{exact:true}).count(),2);
+    assert.equal(await page.getByText('1/1',{exact:true}).count(),2);
+    assert.equal(await page.getByText('2/3',{exact:true}).count(),1);
+    assert.equal(await page.getByText(/^R\$\s198,00$/).count(),2);
+    assert.equal(await page.getByText(/^R\$\s33,34$/).count(),1);
+    assert.equal(await page.getByText(/^R\$\s1\.200,00$/).count(),0);
+    await page.getByText('5 título(s)',{exact:true}).waitFor();
+    assert.equal(await page.evaluate(()=>JSON.stringify(window.fatura)===window.snapshot),true);
+    assert.equal(await page.evaluate(()=>window.writes.length),0,'Consultar lista unificada nao registra baixa');
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    await page.screenshot({path:path.join(root,`../outputs/fatura-unificada-${width}.png`),fullPage:true});
+    await page.evaluate(()=>window.readonly=true);await alternate();
+    await page.getByText('Consulta disponível. A baixa da fatura exige permissão específica.',{exact:true}).waitFor();
+    await page.getByText('TIT-MONDAY-A',{exact:true}).waitFor();assert.equal(await conta.count(),0);
+    await page.evaluate(()=>window.denied=true);await alternate();
+    await page.getByText('Fatura não encontrada.',{exact:true}).waitFor();
+    assert.equal(await page.getByText('TIT-MONDAY-A',{exact:true}).count(),0);
     console.log('OK faturas '+width+'px: busca/origem, GET atual, conta/observacoes, conflito, permissao/negativa e baixa unica sem replay.');
   }
   assert.deepEqual(errors,[]);assert.deepEqual(external,[]);

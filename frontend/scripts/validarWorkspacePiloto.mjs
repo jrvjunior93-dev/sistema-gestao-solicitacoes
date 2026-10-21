@@ -216,6 +216,7 @@ try{
    });return{errors,writes,reads,queries,navigationAudit};
  };
  if (solicitacoesOnly) {
+  await (await import('./validarPeriodoRegistroSolicitacoes.mjs')).validarPeriodoRegistroUI({ browser, base, install });
   for (const width of [1366, 390]) for (const legacy of [false, true]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     const audit = await install(page, { context: true });

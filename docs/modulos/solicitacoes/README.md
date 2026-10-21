@@ -1,5 +1,51 @@
 # Modulo SOLICITACOES
 
+## Promocao MAIN periodo de registro - 2026-10-21
+
+Pacote771f8041 promovido junto com fatura/saldo-cartao/permutas a pedido do
+usuario, preservando main eb12d9d7. Runtime homologado sem mudanca adicional;
+schema/dependencias/ACL/historico intactos. Roteiro produtivo pinado
+`ops/deploy/atualizar-producao-pendencias-20261021.sh`, somente pelo operador:
+guardas de ambiente/backup/timer/schema, QA e restart exclusivamente PROD.
+Consultar registro inicial/final, uma ponta, sem datas, combinado com
+Resposta/Pagamento/status/obra e retorno/F5. Sem escrita de negocio para testar.
+[Promocao e recuperacao](../../handoffs/2026-10-21-promocao-main-pendencias-dev.md).
+
+## Periodo de registro na lista - 2026-10-21
+
+O filtro de registro apresenta `Data de registro de` e `Data de registro ate`,
+no mesmo padrao DateInputBR de Resposta/Pagamento. Usa a criacao da solicitacao
+(`createdAt`), nao a data de vencimento, pagamento ou ultima atualizacao.
+Envia `data_inicio`/`data_fim` ja previstos no GET /solicitacoes. Dia inicial e
+final inclusivos; uma ponta vazia nao limita esse lado, ambas vazias nao
+restringem o registro. Combina com outros filtros e conserva debounce/paginacao.
+
+A guarda do controller usa Reflect.ownKeys para detectar Op.gte/Op.lte, que
+sao Symbols do Sequelize; Object.keys antes ignorava o intervalo. Nao altera
+ACL/escopo, ordenacao ou registros. Sem migration/permissoes novas.
+
+Data unica antiga salva vira inicio/fim iguais. Periodo novo prevalece sobre
+o legado; URL explicita nao herda a outra ponta salva. Sessao/aba/retorno,
+exportacao e atualizacoes locais conservam o recorte. A preferencia visivel
+continua usando a chave data_registro; esconder limpa o legado e ambas as pontas,
+e Limpar filtros tambem remove o periodo. Datas invalidas/invertidas bloqueiam
+consulta/exportacao ate corrigir, sem criar notificacao persistente.
+
+QA: backend/scripts/validarPeriodoRegistroSolicitacoes.js (controller sem DB),
+frontend/scripts/validarPeriodoRegistroSolicitacoes.mjs (unidade, sessao,
+live update/exportacao isolados) e validarWorkspacePiloto.mjs
+--solicitacoes-filtros-only (inclui tela real desktop/mobile).
+[Handoff](../../handoffs/2026-10-21-solicitacoes-periodo-registro.md).
+
+Publicacao DEV deste pacote: ops/deploy/atualizar-dev-periodo-registro-20261021.sh,
+com SHA fixo publicado na refactor/frontend. Confere caminho/branch/checkout
+limpo, lock, PM2/8001/sem watch, identidade/schema/sessao12h e .env por hash.
+Exige base instalada93f75 ou posterior e que o alvo contenha44ee71b2; limita
+o delta novo de backend ao controller. Sem migrations ou dependencias novas;
+testa backend e unidade frontend antes de reiniciar exclusivamente backend-dev.
+Pacotes DEV anteriores ja publicados acompanham o fast-forward se o checkout
+estiver atrasado. O frontend deve estar publicado no ambiente DEV da Vercel.
+
 ## Cadastro rapido de favorecido: contexto da origem - 2026-10-13
 
 - POST /solicitacoes/favorecidos aceita obra_id opcional, ID positivo/seguro,
