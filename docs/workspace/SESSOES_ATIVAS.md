@@ -1,5 +1,17 @@
 # Sessoes Ativas
 
+- codex-saldo-cartao-permutas-publicacao-20261021: agente unico, publicacao DEV
+  autorizada para os dois ajustes pendentes/QA/docs/roteiro com SHA fixo.
+  Sem EC2/banco/DDL/main/producao; excluir outputs privados. Reservas no ownership.
+  Backend/cartao/SQL/ACL, UI1366/390, build, Node/Bash/guardas/docs590/19/diff
+  aprovados; ownership liberado para commit/push autorizado e homologacao DEV.
+
+- codex-fila-cartao-saldo-remanescente-20261021: finalizado local, agente unico,
+  baseDEV5dbdd55a. Guarda credito/QA/docs reservados; sem EC2/banco/DDL/main/push.
+  Permutas locais preservadas e NSDocs nao autorizada para implementacao.
+  QA backend/ACL/estorno/rollback/replay, UI1366/390, build, Node/diff e docs590/19
+  aprovados. Handoff salvo, ownership liberado; sem commit/push.
+
 - codex-fatura-lista-unica-20261021-publicacao: validado para publicacao, agente unico;
   commit/push refactor/frontend autorizado. Delta/roteiro/QA/docs reservados,
   sem migration/reinicio/EC2/main. Excluir permutas locais e outputs privados.
@@ -12,6 +24,12 @@
   Unidade/UI1366/390, regressao faturas/cartao, build/navegacao/abas/docs/Node/diff
   aprovados; layout global com falhas preexistentes, reduzidas127->125.
   Handoff salvo, ownership liberado; sem commit/push.
+
+- codex-permutas-obras-case-20261020: finalizado local, agente unico, baseDEV93f75.
+  Reserva JOIN Obras/teste/docs; sem main/EC2/DDL/publicacao. Diagnostico
+  adicional readonly: forma de pagamento de contrato de venda em Contas a Receber.
+  Casing/modelo/schema/SQL/filtros/ACL, operacao/guardas/Node/docs/diff aprovados,
+  ownership liberado; diagnostico comercial registrado, sem commit/push.
 
 - codex-historico-encerramento-sem-pedido-20261020-publicacao: finalizado local,
   agente unico, baseDEVf835/main e2e13d44. Commit/push DEV autorizado; reservar

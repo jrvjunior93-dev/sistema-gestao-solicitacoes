@@ -1,5 +1,31 @@
 # Handoff Global
 
+## Publicacao DEV saldo cartao e permutas - 2026-10-21
+
+- Usuario autorizou commit/push saldo/cartao e incluiu demais ajustes pendentes:
+  correcao Obras do relatorio de permutas. Nenhuma implementacao de NSDocs ou
+  fallback de forma prevista em Contas a Receber faz parte deste pacote.
+- Roteiro DEV novo com SHA/base93f75/fast-forward, identidade/schema/sessao/PM2,
+  dependencias/migrations intactas e runtime limitado aos dois servicos.
+  MySQL permutas somente leitura antes do restart exclusivo backend-dev.
+- Sem EC2 pelo agente/main/producao; excluir outputs privados. Testes backend,
+  regressoes SQL/ACL e guardas do deploy aprovados; UI/build/docs no fechamento.
+- Fechamento aprovado: UI1366/390, build, Node/Bash/guardas/docs590/19/diff.
+  Ownership liberado para commit/push autorizado; operador executa deploy DEV.
+
+## Saldo remanescente no cartao da fila - 2026-10-21
+
+- Finalizado local para refactor/frontend: credito com parcelamento validado
+  pode quitar saldo apos PIX anterior, preservando o legado sem configuracao.
+  Exemplo40810 = PIX4956,70 + desconto6853,30 + cartao29000 em6x.
+- Apenas compra nova nas faturas; PIX/historico anteriores preservados.
+  Testados ACL da rota com operador comum, parcial/excesso, contas/debito,
+  cancelado/bloqueado, faturas processadas, replay, estorno e rollback atomico.
+- Backend/regressoes/Node, UI1366/390, build/docs590/19/diff aprovados.
+  Sem EC2/DB real/migration/dependencias/main/producao/commit/push.
+  Handoff: docs/handoffs/2026-10-21-fila-cartao-saldo-remanescente.md.
+  Ownership liberado; permutas locais e outputs privados preservados.
+
 ## Publicacao DEV lista unica da fatura - 2026-10-21
 
 - Publicacao do delta de UI autorizada na refactor/frontend, base93f75.
@@ -24,6 +50,19 @@
 - Ownership liberado; handoff 2026-10-21-fatura-lista-unica.md. Sem EC2/banco
   real/migration/main/producao/commit/push. Permutas anteriores e outputs
   preservados; aguardar autorizacao de publicacao para homologacao DEV.
+
+## Permutas Obras e diagnostico Contas a Receber - 2026-10-20
+
+- BaseDEV93f75, agente unico. Operador confirmou tabela Obras, casing MySQL0
+  e ER_NO_SUCH_TABLE para obras. JOIN corrigido; teste confere modelo/schema
+  case-sensitive antes do SQLite e rejeita forma antiga explicitamente.
+- SQL/filtros/legado/estornos/escopo/ACL, permuta operacional/guardas DEV,
+  Node/docs/diff aprovados. Sem migration/UI/configuracao/EC2/main/publicacao.
+- Adicional readonly: contrato guarda forma prevista na parcela; titulo nao
+  recebe forma_pagamento_id e Contas a Receber so mostra formaPagamento.
+  Nao alterar baixas/contratos; implementacao separada depende de autorizacao.
+- Ownership liberado, delta local sem commit/push; handoff
+  2026-10-20-permutas-obras-case.md.
 
 ## Publicacao DEV motivo encerramento - 2026-10-20
 

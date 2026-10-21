@@ -1,5 +1,36 @@
 # Ownership Ativo
 
+## Publicacao DEV saldo cartao e permutas - 2026-10-21
+
+- Usuario autorizou commit/push da correcao de saldo/cartao e depois incluiu
+  as demais correcoes pendentes: JOIN Obras do relatorio de permutas.
+- Agente unico, validado para publicacao; ownership liberado: delta desses dois ajustes/QA/docs,
+  novo ops/deploy/atualizar-dev-saldo-cartao-permutas-20261021.sh e QA de guardas
+  backend/scripts/validarDeploySaldoCartaoPermutasDev.js, handoffs e controles.
+- Sem main/producao/EC2/banco real, DDL/dependencias/.env/flags. Publicar somente
+  refactor/frontend; excluir outputs privados. Nao implementar diagnosticos
+  de contrato/Contas a Receber ou NSDocs nesta publicacao.
+- Regressoes backend/cartao/SQL/ACL, UI1366/390, build, guardas Node/Bash,
+  docs590/19 e diff aprovados. Publicar fast-forward na refactor/frontend;
+  agente nao executa roteiro EC2. Handoff de saldo registra roteiro/homologacao.
+
+## Quitacao de saldo por cartao na fila - 2026-10-21
+
+- Agente unico, finalizado local, ownership liberado, base DEV5dbdd55a. Usuario autorizou implementar
+  e testar saldo com PIX anterior/desconto/cartao6x, sem alterar producao.
+- Reservados: pagamentoManualFilaService.js somente guarda de credito,
+  validarCartaoParcelamentoBaixa.js, novo QA validarFilaCartaoSaldoRemanescente.js,
+  validarCartaoParcelamentoUI.mjs somente cenario saldo/desconto, README Financeiro,
+  handoff desta tarefa e controles workspace.
+- Permitir baixa anterior apenas no fluxo validado parcelamento_cartao e com
+  quitacao integral do saldo atual. Preservar trava do cartao legado sem config,
+  pagamentos parciais/ACIMA_SALDO, ACL, faturas processadas, replay/locks/rollback.
+- Sem migration/dependencias, EC2/banco real, main/producao, commit ou push.
+  Permutas locais e outputs privados preservados; sem implementacao NSDocs.
+- QA backend real/memoria, ACL de rota, estorno/rollback/replay, UI1366/390,
+  build, Node/diff e docs590/19 aprovados. Handoff:
+  docs/handoffs/2026-10-21-fila-cartao-saldo-remanescente.md.
+
 ## Publicacao DEV lista unica da fatura - 2026-10-21
 
 - Usuario autorizou commit/push somente deste ajuste na refactor/frontend e
@@ -28,6 +59,21 @@
   navegacao/abas, docs589/19, Node/diff aprovados. Layout global127->125;
   falhas remanescentes preexistentes fora desta tela. Ownership liberado.
   Handoff: docs/handoffs/2026-10-21-fatura-lista-unica.md.
+
+## Relatorio permutas: tabela Obras - 2026-10-20
+
+- codex-permutas-obras-case-20261020, agente unico, finalizado local, baseDEV93f75.
+  Usuario autorizou corrigir/testar referencia Obras apos evidencia DEV
+  lower_case_table_names=0, tabela Obras e ER_NO_SUCH_TABLE para obras.
+- Reserva: permutaRelatorioService.js somente JOIN Obras, validarPermutasRelatorio.js
+  para detectar casing contra modelo/schema antes de SQLite; README Financeiro,
+  handoff e quatro controles. Preservar ACL/filtros/somas/paginacao/legado.
+- Sem EC2/banco real, migration/configuracao/UI, main/producao ou commit/push.
+- Pedido adicional: diagnosticar forma de pagamento do contrato de venda na
+  pagina Contas a Receber somente por leitura; nao modificar contratos/titulos.
+- JOIN corrigido; teste casing exato/modelo/schema com erro antigo reproduzido,
+  SQL/filtros/ACL/escopo, operacao permuta, guardas DEV/Node/docs/diff aprovados.
+  Diagnostico comercial readonly registrado; ownership liberado e handoff salvo.
 
 ## Publicacao DEV motivo encerramento sem pedido - 2026-10-20
 

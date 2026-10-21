@@ -18,8 +18,9 @@ Object.assign(h.faturaMocks, faturas);
 const parcelamento = load('cartaoParcelamentoService', { ...dependencies, './faturaCartaoFinanceiroService': faturas });
 dependencies['./cartaoParcelamentoService'] = parcelamento;
 queueDependencies['./cartaoParcelamentoService'] = parcelamento;
-const fila = load('pagamentoManualFilaService', queueDependencies);
+// Baixa e estorno reais precisam estar presentes antes do destructuring do servico.
 queueDependencies['./tituloFinanceiroService'] = isolated.exports;
+const fila = load('pagamentoManualFilaService', queueDependencies);
 queueDependencies['./pagamentoFilaRateioDomain'] = require('../src/services/pagamentoFilaRateioDomain');
 queueDependencies['./pagamentoFilaLiquidacaoService'] = load('pagamentoFilaLiquidacaoService', queueDependencies);
 const oldAll = models.CartaoBaixaParcela.findAll;
@@ -157,7 +158,9 @@ async function main() {
   reset(); h.colocarNaFila(state.titulos[0]);
   state.titulos[0].valor_baixado = 100; state.titulos[0].valor_saldo = 2640; state.titulos[0].status = 'PARCIAL';
   const partial = JSON.parse(JSON.stringify(body)); partial.itens[0].valor_pago = 2640;
+  delete partial.itens[0].parcelamento_cartao; // Legado sem config continua bloqueado.
   await assert.rejects(fila.registrarBaixasFila(req, partial), /integralmente/); assert.equal(state.movimentos.length, 0);
+  await require('./validarFilaCartaoSaldoRemanescente').validarQuitacaoSaldoCartao({ h, reset, fila });
 
   // API estrita: nem debito, strings de data incompletas ou chaves falsas abrem caminho alternativo.
   for (const cfg of [{ quantidade_parcelas: 61, data_compra: '2026-10-19', chave_idempotencia: key },

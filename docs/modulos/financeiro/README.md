@@ -1,5 +1,36 @@
 # Modulo FINANCEIRO
 
+## Cartao na fila com PIX anterior e desconto - 2026-10-21
+
+A baixa simples por credito com `parcelamento_cartao` validado pode quitar o
+saldo remanescente de um titulo com pagamentos anteriores. Continua exigindo
+quitacao integral do saldo atual; o fluxo legado sem essa configuracao conserva
+a restricao de ausencia de baixa anterior. Permissoes e demais bloqueadores
+permanecem nos mesmos pontos, sem migracao de dados ou alteracao de schema.
+
+Exemplo validado: original40810, PIX anterior4956,70, saldo35853,30,
+desconto6853,30 e cartao29000 em6x. Somente29000 entram nas faturas:
+duas parcelas4833,34 e quatro4833,33. PIX/historico anteriores sao preservados;
+estorno da compra nova reabre35853,30 sem estornar o PIX. Fatura processada
+continua bloqueando a operacao correspondente.
+
+QA backend: `node backend/scripts/validarFilaCartaoSaldoRemanescente.js`,
+tambem integrado a `validarCartaoParcelamentoBaixa.js`. QA UI real com API
+simulada: executar `node scripts/validarCartaoParcelamentoUI.mjs` a partir de
+`frontend/` (1366/390, desconto, previa6x, payload e usuario somente leitura).
+Sem banco/rede externos. [Handoff e protecoes](../../handoffs/2026-10-21-fila-cartao-saldo-remanescente.md).
+
+Publicacao DEV autorizada junto com a correcao de `Obras` do relatorio de
+permutas. Roteiro `ops/deploy/atualizar-dev-saldo-cartao-permutas-20261021.sh`
+recebe SHA fixo da refactor/frontend: exige base instalada93f75 ou posterior,
+fast-forward, PM2 DEV online/sem watch, identidade MySQL/schema e sessao12h.
+Confere dependencias/migrations inalteradas e limita runtime aos dois servicos;
+roda regressoes e `verificarPermutasMySqlDev.js --verificar` somente leitura,
+depois reinicia exclusivamente backend-dev. Nao altera .env/flags ou producao.
+Sem instalar dependencias nem executar migrations. Homologacao financeira manual
+somente no DEV, com PIX anterior preservado, desconto e cartao6x; conferir tambem
+relatorio de permutas sem datas e com filtros/permissoes habituais.
+
 ## Lista unica no detalhe da fatura de cartao - 2026-10-21
 
 `FinanceiroFaturaCartaoDetalhe` apresenta em uma unica `TabelaPadrao` os
@@ -29,6 +60,19 @@ Atualizacao DEV deste pacote usa
 Como so muda UI/QA/docs, nao instala dependencias, nao aplica migrations e nao
 reinicia backend. Confere checkout/PM2/watch/schema/.env e executa o QA unitario;
 a exibicao depende do deploy do frontend DEV na Vercel. Nunca executar em main.
+
+## Relatorio de permutas: referencia Obras - 2026-10-20
+
+Consulta usa `LEFT JOIN Obras`, alinhada ao modelo Obra e ao nome real da
+tabela no MySQL. Operador confirmou no DEV `lower_case_table_names=0`,
+tabela `Obras` e `ER_NO_SUCH_TABLE` para a referencia anterior `obras`.
+Sem migration, rename, ajuste de configuracao, dados ou permissoes.
+
+`validarPermutasRelatorio.js` confere identificadores de tabela com casing
+exato contra o modelo/schema antes de cada SELECT SQLite; a referencia antiga
+e rejeitada explicitamente. SQLite sozinho nao detecta diferenca de casing.
+Filtros, periodo integral, somas, estornos/legado, paginacao e ACL preservados.
+Handoff: [correcao e validacoes](../../handoffs/2026-10-20-permutas-obras-case.md).
 
 ## Comprovantes manuais PDF e imagens - 2026-10-20
 

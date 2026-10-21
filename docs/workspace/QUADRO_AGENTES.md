@@ -1,5 +1,23 @@
 # Quadro de Agentes
 
+## Publicacao DEV saldo cartao e permutas - 2026-10-21
+
+- Usuario autorizou publicar os dois deltas pendentes na refactor/frontend.
+  Agente unico, reservas no ownership: implementacao/QA/docs e roteiro DEV.
+- Guardas limitam runtime a pagamentoManualFilaService/permutaRelatorioService,
+  sem DDL/dependencias/.env; MySQL readonly antes de reiniciar somente backend-dev.
+- Sem EC2/banco pelo agente/main/producao; outputs privados fora da publicacao.
+- Backend/cartao/SQL/ACL, UI1366/390, build, guardas/Node/Bash/docs590/19/diff
+  aprovados; ownership liberado para commit/push DEV autorizado.
+
+## Saldo remanescente no cartao da fila - 2026-10-21
+
+- Agente unico, finalizado local; ownership liberado. Guarda pontual no credito parcelado da fila,
+  QA real de PIX4956,70 + desconto6853,30 + cartao29000 em6x. Reservas no ownership.
+- Sem UI runtime/migration/EC2/banco/main/publicacao; preservar protecoes e legado.
+- Backend/ACL/estorno/rollback/replay, UI1366/390, build, Node/diff e docs590/19
+  aprovados. Handoff salvo; aguardando eventual autorizacao de publicacao DEV.
+
 ## Publicacao DEV lista unica da fatura - 2026-10-21
 
 - Agente unico, validado para publicacao; usuario autorizou commit/push DEV deste ajuste.
@@ -16,6 +34,17 @@
 - Unidade/UI1366/390, faturas/parcelamento/permissoes, build/navegacao/abas,
   docs/Node/diff aprovados; layout global127->125, sem falha nesta tela.
   Ownership liberado e handoff salvo; aguarda publicacao autorizada.
+
+## Permutas Obras e diagnostico Contas a Receber - 2026-10-20
+
+- Agente unico, finalizado local. Corrigir JOIN confirmado pelo operador e reforcar
+  teste contra casing real do modelo/schema. Reservas no ownership; sem
+  main/EC2/DDL/publicacao. Preservar filtro/status/totais/ACL e dados antigos.
+- Adicional: ler origem da forma de pagamento dos titulos de contrato de venda;
+  usuario esclareceu pagina Contas a Receber. Sem escrita nesses dados/fluxo.
+- JOIN Obras e regressao case-sensitive aprovados; filtros/legado/escopo/ACL,
+  permutas operacionais/guardas DEV/Node/docs/diff aprovados. Diagnostico
+  comercial registrado sem implementacao, ownership liberado; sem commit/push.
 
 ## Publicacao DEV motivo encerramento - 2026-10-20
 

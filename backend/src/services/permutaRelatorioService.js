@@ -30,7 +30,7 @@ function consulta(f,obras) {
   if(f.q){replacements.busca='%'+f.q+'%';where.push('(t.codigo LIKE :busca OR p.nome LIKE :busca OR e.nome LIKE :busca OR o.nome LIKE :busca OR m.documento_referencia LIKE :busca)');}
   return {from:`FROM movimentos_financeiros m LEFT JOIN titulos_financeiros t ON t.id=m.titulo_financeiro_id
     LEFT JOIN financeiro_formas_pagamento f ON f.id=m.forma_pagamento_id LEFT JOIN parceiros p ON p.id=t.parceiro_id
-    LEFT JOIN empresas_grupo e ON e.id=m.empresa_id LEFT JOIN obras o ON o.id=t.obra_id WHERE ${where.join(' AND ')}`,replacements};
+    LEFT JOIN empresas_grupo e ON e.id=m.empresa_id LEFT JOIN Obras o ON o.id=t.obra_id WHERE ${where.join(' AND ')}`,replacements};
 }
 async function relatorio(req,query={},dependencias={}) {
   const auth=dependencias.auth||require('./authorizationService');
