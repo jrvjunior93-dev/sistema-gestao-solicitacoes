@@ -15,13 +15,14 @@ module.exports = {
     try {
       return res.json(await listarObrasElegiveisDistribuicao({
         centroCustoId: req.params.id,
-        usuario: req.user
+        usuario: req.user,
+        incluirCentrosCusto: true
       }));
     } catch (error) {
       const status = Number(error?.statusCode) || 500;
       if (status >= 500) console.error(error);
       return res.status(status).json({
-        error: status >= 500 ? 'Erro ao carregar as obras para distribuicao do centro de custo.' : error.message
+        error: status >= 500 ? 'Erro ao carregar obras e centros de custo para distribuicao gerencial.' : error.message
       });
     }
   }

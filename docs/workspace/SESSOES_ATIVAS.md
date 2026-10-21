@@ -1,5 +1,21 @@
 # Sessoes Ativas
 
+- codex-publicacao-dev-rh-centros-20261021: agente unico; commit/push DEV
+  autorizado para RH e distribuicao gerencial, validado para publicacao e ownership liberado.
+  OOM producao confirmado; RAM3,7GiB/sem swap, resize adiado pelo usuario.
+  Sem producao/main, memoria/reinicios reais, dados reais ou outputs no commit.
+
+- codex-distribuicao-centros-destinos-20261021: agente unico, implementacao/QA
+  gerencial de obras/centros na Nova Solicitacao. Concluida local e ownership
+  liberado; backend/UI390/1366/regressoes/build/sintaxe/docs594/19/diff aprovados.
+  RH preservado; sem publicacao, pedidos ou producao/banco reais.
+
+- codex-rh-demissao-conclusao-20261021: agente unico, implementacao e QA local
+  autorizados para novas demissoes/RH-000235. Conclusao documental DP separada
+  da aprovacao; inativo na lista ate concluir. Backend/UI390/1366/regressoes/
+  build/sintaxe/docs593/19 aprovados, finalizada local e ownership liberado.
+  Sem publicacao, producao ou banco real.
+
 - codex-publicacao-dev-autorizacao-unica-20261021: agente unico, commit/push DEV
   e comandos autorizados; delta/QA/docs/roteiro/guardas reservados. Sem main,
   producao, EC2/DB/Redis reais pelo agente. Excluir outputs privados.

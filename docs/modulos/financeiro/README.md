@@ -1,5 +1,23 @@
 # Modulo FINANCEIRO
 
+## Distribuicao gerencial com centros de custo como destinos - 2026-10-21
+
+Solicitacoes de Centro de Custo podem classificar gerencialmente o valor entre
+obras e outros centros ativos. O relatorio diferencia Centro de custo de origem
+de Obra / centro de custo de destino e permite filtrar ambos os tipos de destino.
+O total classificado considera cada linha uma vez; o total nao gera novos titulos,
+movimentos ou custos reais nos destinos. Resultado dos Centros de Custo e Resultado
+de Obras continuam lendo suas fontes anteriores, sem somar essa classificacao.
+
+Somas/percentuais/TODAS e ACL/configuracao do centro de origem permanecem. IDs e
+rotas legadas sao mantidos, com tipo_centro_custo no DTO. A ampliacao e exclusiva
+gerencial: nao altera adiantamentos/prestacao de contas. Sem migration/backfill,
+operacao real ou promocao de producao nesta entrega. Testes isolados nos dois
+runtimes: test:centro-custo-distribuicao.
+
+Detalhes no [canonico de Solicitacoes](../solicitacoes/README.md#centros-de-custo)
+e [handoff](../../handoffs/2026-10-21-distribuicao-centros-destinos.md).
+
 ## Autorizacao unica da selecao no PWA - 2026-10-21
 
 Na visao Por obra, autorizar usa uma unica passkey para todos os titulos

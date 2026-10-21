@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
+    "test:centro-custo-distribuicao": "node scripts/validarDistribuicaoCentroCustoDestinos.js && node scripts/validarAdiantamentoCentroCusto.js",
+    "test:rhdp-demissao-conclusao": "node scripts/validarRhDemissaoConclusao.js",
     "test:cartao-parcelamento-baixa": "node scripts/validarCartaoParcelamentoBaixa.js",
     "test:titulo-cancelamento": "node scripts/validarTituloCancelamento.js",
     "test:fila-multiplas-fontes": "node scripts/validarFilaBaixaComposta.js && node scripts/validarFilaLiquidacaoRateada.js && node scripts/validarPermutasOperacionais.js && node scripts/validarCarteiraChequesBaixaComposta.js",

@@ -1,5 +1,47 @@
 # Ownership Ativo
 
+## Publicacao DEV RH e destinos gerenciais - 2026-10-21
+
+- Usuario autorizou commit/push refactor/frontend e comandos exclusivos DEV.
+- Agente unico, validado para publicacao, ownership liberado: deltas RH/demissao e distribuicao
+  gerencial, roteiro atualizar-dev-rh-centros-20261021.sh, guarda/QA de deploy,
+  READMEs/handoffs e quatro controles. Excluir outputs privados.
+- Base remota DEV828ed2ec conferida; main80df6534 somente leitura.
+- Logs fornecidos: tres OOM do heap Node em producao (~1,9 GB), sem timestamps
+  ou correlacao de requisicao. Nao corrigir pedidos, aumentar heap, reiniciar
+  ou fazer deploy em producao nesta publicacao.
+
+## Distribuicao gerencial para centros de custo - 2026-10-21
+
+- Usuario priorizou permitir centros de custo como destinos na Nova Solicitacao.
+- Agente unico, ownership liberado (entrega local): centroCustoDistribuicaoService, controller da
+  elegibilidade e relatorio, NovaSolicitacao, DistribuicaoCentroCustoConfig,
+  FinanceiroDistribuicaoCentrosCusto/atalhos textuais do relatorio, novos QAs e
+  regressoes de adiantamento, scripts npm, catalogo de navegacao gerado se atualizado
+  pelo prebuild, README Solicitacoes/Financeiro e handoff/quatro controles.
+- Preservar ajustes RH locais. Sem reabertura de pedidos nesta etapa, producao,
+  banco/storage reais, commit/push/deploy ou mudanca nos custos reais/adiantamentos.
+- API/colunas legadas obra_id/obras mantidas; ampliacao explicita apenas gerencial,
+  mesma ACL/configuracao, TODAS, percentuais e centavos. Sem migration.
+- Backend transacional/ACL, UI390/1366/envio/relatorio/configuracao, regressoes
+  de adiantamento/compra-centro/RH, build10,88s, sintaxe/docs594/19/diff aprovados.
+
+## Demissao com conclusao DP - 2026-10-21
+
+- Usuario autorizou implementar/testar para refactor/frontend novas demissoes
+  e legado RH-000235, inativo visivel ate DP concluir, colaboracao e ateste.
+- Agente unico, ownership liberado (entrega local): rhSolicitacaoService/Controller, rhService somente
+  lista operacional, routes somente RH/ateste, validadores RH, novo domain de
+  conclusao, RhDpPessoal/ RhDpPessoalSolicitacoes e services RH; novos QAs e
+  testes RH existentes se preciso, scripts npm de teste em backend/frontend,
+  README RH/handoff e quatro controles.
+- Base DEV828ed2ec, branch codex/rh-demissao-conclusao-20261021. Sem producao/
+  EC2/DB/S3/Redis reais, commit/push/deploy ou calculos financeiros/vinculos novos.
+- Novos pedidos marcados internamente; somente RH-000235 e excecao legada,
+  nunca trazer todos os demitidos antigos ou reativar colaborador.
+- QA backend/ACL/rollback/replay, UI390/1366, regressoes de pessoal/documentos/
+  pagamentos, build, sintaxe e docs593/19 aprovados. Sem publicacao autorizada.
+
 ## Publicacao DEV autorizacao unica - 2026-10-21
 
 - Usuario autorizou commit/push refactor/frontend e comandos de atualizacao DEV.

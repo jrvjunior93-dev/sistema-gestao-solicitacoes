@@ -28,16 +28,17 @@ export default function DistribuicaoCentroCustoConfig({ centro, onFechar }) {
     } catch (error) { setErro(error.message); }
     finally { emVoo.current = false; setSalvando(false); }
   }
-  return <OverlayModal rotulo={`Obras para distribuição · ${centro.nome}`} onFechar={salvando ? undefined : onFechar}>
-    <header data-modal="cabecalho" className="p-4 border-b flex items-center justify-between gap-3"><h2>Obras para distribuição · {centro.nome}</h2><button type="button" className="btn btn-ghost" onClick={onFechar} disabled={salvando}>Fechar</button></header>
+  return <OverlayModal rotulo={`Destinos para distribuição · ${centro.nome}`} onFechar={salvando ? undefined : onFechar}>
+    <header data-modal="cabecalho" className="p-4 border-b flex items-center justify-between gap-3"><h2>Destinos para distribuição · {centro.nome}</h2><button type="button" className="btn btn-ghost" onClick={onFechar} disabled={salvando}>Fechar</button></header>
     <div className="p-4">
     {erro && <p role="alert" className="form-error">{erro}</p>}
-    {!contexto ? <p>Carregando obras…</p> : <div className="space-y-3">
-      <label className="flex items-center gap-2"><input type="checkbox" checked={ids === null} disabled={salvando} onChange={e => setIds(e.target.checked ? null : [])} />Todas as obras elegíveis</label>
-      <label className="block">Pesquisar obras<input className="input w-full" value={busca} onChange={e => setBusca(e.target.value)} /></label>
+    {!contexto ? <p>Carregando destinos…</p> : <div className="space-y-3">
+      <label className="flex items-center gap-2"><input type="checkbox" checked={ids === null} disabled={salvando} onChange={e => setIds(e.target.checked ? null : [])} />Todas as obras e centros de custo elegíveis</label>
+      <label className="block">Pesquisar obras e centros de custo<input className="input w-full" value={busca} onChange={e => setBusca(e.target.value)} /></label>
+      <p className="text-xs text-[var(--c-muted)]">Na prestação de contas de adiantamentos, continuam disponíveis apenas os destinos já permitidos naquele fluxo.</p>
       <div className="max-h-80 overflow-auto divide-y divide-[var(--c-border)]">
         {contexto.obras.filter(obra => `${obra.codigo} ${obra.nome}`.toLocaleLowerCase('pt-BR').includes(busca.toLocaleLowerCase('pt-BR'))).map(obra => <label key={obra.id} className="flex items-center gap-2 py-2">
-          <input type="checkbox" disabled={salvando || ids === null} checked={ids === null || ids.includes(obra.id)} onChange={e => setIds(prev => e.target.checked ? [...prev, obra.id] : prev.filter(id => id !== obra.id))} />{obra.codigo} · {obra.nome}
+          <input type="checkbox" disabled={salvando || ids === null} checked={ids === null || ids.includes(obra.id)} onChange={e => setIds(prev => e.target.checked ? [...prev, obra.id] : prev.filter(id => id !== obra.id))} />{obra.codigo} · {obra.nome}{obra.tipo_centro_custo === 'CENTRO_CUSTO' ? ' · Centro de custo' : ''}
         </label>)}
       </div>
     </div>}

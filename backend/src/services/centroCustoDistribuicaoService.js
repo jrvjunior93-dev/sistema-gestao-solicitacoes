@@ -2,7 +2,7 @@
 
 const { Op } = require('sequelize');
 const { Obra, UsuarioObra, ConfiguracaoSistema, sequelize } = require('../models');
-const { isObraCentroCusto, TIPO_CENTRO_CUSTO_OBRA } = require('../constants/centroCusto');
+const { isObraCentroCusto, TIPO_CENTRO_CUSTO_OBRA, TIPO_CENTRO_CUSTO_ADMINISTRATIVO } = require('../constants/centroCusto');
 const { obterTokensSetoresUsuario } = require('./usuariosSetores');
 const { userHasSetorCapability } = require('./setorCapabilityService');
 
@@ -53,20 +53,28 @@ async function lerConfiguracao(centroCustoId, transaction = null) {
   throw erroNegocio('Configuracao de obras do centro de custo invalida. Solicite a revisao ao administrador.', 409);
 }
 
+function filtroDestinosAtivos(centro, incluirCentrosCusto = false) {
+  const obras = { tipo_centro_custo: TIPO_CENTRO_CUSTO_OBRA };
+  if (centroCustoPermiteTodasPrivadas(centro)) obras.classificacao = 'PRIVADA';
+  // Opt-in gerencial. A prestacao de contas de adiantamentos conserva apenas obras.
+  return incluirCentrosCusto
+    ? { ativo: true, [Op.or]: [obras, { tipo_centro_custo: TIPO_CENTRO_CUSTO_ADMINISTRATIVO }] }
+    : { ativo: true, ...obras };
+}
+
 async function configurarObrasDistribuicao(centroCustoId, payload, usuario) {
   if (normalizarToken(usuario?.perfil) !== 'SUPERADMIN') throw erroNegocio('Somente SUPERADMIN pode configurar as obras de distribuicao.', 403);
   const ids = payload?.obras_ids;
   if (ids !== null && (!Array.isArray(ids) || ids.length > 1000 || ids.some(id => !Number.isInteger(id) || id <= 0) || new Set(ids).size !== ids.length)) {
-    throw erroNegocio('Informe obras distintas e validas ou todas as obras elegiveis.');
+    throw erroNegocio('Informe obras ou centros de custo distintos e validos ou todos os destinos elegiveis.');
   }
   return sequelize.transaction(async transaction => {
     const centro = await carregarCentroCusto(centroCustoId, transaction);
     // Lock do cadastro serializa inclusive a primeira criacao da chave.
     await Obra.findByPk(centro.id, { transaction, lock: transaction.LOCK.UPDATE });
     if (ids?.length) {
-      const where = { id: { [Op.in]: ids }, ativo: true, tipo_centro_custo: TIPO_CENTRO_CUSTO_OBRA };
-      if (centroCustoPermiteTodasPrivadas(centro)) where.classificacao = 'PRIVADA';
-      if (await Obra.count({ where, transaction }) !== ids.length) throw erroNegocio('Selecione somente obras ativas elegiveis para este centro de custo.');
+      const where = { ...filtroDestinosAtivos(centro, true), id: { [Op.in]: ids } };
+      if (await Obra.count({ where, transaction }) !== ids.length) throw erroNegocio('Selecione somente obras ou centros de custo ativos elegiveis para este centro de custo.');
     }
     const chave = `CENTRO_CUSTO_OBRAS_DISTRIBUICAO_${centro.id}`;
     const valor = JSON.stringify({ obras_ids: ids === null ? null : [...ids].sort((a, b) => a - b) });
@@ -80,9 +88,8 @@ async function configurarObrasDistribuicao(centroCustoId, payload, usuario) {
 async function contextoConfiguracao(centroCustoId, usuario) {
   if (normalizarToken(usuario?.perfil) !== 'SUPERADMIN') throw erroNegocio('Acesso negado.', 403);
   const centro = await carregarCentroCusto(centroCustoId);
-  const where = { ativo: true, tipo_centro_custo: TIPO_CENTRO_CUSTO_OBRA };
-  if (centroCustoPermiteTodasPrivadas(centro)) where.classificacao = 'PRIVADA';
-  return { ...await lerConfiguracao(centro.id), obras: await Obra.findAll({ where, attributes: ['id', 'codigo', 'nome', 'classificacao'], order: [['nome', 'ASC']] }) };
+  const where = filtroDestinosAtivos(centro, true);
+  return { ...await lerConfiguracao(centro.id), obras: await Obra.findAll({ where, attributes: ['id', 'codigo', 'nome', 'classificacao', 'tipo_centro_custo'], order: [['nome', 'ASC']] }) };
 }
 
 async function carregarCentroCusto(centroCustoId, transaction = null) {
@@ -98,7 +105,7 @@ async function carregarCentroCusto(centroCustoId, transaction = null) {
   return centroCusto;
 }
 
-async function listarObrasElegiveisDistribuicao({ centroCustoId, usuario, transaction = null }) {
+async function listarObrasElegiveisDistribuicao({ centroCustoId, usuario, transaction = null, incluirCentrosCusto = false }) {
   const centroCusto = await carregarCentroCusto(centroCustoId, transaction);
   const auth = require('./authorizationService');
   if (!await auth.hasObraAccess(usuario, centroCusto.id) && !await auth.userCanCreateInAllObras(usuario)) {
@@ -128,11 +135,7 @@ async function listarObrasElegiveisDistribuicao({ centroCustoId, usuario, transa
     idsVinculados = [...new Set(vinculos.map((item) => Number(item.obra_id)).filter(Boolean))];
   }
 
-  const where = {
-    ativo: true,
-    tipo_centro_custo: TIPO_CENTRO_CUSTO_OBRA
-  };
-  if (somentePrivadas) where.classificacao = 'PRIVADA';
+  const where = filtroDestinosAtivos(centroCusto, incluirCentrosCusto);
   if (configuracao.obras_ids !== null) {
     const elegiveis = idsVinculados ? configuracao.obras_ids.filter(id => idsVinculados.includes(id)) : configuracao.obras_ids;
     idsVinculados = elegiveis;
@@ -141,7 +144,7 @@ async function listarObrasElegiveisDistribuicao({ centroCustoId, usuario, transa
 
   const obras = await Obra.findAll({
     where,
-    attributes: ['id', 'codigo', 'nome', 'cidade', 'classificacao'],
+    attributes: ['id', 'codigo', 'nome', 'cidade', 'classificacao', 'tipo_centro_custo'],
     order: [['codigo', 'ASC'], ['nome', 'ASC']],
     transaction
   });
@@ -186,7 +189,7 @@ async function validarDistribuicaoCentroCusto({
   }
 
   if (distribuicao?.todas === true || normalizarToken(distribuicao?.abrangencia) === 'TODAS') {
-    const elegibilidade = await listarObrasElegiveisDistribuicao({ centroCustoId, usuario, transaction });
+    const elegibilidade = await listarObrasElegiveisDistribuicao({ centroCustoId, usuario, transaction, incluirCentrosCusto: true });
     return {
       ...elegibilidade,
       criterio: CRITERIOS_DISTRIBUICAO.TODAS,
@@ -206,17 +209,17 @@ async function validarDistribuicaoCentroCusto({
   }
 
   const itens = Array.isArray(distribuicao?.itens) ? distribuicao.itens : [];
-  if (itens.length === 0) throw erroNegocio('Selecione ao menos uma obra para a distribuicao gerencial.');
+  if (itens.length === 0) throw erroNegocio('Selecione ao menos uma obra ou centro de custo para a distribuicao gerencial.');
 
   const ids = itens.map((item) => Number(item?.obra_id));
   if (ids.some((id) => !Number.isInteger(id) || id <= 0) || new Set(ids).size !== ids.length) {
-    throw erroNegocio('A distribuicao gerencial contem obras invalidas ou repetidas.');
+    throw erroNegocio('A distribuicao gerencial contem obras ou centros de custo invalidos ou repetidos.');
   }
 
-  const elegibilidade = await listarObrasElegiveisDistribuicao({ centroCustoId, usuario, transaction });
+  const elegibilidade = await listarObrasElegiveisDistribuicao({ centroCustoId, usuario, transaction, incluirCentrosCusto: true });
   const permitidas = new Set(elegibilidade.obras.map((obra) => Number(obra.id)));
   if (ids.some((id) => !permitidas.has(id))) {
-    throw erroNegocio('Uma ou mais obras do rateio nao estao disponiveis para este usuario e centro de custo.', 403);
+    throw erroNegocio('Uma ou mais obras ou centros de custo do rateio nao estao disponiveis para este usuario e centro de custo.', 403);
   }
 
   let linhas;

@@ -41,6 +41,7 @@ const models = {
 const vinculos = [];
 function carregar(nome) {
   const deps = {
+    './rhDemissaoConclusaoDomain': require('../src/services/rhDemissaoConclusaoDomain'),
     sequelize: { Op }, '../models': models, '../middlewares/validation': validation,
     './rhColaboradorContatosDomain': contatos,
     './rhSolicitacaoConsultaDomain': require('../src/services/rhSolicitacaoConsultaDomain'),

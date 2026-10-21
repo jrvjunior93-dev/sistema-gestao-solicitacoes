@@ -137,7 +137,7 @@ export default function FinanceiroResultadoCentrosCusto() {
 
       <div className="app-actionbar">
         <Link className="btn btn-outline btn-sm" to="/financeiro/relatorios/centros-custo/distribuicao-obras">
-          Ver distribuição gerencial por obra
+          Ver distribuição gerencial por obra / centro de custo
         </Link>
       </div>
 

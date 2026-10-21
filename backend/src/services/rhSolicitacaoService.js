@@ -23,6 +23,7 @@ const { normalizeOriginalName } = require('../utils/fileName');
 const { garantirCodigoRhSolicitacao } = require('./rhSolicitacaoCodigoService');
 const { normalizarContatos, enderecosIguais } = require('./rhColaboradorContatosDomain');
 const { visivelNaConsulta, normalizarConsulta, colaboradoresDoPedido } = require('./rhSolicitacaoConsultaDomain');
+const demissao = require('./rhDemissaoConclusaoDomain');
 
 /**
  * O PEDIDO DE PESSOAL: a Obra pede, o DP decide (Fase 2 do modulo DP, 25/08).
@@ -479,7 +480,7 @@ async function abrirSolicitacao(payload = {}, contexto = {}) {
     const tipo = String(payload.tipo || '').trim().toUpperCase();
     const subtipo = payload.subtipo ? String(payload.subtipo).trim().toUpperCase() : null;
     const colaboradorId = payload.colaborador_id ? Number(payload.colaborador_id) : null;
-    const dados = normalizarValoresAdmissao(tipo, payload.dados || {});
+    const dados = demissao.dadosControlados(normalizarValoresAdmissao(tipo, payload.dados || {}), null, tipo === 'DEMISSAO');
 
     validarPedido(tipo, dados, colaboradorId, subtipo);
     await validarEnderecosDaAdmissao(tipo, dados, contexto);
@@ -1265,10 +1266,39 @@ async function rejeitarSolicitacao(id, motivo, contexto = {}) {
   });
 }
 
+/** Conclusao documental/operacional. NUNCA reaplica demissao, vinculo ou calculo. */
+async function concluirDemissao(id, contexto = {}) {
+  const { isSuperadmin } = require('./authorizationService');
+  const { userBelongsToDpSetor } = require('./setorCapabilityService');
+  if (!isSuperadmin(contexto.usuario) && !await userBelongsToDpSetor(contexto.usuario)) {
+    throw new ValidationError('Somente o DP pode concluir a demissao.', 403);
+  }
+  return sequelize.transaction(async transaction => {
+    const solicitacao = await RhSolicitacao.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
+    if (!solicitacao) throw new ValidationError('Solicitacao de pessoal nao encontrada.', 404);
+    if (demissao.concluida(solicitacao)) return solicitacao;
+    if (!demissao.pendente(solicitacao)) {
+      throw new ValidationError('Esta solicitacao nao e uma demissao aguardando conclusao do DP.');
+    }
+    const { prometidosFaltando } = await pendenciasDeDocumento(solicitacao, transaction);
+    if (prometidosFaltando.length) {
+      throw new ValidationError('Documentos do checklist ainda precisam ser entregues e atestados: '
+        + prometidosFaltando.map(item => item.nome).join(', ') + '.');
+    }
+    await transferirSeJaTemColaborador(solicitacao, contexto, transaction);
+    await solicitacao.update({ dados_json: { ...dadosDo(solicitacao),
+      [demissao.CAMPO]: { versao: 1, concluida_em: new Date().toISOString(), concluida_por: contexto.usuarioId } } }, { transaction });
+    await registrarHistorico(solicitacao, { acao: 'CONCLUSAO',
+      descricao: 'Demissao concluida pelo DP. Colaborador inativo deixa a lista operacional da obra.',
+      setor: contexto.setor, usuarioId: contexto.usuarioId }, transaction);
+    return solicitacao;
+  });
+}
+
 /** Reenvia depois de corrigir. Revalida o pedido inteiro — o reenvio nao e porta dos fundos. */
 async function reenviarSolicitacao(id, payload = {}, contexto = {}) {
   return sequelize.transaction(async (transaction) => {
-    const solicitacao = await RhSolicitacao.findByPk(id, { transaction });
+    const solicitacao = await RhSolicitacao.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
     if (!solicitacao) throw new ValidationError('Solicitacao de pessoal nao encontrada.', 404);
     impedirDecisaoManualDaJornada(solicitacao);
 
@@ -1276,7 +1306,8 @@ async function reenviarSolicitacao(id, payload = {}, contexto = {}) {
       throw new ValidationError('So uma solicitacao devolvida pode ser reenviada.');
     }
 
-    const dados = normalizarValoresAdmissao(solicitacao.tipo, payload.dados ? payload.dados : dadosDo(solicitacao));
+    const dados = demissao.dadosControlados(normalizarValoresAdmissao(solicitacao.tipo,
+      payload.dados ? payload.dados : dadosDo(solicitacao)), solicitacao);
     // A classificação de primeira lotação vem do servidor e não pode ser alterada no reenvio.
     if (dadosDo(solicitacao).primeira_lotacao === true) dados.primeira_lotacao = true;
     // O subtipo entra aqui tambem: sem ele, o reenvio viraria a porta para gravar um pedido que a
@@ -1386,7 +1417,7 @@ async function pedidosAbertosPorColaborador(obraIds = null, usuarioId = null) {
     if (require('./rhPessoalDomain').ehTransferencia(pedido)) continue;
     if (!visivelNaConsulta(pedido, usuarioId)) continue;
     const plano = normalizarConsulta(pedido);
-    if (!emCurso.includes(plano.situacao)) continue;
+    if (!emCurso.includes(plano.situacao) && !plano.demissao_pendente_conclusao) continue;
     for (const colaboradorId of colaboradoresDoPedido(pedido)) {
       const lista = porColaborador.get(colaboradorId) || [];
       lista.push(plano);
@@ -1441,18 +1472,19 @@ async function tiposDocumentoDoPedido(solicitacaoId) {
  *
  * So aceita anexo enquanto o pedido ainda esta em tratamento. Depois da decisao, o detalhe
  * continua disponivel para consulta e comentarios, mas a prova documental daquela decisao fica
- * preservada sem inclusoes posteriores.
+ * preservada sem inclusoes posteriores. Demissoes com conclusao DP separada
+ * continuam em tratamento depois da aprovacao, ate o DP concluir.
  */
 async function anexarNoPedido(solicitacaoId, dados = {}, contexto = {}, arquivo = null) {
   return sequelize.transaction(async (transaction) => {
-    const solicitacao = await RhSolicitacao.findByPk(solicitacaoId, { transaction });
+    const solicitacao = await RhSolicitacao.findByPk(solicitacaoId, { transaction, lock: transaction.LOCK.UPDATE });
     if (!solicitacao) throw new ValidationError('Solicitacao de pessoal nao encontrada.', 404);
 
     // RASCUNHO entra na lista, e e o caso principal: e nele que a obra junta a papelada ANTES de
     // enviar. Sem isso, "impedir o envio sem os documentos obrigatorios" seria impossivel de
     // cumprir — nao haveria momento em que anexar fosse permitido e o envio ainda nao tivesse
     // ocorrido.
-    if (![SITUACOES.RASCUNHO, SITUACOES.ABERTA, SITUACOES.REJEITADA].includes(solicitacao.situacao)) {
+    if (!demissao.podeAnexar(solicitacao)) {
       throw new ValidationError(
         `Nao da para anexar em uma solicitacao ${solicitacao.situacao}: ela ja foi decidida.`
       );
@@ -1556,13 +1588,17 @@ async function anexarNoPedido(solicitacaoId, dados = {}, contexto = {}, arquivo 
  * RECUSAR NAO APAGA o anexo. Ele fica `RECUSADO` com o motivo, e a obra ve o que precisa reenviar.
  * Apagar deixaria a obra sem saber o que aconteceu com o que ela mandou.
  */
-async function validarAnexo(anexoId, decisao = {}, contexto = {}) {
+async function validarAnexo(anexoId, decisao = {}, contexto = {}, solicitacaoId = null) {
   return sequelize.transaction(async (transaction) => {
-    const anexo = await RhSolicitacaoAnexo.findByPk(anexoId, { transaction });
-    if (!anexo) throw new ValidationError('Anexo nao encontrado.', 404);
-
-    const solicitacao = await RhSolicitacao.findByPk(anexo.solicitacao_id, { transaction });
+    // O pai vem da URL ja autorizada; nunca validar um anexo de outra solicitacao.
+    if (!solicitacaoId) throw new ValidationError('Informe a solicitacao do anexo.');
+    const solicitacao = await RhSolicitacao.findByPk(solicitacaoId, { transaction, lock: transaction.LOCK.UPDATE });
     if (!solicitacao) throw new ValidationError('Solicitacao do anexo nao encontrada.', 404);
+    const anexo = await RhSolicitacaoAnexo.findByPk(anexoId, { transaction, lock: transaction.LOCK.UPDATE });
+    if (!anexo || Number(anexo.solicitacao_id) !== Number(solicitacao.id)) {
+      throw new ValidationError('Anexo nao encontrado nesta solicitacao.', 404);
+    }
+    if (demissao.concluida(solicitacao)) throw new ValidationError('A demissao ja foi concluida.');
 
     /**
      * Depois que o anexo virou documento na pasta, atestar de novo nao significa nada — e mudar a
@@ -1573,6 +1609,9 @@ async function validarAnexo(anexoId, decisao = {}, contexto = {}) {
     }
 
     const aceito = decisao.aceito === true || String(decisao.aceito).toLowerCase() === 'true';
+    // Retry do mesmo ateste/recusa nao duplica o historico.
+    if ((aceito && anexo.situacao === 'VALIDADO')
+      || (!aceito && anexo.situacao === 'RECUSADO' && anexo.motivo_recusa === String(decisao.motivo || '').trim())) return anexo;
 
     if (!aceito) {
       const motivo = String(decisao.motivo || '').trim();
@@ -1826,6 +1865,7 @@ module.exports = {
   pendenciasDeDocumento,
   apontamentosDoColaborador,
   aprovarSolicitacao,
+  concluirDemissao,
   rejeitarSolicitacao,
   reenviarSolicitacao,
   cancelarSolicitacao,

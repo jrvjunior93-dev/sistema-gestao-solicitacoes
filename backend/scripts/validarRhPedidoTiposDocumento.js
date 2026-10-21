@@ -29,6 +29,7 @@ function carregar(file, deps) {
   return sandbox.module.exports;
 }
 const service = carregar('services/rhSolicitacaoService.js', {
+  './rhDemissaoConclusaoDomain': require('../src/services/rhDemissaoConclusaoDomain'),
   sequelize: { Op }, '../models': models, '../middlewares/validation': { ValidationError },
   '../utils/codigoDoSetor': {}, './rhVinculoObraService': {}, './rhCalculoHistoricoService': {}, './s3': {},
   '../utils/fileName': {}, './rhSolicitacaoCodigoService': {}, './rhColaboradorContatosDomain': {},

@@ -19,7 +19,8 @@ const resumoJson = `CASE WHEN \`RhSolicitacao\`.subtipo = 'PAGAMENTO_POR_SOLICIT
       COLUMNS(ord FOR ORDINALITY, colaborador_id INT PATH '$.colaborador_id', estado VARCHAR(30) PATH '$.pagamento_estado',
         removido VARCHAR(80) PATH '$.removido_em')) l), JSON_ARRAY()))
   ELSE JSON_OBJECT('primeira_lotacao', JSON_EXTRACT(dados_json, '$.primeira_lotacao'),
-    'origem_sem_obra', JSON_EXTRACT(dados_json, '$.origem_sem_obra')) END`;
+    'origem_sem_obra', JSON_EXTRACT(dados_json, '$.origem_sem_obra'),
+    'demissao_conclusao_dp', JSON_EXTRACT(dados_json, '$.demissao_conclusao_dp')) END`;
 
 function numeroPagina(valor, padrao, max) {
   const n = valor == null || valor === '' ? padrao : Number(valor);
@@ -31,13 +32,13 @@ async function paginaSolicitacoes({ user, where, query, filtroSituacao, colabora
   const limite = numeroPagina(query.limite, 50, 100);
   const solicitada = numeroPagina(query.pagina, 1, 100000);
   const metadados = await RhSolicitacao.findAll({ where,
-    attributes: ['id', 'tipo', 'subtipo', 'situacao', 'colaborador_id', 'obra_id', 'criada_por', 'createdAt', 'updatedAt',
+    attributes: ['id', 'codigo', 'tipo', 'subtipo', 'situacao', 'colaborador_id', 'obra_id', 'criada_por', 'createdAt', 'updatedAt',
       [literal(resumoJson), 'dados_json']], raw: true });
   const abertos = ['ABERTA', 'ENVIO_PARCIAL', 'EM_REVISAO'];
   const filtrados = metadados.filter(s => !ehTransferencia(s) && visivelNaConsulta(s, user.id)
     && (colaboradorId === null || colaboradoresDoPedido(s).includes(colaboradorId)))
     .map(normalizarConsulta).filter(s => !filtroSituacao || (filtroSituacao === 'EM_ANDAMENTO'
-      ? abertos.includes(s.situacao) : s.situacao === filtroSituacao));
+      ? abertos.includes(s.situacao) || s.demissao_pendente_conclusao : s.situacao === filtroSituacao));
   const ordenados = await comAtividade(filtrados, user.id);
   const totalPaginas = Math.max(1, Math.ceil(ordenados.length / limite));
   const pagina = Math.min(solicitada, totalPaginas);
@@ -45,8 +46,8 @@ async function paginaSolicitacoes({ user, where, query, filtroSituacao, colabora
   for (const s of ordenados) porTipo[s.tipo] = (porTipo[s.tipo] || 0) + 1;
   return { ids: ordenados.slice((pagina - 1) * limite, pagina * limite).map(s => Number(s.id)),
     total: ordenados.length, pagina, limite, total_paginas: totalPaginas, por_tipo: porTipo,
-    abertas: ordenados.filter(s => abertos.includes(s.situacao)).length,
-    nao_lidas_abertas: ordenados.filter(s => abertos.includes(s.situacao) && s.nao_lida).length };
+    abertas: ordenados.filter(s => abertos.includes(s.situacao) || s.demissao_pendente_conclusao).length,
+    nao_lidas_abertas: ordenados.filter(s => (abertos.includes(s.situacao) || s.demissao_pendente_conclusao) && s.nao_lida).length };
 }
 
 module.exports = { paginaSolicitacoes, resumoJson, numeroPagina };

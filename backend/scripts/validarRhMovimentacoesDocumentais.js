@@ -29,6 +29,7 @@ const models = {
   RhDocumento: { create() { throw Error('Anexo sem classificacao nao vira documento oficial automaticamente'); } }
 };
 const deps = {
+  './rhDemissaoConclusaoDomain': require('../src/services/rhDemissaoConclusaoDomain'),
   sequelize: { Op }, '../models': models, '../middlewares/validation': { ValidationError },
   '../utils/codigoDoSetor': { setorParaHistorico: setor => setor.codigo || setor },
   './rhVinculoObraService': {}, './rhCalculoHistoricoService': {},

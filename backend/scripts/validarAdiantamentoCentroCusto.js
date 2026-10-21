@@ -21,7 +21,11 @@ async function centros() {
   let origem = row({ id: 30, nome: 'ADMINISTRATIVO / ESCRITORIO', ativo: true, tipo_centro_custo: 'CENTRO_CUSTO' });
   let config = null, consultasVinculos = 0, whereObras;
   const obras = [row({ id: 1, nome: 'Publica', ativo: true, tipo_centro_custo: 'OBRA', classificacao: 'PUBLICA' }), row({ id: 2, nome: 'Privada', ativo: true, tipo_centro_custo: 'OBRA', classificacao: 'PRIVADA' })];
-  const filtrar = where => obras.filter(o => (!where.classificacao || o.classificacao === where.classificacao) && (!where.id || (where.id[Op.in] || []).includes(o.id)));
+  const atende = (o, where) => (!where.classificacao || o.classificacao === where.classificacao)
+    && (!where.tipo_centro_custo || o.tipo_centro_custo === where.tipo_centro_custo)
+    && (!where[Op.or] || where[Op.or].some(w => atende(o, w)))
+    && (!where.id || (where.id[Op.in] || []).includes(o.id));
+  const filtrar = where => obras.filter(o => atende(o, where));
   const models = {
     Obra: { findByPk: async () => origem, findAll: async ({ where }) => { whereObras = where; return filtrar(where); }, count: async ({ where }) => filtrar(where).length },
     UsuarioObra: { findAll: async () => { consultasVinculos++; return [{ obra_id: 2 }]; } },

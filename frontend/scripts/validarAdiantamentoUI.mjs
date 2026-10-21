@@ -82,8 +82,8 @@ try {
   await page.getByText(/TIT-DEV/).waitFor(); assert.equal(pedidos.length, 3);
   assert.equal(pedidos[2].data_devolucao, '2099-12-01');
   await page.getByRole('button', { name: 'Obras para rateio', exact: true }).click();
-  await page.getByLabel('Todas as obras elegíveis').uncheck();
-  await page.getByLabel('Pesquisar obras').fill('privada');
+  await page.getByLabel('Todas as obras e centros de custo elegíveis').uncheck();
+  await page.getByLabel('Pesquisar obras e centros de custo').fill('privada');
   await page.getByRole('checkbox', { name: /02 · Obra Privada/ }).check();
   await page.getByRole('button', { name: 'Salvar', exact: true }).click();
   await page.getByRole('dialog').waitFor({ state: 'hidden' }); assert.deepEqual(configuracao.obras_ids, [2]);

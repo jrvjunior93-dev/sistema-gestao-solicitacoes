@@ -12,6 +12,7 @@ const instancia = dados => ({ ...dados, async update(patch, options) {
 } });
 let fila = Promise.resolve();
 const deps = {
+  './rhDemissaoConclusaoDomain': require('../src/services/rhDemissaoConclusaoDomain'),
   sequelize: { Op: { in: Symbol('in') } },
   '../models': {
     sequelize: { async transaction(fn) {

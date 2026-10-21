@@ -1,5 +1,34 @@
 # Quadro de Agentes
 
+## Publicacao DEV RH e destinos gerenciais - 2026-10-21
+
+- Commit/push DEV e comandos autorizados; dois pacotes validados, sem pedidos.
+- Remotos DEV828ed2ec/main80df6534 conferidos, sem divergencia do DEV.
+  Roteiro pinned/ff-only/schema readonly/PM28001, package.json so comandos QA,
+  sem DDL/dependencias/flags/.env ou operacoes reais pelo agente.
+- Logs confirmam OOM de Node em producao (~1,9GB), nao gatilho PC-00271.
+  RAM informada:3,7GiB, disponivel2,7GiB no snapshot, sem swap; tipo/IP pendentes.
+  Usuario priorizou finalizar DP/Nova Solicitacao. Memoria adiada; nao alterar.
+- Ownership liberado para publicacao; outputs privados excluidos, sem push main.
+
+## Distribuicao gerencial para centros de custo - 2026-10-21
+
+- Agente unico: permitir centros de custo no gerencial da Nova Solicitacao,
+  mantendo origem/ACL/configuracao, custos reais e adiantamento inalterados.
+- Entrega local concluida e ownership liberado. Backend/ACL/rollback, UI390/1366,
+  relatorio/configuracao/retry, regressoes, build10,88s/sintaxe/docs594/19/diff aprovados.
+- RH preservado local e sem commit/push; pedidos/reabertura fora desta etapa.
+  Sem producao ou dados reais. Ownership no painel, handoff especifico criado.
+
+## Demissao com conclusao DP - 2026-10-21
+
+- Agente unico, implementacao local para DEV828ed2ec em branch isolada.
+  Novas demissoes/RH-000235, inativo visivel ate concluir, colaboracao e ateste.
+- Backend/ACL/rollback/replay, UI390/1366, regressoes, build/sintaxe/docs593/19
+  e diff aprovados. Entrega local concluida, ownership liberado.
+  Sem banco real, producao, calculos, migration, commit/push ou deploy.
+- Handoff 2026-10-21-rh-demissao-conclusao; proximo passo publicar DEV se solicitado.
+
 ## Publicacao DEV autorizacao unica - 2026-10-21
 
 - Commit/push DEV e roteiro autorizados. Agente unico; delta/QA/docs/roteiro

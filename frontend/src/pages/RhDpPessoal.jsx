@@ -431,7 +431,7 @@ export default function RhDpPessoal() {
   // Não mostrar por um frame o recorte global/da obra anterior enquanto a
   // consulta local aguarda o debounce. O servidor continua filtrando também.
   const colaboradores = useMemo(() => localId
-    ? colaboradoresCarregados.filter(item => String(item.obra_id) === localId && item.status === 'ATIVO')
+    ? colaboradoresCarregados.filter(item => String(item.obra_id) === localId && (item.status === 'ATIVO' || item.demissao_pendente_conclusao))
     : colaboradoresCarregados, [colaboradoresCarregados, localId]);
   const [pagamentoAlvo, setPagamentoAlvo] = useWorkspaceState('pessoal:pagamentoAlvo', null);
   const pagamento = pagamentoAlvo && (!pagamentoAlvo.localId || obras.some(o => Number(o.id) === Number(pagamentoAlvo.localId)))
@@ -716,6 +716,7 @@ export default function RhDpPessoal() {
           : getRhColaboradores({
             obra_id: localValido?.id || filtroObra || undefined,
             status: localValido ? 'ATIVO' : undefined,
+            incluir_demissoes_pendentes: localValido ? '1' : undefined,
             q: busca || undefined
           }),
         listarRhSolicitacoes({ situacao: 'EM_ANDAMENTO', obra_id: localValido?.id || undefined, resumo: 1 })
@@ -1460,8 +1461,9 @@ export default function RhDpPessoal() {
               titulo: 'Situacao',
               tipo: 'status',
               render: (colaborador) => (
-                <span className={colaborador.status === 'ATIVO' ? 'rh-chip' : 'rh-chip rh-chip--saindo'}>
-                  {colaborador.status}
+                <span className="inline-block max-w-full">
+                  <span className={colaborador.status === 'ATIVO' ? 'rh-chip' : 'rh-chip rh-chip--saindo'}>{colaborador.status}</span>
+                  {colaborador.demissao_pendente_conclusao ? <small className="block text-xs whitespace-normal">Aguardando conclusão do DP</small> : null}
                 </span>
               )
             },
@@ -1510,7 +1512,7 @@ export default function RhDpPessoal() {
           urgencia={(colaborador) => (colaborador.tem_solicitacao_aberta ? 'warning' : null)}
           acoesLinha={(colaborador) => (
             <div className="rh-acoes-icones">
-              {podeAbrir ? <button type="button" className="rh-acao-icone" title="Solicitar pagamento"
+              {podeAbrir && !colaborador.demissao_pendente_conclusao ? <button type="button" className="rh-acao-icone" title="Solicitar pagamento"
                 aria-label={`Solicitar pagamento: ${colaborador.nome}`} onClick={() => {
                   const local = localSelecionado || obras.find((item) => Number(item.id) === Number(colaborador.obra_id));
                   if (local) setPagamento({ local, colaborador });
@@ -1529,7 +1531,7 @@ export default function RhDpPessoal() {
               >
                 <HiOutlineEye aria-hidden="true" />
               </button>
-              {podeAbrir ? ACOES_DA_LINHA.map(({ tipo, rotulo, Icone }) => (
+              {podeAbrir && !colaborador.demissao_pendente_conclusao ? ACOES_DA_LINHA.map(({ tipo, rotulo, Icone }) => (
                 <button
                   key={tipo}
                   type="button"

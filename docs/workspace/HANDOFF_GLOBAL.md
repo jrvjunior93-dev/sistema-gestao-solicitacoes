@@ -1,5 +1,39 @@
 # Handoff Global
 
+## Publicacao DEV RH e destinos gerenciais - 2026-10-21
+
+- Autorizado publicar os dois pacotes DEV e passar comandos, sem producao.
+  Roteiro atualizar-dev-rh-centros-20261021.sh com identidade/schema readonly,
+  PM28001, ff-only e dependencias/migrations imutaveis (so scripts QA novos).
+- Handoff: docs/handoffs/2026-10-21-publicacao-dev-rh-centros.md.
+- Logs mostram tres OOM no heap Node; sem timestamps/correlacao do pedido.
+  RAM informada:3,7GiB/sem swap; tipo/IP AWS ainda pendentes. Usuario adiou
+  memoria para priorizar publicacao DP/Nova Solicitacao. Nao alterar infraestrutura.
+- Sem EC2/banco real ou operacoes de memoria pelo agente. Excluir outputs.
+
+## Distribuicao gerencial para centros de custo - 2026-10-21
+
+- Nova Solicitacao aceita destinos centros/obras ativos, com mesma ACL e
+  configuracao. So classificacao gerencial; lancamento permanece na origem.
+- Adiantamento mantem destinos anteriores, sem custos/titulos nos destinos.
+  Handoff: docs/handoffs/2026-10-21-distribuicao-centros-destinos.md.
+- RH preservado e ainda nao publicado. Pedido/reabertura nao implementado.
+  Sem EC2/banco real, main/producao, commit/push/deploy nesta etapa.
+- Concluido local, ownership liberado. Backend/ACL/rollback, UI390/1366,
+  relatorio/configuracao/retry, regressoes, build/sintaxe/docs594/19/diff aprovados.
+
+## Demissao com conclusao DP - 2026-10-21
+
+- Implementacao/QA local de novas demissoes e RH-000235: inativo permanece
+  na obra ate DP concluir; comentarios/anexos durante tratamento, ateste corrigido.
+- Mantem APROVADA e seus efeitos; conclusao apenas documental/operacional,
+  transacional e idempotente. Sem financeiro, migration, producao ou banco real.
+- Handoff especifico: docs/handoffs/2026-10-21-rh-demissao-conclusao.md.
+  Publicacao DEV depende de pedido posterior; outputs privados fora do escopo.
+- Entrega local validada: backend transacional/ACL/replay, UI390/1366,
+  regressoes de RH/documentos/pagamentos, build/sintaxe/docs593/19/diff.
+  Ownership liberado, sem commit/push.
+
 ## Publicacao DEV autorizacao unica - 2026-10-21
 
 - Publicacao DEV autorizada; base771f8041, main60f327d7 fora do escopo.
