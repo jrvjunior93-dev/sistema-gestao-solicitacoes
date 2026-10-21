@@ -1,5 +1,13 @@
 # Sessoes Ativas
 
+- codex-promocao-passkey-unica-main-20261021: agente unico, base main60f327d7,
+  DEV828 homologado e promocao isolada autorizada; backup/timer confirmados.
+  Reservar delta/roteiro PROD/QA/docs, preservar main e demais pacotes DEV.
+  Sem EC2/banco/Redis pelo agente, DDL/configuracoes ou operacao financeira real.
+  QA backend/ACL/rollback/replay/concorrencia/cheques/anexos, UI130 titulos,
+  build/Node/Bash/guardas/docs598/19/diff/escopo aprovados; ownership liberado
+  para PR/merge autorizado. Operador executa roteiro pinado na EC2 PROD.
+
 - codex-promover-motivo-encerramento-main-20261020: finalizado local, agente unico,
   DEV93f75 homologado/main e2e13 congelada. Backup/timer confirmados; reservar
   integracao/roteiro/QA/docs, sem EC2/banco/DDL/backfill ou alteracao DEV.

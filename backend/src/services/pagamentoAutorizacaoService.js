@@ -372,7 +372,7 @@ function sanitizeDecisionDiagnosticMessage(error) {
     .slice(0, 240);
 }
 
-function logPaymentDecisionFailure({ req, lotId, stage, error }) {
+function logPaymentDecisionFailure({ req, lotId, stage, error, itemIds }) {
   console.error('[payment-owner-decision-failed]', JSON.stringify({
     stage,
     error_name: String(error?.name || 'Error').slice(0, 80),
@@ -380,7 +380,11 @@ function logPaymentDecisionFailure({ req, lotId, stage, error }) {
     status_code: Number(error?.statusCode || error?.status) || null,
     message: sanitizeDecisionDiagnosticMessage(error) || null,
     user_id: Number(req.user?.id) || null,
-    lote_id: Number(lotId) || null
+    lote_id: Number(lotId) || null,
+    ...(Array.isArray(itemIds) ? {
+      quantidade_itens: itemIds.length,
+      item_ids_amostra: itemIds.filter(id => Number.isSafeInteger(id) && id > 0).slice(0, 20)
+    } : {})
   }));
 }
 
@@ -478,6 +482,19 @@ async function authenticationOptions(req, lotId, decisions) {
   const options = await generateAuthenticationOptions({ rpID: env.webauthnRpId, userVerification: 'required', allowCredentials: credentials.map((item) => ({ id: item.credential_id, transports: item.transports || undefined })) });
   await saveChallenge({ purpose: 'decide', userId: req.user.id, lotId }, { challenge: options.challenge, decisions_hash: sha256(normalized), dossie_hash: lot.dossie_hash, revisao_autorizacao: Number(lot.revisao_autorizacao || 0) });
   return options;
+}
+
+function servicoSelecao() {
+  return require('./pagamentoAutorizacaoSelecaoService')({ db: require('../models'), env, sha256, recordEvent, roundCurrency,
+    assertFeatureAvailable, assertNoDevSwitch, assertWebauthnConfig, assertActiveAuthorizer,
+    getFinanceiroObraScopeIds, titleInclude, buildSnapshot, credentialForLibrary, webauthnLib,
+    saveChallenge, consumeChallengeAtomic, enfileirarTitulosAutorizados, logWebauthnVerificationFailure,
+    assertEscopoCompartilhado: (req, title, transaction) => require('./tituloCompartilhadoLeitura').assertEscopo(req, title, transaction) });
+}
+async function selectionOptions(req, payload) { return servicoSelecao().opcoes(req, payload); }
+async function authorizeSelection(req, payload) {
+  try { return await servicoSelecao().autorizar(req, payload); }
+  catch (error) { logPaymentDecisionFailure({ req, lotId: null, stage: 'SELECTION_AUTHORIZE_AND_ENQUEUE', error, itemIds: payload?.item_ids });throw error; }
 }
 
 async function directQueueOptions(req, payload = {}) {
@@ -760,6 +777,8 @@ module.exports = {
   listPasskeys,
   revokePasskey,
   authenticationOptions,
+  selectionOptions,
+  authorizeSelection,
   decideBatch,
   enqueueAuthorizedItems,
   listAuthorizers,

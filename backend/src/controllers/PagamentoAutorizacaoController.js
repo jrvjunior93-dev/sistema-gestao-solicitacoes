@@ -6,6 +6,14 @@ function fail(res, error, fallback) {
 }
 
 module.exports = {
+  async selectionOptions(req, res) {
+    try { return res.json(await service.selectionOptions(req, req.body || {})); }
+    catch (error) { return fail(res, error, 'Erro ao iniciar autorizacao da selecao'); }
+  },
+  async authorizeSelection(req, res) {
+    try { return res.json(await service.authorizeSelection(req, req.body || {})); }
+    catch (error) { return fail(res, error, 'Erro ao autorizar e enviar selecao para a fila'); }
+  },
   async directQueueOptions(req, res) {
     try { return res.json(await service.directQueueOptions(req, req.body || {})); }
     catch (error) { return fail(res, error, 'Erro ao iniciar rejeicao de fila direta'); }

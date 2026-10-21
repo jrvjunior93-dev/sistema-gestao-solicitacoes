@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import DateInputBR, { dataISOParaBR } from '../DateInputBR';
 import { useWorkspaceActive, useWorkspaceState, useWorkspaceWork } from '../../navigation/WorkspaceContext';
 import usePollingSeguro from '../../hooks/usePollingSeguro';
-import { listarObrasAutorizacao, listarTitulosAutorizacao, obterOpcoesDecisaoPasskey, decidirAutorizacaoPagamento, obterOpcoesRejeicaoFilaDireta, rejeitarFilaDireta } from '../../services/pagamentoAutorizacao';
+import { listarObrasAutorizacao, listarTitulosAutorizacao, obterOpcoesDecisaoPasskey, decidirAutorizacaoPagamento, obterOpcoesRejeicaoFilaDireta, rejeitarFilaDireta, obterOpcoesAutorizacaoSelecao, autorizarSelecaoPagamento } from '../../services/pagamentoAutorizacao';
 import { autenticarComPasskey } from '../../utils/webauthn';
 import { passkeyInterrompida, mensagemPasskeyInterrompida } from '../../utils/passkeyInterrompida';
 import { SITUACOES_AUTORIZACAO, rotuloSituacao, podeSelecionarAutorizacao, podeDecidirItem, podeAutorizar, valorSelecionado, assinaturaDecisao, selecionarPagina, reconciliarSelecao, agruparDecisoes } from '../../utils/autorizacaoPagamentoSituacao';
@@ -119,6 +119,7 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
   async function conferir(decisao) {
     if (travado.current || indisponivel || !selecionados.length) return;
     if (decisao === 'AUTORIZAR' && !selecionados.every(podeAutorizar)) { setAviso('Para autorizar, selecione somente títulos aguardando aprovação. Títulos já na fila podem apenas ser rejeitados.'); return; }
+    if (decisao === 'AUTORIZAR' && selecionados.length > 1000) { setAviso('Selecione no máximo 1.000 títulos por autorização.'); return; }
     if (decisao === 'REJEITAR' && !motivo.trim()) { setAviso('Informe o motivo para rejeitar os títulos.'); return; }
     travado.current = true; setPreparando(true); setAviso('');
     try {
@@ -146,6 +147,21 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
     if (travado.current || busy || !revisaoDecisao || !caps.can_decide || !caps.passkey_count || caps.paused) return;
     travado.current = true; setBusy(true); let concluidos = 0, enviosPendentes = 0;
     try {
+      if (revisaoDecisao.decisao === 'AUTORIZAR') {
+        const ids = revisaoDecisao.itens.map(i => Number(i.id)).sort((a, b) => a - b);
+        const opcoes = await obterOpcoesAutorizacaoSelecao(ids);
+        const credential = await autenticarComPasskey(opcoes.publicKey);
+        const resultado = await autorizarSelecaoPagamento(ids, opcoes.selecao_id, credential);
+        if (!Array.isArray(resultado?.itens) || resultado.itens.length !== ids.length || resultado.envio_pendente
+          || new Set(resultado.itens.map(i => Number(i.id))).size !== ids.length
+          || resultado.itens.some(i => !ids.includes(Number(i.id)) || i.status !== 'ENFILEIRADO' || !i.fila_item_id)) {
+          throw Error('A resposta não confirmou o envio de toda a seleção. Atualize e confira antes de tentar novamente.');
+        }
+        const confirmados = new Set(ids);
+        setSelecao(current => Object.fromEntries(Object.entries(current).filter(([, i]) => !confirmados.has(Number(i.id)))));
+        setAviso(`${ids.length} título(s) confirmado(s) e enviado(s) para a fila com uma única autorização.`);
+        return;
+      }
       for (const [loteId, decisoes] of revisaoDecisao.grupos) {
         if (!vivo.current) throw Error('Operação interrompida ao sair da tela.');
         const direto = loteId === 'FILA_DIRETA';
@@ -165,7 +181,28 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
       setMotivo(''); setAviso(enviosPendentes ? `Autorização registrada. ${enviosPendentes} título(s) aguardam envio. Use Reenviar para a fila.` : `${concluidos} título(s) confirmado(s). ${revisaoDecisao.decisao === 'AUTORIZAR' ? 'Somente os selecionados foram autorizados; os demais continuam pendentes.' : 'Rejeições registradas com histórico.'}`);
     } catch (e) {
       setAviso(passkeyInterrompida(e) ? mensagemPasskeyInterrompida(concluidos)
-        : `${concluidos ? `${concluidos} título(s) já confirmado(s). ` : ''}${e.message || 'Não foi possível concluir.'} Os demais não foram confirmados. Atualize e confira antes de tentar novamente.`);
+        : revisaoDecisao.decisao === 'AUTORIZAR'
+          ? `${e.message || 'Não foi possível confirmar o envio.'} Confira a atualização antes de tentar novamente.`
+          : `${concluidos ? `${concluidos} título(s) já confirmado(s). ` : ''}${e.message || 'Não foi possível concluir.'} Os demais não foram confirmados. Atualize e confira antes de tentar novamente.`);
+      // Resposta perdida pode esconder um commit completo. Reconciliar todos
+      // os selecionados, inclusive fora da pagina atual, sem repetir POST/passkey.
+      if (revisaoDecisao.decisao === 'AUTORIZAR' && !passkeyInterrompida(e)) {
+        try {
+          const atuais = [];
+          for (let inicio = 0; inicio < revisaoDecisao.itens.length; inicio += 50) {
+            const r = await listarTitulosAutorizacao({ item_ids: revisaoDecisao.itens.slice(inicio, inicio + 50).map(i => i.id).join(','), limite: '50' });
+            atuais.push(...r.data);
+          }
+          if (vivo.current) {
+            const selecionadosIds = new Set(revisaoDecisao.itens.map(i => Number(i.id)));
+            const retirados = new Set(atuais.filter(i => !podeAutorizar(i)).map(i => Number(i.id)));
+            setSelecao(current => Object.fromEntries(Object.entries(current).filter(([, i]) => !retirados.has(Number(i.id)))));
+            if (atuais.filter(i => selecionadosIds.has(Number(i.id)) && i.status === 'ENFILEIRADO').length === selecionadosIds.size) {
+              setAviso(`A atualização confirmou ${selecionadosIds.size} título(s) enviado(s) para a fila. Não é necessário autorizar novamente.`);
+            }
+          }
+        } catch (_) { /* Sem GET confirmado, preservar selecao e aviso de conferencia. */ }
+      }
     } finally { setRevisaoDecisao(null); travado.current = false; setBusy(false); atualizar(); }
   }
   const altera = key => event => setRascunho(current => ({ ...current, [key]: event.target.value }));
@@ -247,7 +284,9 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
       {!caps.passkey_count && <small>Cadastre uma passkey nas opções para confirmar decisões.</small>}
       {revisaoDecisao && <section className="pa-obras-conferencia" aria-label="Conferência da decisão">
         <strong>Conferir {revisaoDecisao.decisao === 'AUTORIZAR' ? 'autorização' : 'rejeição'} de {revisaoDecisao.itens.length} título(s)</strong>
-        <p>Somente os títulos selecionados serão decididos. Os demais permanecem como estão. Serão solicitadas {revisaoDecisao.grupos.length} confirmações por passkey, separadas por lote e tipo de decisão. Se interromper, as decisões já confirmadas não serão desfeitas.</p>
+        <p>{revisaoDecisao.decisao === 'AUTORIZAR'
+          ? 'Uma única confirmação por passkey autoriza e envia todos os títulos selecionados para a fila, mesmo de lotes diferentes. Os demais permanecem como estão.'
+          : `Somente os títulos selecionados serão decididos. Serão solicitadas ${revisaoDecisao.grupos.length} confirmações por passkey, separadas por lote e tipo de decisão. Se interromper, as decisões já confirmadas não serão desfeitas.`}</p>
         <ul>{revisaoDecisao.itens.map(i => <li key={i.id}>{i.snapshot_json?.codigo || `Título #${i.titulo_financeiro_id}`} · {i.obras_nomes} · {moeda(valorSelecionado(i))}</li>)}</ul>
         {revisaoDecisao.decisao === 'REJEITAR' && <p>Motivo: {revisaoDecisao.motivo}</p>}
         <div className="pa-obras-acoes"><button type="button" className="btn btn-outline btn-sm" disabled={busy} onClick={() => setRevisaoDecisao(null)}>Voltar à seleção</button>

@@ -595,8 +595,8 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
   };
 }
 
-function enfileirarTitulosAutorizados(req, payload, autorizacaoLoteId, autorizacaoRevisao) {
-  return enfileirarTitulos(req, payload, { autorizacaoInterna: true, autorizacaoLoteId, autorizacaoRevisao });
+function enfileirarTitulosAutorizados(req, payload, autorizacaoLoteId, autorizacaoRevisao, transaction) {
+  return enfileirarTitulos(req, payload, { autorizacaoInterna: true, autorizacaoLoteId, autorizacaoRevisao, transaction });
 }
 
 async function anexarComprovanteFila(req, filaId, file) {

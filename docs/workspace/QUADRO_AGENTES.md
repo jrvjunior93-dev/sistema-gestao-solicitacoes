@@ -1,5 +1,16 @@
 # Quadro de Agentes
 
+## Promocao main autorizacao unica - 2026-10-21
+
+- Agente unico, integracao isolada main60f327d7 + somente delta DEV828 homologado.
+  Backup cifrado/timer confirmados para esta promocao. Reservas no ownership.
+- Sem outros pacotes DEV, DDL/dependencias/configuracoes/envios reais ou EC2
+  pelo agente; runtime homologado e regras main preservados. Roteiro/QA PROD.
+- Publicar PR/merge apos suites, UI/build, docs e guardas; operador atualiza EC2.
+- Suites/ACL/rollback/concorrencia/regressoes, UI130 titulos320/390/1366,
+  build12,99s/630 modulos, Node/Bash/guardas/docs598/19/diff/escopo aprovados;
+  ownership liberado para commit/PR/merge autorizado.
+
 ## Promocao MAIN motivo encerramento - 2026-10-20
 
 - Agente unico, finalizado local. Integrar DEV93f75 homologado com main e2e13,
