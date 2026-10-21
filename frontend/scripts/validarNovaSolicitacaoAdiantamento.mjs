@@ -42,9 +42,9 @@ try {
   await page.locator('[name="tipo_solicitacao_id"]').selectOption('5');
   if (comDistribuicaoResidual) await page.getByRole('radio', { name: /TODAS/ }).check();
   await page.locator('[name="tipo_sub_id"]').selectOption('7');
-  assert.equal(await page.getByText('Distribuição gerencial por obra', { exact: true }).count(), 0);
+  assert.equal(await page.getByText('Distribuição gerencial por obra / centro de custo', { exact: true }).count(), 0);
   await page.locator('[name="tipo_sub_id"]').selectOption('8');
-  assert.equal(await page.getByText('Distribuição gerencial por obra', { exact: true }).count(), 1, 'Despesa normal conserva distribuicao');
+  assert.equal(await page.getByText('Distribuição gerencial por obra / centro de custo', { exact: true }).count(), 1, 'Despesa normal conserva distribuicao');
   assert.equal(await page.getByRole('radio', { name: /TODAS/ }).isChecked(), comDistribuicaoResidual, 'Troca de subtipo nao apaga distribuicao da despesa normal');
   await page.locator('[name="tipo_sub_id"]').selectOption('7');
   await page.locator('[name="forma_pagamento_id"]').selectOption('1');

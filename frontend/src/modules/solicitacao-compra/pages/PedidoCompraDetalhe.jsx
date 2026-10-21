@@ -503,6 +503,7 @@ export default function PedidoCompraDetalhe() {
   const [statusOptions, setStatusOptions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [savingStatus, setSavingStatus] = useState(false);
+  const [atualizacaoPendente, setAtualizacaoPendente] = useState(null);
   const [savingItemId, setSavingItemId] = useState(null);
   const [addingRespostaId, setAddingRespostaId] = useState(null);
   const [removingItemId, setRemovingItemId] = useState(null);
@@ -595,6 +596,7 @@ export default function PedidoCompraDetalhe() {
       ]);
       if (!consultaPedido.isCurrent(token)) return;
       setPedido(data || null);
+      setAtualizacaoPendente(null);
       setStatusOptions(Array.isArray(dataStatus) ? dataStatus : []);
       if (String(data?.status || '').toUpperCase() === 'CANCELADO') {
         setFiltrosItens({ situacao: new Set() });
@@ -604,8 +606,10 @@ export default function PedidoCompraDetalhe() {
         (data?.itens || []).some(item => item.id === codigo && !item.removido)));
     } catch (error) {
       if (!consultaPedido.isCurrent(token)) return;
-      setPedido(null);
-      setStatusOptions([]);
+      if (!atualizacaoPendente) {
+        setPedido(null);
+        setStatusOptions([]);
+      }
       console.error(error);
       avisar.erro(error.message || 'Erro ao carregar pedido de compra');
     } finally {
@@ -614,6 +618,7 @@ export default function PedidoCompraDetalhe() {
   }
 
   useEffect(() => {
+    setAtualizacaoPendente(null);
     carregar();
   }, [id]);
 
@@ -664,11 +669,16 @@ export default function PedidoCompraDetalhe() {
   );
   const statusAtual = statusMap[String(pedido?.status || '').toUpperCase()] || pedido?.status_configuracao || null;
   const edicaoBloqueadaPorStatus = Boolean(statusAtual?.bloqueia_edicao || pedido?.edicao_bloqueada);
-  const pedidoBloqueado = Boolean(edicaoBloqueadaPorStatus || !podeEditarItensPedido);
+  const pedidoBloqueado = Boolean(edicaoBloqueadaPorStatus || !podeEditarItensPedido || savingStatus || reabrindoCotacao);
   const pedidoCancelado = String(pedido?.status || '').toUpperCase() === 'CANCELADO';
   const remanejamentoBloqueado = Boolean(!podeRemanejarPedido || (edicaoBloqueadaPorStatus && !pedidoCancelado));
   const podeReabrirCotacao = Boolean(podeReabrirPedido && edicaoBloqueadaPorStatus && !pedidoCancelado);
   const reaberturaPendenteGeo = String(pedido?.financeiro?.reabertura?.status || '').toUpperCase() === 'PENDENTE';
+  const fechamentoFornecedor = statusOptions.find(item => item.codigo === 'FECHADO_FORNECEDOR' && item.ativo !== false);
+  const temEdicaoPendente = Boolean(Object.keys(rascunhosItens).length || modalFreteAberto
+    || savingItemId || addingRespostaId || removingItemId || salvandoFrete || remanejandoItem
+    || cancelandoItens || cancelandoPedido || salvandoComentario || anexandoEspelho);
+  const mudandoStatusPedido = savingStatus || reabrindoCotacao;
   const permiteFreteEmbutido = !edicaoBloqueadaPorStatus;
   const statusSelectOptions = useMemo(() => {
     const ativos = (statusOptions || []).filter((item) => item?.ativo !== false);
@@ -979,6 +989,7 @@ export default function PedidoCompraDetalhe() {
   }, [buscaFornecedorFrete, credorFreteSelecionado, freteForm.tipo, modalFreteAberto]);
 
   async function handleRegistrarFrete() {
+    if (operacaoEmCurso.current.has('status-pedido')) return;
     if (operacaoEmCurso.current.has('frete') || conflitoFrete || !podeRegistrarFretePedido) return;
     const valorTotal = parseBrazilianMoney(freteForm.valor_total);
     if (!valorTotal || valorTotal <= 0) {
@@ -1115,6 +1126,7 @@ export default function PedidoCompraDetalhe() {
     fixação a tela poderia perguntar sobre um frete e cancelar outro.
   */
   async function handleCancelarFrete(frete) {
+    if (operacaoEmCurso.current.has('status-pedido')) return;
     if (operacaoEmCurso.current.has('frete')) return;
     const freteAlvo = frete;
     const freteId = freteAlvo?.id;
@@ -1156,6 +1168,7 @@ export default function PedidoCompraDetalhe() {
   }
 
   async function handleSalvarItem(itemId) {
+    if (operacaoEmCurso.current.has('status-pedido')) return;
     if (operacaoEmCurso.current.has('item') || pedidoBloqueado
       || itensConflitantes.some(item => item.id === itemId)) return;
     operacaoEmCurso.current.add('item');
@@ -1182,6 +1195,7 @@ export default function PedidoCompraDetalhe() {
   }
 
   async function handleAdicionarResposta(respostaItemId) {
+    if (operacaoEmCurso.current.has('status-pedido')) return;
     try {
       setAddingRespostaId(respostaItemId);
       const data = await adicionarItemPedidoCompra(id, { resposta_item_id: respostaItemId });
@@ -1200,6 +1214,7 @@ export default function PedidoCompraDetalhe() {
     a tela — a lista continua clicável atrás dele, e o item aberto pode trocar.
   */
   async function handleRemoverItem(itemId) {
+    if (operacaoEmCurso.current.has('status-pedido')) return;
     const alvoId = itemId;
     const alvo = (pedido?.itens || []).find((item) => item.id === alvoId) || null;
 
@@ -1226,32 +1241,43 @@ export default function PedidoCompraDetalhe() {
   }
 
   async function handleAtualizarStatus(status) {
-    if (!status || status === pedido?.status) {
+    if (!podeAlterarStatusPedido || operacaoEmCurso.current.size || temEdicaoPendente || !status || status === pedido?.status) {
       return;
     }
-
+    operacaoEmCurso.current.add('status-pedido');
+    const token = consultaPedido.begin();
     const payload = { status };
-    if (String(status).toUpperCase() === 'CANCELADO') {
-      const { ok, texto } = await confirmar({
-        titulo: 'Cancelar pedido de compra',
-        mensagem: 'O cancelamento libera os itens para uma nova compra e preserva o pedido no histórico. Informe o motivo para concluir.',
-        rotuloConfirmar: 'Cancelar pedido',
-        destrutiva: true,
-        campo: { rotulo: 'Motivo do cancelamento', obrigatorio: true, multilinha: true }
-      });
-      if (!ok) return;
-      payload.motivo = String(texto || '').trim();
-    }
-
     try {
       setSavingStatus(true);
+      if (String(status).toUpperCase() === 'CANCELADO') {
+        const { ok, texto } = await confirmar({
+          titulo: 'Cancelar pedido de compra',
+          mensagem: 'O cancelamento libera os itens para uma nova compra e preserva o pedido no histórico. Informe o motivo para concluir.',
+          rotuloConfirmar: 'Cancelar pedido',
+          destrutiva: true,
+          campo: { rotulo: 'Motivo do cancelamento', obrigatorio: true, multilinha: true }
+        });
+        if (!ok) return;
+        payload.motivo = String(texto || '').trim();
+      }
+
       const data = await atualizarStatusPedidoCompra(id, payload);
+      if (!consultaPedido.isCurrent(token)) return;
+      if (data?.operacao_confirmada && data?.detalhe_pendente) {
+        setAtualizacaoPendente('A alteração foi registrada, mas não foi possível carregar o pedido atualizado. Consulte o estado atual antes de continuar.');
+        return;
+      }
       setPedido(data || null);
       avisar.sucesso('Status do pedido atualizado com sucesso.');
     } catch (error) {
+      if (!consultaPedido.isCurrent(token)) return;
       console.error(error);
+      if (!error.status || error.status >= 500) {
+        setAtualizacaoPendente('Não foi possível confirmar o resultado da alteração. Consulte o estado atual do pedido antes de tentar novamente.');
+      }
       avisar.erro(error.message || 'Erro ao atualizar status do pedido');
     } finally {
+      operacaoEmCurso.current.delete('status-pedido');
       setSavingStatus(false);
     }
   }
@@ -1264,38 +1290,52 @@ export default function PedidoCompraDetalhe() {
     justificativa juntos, com validação visível (`campo.obrigatorio`).
   */
   async function handleReabrirCotacao() {
-    const exigeAprovacaoGeo = Boolean(pedido?.financeiro?.reabertura_exige_geo);
-    const { ok, texto } = await confirmar({
-      titulo: exigeAprovacaoGeo ? 'Solicitar reabertura ao GEO' : 'Reabrir pedido para edição ou cancelamento',
-      mensagem: exigeAprovacaoGeo
-        ? 'Este pedido possui histórico financeiro. Informe o motivo para o GEO analisar a reabertura; nenhum título será alterado antes da aprovação.'
-        : 'Reabrir este pedido para edição ou cancelamento? A cotação vinculada voltará para edição e a ação ficará registrada no histórico.',
-      rotuloConfirmar: exigeAprovacaoGeo ? 'Enviar ao GEO' : 'Reabrir pedido',
-      campo: { rotulo: 'Motivo da reabertura', obrigatorio: true, multilinha: true }
-    });
-    if (!ok) return;
-
-    const motivoNormalizado = String(texto || '').trim();
-    if (!motivoNormalizado) {
-      avisar.alerta('Informe o motivo da reabertura.');
-      return;
-    }
-
+    if (!podeReabrirCotacao || reaberturaPendenteGeo || operacaoEmCurso.current.size) return;
+    operacaoEmCurso.current.add('status-pedido');
+    const token = consultaPedido.begin();
     try {
       setReabrindoCotacao(true);
+      const exigeAprovacaoGeo = Boolean(pedido?.financeiro?.reabertura_exige_geo);
+      const { ok, texto } = await confirmar({
+        titulo: exigeAprovacaoGeo ? 'Solicitar reabertura ao GEO' : 'Reabrir pedido para edição ou cancelamento',
+        mensagem: exigeAprovacaoGeo
+          ? 'Este pedido possui histórico financeiro. Informe o motivo para o GEO analisar a reabertura; nenhum título será alterado antes da aprovação.'
+          : 'Reabrir este pedido para edição ou cancelamento? A cotação vinculada voltará para edição e a ação ficará registrada no histórico.',
+        rotuloConfirmar: exigeAprovacaoGeo ? 'Enviar ao GEO' : 'Reabrir pedido',
+        campo: { rotulo: 'Motivo da reabertura', obrigatorio: true, multilinha: true }
+      });
+      if (!ok || !consultaPedido.isCurrent(token)) return;
+
+      const motivoNormalizado = String(texto || '').trim();
+      if (!motivoNormalizado) {
+        avisar.alerta('Informe o motivo da reabertura.');
+        return;
+      }
+
       if (exigeAprovacaoGeo) {
         await solicitarReaberturaPedidoCompra(id, { motivo: motivoNormalizado });
+        if (!consultaPedido.isCurrent(token)) return;
         await carregar();
         avisar.sucesso('Pedido de reabertura enviado ao GEO.');
       } else {
         const data = await reabrirPedidoCompraParaCotacao(id, { motivo: motivoNormalizado });
+        if (!consultaPedido.isCurrent(token)) return;
+        if (data?.operacao_confirmada && data?.detalhe_pendente) {
+          setAtualizacaoPendente('A reabertura foi registrada, mas não foi possível carregar o pedido atualizado. Consulte o estado atual antes de continuar.');
+          return;
+        }
         setPedido(data || null);
         avisar.sucesso('Pedido reaberto para edição ou cancelamento.');
       }
     } catch (error) {
+      if (!consultaPedido.isCurrent(token)) return;
       console.error(error);
+      if (!error.status || error.status >= 500) {
+        setAtualizacaoPendente('Não foi possível confirmar o resultado da reabertura. Consulte o estado atual do pedido antes de tentar novamente.');
+      }
       avisar.erro(error.message || 'Erro ao reabrir pedido');
     } finally {
+      operacaoEmCurso.current.delete('status-pedido');
       setReabrindoCotacao(false);
     }
   }
@@ -1389,6 +1429,7 @@ export default function PedidoCompraDetalhe() {
   }
 
   function handleCancelarPedido() {
+    if (operacaoEmCurso.current.has('status-pedido')) return;
     setCancelamentoPedidoForm({
       motivo: '',
       cancelar_cotacao: true,
@@ -1447,6 +1488,7 @@ export default function PedidoCompraDetalhe() {
        serviço aceita o lote inteiro, ou nenhum item é cancelado.
   */
   async function handleCancelarItensSelecionados() {
+    if (operacaoEmCurso.current.has('status-pedido')) return;
     const alvos = [...itensSelecionadosCancelamento];
     const itensAlvo = (pedido?.itens || []).filter((item) => alvos.includes(item.id));
 
@@ -1489,6 +1531,7 @@ export default function PedidoCompraDetalhe() {
   }
 
   async function handleSalvarComentarioPedido() {
+    if (operacaoEmCurso.current.has('status-pedido')) return;
     if (operacaoEmCurso.current.has('comentario')) return;
     const textoComentario = comentarioPedido;
     if (!textoComentario.trim()) {
@@ -1512,6 +1555,7 @@ export default function PedidoCompraDetalhe() {
   }
 
   async function handleAnexarEspelho(event) {
+    if (operacaoEmCurso.current.has('status-pedido')) return;
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
@@ -1534,6 +1578,7 @@ export default function PedidoCompraDetalhe() {
   }
 
   async function handleRemanejarItemAtual() {
+    if (operacaoEmCurso.current.has('status-pedido')) return;
     if (operacaoEmCurso.current.has('remanejo') || !itemEditando || (itemEditando.removido && !pedidoCancelado) || remanejamentoBloqueado
       || conflitoRemanejo) return;
     if (!remanejoSelecionado) {
@@ -1606,6 +1651,17 @@ export default function PedidoCompraDetalhe() {
     );
   }
 
+  if (atualizacaoPendente) {
+    return <Pagina>
+      <Avisos avisos={avisos} aoFechar={fechar} />
+      <div className="app-empty-card" role="alert">
+        <p>{atualizacaoPendente}</p>
+        <button type="button" className="btn btn-outline btn-sm" onClick={carregar}>Consultar estado do pedido</button>
+      </div>
+      {elementoConfirmacao}
+    </Pagina>;
+  }
+
   const codigoPedido = `PC-${String(pedido.id).padStart(5, '0')}`;
   const codigoSolicitacao = `SC-${String(pedido.solicitacao_compra_id).padStart(5, '0')}`;
   const edicaoItemAtual = itemEditando ? edicoes[itemEditando.id] || {} : {};
@@ -1663,7 +1719,13 @@ export default function PedidoCompraDetalhe() {
         ? 'Processando...'
         : (pedido?.financeiro?.reabertura_exige_geo ? 'Solicitar reabertura ao GEO' : 'Reabrir pedido'),
       onClick: handleReabrirCotacao,
-      desabilitada: reabrindoCotacao || reaberturaPendenteGeo
+      desabilitada: mudandoStatusPedido || reaberturaPendenteGeo
+    } : null,
+    podeAlterarStatusPedido && fechamentoFornecedor && !edicaoBloqueadaPorStatus && !pedidoCancelado ? {
+      rotulo: savingStatus ? 'Fechando...' : 'Fechar com o fornecedor',
+      onClick: () => handleAtualizarStatus(fechamentoFornecedor.codigo),
+      desabilitada: mudandoStatusPedido || temEdicaoPendente,
+      title: temEdicaoPendente ? 'Salve as edições pendentes antes de fechar o pedido.' : undefined
     } : null
   ].filter(Boolean);
 
@@ -1774,7 +1836,7 @@ export default function PedidoCompraDetalhe() {
         destrutiva={podeCancelarPedido ? {
           rotulo: cancelandoPedido ? 'Cancelando...' : 'Cancelar pedido',
           onClick: handleCancelarPedido,
-          desabilitada: pedidoCancelado || cancelandoPedido
+          desabilitada: pedidoCancelado || cancelandoPedido || mudandoStatusPedido
         } : null}
       />
 
@@ -1826,7 +1888,7 @@ export default function PedidoCompraDetalhe() {
               className="input w-full"
               value={pedido.status || ''}
               onChange={(event) => handleAtualizarStatus(event.target.value)}
-              disabled={!podeAlterarStatusPedido || savingStatus || pedidoCancelado}
+              disabled={!podeAlterarStatusPedido || mudandoStatusPedido || temEdicaoPendente || pedidoCancelado}
             >
               {statusSelectOptions.map((status) => (
                 <option key={status.codigo} value={status.codigo}>

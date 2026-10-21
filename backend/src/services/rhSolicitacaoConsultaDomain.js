@@ -1,6 +1,7 @@
 'use strict';
 
 const { FLUXO, normalizarAndamento, situacaoPagamento } = require('./rhPagamentoSolicitacaoDomain');
+const demissao = require('./rhDemissaoConclusaoDomain');
 
 const dadosDe = pedido => typeof pedido?.dados_json === 'string'
   ? JSON.parse(pedido.dados_json) : pedido?.dados_json || {};
@@ -20,6 +21,8 @@ function normalizarConsulta(pedido) {
     plano.dados_json = normalizarAndamento(dadosDe(plano));
     plano.situacao = situacaoPagamento(plano.dados_json, plano.situacao);
   }
+  plano.demissao_pendente_conclusao = demissao.pendente(plano);
+  plano.demissao_concluida = demissao.concluida(plano);
   return plano;
 }
 

@@ -1,5 +1,15 @@
 # Modulo FINANCEIRO
 
+## Promocao MAIN RH, centros e pedidos - 2026-10-21
+
+Usuario autorizou os tres commits pendentes2d161b85/ba4a41b2/a00a15f6 e confirmou
+backup cifrado/timer. Integracao sobre main80df6534 preserva hotfixes/scripts/
+historico e leva runtime DEV sem alteracao adicional. RH homologado pelo usuario;
+centros/pedidos validados em testes isolados. Sem DDL/dependencias/calculos
+financeiros/.env/flags/memoria alterados. Roteiro PROD exclusivo com verificacoes
+readonly e restart somente backend-solicitacoes, executado pelo operador.
+[Escopo, testes, roteiro e recuperacao](../../handoffs/2026-10-21-promocao-rh-pedidos-centros-main.md).
+
 ## Promocao MAIN pendencias DEV - 2026-10-21
 
 Usuario autorizou promover5dbdd55a (lista unica da fatura),44ee71b2 (quitacao
@@ -21,6 +31,24 @@ Conferir lista da fatura e relatorio de permutas em leitura apos atualizar
 backend/health e frontend main na Vercel. O caso PIX/cartao/desconto foi provado
 em memoria/DEV; nao repetir a baixa real somente para testar producao.
 [Escopo, evidencias e recuperacao](../../handoffs/2026-10-21-promocao-main-pendencias-dev.md).
+
+## Distribuicao gerencial com centros de custo como destinos - 2026-10-21
+
+Solicitacoes de Centro de Custo podem classificar gerencialmente o valor entre
+obras e outros centros ativos. O relatorio diferencia Centro de custo de origem
+de Obra / centro de custo de destino e permite filtrar ambos os tipos de destino.
+O total classificado considera cada linha uma vez; o total nao gera novos titulos,
+movimentos ou custos reais nos destinos. Resultado dos Centros de Custo e Resultado
+de Obras continuam lendo suas fontes anteriores, sem somar essa classificacao.
+
+Somas/percentuais/TODAS e ACL/configuracao do centro de origem permanecem. IDs e
+rotas legadas sao mantidos, com tipo_centro_custo no DTO. A ampliacao e exclusiva
+gerencial: nao altera adiantamentos/prestacao de contas. Sem migration/backfill,
+operacao real ou promocao de producao nesta entrega. Testes isolados nos dois
+runtimes: test:centro-custo-distribuicao.
+
+Detalhes no [canonico de Solicitacoes](../solicitacoes/README.md#centros-de-custo)
+e [handoff](../../handoffs/2026-10-21-distribuicao-centros-destinos.md).
 
 ## Autorizacao unica da selecao no PWA - 2026-10-21
 

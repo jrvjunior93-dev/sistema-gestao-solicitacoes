@@ -2123,6 +2123,7 @@ router.post('/rh/solicitacoes', allowRhDpSolicitacaoAbrir, criticalRateLimit, Rh
 // impedia um usuario envolvido de comentar/anexar numa solicitacao que ele podia consultar.
 router.post('/rh/solicitacoes/:id/anexos', allowRhDpSolicitacaoVer, uploadRateLimit, uploadComprovantes.single('file'), validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.anexar);
 router.post('/rh/solicitacoes/:id/aprovar', allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.aprovar);
+router.post('/rh/solicitacoes/:id/concluir', allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.concluir);
 router.post('/rh/solicitacoes/:id/rejeitar', allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.rejeitar);
 router.post('/rh/solicitacoes/:id/reenviar', allowRhDpSolicitacaoAbrir, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.reenviar);
 router.post('/rh/solicitacoes/:id/cancelar', allowRhDpSolicitacaoAbrir, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.cancelar);
@@ -2138,7 +2139,7 @@ router.get('/rh/colaboradores/:colaboradorId/apontamentos', allowRhDpSolicitacao
 // Anexos: a obra manda, o DP ATESTA antes de virar documento do colaborador (26/08).
 router.get('/rh/solicitacoes/:id/anexos', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.listarAnexos);
 router.get('/rh/solicitacoes/:id/anexos/:anexoId/link', allowRhDpSolicitacaoVer, RhSolicitacaoController.obterLinkAnexo);
-router.post('/rh/solicitacoes/:id/anexos/:anexoId/validar', allowRhDpSolicitacaoDecidir, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.validar);
+router.post('/rh/solicitacoes/:id/anexos/:anexoId/validar', allowRhDpSolicitacaoDecidir, validateRequest({ params: validateNumericIdParams(['id', 'anexoId'], 'Solicitacao de pessoal') }), RhSolicitacaoController.validar);
 
 // --- Jornada por formulario, pagamento individual e historicos (Fases 4 e 5) ---
 router.get('/rh/jornada/modelo', allowRhDpSolicitacaoVer, RhJornadaController.modelo);

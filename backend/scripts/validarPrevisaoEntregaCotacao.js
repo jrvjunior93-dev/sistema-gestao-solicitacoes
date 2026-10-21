@@ -50,6 +50,7 @@ const context = {
   require:(id)=>{
     if(id==='./pedidoEntregaDomain')return {...domain,hojeBrasil:()=>hoje};
     if(id==='./pedidoEntregaService')return {calendarioEntrega:async()=>feriados};
+    if(id==='./prazosOperacionaisService')return {configuracao:async()=>({ativo:false})};
     if(id==='../models')return {PedidoCompraEntrega:{bulkCreate:async(linhas,options)=>{assert.equal(options.transaction,transaction);entregas.push(...linhas)}}};
     throw new Error(`Dependência não prevista: ${id}`);
   }

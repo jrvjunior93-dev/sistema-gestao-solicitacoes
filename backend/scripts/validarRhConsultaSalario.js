@@ -76,6 +76,7 @@ async function consultas() {
   await ctrl.index({ user: dp, query: { colaborador_id: 'invalido' } }, res);
   assert.equal(res.code, 400);
   const service = load('services/rhSolicitacaoService.js', {
+    './rhDemissaoConclusaoDomain': require('../src/services/rhDemissaoConclusaoDomain'),
     sequelize: { Op }, '../models': models, '../middlewares/validation': validation,
     './rhSolicitacaoConsultaDomain': consulta, './rhPessoalDomain': domain,
     '../utils/codigoDoSetor': {}, './rhVinculoObraService': {}, './rhCalculoHistoricoService': {},

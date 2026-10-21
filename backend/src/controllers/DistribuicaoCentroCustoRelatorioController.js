@@ -52,7 +52,7 @@ module.exports = {
             ]
           },
           { model: Obra, as: 'centroCusto', attributes: ['id', 'codigo', 'nome'] },
-          { model: Obra, as: 'obraGerencial', required: false, attributes: ['id', 'codigo', 'nome', 'classificacao'] }
+          { model: Obra, as: 'obraGerencial', required: false, attributes: ['id', 'codigo', 'nome', 'classificacao', 'tipo_centro_custo'] }
         ],
         order: [[{ model: Solicitacao, as: 'solicitacao' }, 'createdAt', 'DESC'], ['id', 'ASC']]
       });
@@ -79,7 +79,7 @@ module.exports = {
         }),
         Obra.findAll({
           where: { id: { [Op.in]: [...new Set(linhas.map((linha) => linha.obra?.id).filter(Boolean))] } },
-          attributes: ['id', 'codigo', 'nome', 'classificacao'],
+          attributes: ['id', 'codigo', 'nome', 'classificacao', 'tipo_centro_custo'],
           order: [['codigo', 'ASC'], ['nome', 'ASC']]
         })
       ]);

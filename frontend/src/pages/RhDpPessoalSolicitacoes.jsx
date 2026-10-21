@@ -17,6 +17,7 @@ import {
   HiOutlineXMark
 } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
+import { userBelongsToDpSetor } from '../utils/setor';
 import { useWorkspaceState, useWorkspaceWork } from '../navigation/WorkspaceContext';
 import {
   Avisos,
@@ -35,6 +36,7 @@ import '../styles/rh-pessoal-atividade.css';
 import {
   anexarNaRhSolicitacao,
   aprovarRhSolicitacao,
+  concluirRhDemissao,
   cancelarRhSolicitacao,
   conferirDocumentacaoRhSolicitacao,
   listarAnexosRhSolicitacao,
@@ -106,6 +108,8 @@ const OPCOES_SITUACAO = [
 
 const SEM_FILTRO = { situacao: new Set(), tipo: new Set() };
 const ehPagamentoPorSolicitacao = s => s.dados_json?.fluxo_pagamento === 'PAGAMENTO_POR_SOLICITACAO';
+const rotuloSituacao = s => s.demissao_pendente_conclusao ? 'Aguardando conclusão do DP'
+  : s.demissao_concluida ? 'Concluída' : ROTULO_SITUACAO[s.situacao] || s.situacao;
 
 /** Dimensao de valor UNICO: o `ativos` guarda um conjunto, o servico recebe um valor. */
 function primeiroValor(conjunto) {
@@ -200,7 +204,7 @@ function dadosOperacionais(solicitacao) {
     .map(([chave, valor]) => ({ chave, rotulo: ROTULO_DADO[chave], valor: formatarDado(chave, valor) }));
 }
 
-function AcaoIconePessoal({ rotulo, icone: Icone, solicitacaoId, variant = 'outline', onClick }) {
+function AcaoIconePessoal({ rotulo, icone: Icone, solicitacaoId, variant = 'outline', onClick, disabled }) {
   return (
     <Button
       variant={variant}
@@ -209,7 +213,7 @@ function AcaoIconePessoal({ rotulo, icone: Icone, solicitacaoId, variant = 'outl
       className="rh-solicitacao-acao-icone"
       title={rotulo}
       aria-label={`${rotulo}: solicitação #${solicitacaoId}`}
-      onClick={onClick}
+      onClick={onClick} disabled={disabled}
     >
       <Icone size={18} aria-hidden="true" />
     </Button>
@@ -219,6 +223,11 @@ function AcaoIconePessoal({ rotulo, icone: Icone, solicitacaoId, variant = 'outl
 export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir, podeDecidirEventoRecorrente, podeAprovarSalario, aoMudar, onAbrirListaJornadas, onAbrirApuracao, aoContarAbertas, aoContarNaoLidas, aoMarcarVisualizada }) {
   const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   const { user } = useAuth();
+  const podeConcluir = podeDecidir && (userBelongsToDpSetor(user) || user?.perfil === 'SUPERADMIN');
+  const travaConclusao = useRef(false);
+  const travaAteste = useRef(false);
+  const [concluindo, setConcluindo] = useState(false);
+  const [atestando, setAtestando] = useState(false);
   const { avisos, avisar, fechar, limpar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [parametros, setParametros] = useSearchParams();
@@ -256,7 +265,7 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
   const travaEnvioDocumento = useRef(false);
   const arquivoDocumentoRef = useRef(null);
   const [envio, setEnvio] = useState({ tipo: '', arquivo: null, enviando: false });
-  useWorkspaceWork(Object.values(comentarios).some(Boolean), comentando || envio.enviando, 'rhSolicitacoes:work');
+  useWorkspaceWork(Object.values(comentarios).some(Boolean), comentando || envio.enviando || concluindo || atestando, 'rhSolicitacoes:work');
   // Evita que uma resposta de listagem iniciada antes da abertura do modal
   // recoloque o destaque já lido. Se surgir um histórico mais novo, o id será
   // maior e a solicitação volta corretamente a aparecer como não visualizada.
@@ -301,7 +310,7 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
 
   useEffect(() => {
     if (filtroTipo || (filtroSituacao && filtroSituacao !== 'ABERTA')) return;
-    const abertas = solicitacoes.filter((solicitacao) => ['ABERTA', 'ENVIO_PARCIAL', 'EM_REVISAO'].includes(solicitacao.situacao));
+    const abertas = solicitacoes.filter((solicitacao) => ['ABERTA', 'ENVIO_PARCIAL', 'EM_REVISAO'].includes(solicitacao.situacao) || solicitacao.demissao_pendente_conclusao);
     aoContarAbertas?.(resumo?.abertas ?? abertas.length);
     aoContarNaoLidas?.(resumo?.nao_lidas_abertas ?? abertas.filter((solicitacao) => solicitacao.nao_lida).length);
   }, [solicitacoes, resumo, filtroSituacao, filtroTipo, aoContarAbertas, aoContarNaoLidas]);
@@ -422,7 +431,7 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
   }
 
   function fecharDetalhe() {
-    if (conferenciaOcupada.current || travaEnvioDocumento.current) {
+    if (conferenciaOcupada.current || travaEnvioDocumento.current || travaConclusao.current || travaAteste.current) {
       avisar.alerta('Salve os ajustes pendentes ou aguarde a gravação antes de fechar.'); return;
     }
     detalheAtual.current = null;
@@ -457,6 +466,8 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
     unico, mas dentro do DOM, com tema, tokens e rotulo dizendo o que acontece.
   */
   async function decidirAnexo(anexo, aceito) {
+    if (travaAteste.current || travaConclusao.current) return;
+    travaAteste.current = true; setAtestando(true);
     limpar();
     let mensagem = '';
     try {
@@ -487,7 +498,9 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
         });
         if (!ok) return;
         await validarAnexoRhSolicitacao(aberta.id, anexo.id, { aceito: true, observacao: texto });
-        mensagem = 'Documento atestado. Ele vai para a pasta quando a solicitacao for aprovada.';
+        mensagem = aberta.demissao_pendente_conclusao
+          ? 'Documento atestado. Ele vai para a pasta quando o DP concluir a demissão.'
+          : 'Documento atestado. Ele vai para a pasta quando a solicitacao for aprovada.';
       }
       await abrirDetalhe(aberta);
       /*
@@ -500,12 +513,14 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
       avisar.sucesso(mensagem);
     } catch (error) {
       avisar.erro(error.message || 'Nao foi possivel registrar a conferencia do documento.');
+    } finally {
+      travaAteste.current = false; setAtestando(false);
     }
   }
 
   async function enviarDocumento(evento) {
     evento.preventDefault();
-    if (travaEnvioDocumento.current || carregandoTipos || erroTipos) return;
+    if (travaEnvioDocumento.current || travaConclusao.current || carregandoTipos || erroTipos) return;
     limpar();
 
     if (!envio.arquivo) {
@@ -666,6 +681,25 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
     }
   }
 
+  async function concluir(solicitacao) {
+    if (!podeConcluir || travaConclusao.current || travaAteste.current || travaEnvioDocumento.current || travaComentario.current) return;
+    if (aberta?.id === solicitacao.id && (comentario.trim() || envio.arquivo)) {
+      avisar.alerta('Envie o comentário e o arquivo selecionado ou remova o preenchimento antes de concluir.'); return;
+    }
+    travaConclusao.current = true; setConcluindo(true); limpar();
+    try {
+      await concluirRhDemissao(solicitacao.id);
+      travaConclusao.current = false;
+      fecharDetalhe();
+      await carregar(); aoMudar?.();
+      avisar.sucesso('Demissão concluída. O colaborador inativo saiu da lista operacional da obra.');
+    } catch (error) {
+      avisar.erro(error.message || 'Não foi possível concluir a demissão.');
+    } finally {
+      travaConclusao.current = false; setConcluindo(false);
+    }
+  }
+
   const faixaAvisos = <Avisos avisos={avisos} aoFechar={fechar} />;
 
   return (
@@ -787,7 +821,7 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
               tipo: 'status',
               render: (s) => (
                 <>
-                  <span className={chipDaSituacao(s.situacao)}>{ehPagamentoPorSolicitacao(s) && s.situacao === 'APROVADA' ? 'Enviado para a fila' : ROTULO_SITUACAO[s.situacao] || s.situacao}</span>
+                  <span className={chipDaSituacao(s.situacao)}>{ehPagamentoPorSolicitacao(s) && s.situacao === 'APROVADA' ? 'Enviado para a fila' : rotuloSituacao(s)}</span>
                   {s.motivo_rejeicao ? (
                     <div className="text-xs rh-pessoal-devolucao">{s.motivo_rejeicao}</div>
                   ) : null}
@@ -837,6 +871,10 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
               {podeAbrir && s.situacao === 'RASCUNHO' && s.tipo !== 'JORNADA' ? (
                 <AcaoIconePessoal rotulo="Enviar" icone={HiOutlinePaperAirplane} variant="primary"
                   solicitacaoId={s.id} onClick={() => enviarAoDp(s)} />
+              ) : null}
+              {podeConcluir && s.demissao_pendente_conclusao ? (
+                <AcaoIconePessoal rotulo="Concluir demissão" icone={HiOutlineCheck} solicitacaoId={s.id}
+                  disabled={concluindo || atestando || envio.enviando} onClick={() => concluir(s)} />
               ) : null}
               {podeAbrir && s.situacao === 'REJEITADA' && s.tipo !== 'JORNADA' ? (
                 <AcaoIconePessoal rotulo="Reenviar" icone={HiOutlineArrowPath}
@@ -895,7 +933,13 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
                 {aberta.justificativa ? ` — ${aberta.justificativa}` : ''}
               </p>
             </div>
-            <button type="button" className="btn btn-outline btn-sm" onClick={fecharDetalhe}>Fechar</button>
+            <div className="app-page-actions">
+              {podeConcluir && aberta.demissao_pendente_conclusao ? (
+                <button type="button" className="btn btn-primary btn-sm" disabled={concluindo || atestando || envio.enviando || comentando}
+                  onClick={() => concluir(aberta)}>{concluindo ? 'Concluindo…' : 'Concluir demissão'}</button>
+              ) : null}
+              <button type="button" className="btn btn-outline btn-sm" onClick={fecharDetalhe}>Fechar</button>
+            </div>
           </div>
         </div>
         <div className="rh-modal-conteudo space-y-4">
@@ -908,7 +952,7 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
           <details open={aberta.tipo !== 'JORNADA'}>
           <summary>Dados da solicitação</summary>
           <section className="rh-solicitacao-resumo" aria-label="Dados da solicitacao de pessoal">
-            <div><span>Situacao</span><strong>{ROTULO_SITUACAO[aberta.situacao] || aberta.situacao}</strong></div>
+            <div><span>Situacao</span><strong>{rotuloSituacao(aberta)}</strong></div>
             <div><span>Colaborador</span><strong>{aberta.tipo === 'JORNADA' ? 'Equipe da obra' : aberta.colaborador?.nome || aberta.dados_json?.nome || 'A admitir'}</strong></div>
             <div><span>Obra / Centro de Custo</span><strong>{aberta.obra?.nome || aberta.colaborador?.obra?.nome || '—'}</strong></div>
             <div><span>Tipo</span><strong>{ROTULO_TIPO[aberta.tipo] || aberta.tipo}{aberta.subtipo ? ` · ${aberta.tipo === 'MOVIMENTACAO' ? rotuloMovimentacao(aberta.subtipo) : String(aberta.subtipo).replaceAll('_', ' ')}` : ''}</strong></div>
@@ -957,7 +1001,7 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
           ) : null}
 
           {/* Os envolvidos enviam enquanto o pedido esta em tratamento — depois de decidido, nao. */}
-          {['RASCUNHO', 'ABERTA', 'REJEITADA'].includes(aberta.situacao) ? (
+          {(['RASCUNHO', 'ABERTA', 'REJEITADA'].includes(aberta.situacao) || aberta.demissao_pendente_conclusao) ? (
             <form onSubmit={enviarDocumento} className="rh-pessoal-envio">
               <label className="form-field">
                 <span className="form-label">Tipo do documento</span>
@@ -997,7 +1041,7 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
                   onChange={(e) => setEnvio({ ...envio, arquivo: e.target.files?.[0] || null })}
                 />
               </label>
-              <button type="submit" className="btn btn-primary" disabled={envio.enviando || carregandoTipos || Boolean(erroTipos)}>
+              <button type="submit" className="btn btn-primary" disabled={envio.enviando || concluindo || carregandoTipos || Boolean(erroTipos)}>
                 {envio.enviando ? 'Enviando...' : 'Enviar documento'}
               </button>
             </form>
@@ -1037,13 +1081,13 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
                         Abrir arquivo
                       </button>
                       {/* Depois que virou documento, atestar de novo nao significa nada. */}
-                      {podeDecidir && anexo.situacao !== 'VALIDADO' && !anexo.documento_gerado_id ? (
-                        <button type="button" className="btn btn-primary btn-sm" onClick={() => decidirAnexo(anexo, true)}>
+                      {podeDecidir && !aberta.demissao_concluida && anexo.situacao !== 'VALIDADO' && !anexo.documento_gerado_id ? (
+                        <button type="button" className="btn btn-primary btn-sm" disabled={atestando || concluindo} onClick={() => decidirAnexo(anexo, true)}>
                           Atestar
                         </button>
                       ) : null}
-                      {podeDecidir && anexo.situacao !== 'RECUSADO' && !anexo.documento_gerado_id ? (
-                        <button type="button" className="btn btn-outline btn-sm" onClick={() => decidirAnexo(anexo, false)}>
+                      {podeDecidir && !aberta.demissao_concluida && anexo.situacao !== 'RECUSADO' && !anexo.documento_gerado_id ? (
+                        <button type="button" className="btn btn-outline btn-sm" disabled={atestando || concluindo} onClick={() => decidirAnexo(anexo, false)}>
                           Recusar
                         </button>
                       ) : null}
@@ -1056,7 +1100,7 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
 
           <form className="space-y-2" onSubmit={async e => {
             e.preventDefault();
-            if (travaComentario.current || !comentario.trim()) return;
+            if (travaComentario.current || travaConclusao.current || !comentario.trim()) return;
             travaComentario.current = true; setComentando(true);
             try {
               await comentarRhSolicitacao(aberta.id, comentario);
@@ -1069,7 +1113,7 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
             finally { travaComentario.current = false; setComentando(false); }
           }}>
             <label className="form-field"><span className="form-label">Comentário</span><textarea className="form-control" required maxLength={2000} value={comentario} onChange={e => setComentario(e.target.value)} /></label>
-            <button className="btn btn-outline btn-sm" disabled={comentando || !comentario.trim()}>{comentando ? 'Enviando…' : 'Comentar'}</button>
+            <button className="btn btn-outline btn-sm" disabled={comentando || concluindo || !comentario.trim()}>{comentando ? 'Enviando…' : 'Comentar'}</button>
           </form>
           {aberta.historicos?.length ? (
             <div>

@@ -12,6 +12,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const output = path.join(root, '../outputs/rh-pessoal-locais');
 mkdirSync(output, { recursive: true });
 const gerencial = process.argv.includes('--gerencial');
+const demissoes = process.argv.includes('--demissoes');
 const etapas = gerencial || process.argv.includes('--etapas');
 const exportsRh = [...readFileSync(path.join(root, 'src/services/rhDp.js'), 'utf8')
   .matchAll(/export (?:async )?function (\w+)/g)].map(match => match[1]);
@@ -29,6 +30,8 @@ const cadastrosExtras = [
   { id: 23, nome: 'Inativo escritório QA', obra_id: 51, obra: locais[1], status: 'INATIVO' },
   { id: 24, nome: 'Ativo sem local QA', obra_id: null, status: 'ATIVO' }
 ];
+if (demissoes) cadastrosExtras.push({ id: 25, nome: 'Demissao pendente QA', obra_id: 7, obra: locais[0],
+  status: 'DEMITIDO', demissao_pendente_conclusao: true, solicitacoes_abertas: [{ id: 235, tipo: 'DEMISSAO', situacao: 'APROVADA' }] });
 const solicitacao = { id: 55, codigo: 'RHP-55', tipo: 'JORNADA', colaborador_id: 11, situacao: 'ABERTA', obra_id: 7,
   obra: locais[0], dados_json: { importacao_id: 19, competencia: '2026-09' }, historicos: [] };
 const apuracao = { id: 12, competencia: '2026-09', importacao_id: 19, obra_id: 7, obra: locais[0],
@@ -52,7 +55,7 @@ const overrides = {
     if(path.endsWith('/enviar')){window.envios.push({...window.pagamento.dados_json,obra_id:window.pagamento.obra_id});window.pagamento.situacao='ABERTA';}
     return structuredClone({solicitacao:window.pagamento,pode_conferir:false,pode_enviar_fila:false,responsaveis:[],avisos:[]});
   }`,
-  getRhColaboradores: `async p=>{window.chamadas.push(['colaboradores',p]);return [...window.pessoas,...window.cadastrosExtras].filter(i=>(!p.obra_id||i.obra_id===Number(p.obra_id))&&(!p.status||i.status===p.status)&&(!p.q||i.nome.toLowerCase().includes(p.q.toLowerCase())));}`,
+  getRhColaboradores: `async p=>{window.chamadas.push(['colaboradores',p]);return [...window.pessoas,...window.cadastrosExtras].filter(i=>(!p.obra_id||i.obra_id===Number(p.obra_id))&&(!p.status||i.status===p.status||(p.incluir_demissoes_pendentes==='1'&&i.demissao_pendente_conclusao))&&(!p.q||i.nome.toLowerCase().includes(p.q.toLowerCase())));}`,
   listarRhSolicitacoes: `async p=>{window.chamadas.push(['solicitacoes',p]);return window.pedidos.filter(s=>(!p.obra_id||s.obra_id===Number(p.obra_id))&&(!p.colaborador_id||s.colaborador_id===Number(p.colaborador_id))&&(!p.tipo||s.tipo===p.tipo));}`,
   getRhSolicitacao: `async()=>window.pedido`,
   conferirDocumentacaoRhSolicitacao: `async()=>({exigeConferencia:false,faltando:[],entregues:[]})`,
@@ -134,7 +137,29 @@ try {
   assert.equal(await page.evaluate(() => window.chamadas.filter(c => c[0] === 'catalogo-admissao').length), 1);
   await admissao.getByRole('button', { name: /Cancelar|Fechar/, exact: true }).first().click();
   await admissao.waitFor({ state: 'hidden' });
-  if (process.argv.includes('--admissao')) {
+  if (demissoes) {
+    for (const width of [390, 1366]) {
+      const local = await abrir('?local_id=7&aba=colaboradores', width);
+      await local.getByText('Demissao pendente QA', { exact: true }).waitFor();
+      await local.getByText('DEMITIDO', { exact: true }).waitFor();
+      await local.getByText('Aguardando conclusão do DP', { exact: true }).waitFor();
+      assert.equal(await local.getByRole('button', { name: 'Solicitar pagamento: Demissao pendente QA', exact: true }).count(), 0);
+      assert.equal(await local.getByRole('button', { name: 'Pedir demissao: Demissao pendente QA', exact: true }).count(), 0);
+      const selecao = local.getByLabel('Selecionar linha 25', { exact: true });
+      assert((await selecao.count()) === 0 || await selecao.isDisabled(), 'Inativo nao entra em pagamento em lote');
+      assert(await local.evaluate(() => window.chamadas.filter(c => c[0] === 'colaboradores').every(c => c[1].incluir_demissoes_pendentes === '1')));
+      for (const nome of cadastrosExtras.filter(c => c.id !== 25).map(c => c.nome)) assert.equal(await local.getByText(nome, { exact: true }).count(), 0);
+      await local.getByText('Demissao pendente QA', { exact: true }).scrollIntoViewIfNeeded();
+      const statusBox = await local.getByText('Aguardando conclusão do DP', { exact: true }).boundingBox();
+      assert(statusBox.x + statusBox.width <= width, 'Situacao pendente nao ultrapassa o viewport');
+      await local.screenshot({ path: path.join(output, `demissao-lista-${width}.png`) });
+      await local.evaluate(() => { window.cadastrosExtras.find(c => c.id === 25).demissao_pendente_conclusao = false; });
+      await local.getByRole('button', { name: 'Atualizar', exact: true }).click();
+      await local.getByText('Demissao pendente QA', { exact: true }).waitFor({ state: 'hidden' });
+    }
+    assert.deepEqual(errors, []);
+    console.log('Lista real da obra: demitido pendente visivel ate conclusao/releitura, demais inativos ausentes, sem pagamento individual/lote ou nova demissao; opt-in da consulta, 390/1366 aprovados.');
+  } else if (process.argv.includes('--admissao')) {
     assert.deepEqual(errors, []);
     console.log('Admissao OBRA sem gestao de empresas: catalogo completo, selecao e fechamento sem criar rascunho aprovados.');
   } else if (process.argv.includes('--movimentacoes')) {

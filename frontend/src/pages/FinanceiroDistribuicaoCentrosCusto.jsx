@@ -47,7 +47,7 @@ export default function FinanceiroDistribuicaoCentrosCusto() {
       <PageHeader
         titulo="Distribuição gerencial dos Centros de Custo"
         contagem={loading ? 'Carregando…' : `${linhas.length} linha(s)`}
-        descricao="Visão gerencial por obra; os valores abaixo não compõem o custo real das obras."
+        descricao="Visão gerencial por obra ou centro de custo; não gera custo real nos destinos."
         voltar={{ to: '/financeiro/relatorios/centros-custo', title: 'Voltar ao resultado dos centros de custo' }}
       />
       <Avisos avisos={avisos} aoFechar={fechar} />
@@ -55,18 +55,18 @@ export default function FinanceiroDistribuicaoCentrosCusto() {
       <BlocoConteudo titulo="Filtros" variante="primario" cor="var(--module-financeiro)">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <label className="form-group">
-            <span className="form-label">Centro de custo</span>
+            <span className="form-label">Centro de custo de origem</span>
             <select className="input input-sm" value={rascunho.centro_custo_id} onChange={(e) => setRascunho((atual) => ({ ...atual, centro_custo_id: e.target.value }))}>
               <option value="">Todos</option>
               {(dados.filtros?.centros_custo || []).map((item) => <option key={item.id} value={item.id}>{item.codigo} · {item.nome}</option>)}
             </select>
           </label>
           <label className="form-group">
-            <span className="form-label">Obra de referência</span>
+            <span className="form-label">Obra / centro de custo de destino</span>
             <select className="input input-sm" value={rascunho.obra_id} onChange={(e) => setRascunho((atual) => ({ ...atual, obra_id: e.target.value }))}>
               <option value="">Todas as classificações</option>
               <option value="TODAS">TODAS (sem distribuição)</option>
-              {(dados.filtros?.obras || []).map((item) => <option key={item.id} value={item.id}>{item.codigo} · {item.nome}</option>)}
+              {(dados.filtros?.obras || []).map((item) => <option key={item.id} value={item.id}>{item.codigo} · {item.nome}{item.tipo_centro_custo === 'CENTRO_CUSTO' ? ' · Centro de custo' : ''}</option>)}
             </select>
           </label>
           <label className="form-group">
@@ -90,7 +90,7 @@ export default function FinanceiroDistribuicaoCentrosCusto() {
           <StatTile label="Valor classificado" valor={moeda(dados.resumo?.valor_total)} />
           <StatTile label="Solicitações" valor={String(dados.resumo?.solicitacoes || 0)} />
           <StatTile label="Centros de custo" valor={String(dados.resumo?.centros_custo || 0)} />
-          <StatTile label="Obras referenciadas" valor={String(dados.resumo?.obras || 0)} />
+          <StatTile label="Destinos referenciados" valor={String(dados.resumo?.obras || 0)} />
           <StatTile label="Classificações TODAS" valor={String(dados.resumo?.registros_todas || 0)} />
         </StatGrid>
       </BlocoConteudo>
@@ -103,13 +103,13 @@ export default function FinanceiroDistribuicaoCentrosCusto() {
         ) : (
           <div className="overflow-x-auto">
             <table className="app-table min-w-[1080px]">
-              <thead><tr><th>Data</th><th>Centro de custo</th><th>Obra / classificação</th><th>Solicitação</th><th>Tipo / subtipo</th><th>Critério</th><th>%</th><th>Valor</th></tr></thead>
+              <thead><tr><th>Data</th><th>Centro de custo de origem</th><th>Obra / centro de custo de destino</th><th>Solicitação</th><th>Tipo / subtipo</th><th>Critério</th><th>%</th><th>Valor</th></tr></thead>
               <tbody>
                 {linhas.map((linha) => (
                   <tr key={linha.id}>
                     <td>{dataHora(linha.solicitacao?.createdAt)}</td>
                     <td><strong>{linha.centro_custo?.codigo || '—'}</strong><br /><span className="text-xs text-[var(--c-muted)]">{linha.centro_custo?.nome}</span></td>
-                    <td>{linha.abrangencia === 'TODAS' ? <strong>TODAS</strong> : <><strong>{linha.obra?.codigo || '—'}</strong><br /><span className="text-xs text-[var(--c-muted)]">{linha.obra?.nome}</span></>}</td>
+                    <td>{linha.abrangencia === 'TODAS' ? <strong>TODAS</strong> : <><strong>{linha.obra?.codigo || '—'}</strong><br /><span className="text-xs text-[var(--c-muted)]">{linha.obra?.nome}{linha.obra?.tipo_centro_custo === 'CENTRO_CUSTO' ? ' · Centro de custo' : ''}</span></>}</td>
                     <td><Link className="app-link" to={`/solicitacoes/${linha.solicitacao?.id}`}>{linha.solicitacao?.codigo || linha.solicitacao?.id}</Link><br /><span className="text-xs text-[var(--c-muted)]">{linha.solicitacao?.descricao || 'Sem título'}</span></td>
                     <td>{linha.solicitacao?.tipo?.nome || '—'}{linha.solicitacao?.tipoSubSolicitacao?.nome ? <><br /><span className="text-xs text-[var(--c-muted)]">{linha.solicitacao.tipoSubSolicitacao.nome}</span></> : null}</td>
                     <td>{linha.criterio}</td>

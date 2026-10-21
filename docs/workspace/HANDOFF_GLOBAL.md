@@ -1,5 +1,19 @@
 # Handoff Global
 
+## Promocao MAIN RH, centros e pedidos - 2026-10-21
+
+- Usuario homologou RH e autorizou todos os tres pendentes2d161/ba4a/a00a;
+  backup cifrado/timer confirmados. Integracao main80df preserva ambos historicos.
+- Runtime identico DEV, docs de ambos preservados; dependencias/schema/scripts
+  produtivos exclusivos intactos. Sem EC2/banco real ou alteracao do DEV remoto.
+- QA backend/ACL/rollback/replay, UI real390/1366 dos tres pacotes e
+  build10,99s/631 aprovados; Node/Bash/guardas/docs/diff antes da publicacao.
+- Roteiro atualizar-producao-rh-pedidos-centros-20261021.sh: main80df instalada,
+  SHA/ff-only/backup/timer/PM2 PROD8000, UUID/TLS/schema12h/flags readonly antes/
+  depois, somente QA e restart backend-solicitacoes. .env/memoria preservados.
+- Handoff2026-10-21-promocao-rh-pedidos-centros-main.md: escopo, limites,
+  recuperacao e testes manuais sem mutacoes de smoke. Ownership liberado.
+
 ## Promocao MAIN tres pacotes DEV pendentes - 2026-10-21
 
 - Usuario autorizou5dbdd55a/44ee71b2/771f8041; backup cifrado/timer confirmados.
@@ -110,6 +124,69 @@
   invalidado (lista vazia/cwd). Migration 202610190001 pendente. Roteiro original
   sem DDL interrompeu antes do restart; usar retomada documentada acima;
   ownership liberado para PR/merge autorizado. Deploy exclusivamente pelo operador.
+
+## Hotfix DEV query de demissoes pendentes - 2026-10-21
+
+- Usuario autorizou corrigir/testar/commitar/push refactor/frontend e comandos DEV.
+- Baseba4a41b2; main80df6534 intocada. Unico runtime rhValidators whitelist/DTO
+  da flag0/1; middleware/controller/servico e UI testados. ACL/escopo e stores
+  preservados. Roteiro DEV existente inclui o novo arquivo na guarda/sintaxe.
+- Handoff docs/handoffs/2026-10-21-rh-demissao-query.md. Sem frontend, banco real,
+  EC2/producao/migrations/dependencias/vinculos/financeiro/.env/flags/memoria.
+
+## Publicacao DEV pedido/reabertura/logs - 2026-10-21
+
+- Usuario autorizou commit/push refactor/frontend e roteiro EC2 DEV.
+- Base2d161b85/main80df6534 conferidas. Sem push main, EC2/dados reais ou memoria.
+- QA backend/regressoes/UI26 itens1366/390 repetidos; guardas Node/Bash/docs596/19/
+  diff aprovados. Roteiro atualizar-dev-pedido-reabertura-20261021.sh,
+  schema readonly/PM28001/ff-only/pacotes so QA/.env intacto; restart so backend-dev.
+- Handoff: docs/handoffs/2026-10-21-pedido-reabertura.md. Ownership liberado.
+
+## Reabertura e novo fechamento de pedido - 2026-10-21
+
+- Usuario autorizou implementar/testar em DEV, base2d161b85. Concluido local,
+  ownership liberado. Colecoes separadas/saldo enxuto;202 apos escrita confirmada,
+ 503 incerto/GET sem replay; novo fechamento e logs sem SQL/dados pessoais.
+- Botao preserva endpoint/permissao/entrega/GEO/status/financeiro atuais.
+- QA backend/SQL offline, UI26 itens1366/390, regressoes, build12,68s/631,
+  Node/docs596/19/diff aprovados. Teste antigo do menu RH desatualizado registrado.
+- Handoff: docs/handoffs/2026-10-21-pedido-reabertura.md. Publicar so se solicitado.
+- Sem producao/EC2/dados reais, memoria, migration ou publicacao nesta etapa.
+
+## Publicacao DEV RH e destinos gerenciais - 2026-10-21
+
+- Autorizado publicar os dois pacotes DEV e passar comandos, sem producao.
+  Roteiro atualizar-dev-rh-centros-20261021.sh com identidade/schema readonly,
+  PM28001, ff-only e dependencias/migrations imutaveis (so scripts QA novos).
+- Handoff: docs/handoffs/2026-10-21-publicacao-dev-rh-centros.md.
+- Logs mostram tres OOM no heap Node; sem timestamps/correlacao do pedido.
+  RAM informada:3,7GiB/sem swap; tipo/IP AWS ainda pendentes. Usuario adiou
+  memoria para priorizar publicacao DP/Nova Solicitacao. Nao alterar infraestrutura.
+- Sem EC2/banco real ou operacoes de memoria pelo agente. Excluir outputs.
+
+## Distribuicao gerencial para centros de custo - 2026-10-21
+
+- Nova Solicitacao aceita destinos centros/obras ativos, com mesma ACL e
+  configuracao. So classificacao gerencial; lancamento permanece na origem.
+- Adiantamento mantem destinos anteriores, sem custos/titulos nos destinos.
+  Handoff: docs/handoffs/2026-10-21-distribuicao-centros-destinos.md.
+- RH preservado e ainda nao publicado. Pedido/reabertura nao implementado.
+  Sem EC2/banco real, main/producao, commit/push/deploy nesta etapa.
+- Concluido local, ownership liberado. Backend/ACL/rollback, UI390/1366,
+  relatorio/configuracao/retry, regressoes, build/sintaxe/docs594/19/diff aprovados.
+
+## Demissao com conclusao DP - 2026-10-21
+
+- Implementacao/QA local de novas demissoes e RH-000235: inativo permanece
+  na obra ate DP concluir; comentarios/anexos durante tratamento, ateste corrigido.
+- Mantem APROVADA e seus efeitos; conclusao apenas documental/operacional,
+  transacional e idempotente. Sem financeiro, migration, producao ou banco real.
+- Handoff especifico: docs/handoffs/2026-10-21-rh-demissao-conclusao.md.
+  Publicacao DEV depende de pedido posterior; outputs privados fora do escopo.
+- Entrega local validada: backend transacional/ACL/replay, UI390/1366,
+  regressoes de RH/documentos/pagamentos, build/sintaxe/docs593/19/diff.
+  Ownership liberado, sem commit/push.
 
 ## Publicacao DEV autorizacao unica - 2026-10-21
 
