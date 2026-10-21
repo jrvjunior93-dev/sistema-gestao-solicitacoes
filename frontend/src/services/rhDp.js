@@ -467,6 +467,14 @@ export async function aprovarRhSolicitacao(id) {
   return parseJson(response, 'Erro ao aprovar a solicitacao de pessoal');
 }
 
+export async function concluirRhDemissao(id) {
+  const response = await fetch(`${API_URL}/rh/solicitacoes/${id}/concluir`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' })
+  });
+  return parseJson(response, 'Erro ao concluir a demissao');
+}
+
 export async function rejeitarRhSolicitacao(id, motivo) {
   const response = await fetch(`${API_URL}/rh/solicitacoes/${id}/rejeitar`, {
     method: 'POST',

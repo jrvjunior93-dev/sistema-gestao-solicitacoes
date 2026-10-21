@@ -1600,7 +1600,7 @@ const REPORT_CATALOG = [
     id: 'centros-custo-distribuicao',
     title: 'Distribuição dos Centros de Custo',
     group: 'Obras',
-    description: 'Visão gerencial dos gastos dos centros nas obras, sem apropriação real.',
+    description: 'Distribuição entre obras e centros de custo, sem apropriação real nos destinos.',
     route: '/financeiro/relatorios/centros-custo/distribuicao-obras',
     permissionKey: 'financeiro.relatorios.centros_custo',
     visibilityKey: 'relatorios.financeiro.centros_custo',

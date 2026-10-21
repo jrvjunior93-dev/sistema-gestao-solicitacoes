@@ -1,5 +1,17 @@
 # Quadro de Agentes
 
+## Promocao MAIN RH, centros e pedidos - 2026-10-21
+
+- Integracao main80df + DEVa00 autorizada com todos os tres pendentes.
+  RH homologado pelo usuario; outros dois pacotes autorizados e QA isolado.
+- Runtime sem conflitos/identico DEV; seis conflitos documentais conservaram
+  registros das duas branches, scripts main/DDL/lockfiles/dependencias intactos.
+- Backend/ACL/escopo/replay/rollback/regressoes, UI390/1366 de RH/centros/pedidos,
+  build10,99s/631, guardas PROD/DEV e Node/Bash/docs/diff conferidos.
+- Ownership liberado para commit/PR/merge. Roteiro PROD exige main80df instalada,
+  backup/timer/PM28000/UUID/TLS/schema12h/flags, QA antes do restart exclusivo.
+  Sem EC2/banco real pelo agente, memoria, .env/flags ou calculos financeiros.
+
 ## Promocao MAIN tres pacotes DEV pendentes - 2026-10-21
 
 - Agente unico, integrar5dbdd55a/44ee71b2/771f8041 sobre main eb12 preservando
@@ -89,6 +101,65 @@
   isolado/snapshot e evidencia EC2 recebidos. CORRECAO: inventario inicial do
   alvo vazio, nao comprovava schema concluido. Migration 202610190001 pendente;
   roteiro sem DDL/regularizacao aprovado e ownership liberado para PR/merge.
+
+## Hotfix DEV query demissoes pendentes - 2026-10-21
+
+- Correcao/QA/commit/push DEV autorizados; baseba4a41b2/main80df6534 intocada.
+- Unico runtime rhValidators.js (whitelist/DTO string0/1); QA agora passa por
+  middleware/controller/servico reais em memoria.400 reproduzido antes e200 apos.
+- ACL/escopo/negativas/store sem escrita e regressoes RH/pedido/centros, UI390/1366
+  aprovados. Roteiro/guarda existente inclui validador RH e restart so backend-dev.
+- Agente unico, ownership liberado para publicacao; Node/Bash/docs597/19/diff
+  aprovados. Sem EC2/producao/dados
+  reais/DDL/dependencias/.env/flags/memoria ou alteracao de vinculos/financeiro.
+
+## Publicacao DEV pedido/reabertura/logs - 2026-10-21
+
+- Commit/push e comandos DEV autorizados; base2d161b85, main80df6534 intocada.
+- Agente unico, ownership liberado para publicacao apos QA backend/regressoes/
+  UI26 itens1366/390 repetidos. Guardas Node/Bash/docs596/19/diff aprovados.
+- Roteiro pinned/ff-only/PM28001/schema readonly, so backend-dev; sem DDL,
+  dependencias, .env/flags/memoria ou acesso real a EC2 pelo agente. Excluir outputs.
+
+## Reabertura e novo fechamento de pedido - 2026-10-21
+
+- Implementacao/testes autorizados DEV2d161b85, agente unico, concluida local,
+  ownership liberado. Colecoes separadas/saldo enxuto, resposta pos-commit,
+  novo fechamento via endpoint/ACL existentes e logs seguros. Sem financeiro novo.
+- Backend/SQL offline/ACL/historico/replay/logger, UI26 itens1366/390/rede/202/
+  rascunhos/rota anterior/GEO, regressoes, build12,68s/Node/docs596/19/diff aprovados.
+  Expectativa antiga do menu RH falha em validarAcessoPedidos.mjs; documentada,
+  sem delta nessa navegacao/ACL. Handoff 2026-10-21-pedido-reabertura.
+- Sem producao/EC2/dados reais, migrations, memoria, commit/push/deploy.
+
+## Publicacao DEV RH e destinos gerenciais - 2026-10-21
+
+- Commit/push DEV e comandos autorizados; dois pacotes validados, sem pedidos.
+- Remotos DEV828ed2ec/main80df6534 conferidos, sem divergencia do DEV.
+  Roteiro pinned/ff-only/schema readonly/PM28001, package.json so comandos QA,
+  sem DDL/dependencias/flags/.env ou operacoes reais pelo agente.
+- Logs confirmam OOM de Node em producao (~1,9GB), nao gatilho PC-00271.
+  RAM informada:3,7GiB, disponivel2,7GiB no snapshot, sem swap; tipo/IP pendentes.
+  Usuario priorizou finalizar DP/Nova Solicitacao. Memoria adiada; nao alterar.
+- Ownership liberado para publicacao; outputs privados excluidos, sem push main.
+
+## Distribuicao gerencial para centros de custo - 2026-10-21
+
+- Agente unico: permitir centros de custo no gerencial da Nova Solicitacao,
+  mantendo origem/ACL/configuracao, custos reais e adiantamento inalterados.
+- Entrega local concluida e ownership liberado. Backend/ACL/rollback, UI390/1366,
+  relatorio/configuracao/retry, regressoes, build10,88s/sintaxe/docs594/19/diff aprovados.
+- RH preservado local e sem commit/push; pedidos/reabertura fora desta etapa.
+  Sem producao ou dados reais. Ownership no painel, handoff especifico criado.
+
+## Demissao com conclusao DP - 2026-10-21
+
+- Agente unico, implementacao local para DEV828ed2ec em branch isolada.
+  Novas demissoes/RH-000235, inativo visivel ate concluir, colaboracao e ateste.
+- Backend/ACL/rollback/replay, UI390/1366, regressoes, build/sintaxe/docs593/19
+  e diff aprovados. Entrega local concluida, ownership liberado.
+  Sem banco real, producao, calculos, migration, commit/push ou deploy.
+- Handoff 2026-10-21-rh-demissao-conclusao; proximo passo publicar DEV se solicitado.
 
 ## Publicacao DEV autorizacao unica - 2026-10-21
 

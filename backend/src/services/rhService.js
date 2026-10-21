@@ -987,6 +987,17 @@ async function listarColaboradoresRh(filters = {}) {
     where.status = filters.status;
   }
 
+  const abertosPorColaborador = await pedidosAbertosPorColaborador(
+    filters.solicitacoes_obra_ids === undefined ? obraIdsPermitidas : filters.solicitacoes_obra_ids,
+    filters.usuario_id_consulta);
+  // Opt-in SOMENTE da lista operacional de uma obra. Nao inclui inativos nos
+  // consumidores financeiros, selecao de pagamentos ou consulta global padrao.
+  if (String(filters.incluir_demissoes_pendentes) === '1' && filters.obra_id && filters.status === 'ATIVO') {
+    const ids = [...abertosPorColaborador].filter(([, pedidos]) => pedidos.some(p =>
+      p.demissao_pendente_conclusao && Number(p.obra_id) === Number(filters.obra_id))).map(([id]) => id);
+    delete where.status;
+    where[Op.and] = [{ [Op.or]: [{ status: 'ATIVO' }, { status: 'DEMITIDO', id: { [Op.in]: ids } }] }];
+  }
   const colaboradores = await RhColaborador.findAll({
     where,
     include: COLABORADOR_INCLUDE,
@@ -1013,21 +1024,20 @@ async function listarColaboradoresRh(filters = {}) {
    * alfabetica, depois quem nao tem em ordem alfabetica. Sem isso a lista mudaria de ordem a cada
    * pedido novo e ninguem acharia mais ninguem.
    */
-  const abertosPorColaborador = await pedidosAbertosPorColaborador(
-    filters.solicitacoes_obra_ids === undefined ? obraIdsPermitidas : filters.solicitacoes_obra_ids,
-    filters.usuario_id_consulta);
-
   const comPedido = [];
   const semPedido = [];
 
   for (const colaborador of colaboradores) {
     const pedidos = abertosPorColaborador.get(colaborador.id) || [];
     const plano = colaborador.get({ plain: true });
+    plano.demissao_pendente_conclusao = pedidos.some(p => p.demissao_pendente_conclusao
+      && Number(p.obra_id) === Number(plano.obra_id));
 
     plano.solicitacoes_abertas = pedidos.map((pedido) => ({
       id: pedido.id,
       tipo: pedido.tipo,
       situacao: pedido.situacao,
+      demissao_pendente_conclusao: pedido.demissao_pendente_conclusao,
       obra_id: pedido.obra_id,
       criada_em: pedido.createdAt
     }));

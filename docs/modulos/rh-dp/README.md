@@ -1,5 +1,76 @@
 # Modulo RH/DP
 
+## Promocao MAIN RH, centros e pedidos - 2026-10-21
+
+Usuario autorizou os tres commits pendentes2d161b85/ba4a41b2/a00a15f6 e confirmou
+backup cifrado/timer. Integracao sobre main80df6534 preserva hotfixes/scripts/
+historico e leva runtime DEV sem alteracao adicional. RH homologado pelo usuario;
+centros/pedidos validados em testes isolados. Sem DDL/dependencias/calculos
+financeiros/.env/flags/memoria alterados. Roteiro PROD exclusivo com verificacoes
+readonly e restart somente backend-solicitacoes, executado pelo operador.
+[Escopo, testes, roteiro e recuperacao](../../handoffs/2026-10-21-promocao-rh-pedidos-centros-main.md).
+
+## Hotfix da query de demissoes pendentes - 2026-10-21
+
+- GET /rh/colaboradores agora aceita e preserva `incluir_demissoes_pendentes`
+  como string `0` ou `1`. O frontend ja enviava1, mas faltava a whitelist e o
+  retorno desse campo em validateRhColaboradorQuery, causando400 antes do
+  controller. Ausente/0 mantem a listagem anterior; formatos invalidos sao400.
+- Nao altera permissao da rota, escopo, controller/servicos, vinculos/cadastro,
+  conclusao DP, historico, anexos ou regras financeiras. Campos internos de
+  escopo continuam proibidos; so a listagem operacional opt-in inclui pendentes.
+- QA test:rhdp-demissao-conclusao agora atravessa validateRequest/validador,
+  RhColaboradorController.index e rhService reais com modelos em memoria.
+  Reproduziu400 antes do fix; cobre query reportada obra3, obra da fixture,
+  opt-in1/0/ausente, invalidos/arrays/objetos, tentativa de escopo via query,
+ 403 fora da obra, escopo vazio, DP, busca e retirada so apos concluir.
+- Testes comprovam consulta sem escrita em cadastro/vinculos/historico/valores.
+  Suite UI de demissao/lista390/1366 reaprovada, sem alterar frontend.
+- Publicacao exclusivamente refactor/frontend; roteiro DEV existente
+  ops/deploy/atualizar-dev-pedido-reabertura-20261021.sh inclui o validador RH
+  e QA corrigido antes de reiniciar somente backend-dev. Sem DDL, dependencias,
+  .env/flags/memoria ou operacao real na EC2 pelo agente.
+- [Handoff do hotfix](../../handoffs/2026-10-21-rh-demissao-query.md).
+
+## Demissao: acompanhamento ate conclusao pelo DP - 2026-10-21
+
+- Publicacao DEV autorizada posteriormente, junto a distribuicao gerencial.
+  Roteiro: ops/deploy/atualizar-dev-rh-centros-20261021.sh. Sem DDL/dependencias
+  ou execucao de operacoes RH reais pelo agente; somente backend-dev no roteiro.
+  [Handoff de publicacao](../../handoffs/2026-10-21-publicacao-dev-rh-centros.md).
+- Novas demissoes possuem controle interno `dados_json.demissao_conclusao_dp`.
+  A unica excecao legada autorizada e a DEMISSAO de codigo RH-000235.
+  Nao ha backfill nem reabertura de outras demissoes historicas.
+- Aprovacao continua inativando o colaborador (DEMITIDO) e encerrando o vinculo
+  na data anterior prevista. A conclusao e operacional/documental: preserva
+  situacao APROVADA, autor/data da aprovacao, datas, cadastro, vinculos e calculos.
+- Enquanto aprovada e pendente, aparece como Aguardando conclusao do DP e conta
+  como em andamento. Na lista operacional da mesma obra, o colaborador aparece
+  inativo ate concluir. Nao e selecionavel para pagamento, nem recebe botoes de
+  novo pagamento/demissao. Outros inativos e consultas financeiras nao se ampliam.
+  A inclusao depende do opt-in `incluir_demissoes_pendentes=1`, obra e status ATIVO.
+- DP e usuarios autorizados da obra continuam comentando/anexando no detalhe
+  durante o tratamento. Escopo da obra, permissoes de consulta/decisao, limites
+  de upload, storage privado e historico permanecem. Comentarios ja eram permitidos
+  em APROVADA; a restricao corrigida era a inclusao de anexos depois da aprovacao.
+- Ateste valida os parametros id e anexoId e a pertença do anexo ao pedido da
+  URL autorizada; nao aceita atestar documento de outra solicitacao. Retry do
+  mesmo ateste nao duplica historico. Documento oficial ja gerado nao e reavaliado.
+- POST /rh/solicitacoes/:id/concluir exige permissao de decidir, escopo do pedido
+  e usuario DP (ou excecao SUPERADMIN). Revalida documentos prometidos no checklist,
+  transfere apenas anexos classificados/atestados ainda nao transferidos e registra
+  autor/data e evento CONCLUSAO. Usa transacao e lock do pai tambem no upload/ateste;
+  repeticao da conclusao nao duplica documentos/eventos. Nao reaplica a demissao.
+- Apos concluir, sai da lista operacional, mas cadastro/documentos/historico
+  continuam consultaveis e nao sao excluidos. Detalhe mostra Concluida; filtros
+  historicos APROVADA preservados. Inclusoes/reavaliacoes documentais ficam fechadas.
+- Sem migration, dependencia nova, dados reais, commit/push ou deploy nesta entrega.
+  Homologar no DEV com DP e usuario vinculado a obra antes de eventual promocao.
+- QA: `npm --prefix backend run test:rhdp-demissao-conclusao` e
+  `npm --prefix frontend run test:rhdp-demissao-conclusao` (API/modelos isolados,
+  transacao/rollback/replay/ACL, lista e modal em 390/1366).
+- [Handoff](../../handoffs/2026-10-21-rh-demissao-conclusao.md).
+
 ## Datas do pedido de admissao e classificacao dos anexos - 2026-10-18
 
 - No pedido de admissao, Data de admissao e opcional; Inicio efetivo na obra

@@ -1,5 +1,12 @@
 # Sessoes Ativas
 
+- codex-promocao-rh-pedidos-centros-main-20261021: agente unico; usuario confirmou
+  RH no DEV e autorizou todos os tres pendentes2d161b85/ba4a41b2/a00a15f6.
+  Backup cifrado/timer confirmados. Base main80df, runtime identico DEVa00.
+  Backend/ACL/rollback/regressoes, UI390/1366, build10,99s/631 e guardas aprovados.
+  Ownership liberado para commit/PR/merge; EC2 so operador, sem DDL/.env/flags/
+  dependencias/memoria ou operacoes financeiras reais pelo agente.
+
 - codex-promocao-pendencias-main-20261021: agente unico, base main eb12/DEV828,
   tres pacotes autorizados, backup/timer confirmados. Integracao/roteiro PROD/
   QA/docs reservados; preservar main/passkey e DEV remoto. Sem EC2/banco real,
@@ -55,6 +62,40 @@
   Simulacao real conferida; inventario inicial de schema alvo invalidado, lista
   vazia por cwd. Pendencia 202610190001 confirmada depois pelo operador. Roteiro
   sem DDL/regularizacao e QA aprovados; ownership liberado para PR/merge.
+
+- codex-rh-demissao-query-20261021: agente unico, hotfix400 da query DEV,
+  implementacao/QA/commit/push autorizados. Runtime so rhValidators; cadeia
+  middleware/controller/servico, escopo/store, regressoes e UI390/1366 aprovados.
+  Roteiro/guarda DEV existente atualizado. Sem producao/EC2/DDL/dados reais,
+  vinculos/permissoes/financeiro/.env/memoria. Ownership liberado para publicacao;
+  Node/Bash/guardas/docs597/19/diff aprovados.
+
+- codex-pedido-reabertura-publicacao-20261021: agente unico, commit/push DEV
+  autorizados; base2d161b85, main80df6534 somente leitura. QA backend/regressoes/
+  UI26 itens1366/390/guardas Node/Bash/docs596/19/diff aprovados. Ownership
+  liberado para publicacao. Sem EC2/producao/dados reais/memoria ou outputs.
+
+- codex-pedido-reabertura-20261021: agente unico, implementacao/QA DEV
+  autorizada para reabertura, novo fechamento e logs seguros. Concluida local,
+  ownership liberado, base2d161b85. Backend/SQL offline/UI26 itens1366/390/
+  regressoes/build12,68s/Node/docs596/19/diff aprovados. Limite do teste antigo
+  menu RH documentado. Sem producao/EC2/banco reais, heap ou publicacao.
+
+- codex-publicacao-dev-rh-centros-20261021: agente unico; commit/push DEV
+  autorizado para RH e distribuicao gerencial, validado para publicacao e ownership liberado.
+  OOM producao confirmado; RAM3,7GiB/sem swap, resize adiado pelo usuario.
+  Sem producao/main, memoria/reinicios reais, dados reais ou outputs no commit.
+
+- codex-distribuicao-centros-destinos-20261021: agente unico, implementacao/QA
+  gerencial de obras/centros na Nova Solicitacao. Concluida local e ownership
+  liberado; backend/UI390/1366/regressoes/build/sintaxe/docs594/19/diff aprovados.
+  RH preservado; sem publicacao, pedidos ou producao/banco reais.
+
+- codex-rh-demissao-conclusao-20261021: agente unico, implementacao e QA local
+  autorizados para novas demissoes/RH-000235. Conclusao documental DP separada
+  da aprovacao; inativo na lista ate concluir. Backend/UI390/1366/regressoes/
+  build/sintaxe/docs593/19 aprovados, finalizada local e ownership liberado.
+  Sem publicacao, producao ou banco real.
 
 - codex-publicacao-dev-autorizacao-unica-20261021: agente unico, commit/push DEV
   e comandos autorizados; delta/QA/docs/roteiro/guardas reservados. Sem main,

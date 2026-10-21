@@ -564,7 +564,7 @@ export default function NovaSolicitacao() {
         if (cancelado) return;
         setDistribuicaoCentroCusto({
           status: 'error', regra: null, obras: [], criterio: 'PERCENTUAL', todas: false, linhas: [], edicaoManual: false,
-          erro: error?.message || 'Nao foi possivel carregar as obras para distribuicao.'
+          erro: error?.message || 'Nao foi possivel carregar obras e centros de custo para distribuicao.'
         });
       });
     return () => { cancelado = true; };
@@ -1993,12 +1993,12 @@ export default function NovaSolicitacao() {
       if (distribuicaoCentroCusto.status !== 'success') {
         reprovarCampo(
           'distribuicao_centro_custo',
-          distribuicaoCentroCusto.erro || 'Aguarde o carregamento das obras para a distribuição gerencial.'
+          distribuicaoCentroCusto.erro || 'Aguarde o carregamento das obras e centros de custo para a distribuição gerencial.'
         );
         return;
       }
       if (!distribuicaoCentroCusto.todas && distribuicaoCentroCusto.linhas.length === 0) {
-        reprovarCampo('distribuicao_centro_custo', 'Selecione TODAS ou ao menos uma obra para a distribuição gerencial.');
+        reprovarCampo('distribuicao_centro_custo', 'Selecione TODAS ou ao menos uma obra ou centro de custo para a distribuição gerencial.');
         return;
       }
       if (!distribuicaoCentroCusto.todas && distribuicaoCentroCusto.criterio === 'PERCENTUAL') {
@@ -4248,11 +4248,11 @@ export default function NovaSolicitacao() {
 
         {!obraSelecionadaEhObra && form.obra_id && !subtipoAdiantamento && (
           <BlocoConteudo
-            titulo="Distribuição gerencial por obra"
-            descricao="Classificação exclusiva do relatório do centro de custo. Estes valores não compõem o custo real das obras."
+            titulo="Distribuição gerencial por obra / centro de custo"
+            descricao="Classificação exclusiva do relatório gerencial. O lançamento permanece no centro de custo de origem, sem gerar custo real nos destinos."
           >
             {distribuicaoCentroCusto.status === 'loading' ? (
-              <p className="text-sm text-[var(--c-muted)]">Carregando obras disponíveis...</p>
+              <p className="text-sm text-[var(--c-muted)]">Carregando obras e centros de custo disponíveis...</p>
             ) : distribuicaoCentroCusto.status === 'error' ? (
               <p className="form-error" role="alert">{distribuicaoCentroCusto.erro}</p>
             ) : (
@@ -4273,12 +4273,12 @@ export default function NovaSolicitacao() {
                   </div>
                   <span className="text-xs text-[var(--c-muted)]">
                     {distribuicaoCentroCusto.regra === 'CONFIGURADAS_CENTRO_CUSTO'
-                      ? 'Obras configuradas para este centro de custo.'
+                      ? 'Destinos configurados para este centro de custo.'
                       : distribuicaoCentroCusto.regra === 'TODAS_PRIVADAS'
-                      ? 'Marketing/Comercial: obras privadas disponíveis.'
+                      ? 'Marketing/Comercial: obras privadas e centros de custo disponíveis.'
                       : distribuicaoCentroCusto.regra === 'VINCULADAS_USUARIO'
-                        ? 'Somente obras vinculadas ao seu usuário.'
-                        : 'Obras ativas disponíveis.'}
+                        ? 'Somente obras e centros de custo vinculados ao seu usuário.'
+                        : 'Obras e centros de custo ativos disponíveis.'}
                   </span>
                 </div>
 
@@ -4293,7 +4293,7 @@ export default function NovaSolicitacao() {
                     <span>
                       <strong className="block text-sm text-[var(--c-text)]">TODAS</strong>
                       <span className="text-xs text-[var(--c-muted)]">
-                        Mantém o valor integral na classificação TODAS, sem distribuí-lo entre obras.
+                        Mantém o valor integral na classificação TODAS, sem distribuí-lo entre destinos.
                       </span>
                     </span>
                   </label>
@@ -4306,16 +4306,16 @@ export default function NovaSolicitacao() {
                       onChange={() => setDistribuicaoCentroCusto((atual) => ({ ...atual, todas: false }))}
                     />
                     <span>
-                      <strong className="block text-sm text-[var(--c-text)]">Obras selecionadas</strong>
+                      <strong className="block text-sm text-[var(--c-text)]">Obras e centros de custo selecionados</strong>
                       <span className="text-xs text-[var(--c-muted)]">
-                        Registra quanto do custo do centro foi destinado gerencialmente a cada obra, sem lançar custo nelas.
+                        Registra a distribuição gerencial entre os destinos selecionados, sem criar lançamentos neles.
                       </span>
                     </span>
                   </label>
 
                   <div className="max-h-72 overflow-auto p-2">
                     {distribuicaoCentroCusto.obras.length === 0 ? (
-                      <p className="px-2 py-3 text-sm text-[var(--c-muted)]">Nenhuma obra individual disponível para este usuário.</p>
+                      <p className="px-2 py-3 text-sm text-[var(--c-muted)]">Nenhuma obra ou centro de custo disponível para este usuário.</p>
                     ) : distribuicaoCentroCusto.obras.map((obra) => {
                       const linhaSelecionada = distribuicaoCentroCusto.linhas.find(
                         (linha) => Number(linha.obra_id) === Number(obra.id)
@@ -4337,7 +4337,7 @@ export default function NovaSolicitacao() {
                               <strong>{obra.codigo || 'Sem código'}</strong> · {obra.nome}
                             </span>
                           </label>
-                          <span className="text-xs text-[var(--c-muted)]">{obra.classificacao || 'Sem classificação'}</span>
+                          <span className="text-xs text-[var(--c-muted)]">{isCadastroObra(obra) ? obra.classificacao || 'Obra' : 'Centro de custo'}</span>
                           {selecionada && !distribuicaoCentroCusto.todas ? (
                             <label className="flex w-full items-center gap-2 pl-7 sm:w-auto sm:pl-0">
                               <span className="sr-only">

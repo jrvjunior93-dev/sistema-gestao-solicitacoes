@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:pedido-reabertura": "node scripts/validarPedidoReabertura.mjs",
+    "test:centro-custo-distribuicao": "node scripts/validarDistribuicaoCentroCustoDestinos.mjs",
+    "test:rhdp-demissao-conclusao": "node scripts/validarRhDemissaoConclusao.mjs && node scripts/validarRhPessoalPorLocal.mjs --demissoes",
     "test:cartao-parcelamento-baixa": "node scripts/validarCartaoParcelamentoUI.mjs",
     "test:titulo-cancelamento": "node scripts/validarTituloCancelamentoUI.mjs",
     "test:fila-multiplas-fontes": "node scripts/validarFilaBaixaCompostaUI.mjs && node scripts/validarBaixaCompostaWorkspace.mjs",

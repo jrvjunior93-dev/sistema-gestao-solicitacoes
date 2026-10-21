@@ -1,6 +1,7 @@
 const {
   abrirSolicitacao,
   aprovarSolicitacao,
+  concluirDemissao,
   rejeitarSolicitacao,
   reenviarSolicitacao,
   cancelarSolicitacao,
@@ -211,7 +212,7 @@ module.exports = {
         && visivelNaConsulta(linha, req.user.id)
         && (colaboradorId === null || colaboradoresDoPedido(linha).includes(colaboradorId)))
         .map(normalizarConsulta).filter(linha => !filtroSituacao || (filtroSituacao === 'EM_ANDAMENTO'
-          ? emAndamento.includes(linha.situacao) : linha.situacao === filtroSituacao));
+          ? emAndamento.includes(linha.situacao) || linha.demissao_pendente_conclusao : linha.situacao === filtroSituacao));
       const idsDestino = Array.from(new Set(
         planos
           .map((linha) => Number(linha.dados_json?.obra_destino_id))
@@ -242,6 +243,7 @@ module.exports = {
       await exigirSolicitacaoNoEscopoDoUsuario(req, req.params.id);
       const detalhe = await detalharSolicitacao(req.params.id);
       const plano = detalhe.get ? detalhe.get({ plain: true }) : detalhe;
+      if (plano.tipo === 'DEMISSAO') Object.assign(plano, normalizarConsulta(plano));
       const ultimo = (plano.historicos || []).reduce((n, h) => Math.max(n, Number(h.id)), 0);
       await marcarLida(req.params.id, req.user.id, ultimo);
       return res.json(plano);
@@ -409,6 +411,15 @@ module.exports = {
     }
   },
 
+  async concluir(req, res) {
+    try {
+      await exigirSolicitacaoNoEscopoDoUsuario(req, req.params.id);
+      return res.json(normalizarConsulta(await concluirDemissao(req.params.id, contextoDe(req))));
+    } catch (error) {
+      return responderErroController(res, error, 'Erro ao concluir a demissao');
+    }
+  },
+
   async cancelar(req, res) {
     try {
       await exigirSolicitacaoNoEscopoDoUsuario(req, req.params.id);
@@ -464,7 +475,7 @@ module.exports = {
   async validar(req, res) {
     try {
       await exigirSolicitacaoNoEscopoDoUsuario(req, req.params.id);
-      const anexo = await validarAnexo(req.params.anexoId, req.body || {}, contextoDe(req));
+      const anexo = await validarAnexo(req.params.anexoId, req.body || {}, contextoDe(req), req.params.id);
       return res.json(anexo);
     } catch (error) {
       console.error(error);

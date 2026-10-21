@@ -1,5 +1,15 @@
 # Modulo SOLICITACOES
 
+## Promocao MAIN RH, centros e pedidos - 2026-10-21
+
+Usuario autorizou os tres commits pendentes2d161b85/ba4a41b2/a00a15f6 e confirmou
+backup cifrado/timer. Integracao sobre main80df6534 preserva hotfixes/scripts/
+historico e leva runtime DEV sem alteracao adicional. RH homologado pelo usuario;
+centros/pedidos validados em testes isolados. Sem DDL/dependencias/calculos
+financeiros/.env/flags/memoria alterados. Roteiro PROD exclusivo com verificacoes
+readonly e restart somente backend-solicitacoes, executado pelo operador.
+[Escopo, testes, roteiro e recuperacao](../../handoffs/2026-10-21-promocao-rh-pedidos-centros-main.md).
+
 ## Promocao MAIN periodo de registro - 2026-10-21
 
 Pacote771f8041 promovido junto com fatura/saldo-cartao/permutas a pedido do
@@ -319,10 +329,40 @@ A operacao e transacional e idempotente por solicitacao.
 
 ## Centros de Custo
 
+Publicacao DEV autorizada em 21/10 junto ao ajuste RH. Roteiro com guardas:
+ops/deploy/atualizar-dev-rh-centros-20261021.sh. Sem migration/dependencias,
+main/producao ou ajustes de memoria. Ver [handoff de publicacao](../../handoffs/2026-10-21-publicacao-dev-rh-centros.md).
+
 Marketing, Comercial e Administrativo/Escritorio podem usar tipo automatico conforme
-a configuracao vigente. A distribuicao gerencial por obra registra destino percentual
-ou financeiro no relatorio do Centro de Custo, sem atribuir o custo real a obra. A
-opcao `TODAS` permanece como classificacao propria e nao e rateada.
+a configuracao vigente. A distribuicao gerencial aceita obras e Centros de Custo
+ativos como destinos, por percentual ou valor, no relatorio gerencial. O lancamento
+e seus titulos permanecem na origem, sem custo real, duplicacao de despesa ou
+redistribuicao em cascata nos destinos. A opcao `TODAS` permanece como classificacao
+propria e nao e rateada automaticamente.
+
+Na Nova Solicitacao, o exemplo Administrativo Escritorio / Despesa Administrativa
+pode ser classificado entre outros centros ou misturado com obras. Selecionar o
+destino nao concede acesso ao seu cadastro ou a suas solicitacoes. A elegibilidade
+mantem acesso ao centro de origem, vinculos do usuario OBRA e listas explicitas do
+SUPERADMIN. Lista configurada anteriormente nao recebe novos destinos por fora da
+configuracao; o administrador deve incluir os centros desejados. Lista vazia nega
+todos os destinos individuais. Marketing/Comercial continuam limitados a obras
+privadas, mas tambem admitem centros ativos na classificacao gerencial.
+
+O opt-in de centros de custo e aplicado pelo endpoint gerencial e pela validacao
+da criacao. A prestacao de contas de adiantamentos continua usando a elegibilidade
+anterior (obras e sua origem), sem ampliacao de destinos financeiros. Permanecem
+as somas exatas de 100% ou do valor total, arredondamento em centavos, IDs distintos,
+transacao da criacao/classificacao e protecao de duplo envio.
+
+Os nomes tecnicos `obra_id`, `obras`, `obras_ids`, abrangencia `OBRA` e URLs legadas
+sao preservados para compatibilidade: IDs apontam para a mesma tabela de cadastros,
+que ja distingue OBRA de CENTRO_CUSTO. O DTO inclui `tipo_centro_custo`; telas e
+relatorio identificam a natureza do destino. Sem migration ou backfill.
+
+Validar com `test:centro-custo-distribuicao` nos dois runtimes. Implementacao local
+para DEV em 21/10/2026, sem commit/push, EC2, banco real ou alteracao de producao.
+Ver [handoff](../../handoffs/2026-10-21-distribuicao-centros-destinos.md).
 
 Para `DESPESA ADMINISTRATIVA`, as regras de `Campos da Nova Solicitacao` do setor
 inicial GEO (tipo e eventual subtipo) valem independentemente do Centro de Custo
