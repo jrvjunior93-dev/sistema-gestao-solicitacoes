@@ -2426,6 +2426,9 @@ router.get('/financeiro/cheques-terceiros/:id', allowChequesVisualizar, validate
 router.post('/financeiro/baixas-compostas/preview', allowBaixaCompostaCriar, ChequeTerceiroController.baixaPreview);
 router.post('/financeiro/baixas-compostas/confirmar', allowBaixaCompostaConfirmar, criticalRateLimit, ChequeTerceiroController.baixaConfirm);
 router.get('/financeiro/baixas-compostas', allowBaixaCompostaVisualizar, ChequeTerceiroController.baixas);
+router.get('/financeiro/baixas-compostas/:id/cheques-devolucao', allowBaixaCompostaVisualizar, allowBaixaCompostaEstornar, validateRequest({ params: validateNumericIdParam('id', 'Baixa composta') }), ChequeTerceiroController.chequesDevolucao);
+router.post('/financeiro/baixas-compostas/:id/cheques-devolucao/preview', allowBaixaCompostaEstornar, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Baixa composta') }), ChequeTerceiroController.chequesDevolucaoPreview);
+router.post('/financeiro/baixas-compostas/:id/cheques-devolucao/confirmar', allowBaixaCompostaEstornar, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Baixa composta') }), ChequeTerceiroController.chequesDevolucaoConfirmar);
 router.post('/financeiro/baixas-compostas/:id/estornar', allowBaixaCompostaEstornar, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Baixa composta') }), ChequeTerceiroController.baixaEstornar);
 router.get('/financeiro/baixas-compostas/:id', allowBaixaCompostaVisualizar, validateRequest({ params: validateNumericIdParam('id', 'Baixa composta') }), ChequeTerceiroController.baixaShow);
 router.get('/financeiro/fretes-pedidos/pendentes', allowFinanceiro, PedidoCompraController.fretesPendentesFinanceiro);

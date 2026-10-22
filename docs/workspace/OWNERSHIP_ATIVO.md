@@ -1,5 +1,36 @@
 # Ownership Ativo
 
+## Publicacao DEV da devolucao seletiva de cheques - 2026-10-22
+
+- Usuario autorizou commit/push na refactor/frontend e roteiro EC2 DEV.
+- Agente unico, sem delegacao. Reserva temporaria: delta de devolucao seletiva,
+  aplicarMigrationDevolucaoChequesDev.js, validarDeployDevolucaoChequesDev.js,
+  atualizar-dev-devolucao-cheques-20261022.sh e documentacao/handoff.
+- Sem main/producao, banco real, EC2 ou reinicio pelo agente. Somente migration
+  202610220002 no roteiro; exige anteriores aplicadas e backup DEV conferido.
+- outputs/ privado, fora do commit. Preservar dependencias, flags e .env.
+- Backend dedicado/regressoes, UI1366/390/HTTP, build636/11,34s, roteiro DEV
+  com guardas negativas em memoria, Node/Bash/diff e docs603/19 aprovados.
+  Reserva encerrada, ownership liberado para publicacao autorizada.
+
+## Devolucao seletiva de cheques recebidos compostos - 2026-10-22
+
+- Agente unico; usuario autorizou implementar/testar DEV um ou varios cheques,
+  inclusive cheque rateado, mantendo outros recebimentos e estorno integral.
+- Reserva: novo baixaCompostaChequeEstornoService/QA, migration JSON de estornos
+  no BaixaFinanceiraGrupo/modelo, chequeTerceiroService/controller/routes,
+  FinanceiroBaixasCompostas, FinanceiroChequesTerceiros, servico financeiro,
+  novo componente de devolucao/QA UI, canonico Financeiro e handoff.
+- Base refactor/frontend28670b81. Caso real usado apenas como fixture anonimizada:
+  cheque85/componente8/movimento5430/TIT-007520, principal8000. Nenhum registro
+  real sera alterado. Sem commit/push, banco/EC2/S3/Redis reais ou producao.
+- Skill frontend-design: direcao utilitaria compacta; tokens/componentes atuais,
+  estados claros, previa/aceite explicitos e sem sucesso financeiro otimista.
+- Implementacao e QA local concluidos: backend dedicado/regressoes, UI real
+  1366/390/pagina/HTTP, regressoes workspace/fila, build636, Node/diff e
+  documentacao603/19 aprovados. Sem teste MySQL real; migration nao aplicada.
+  Reserva encerrada, ownership liberado. Handoff2026-10-22-devolucao-cheques-compostos.md.
+
 ## Publicacao DEV Compra Direta e pagamento negociado - 2026-10-22
 
 - Usuario autorizou commit/push dos dois ajustes na refactor/frontend e comandos

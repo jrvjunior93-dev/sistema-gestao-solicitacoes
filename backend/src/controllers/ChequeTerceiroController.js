@@ -115,5 +115,17 @@ module.exports = {
   async baixaEstornar(req, res) {
     try { return res.json(await estornarBaixaComposta(req, req.params.id, req.body || {})); }
     catch (error) { return erro(res, error, 'Erro ao estornar baixa composta'); }
+  },
+  async chequesDevolucao(req, res) {
+    try { return res.json(await require('../services/baixaCompostaChequeEstornoService').listar(req, req.params.id)); }
+    catch (error) { return responderErroController(res, error, 'Erro ao consultar cheques da baixa'); }
+  },
+  async chequesDevolucaoPreview(req, res) {
+    try { return res.json(await require('../services/baixaCompostaChequeEstornoService').preview(req, req.params.id, req.body)); }
+    catch (error) { return responderErroController(res, error, 'Erro ao conferir devolucao dos cheques'); }
+  },
+  async chequesDevolucaoConfirmar(req, res) {
+    try { return res.json(await require('../services/baixaCompostaChequeEstornoService').confirmar(req, req.params.id, req.body, req.get('Idempotency-Key'))); }
+    catch (error) { return responderErroController(res, error, 'Erro ao confirmar devolucao dos cheques'); }
   }
 };

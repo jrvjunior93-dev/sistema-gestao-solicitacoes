@@ -1,5 +1,42 @@
 # Modulo FINANCEIRO
 
+## Devolucao seletiva de cheques recebidos compostos - 2026-10-22
+
+Pacote DEV sobre28670b81, com publicacao em refactor/frontend autorizada;
+sem deploy, migration aplicada ou dados reais alterados pelo agente.
+Na baixa composta de RECEBIMENTO, selecionar um ou varios cheques da mesma
+baixa, informar data/motivo bancario/justificativa, conferir os saldos por
+titulo e aceitar explicitamente antes de confirmar. Carteira oferece link
+para o grupo. Cheque rateado reverte todas as suas alocacoes; mesmo valor nao
+confunde documentos. Demais recebimentos e as origens dos titulos permanecem.
+
+Exige permissoes de visualizar/estornar baixa composta e devolver cheques,
+Financeiro e escopo de todos os titulos. Somente cheques EM_CARTEIRA sem
+processamento bancario/uso posterior; depositados/compensados devem seguir
+o fluxo bancario, sem contrapartida automatica aqui. Um bloqueado desfaz toda
+a selecao. Snapshot, transacao/locks, recibo idempotente, auditoria/historico
+e sincronizacao de contrato/solicitacoes protegem a confirmacao. Resposta
+perdida exige GET, nunca reenvio automatico do POST. Rascunhos preservados.
+
+Grupo PARCIAL_ESTORNADO preserva valores originais e recibos; estorno integral
+posterior trata so o restante ativo, sem reabrir valores devolvidos duas vezes.
+Nao cria receita ou recebimento substituto; este deve ser conferido e registrado
+separadamente pelo usuario para evitar duplicidade. Estorno generico de uma
+baixa composta continua bloqueado. Operacao limitada a100cheques/200titulos/
+1000alocacoes. Casos fora dessas protecoes exigem analise propria.
+
+Migration202610220002 adiciona JSON nullable estornos_cheques no grupo;
+NAO aplicada, sem backfill e down destrutivo bloqueado. Testes dedicados:
+backend/scripts/validarDevolucaoChequesComposta.js e
+frontend/scripts/validarDevolucaoChequesComposta.mjs.
+Deploy DEV dedicado: ops/deploy/atualizar-dev-devolucao-cheques-20261022.sh,
+com SHA publicado e backup DEV confirmado. Aplicador
+backend/scripts/aplicarMigrationDevolucaoChequesDev.js aceita somente002 no
+UUID DEV; interrompe se001 ou outra migration estiver pendente. Preserva
+flags/.env/dependencias e reinicia somente backend-dev apos schema/testes.
+Guarda em memoria: backend/scripts/validarDeployDevolucaoChequesDev.js.
+[Handoff, arquivos, limites e gates DEV](../../handoffs/2026-10-22-devolucao-cheques-compostos.md).
+
 ## Negociacao: forma e instrucao de pagamento - 2026-10-22
 
 Implementacao sobre refactor/frontend41219c3a; publicacao DEV dos dois ajustes

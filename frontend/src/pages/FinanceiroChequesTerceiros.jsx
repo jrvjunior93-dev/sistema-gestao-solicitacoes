@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   HiOutlineArrowDownTray,
   HiOutlineArrowPath,
@@ -801,7 +802,9 @@ export default function FinanceiroChequesTerceiros() {
             <div className="mt-4 flex flex-wrap gap-2">
               {canDeposit ? <button className="btn btn-outline btn-sm" onClick={() => openAction('DEPOSITAR')}><HiOutlineBanknotes /> Depositar</button> : null}
               {canTransfer ? <button className="btn btn-outline btn-sm" onClick={() => openAction('TRANSFERIR')}><HiOutlineArrowRight /> Transferir</button> : null}
-              {canReturn ? <button className="btn btn-outline btn-sm" onClick={() => openAction('DEVOLVER')}>Devolver</button> : null}
+              {canReturn ? selected.baixa_composta_id
+                ? <Link className="btn btn-outline btn-sm" to={`/financeiro/baixas-compostas?grupo=${selected.baixa_composta_id}`}>Devolver cheques da baixa</Link>
+                : <button className="btn btn-outline btn-sm" onClick={() => openAction('DEVOLVER')}>Devolver</button> : null}
               {canCancel ? <button className="btn btn-outline btn-perigo-suave btn-sm" onClick={() => openAction('CANCELAR')}>Cancelar cheque</button> : null}
             </div>
           ) : null}

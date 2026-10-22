@@ -282,6 +282,10 @@ async function obterCheque(id) {
     ]
   });
   if (!cheque) throw httpError(404, 'Cheque de terceiro nao encontrado.');
+  if (cheque.movimento_entrada_id || cheque.movimento_financeiro_id) {
+    const entrada = await MovimentoFinanceiro.findByPk(cheque.movimento_entrada_id || cheque.movimento_financeiro_id, { attributes: ['id', 'baixa_grupo_id'] });
+    cheque.setDataValue('baixa_composta_id', entrada?.baixa_grupo_id || null);
+  }
   return cheque;
 }
 
@@ -1037,17 +1041,32 @@ async function estornarBaixaComposta(req, id, payload = {}) {
   try {
     const motivoEstorno = texto(payload.motivo || payload.observacoes, 4000);
     if (!motivoEstorno) throw httpError(400, 'Justificativa do estorno e obrigatoria.');
+    const referencia = await BaixaFinanceiraAlocacao.findAll({ where: { baixa_grupo_id: Number(id) }, transaction });
+    const idsReferencia = [...new Set(referencia.map(a => Number(a.titulo_financeiro_id)))].sort((a, b) => a - b);
+    if (idsReferencia.length) await TituloFinanceiro.findAll({ where: { id: { [Op.in]: idsReferencia } }, order: [['id', 'ASC']], transaction, lock: transaction.LOCK.UPDATE });
     const grupo = await BaixaFinanceiraGrupo.findByPk(Number(id), { transaction, lock: transaction.LOCK.UPDATE });
     if (!grupo) throw httpError(404, 'Baixa composta nao encontrada.');
-    if (grupo.status !== 'CONFIRMADO') throw httpError(409, 'A baixa composta ja foi estornada.');
+    if (!['CONFIRMADO', 'PARCIAL_ESTORNADO'].includes(grupo.status)) throw httpError(409, 'A baixa composta ja foi estornada.');
     const alocacoes = await BaixaFinanceiraAlocacao.findAll({ where: { baixa_grupo_id: grupo.id }, transaction });
-    const movimentoIds = alocacoes.map((item) => Number(item.movimento_financeiro_id)).filter(Boolean);
+    const todosMovimentoIds = alocacoes.map((item) => Number(item.movimento_financeiro_id)).filter(Boolean);
+    const estornosSeletivos = grupo.estornos_cheques || [];
+    const jaEstornados = new Set(estornosSeletivos.flatMap(r => r.resultado.movimento_ids).map(Number));
+    const todosMovimentos = await MovimentoFinanceiro.findAll({ where: { id: { [Op.in]: todosMovimentoIds } }, order: [['id', 'ASC']], transaction, lock: transaction.LOCK.UPDATE });
+    if (todosMovimentos.length !== new Set(todosMovimentoIds).size || todosMovimentos.some(m => m.status !== 'ATIVO' && !(m.status === 'ESTORNADO' && jaEstornados.has(Number(m.id))))) throw httpError(409, 'Um dos movimentos da baixa nao esta ativo. O grupo nao pode ser estornado parcialmente.');
+    const movimentoIds = todosMovimentos.filter(m => m.status === 'ATIVO').map(m => Number(m.id));
+    if (!movimentoIds.length) throw httpError(409, 'Nao ha movimentos restantes para estornar.');
     const movimentos = await MovimentoFinanceiro.findAll({ where: { id: { [Op.in]: movimentoIds } }, order: [['id', 'ASC']], transaction, lock: transaction.LOCK.UPDATE });
     if (movimentos.some((item) => item.status !== 'ATIVO')) throw httpError(409, 'Um dos movimentos da baixa nao esta ativo. O grupo nao pode ser estornado parcialmente.');
-    const tituloIds = [...new Set(alocacoes.map((item) => Number(item.titulo_financeiro_id)))].sort((a, b) => a - b);
+    const alocacoesAtivas = alocacoes.filter(a => movimentoIds.includes(Number(a.movimento_financeiro_id)));
+    const tituloIds = [...new Set(alocacoesAtivas.map((item) => Number(item.titulo_financeiro_id)))].sort((a, b) => a - b);
     const titulos = await TituloFinanceiro.findAll({ where: { id: { [Op.in]: tituloIds } }, order: [['id', 'ASC']], transaction, lock: transaction.LOCK.UPDATE });
+    if (estornosSeletivos.length) {
+      const seletivo = require('./baixaCompostaChequeEstornoService');
+      await seletivo.autorizar(req, false);
+      await seletivo.conferirEscopo(req, titulos, transaction);
+    }
     const totalPorTitulo = new Map();
-    alocacoes.forEach((item) => totalPorTitulo.set(Number(item.titulo_financeiro_id), round((totalPorTitulo.get(Number(item.titulo_financeiro_id)) || 0) + Number(item.valor))));
+    alocacoesAtivas.forEach((item) => totalPorTitulo.set(Number(item.titulo_financeiro_id), round((totalPorTitulo.get(Number(item.titulo_financeiro_id)) || 0) + Number(item.valor))));
 
     await MovimentoFinanceiro.update({
       status: 'ESTORNADO',
