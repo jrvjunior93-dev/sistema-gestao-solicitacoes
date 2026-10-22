@@ -2513,7 +2513,9 @@ async function listarTitulos(req, filters = {}, { tituloIds = null } = {}) {
     });
 
     return {
-      data: await require('./tituloCompartilhadoLeitura').anexarParticipacoes(result.rows),
+      data: await require('./tituloFormaPrevistaLeitura').anexarFormasPrevistasContratos(
+        await require('./tituloCompartilhadoLeitura').anexarParticipacoes(result.rows)
+      ),
       pagination: {
         page,
         limit: listAll ? 'all' : pageSize,
@@ -2523,7 +2525,9 @@ async function listarTitulos(req, filters = {}, { tituloIds = null } = {}) {
     };
   }
 
-  return require('./tituloCompartilhadoLeitura').anexarParticipacoes(await TituloFinanceiro.findAll(queryOptions));
+  return require('./tituloFormaPrevistaLeitura').anexarFormasPrevistasContratos(
+    await require('./tituloCompartilhadoLeitura').anexarParticipacoes(await TituloFinanceiro.findAll(queryOptions))
+  );
 }
 
 async function listarBaixasRealizadas(req, filters = {}) {

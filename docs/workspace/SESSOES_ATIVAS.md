@@ -1,5 +1,19 @@
 # Sessoes Ativas
 
+- codex-publicar-receber-prevista-dev-20261022: agente unico; usuario autorizou
+  commit/push refactor/frontend e comandos DEV, sem producao. Pacote local e
+  roteiro/QA de deploy reservados no ownership; base DEVa00/main b654 conferidas.
+  Sem EC2/DB real, DDL/dependencias/.env/flags ou escrita financeira pelo agente.
+  Backend/UI/regressoes/CSV/relatorio, build632/14,60s, guardas/Node/Bash/
+  docs598/19/diff aprovados; ownership liberado para commit/push exclusivo DEV.
+
+- codex-receber-forma-prevista-contrato-20261021: agente unico, base DEVa00.
+  Entrega local concluida, ownership liberado. Listagem readonly por IDs
+  autorizados/paginados; forma explicita prioritaria, previsao identificada
+  na coluna/CSV. Backend/SQL/ACL/serializacao/regressoes, UI1366/390 e
+  build632/13,93s aprovados; Node/docs/diff conferidos. Sem commit/push/deploy,
+  producao, dados financeiros, .env/schema/dependencias ou EC2 reais alterados.
+
 - codex-rh-demissao-query-20261021: agente unico, hotfix400 da query DEV,
   implementacao/QA/commit/push autorizados. Runtime so rhValidators; cadeia
   middleware/controller/servico, escopo/store, regressoes e UI390/1366 aprovados.

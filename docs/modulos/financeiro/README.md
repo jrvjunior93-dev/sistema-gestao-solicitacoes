@@ -1,5 +1,27 @@
 # Modulo FINANCEIRO
 
+## Forma prevista de contrato em Contas a Receber - 2026-10-21
+
+Listagem RECEBER COMERCIAL sem forma explicita passa a exibir a forma prevista
+das parcelas vinculadas, identificada como Prevista no contrato. Leitura em
+lotes500 dos IDs ja autorizados/paginados, sem hasMany na consulta principal.
+Forma explicitamente vinculada tem prioridade; sem vinculo ou dado permanece
+sem forma. Multiplas previsoes sao exibidas sem duplicar titulo, valor ou contador.
+
+Mesmo padrao CelulaDupla e CSV com previsao identificada; nenhuma escolha de
+baixa/cobranca ou FK e preenchida automaticamente. Filtro/ordenacao permanecem
+baseados na forma explicita. Nao muda dados de contratos/titulos/movimentos,
+permissoes/escopo, calculos, financeiro realizado, schema ou dependencias.
+Implementacao local DEV, sem commit/push/deploy ou producao nesta etapa.
+QA backend/frontend: npm run test:receber-forma-prevista.
+[Handoff, impacto e validacao](../../handoffs/2026-10-21-receber-forma-prevista-contrato.md).
+
+Publicacao DEV autorizada em22/10: roteiro exclusivo
+ops/deploy/atualizar-dev-receber-forma-prevista-20261022.sh. SHA fixado,
+identidade/schema readonly, ff-only desdea00a15f6, runtime/pacotes restritos,
+QA antes do restart somente backend-dev e .env preservado. Nao altera main,
+producao, dependencias, migrations ou dados financeiros. Detalhes no handoff.
+
 ## Distribuicao gerencial com centros de custo como destinos - 2026-10-21
 
 Solicitacoes de Centro de Custo podem classificar gerencialmente o valor entre

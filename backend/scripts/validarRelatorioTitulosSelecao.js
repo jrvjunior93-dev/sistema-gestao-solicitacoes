@@ -44,6 +44,13 @@ const context = {
     return { rows: data, count: data.length };
   }, async findAll(options) { queries.push(options); return rows.filter(row => matches(row, options.where)); } },
   require: name => {
+    if (name === './tituloCompartilhadoLeitura') return {
+      ...require('../src/services/tituloCompartilhadoLeitura'),
+      // Fixture sem titulos compartilhados: o predicado SQL fica neutro,
+      // enquanto where.obra_id e todas as negativas de escopo continuam reais.
+      escopoCompletoSql: () => 'sem compartilhados nesta fixture'
+    };
+    if (name === './tituloFormaPrevistaLeitura') return require('../src/services/tituloFormaPrevistaLeitura');
     assert.equal(name, './tituloRenegociacaoLeitura');
     return { whereRateado: where => where };
   }

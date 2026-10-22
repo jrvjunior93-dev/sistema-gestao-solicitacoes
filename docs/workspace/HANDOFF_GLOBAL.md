@@ -1,5 +1,29 @@
 # Handoff Global
 
+## Publicacao DEV forma prevista - 2026-10-22
+
+- Usuario autorizou commit/push refactor/frontend e comandos DEV, sem producao.
+  Bases remotas DEVa00/main b654 conferidas; outputs privados excluidos.
+- Roteiro atualizar-dev-receber-forma-prevista-20261022.sh exige SHA/ff-only/
+  basea00/PM28001/sem watch, identidade/schema readonly, pacotes somente QA exato,
+  runtime limitado e .env preservado. QA antes de restart somente backend-dev.
+- Handoff2026-10-21-receber-forma-prevista-contrato.md atualizado; sem EC2/DB
+  real, DDL/dependencias/.env/flags ou escrita financeira pelo agente.
+- Backend/UI1366/390/CSV/relatorio e regressoes repetidos, build632/14,60s,
+  guardas/pacotes/Node/Bash/docs598/19/diff aprovados; ownership liberado.
+
+## Forma prevista contrato em Contas a Receber - 2026-10-21
+
+- Usuario autorizou implementar/testar DEV, sem producao. Basea00; branch
+  codex/receber-forma-prevista-contrato-20261021. Sem commit/push/deploy nesta etapa.
+- Novo helper readonly anexa formas das parcelas aos titulos COMERCIAL RECEBER
+  ja autorizados/paginados, lotes500. Forma explicita prioritaria, sem regravar
+  FK/contratos/titulos/baixas, valores ou status. Coluna e CSV identificam previsao.
+- Backend/listagem/ACL/SQL offline/serializacao/regressoes, UI real1366/390/
+  CSV/403/retry/PAGAR e build632/13,93s aprovados; Node/docs/diff conferidos.
+- Handoff2026-10-21-receber-forma-prevista-contrato.md; ownership liberado.
+  Publicacao DEV exige autorizacao e roteiro proprio; main b654/EC2 intocadas.
+
 ## Hotfix DEV query de demissoes pendentes - 2026-10-21
 
 - Usuario autorizou corrigir/testar/commitar/push refactor/frontend e comandos DEV.

@@ -1,5 +1,33 @@
 # Ownership Ativo
 
+## Publicacao DEV forma prevista em Contas a Receber - 2026-10-22
+
+- Usuario autorizou commit/push refactor/frontend e comandos exclusivos EC2 DEV.
+- Agente unico, validado para publicacao e ownership liberado: pacote de forma prevista, novo roteiro
+  atualizar-dev-receber-forma-prevista-20261022.sh/QA de guardas, README/handoff
+  e quatro controles. Base DEVa00a15f6, main b6546229 somente leitura.
+- Publicar somente este ajuste sem outputs privados. Sem EC2/banco reais,
+  DDL/dependencias/.env/flags, operacoes financeiras ou mudanca de memoria.
+- Backend/SQL/ACL/regressoes, UI1366/390/CSV/relatorio e build632/14,60s
+  aprovados; guardas/pacotes/Node/Bash/docs598/19/diff aprovados.
+
+## Forma prevista de contrato em Contas a Receber - 2026-10-21
+
+- Usuario autorizou implementar/testar em refactor/frontend, sem producao.
+- Agente unico, entrega local concluida e ownership liberado: tituloFormaPrevistaLeitura.js; tituloFinanceiroService
+  somente enriquecimento readonly da listagem depois do escopo/paginacao;
+  FinanceiroTitulos.jsx somente coluna/exportacao, helper de apresentacao,
+  novos QAs/scripts npm, validarRelatorioTitulosSelecao.js somente dependencias
+  de leitura isoladas, README Financeiro/handoff e quatro controles.
+- Base DEVa00a15f6, branch codex/receber-forma-prevista-contrato-20261021.
+  Sem commit/push/deploy, EC2/DB/S3 reais, DDL/dependencias/.env ou escrita
+  financeira. Nao atribuir forma_pagamento_id nem mudar contratos/titulos/baixas.
+- Forma explicita do titulo tem prioridade; fallback apenas RECEBER COMERCIAL,
+  leitura em lote dos IDs ja autorizados, sem joins hasMany na paginacao.
+- Backend/SQL offline/escopo/serializacao/regressoes aprovados; UI real/CSV/
+  permissao/403/retry/PAGAR em1366/390, build632/13,93s, Node/docs/diff conferidos.
+  Handoff2026-10-21-receber-forma-prevista-contrato.md; outputs privados excluidos.
+
 ## Hotfix DEV consulta de demissoes pendentes - 2026-10-21
 
 - Usuario autorizou corrigir/testar/commitar/push refactor/frontend e comandos DEV.

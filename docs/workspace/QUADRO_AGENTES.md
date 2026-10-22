@@ -1,5 +1,26 @@
 # Quadro de Agentes
 
+## Publicacao DEV forma prevista - 2026-10-22
+
+- Commit/push e comandos EC2 DEV autorizados. Reservado pacote de exibicao
+  validado e roteiro/QA exclusivo DEV, docs/handoff/quatro controles.
+- Base DEVa00/main b654; publicar somente DEV sem force e sem outputs privados.
+  Operador atualiza backend-dev/8001 apos identidade/schema readonly e QA;
+  nao alterar dados reais, .env/flags, dependencias, migrations ou memoria.
+- Backend/UI/regressoes/CSV/relatorio repetidos e aprovados; build632/14,60s,
+  guardas/pacotes/Node/Bash/docs598/19/diff aprovados. Ownership liberado.
+
+## Forma prevista contrato em Contas a Receber - 2026-10-21
+
+- Implementacao local em branch derivada DEVa00, sem producao ou publicacao.
+  Leitura em lotes500 apos ACL/filtros/paginacao, sem join hasMany/N+1.
+  Coluna/CSV identificam previsao; explicita preservada, sem interpretar baixa.
+- Backend com listagem/modelos reais isolados/SQL offline, escopo403/negativas/
+  legado/parcial/quitado/serializacao e regressoes financeiros/comerciais OK.
+  UI real1366/390/CSV/403/retry/sem exportar/PAGAR e build632/13,93s OK.
+- Sintaxe/docs/diff conferidos; ownership liberado. Handoff dedicado com
+  limites, arquivos e proximo passo condicionado a autorizacao commit/push DEV.
+
 ## Hotfix DEV query demissoes pendentes - 2026-10-21
 
 - Correcao/QA/commit/push DEV autorizados; baseba4a41b2/main80df6534 intocada.
