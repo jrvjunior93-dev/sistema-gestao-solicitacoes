@@ -1,6 +1,6 @@
 # Ownership Ativo
 
-## Promocao MAIN OFX/codigo TIT - 2026-10-22
+## Promocao MAIN OFX/codigo TIT e Receber - 2026-10-22
 
 - Usuario homologou DEV41219c3a e autorizou promocao isolada MAIN/comandos EC2.
   Backup recente conferido no Drive cifrado e timer ativo confirmados nesta
@@ -13,6 +13,10 @@
 - Preservar ajustes exclusivos MAIN, dependencias/migrations/.env/flags/memoria,
   permissoes/historico e regras financeiras. Sem EC2/DB/S3/Redis/operacoes reais,
   force push ou arquivos outputs no commit. Branch codex/promocao-ofx-main-20261022.
+- Integracao completa DEV, sete conflitos so packages/docs resolvidos mantendo
+  ambos os lados.18 QAs backend/quatro UI1366/390/build633/11,32s aprovados;
+  Node/Bash/guardas/pacotes/docs612/19/diff e runtime identico DEV conferidos.
+  Ownership liberado para merge/push MAIN, EC2 e consultas reais so operador.
 
 ## Promocao RH, centros e pedidos MAIN - 2026-10-21
 
@@ -193,6 +197,62 @@
   Produto e dependencias conferidos contra2e146629; reserva encerrada,
   ownership liberado para commit/push main autorizados. Roteiro e limites em
   docs/handoffs/2026-10-18-promocao-main-pwa-historico.md.
+
+## Publicacao DEV OFX e codigo TIT - 2026-10-22
+
+- Usuario autorizou commit/push exclusivo refactor/frontend e comandos EC2 DEV.
+  Agente unico reserva pacote OFX validado, novo roteiro atualizar-dev-ofx-matches-
+  exclusivos-20261022.sh e seu QA puro, README/handoff e quatro controles.
+- Base remota/HEADbc2c69ed conferida; main b6546229 somente leitura.
+  Sem outputs privados no commit, force push, EC2/DB reais, DDL/.env/flags,
+  dependencias/memoria ou escrita financeira real pelo agente.
+- QAs backend/UI1366/390/modal/regressoes repetidos; build633/13,79s,
+  guardas/pacotes/Node/Bash/docs599/19/diff aprovados. Ownership liberado
+  para commit/push exclusivo DEV e entrega dos comandos ao operador.
+
+## OFX matches exclusivos por movimento - 2026-10-22
+
+- Usuario autorizou implementar/testar DEV, sem producao. Agente unico, entrega
+  local validada e ownership liberado:
+  conciliacaoBancariaService (sugestoes/grupos e confirmacao), novo domain readonly
+  de grupos, FinanceiroConciliacao.jsx e helper puro de alocacao/reserva local,
+  novos QAs/regressoes se necessario, scripts npm, README/handoff/quatro controles.
+- Adicao autorizada: codigo real TIT no card Fluxy (sugestao/preparacao/confirmado), somente leitura.
+- Base DEVbc2c69ed, branch codex/ofx-matches-exclusivos-20261022. Preservar
+  formas previstas ja publicadas, ACL/escopo, baixas parciais por movimento,
+  historico/estornos/transferencias/cheques/tarifas/faturas e regras financeiras.
+- Sem commit/push/deploy, DDL/dependencias/.env, DB/Redis/S3/EC2 reais ou producao.
+  Preparacao nao grava conciliacao nem cria baixa; confirmacao revalida locks.
+- Backend/UI1366/390/modal multiplo/regressoes/build633/17,20s/Node/docs599/19/diff
+  aprovados. Handoff2026-10-22-ofx-matches-exclusivos.md; aguardar publicacao DEV.
+
+## Publicacao DEV forma prevista em Contas a Receber - 2026-10-22
+
+- Usuario autorizou commit/push refactor/frontend e comandos exclusivos EC2 DEV.
+- Agente unico, validado para publicacao e ownership liberado: pacote de forma prevista, novo roteiro
+  atualizar-dev-receber-forma-prevista-20261022.sh/QA de guardas, README/handoff
+  e quatro controles. Base DEVa00a15f6, main b6546229 somente leitura.
+- Publicar somente este ajuste sem outputs privados. Sem EC2/banco reais,
+  DDL/dependencias/.env/flags, operacoes financeiras ou mudanca de memoria.
+- Backend/SQL/ACL/regressoes, UI1366/390/CSV/relatorio e build632/14,60s
+  aprovados; guardas/pacotes/Node/Bash/docs598/19/diff aprovados.
+
+## Forma prevista de contrato em Contas a Receber - 2026-10-21
+
+- Usuario autorizou implementar/testar em refactor/frontend, sem producao.
+- Agente unico, entrega local concluida e ownership liberado: tituloFormaPrevistaLeitura.js; tituloFinanceiroService
+  somente enriquecimento readonly da listagem depois do escopo/paginacao;
+  FinanceiroTitulos.jsx somente coluna/exportacao, helper de apresentacao,
+  novos QAs/scripts npm, validarRelatorioTitulosSelecao.js somente dependencias
+  de leitura isoladas, README Financeiro/handoff e quatro controles.
+- Base DEVa00a15f6, branch codex/receber-forma-prevista-contrato-20261021.
+  Sem commit/push/deploy, EC2/DB/S3 reais, DDL/dependencias/.env ou escrita
+  financeira. Nao atribuir forma_pagamento_id nem mudar contratos/titulos/baixas.
+- Forma explicita do titulo tem prioridade; fallback apenas RECEBER COMERCIAL,
+  leitura em lote dos IDs ja autorizados, sem joins hasMany na paginacao.
+- Backend/SQL offline/escopo/serializacao/regressoes aprovados; UI real/CSV/
+  permissao/403/retry/PAGAR em1366/390, build632/13,93s, Node/docs/diff conferidos.
+  Handoff2026-10-21-receber-forma-prevista-contrato.md; outputs privados excluidos.
 
 ## Hotfix DEV consulta de demissoes pendentes - 2026-10-21
 

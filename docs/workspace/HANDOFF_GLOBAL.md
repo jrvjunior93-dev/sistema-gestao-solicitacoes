@@ -1,5 +1,18 @@
 # Handoff Global
 
+## Promocao MAIN todos pendentes OFX/Receber - 2026-10-22
+
+- Backup cifrado/timer confirmados, OFX homologado e pedido ampliado para TODOS
+  pendentes: DEVbc2c69ed/41219c3a sobre mainb654. DEV remoto nao alterado.
+- Integra historico e conserva exclusivos MAIN; runtime identico DEV412. Forma
+  prevista recebe QAs isolados, sem afirmar homologacao manual separada do usuario.
+- Novo roteiro/QA PROD combinado e handoff2026-10-22-promocao-ofx-receber-main.md.
+  SHA/ff-only/backup/timer/PM28000/identidade/TLS/schema/flags readonly e .env hash;
+  testes antes de restart somente backend-solicitacoes. Sem DDL/dependencias,
+  memoria, EC2/DB/S3/Redis reais ou operacoes financeiras automaticas pelo agente.
+- 18 QAs backend/quatro UI/build633/11,32s e Node/Bash/guardas/pacotes/docs612/19/
+  diff aprovados. Runtime identico DEV e ownership liberado para merge/push MAIN.
+
 ## Promocao MAIN RH, centros e pedidos - 2026-10-21
 
 - Usuario homologou RH e autorizou todos os tres pendentes2d161/ba4a/a00a;
@@ -124,6 +137,57 @@
   invalidado (lista vazia/cwd). Migration 202610190001 pendente. Roteiro original
   sem DDL interrompeu antes do restart; usar retomada documentada acima;
   ownership liberado para PR/merge autorizado. Deploy exclusivamente pelo operador.
+
+## Publicacao DEV OFX/codigo TIT - 2026-10-22
+
+- Commit/push DEV e comandos EC2 autorizados. Base remota/HEADbc2c69ed, mainb654
+  somente leitura; publicar pacote OFX/TIT sem outputs privados e sem force.
+- Novo roteiro atualizar-dev-ofx-matches-exclusivos-20261022.sh exige SHA fixado,
+  identidade/schema readonly, PM2 online8001 sem watch, basebc2c69ed ja presente,
+  runtime/pacotes limitados e QA antes de reiniciar somente backend-dev.
+- Handoff22/10 atualizado com limites e teste manual; sem EC2/DB reais, DDL,
+  dependencias/.env/flags/memoria ou producao alterados pelo agente.
+- QAs backend/UI/regressoes repetidos e aprovados; build633/13,79s, guardas/
+  pacotes/Node/Bash/docs599/19/diff aprovados. Ownership liberado para publicacao.
+
+## OFX candidatos exclusivos e codigo TIT - 2026-10-22
+
+- Entrega local baseada em DEVbc2c69ed; novo grupo por conta/data/valor e reservas
+  locais por movimento. Remanescente unico vai ao primeiro pendente por ID;
+  excedentes vazios. Card mostra TIT real em opcoes/preparadas/confirmados.
+- Backend revalida locks/escopo/vinculos, sem recalcular valores ou criar baixa.
+  Preparacoes nao sao globais entre abas/usuarios; conflito no POST atualiza GET
+  sem retry. Mesmo padrao de card/acoes e empilhamento mobile sem cortar botoes.
+- QAs isolados/backend/UI1366/390/regressoes/build633 aprovados; handoff
+  2026-10-22-ofx-matches-exclusivos.md informa arquivos, limites e proximo passo.
+  Aguardar autorizacao de commit/push DEV; atualizar backend-dev antes do frontend.
+  Sem main/producao, EC2/bancos reais, .env/schema/dependencias/memoria alterados.
+- QA manual multiplo/consulta sem movimentos reservados aprovado; Node/docs599/19/
+  diff conferidos. Ownership liberado, sem commit/push nesta entrega.
+
+## Publicacao DEV forma prevista - 2026-10-22
+
+- Usuario autorizou commit/push refactor/frontend e comandos DEV, sem producao.
+  Bases remotas DEVa00/main b654 conferidas; outputs privados excluidos.
+- Roteiro atualizar-dev-receber-forma-prevista-20261022.sh exige SHA/ff-only/
+  basea00/PM28001/sem watch, identidade/schema readonly, pacotes somente QA exato,
+  runtime limitado e .env preservado. QA antes de restart somente backend-dev.
+- Handoff2026-10-21-receber-forma-prevista-contrato.md atualizado; sem EC2/DB
+  real, DDL/dependencias/.env/flags ou escrita financeira pelo agente.
+- Backend/UI1366/390/CSV/relatorio e regressoes repetidos, build632/14,60s,
+  guardas/pacotes/Node/Bash/docs598/19/diff aprovados; ownership liberado.
+
+## Forma prevista contrato em Contas a Receber - 2026-10-21
+
+- Usuario autorizou implementar/testar DEV, sem producao. Basea00; branch
+  codex/receber-forma-prevista-contrato-20261021. Sem commit/push/deploy nesta etapa.
+- Novo helper readonly anexa formas das parcelas aos titulos COMERCIAL RECEBER
+  ja autorizados/paginados, lotes500. Forma explicita prioritaria, sem regravar
+  FK/contratos/titulos/baixas, valores ou status. Coluna e CSV identificam previsao.
+- Backend/listagem/ACL/SQL offline/serializacao/regressoes, UI real1366/390/
+  CSV/403/retry/PAGAR e build632/13,93s aprovados; Node/docs/diff conferidos.
+- Handoff2026-10-21-receber-forma-prevista-contrato.md; ownership liberado.
+  Publicacao DEV exige autorizacao e roteiro proprio; main b654/EC2 intocadas.
 
 ## Hotfix DEV query de demissoes pendentes - 2026-10-21
 

@@ -1,5 +1,21 @@
 # Modulo FINANCEIRO
 
+## Promocao MAIN OFX e forma prevista - 2026-10-22
+
+Usuario homologou OFX/codigo TIT no DEV e autorizou promover TODOS os pendentes:
+41219c3a e bc2c69ed (forma prevista de contratos em Contas a Receber). Backup
+cifrado/timer confirmados. Integracao sobre mainb654 conserva ajustes exclusivos
+e historico MAIN; runtime final coincide com DEV412 sem alteracao funcional nova.
+Forma prevista autorizada como pendente e validada em testes isolados locais.
+
+Roteiro PROD exclusivo ops/deploy/atualizar-producao-ofx-receber-20261022.sh:
+SHA/base/ff-only/backup/timer/PM28000, UUID/TLS/schema/sessao/flags readonly,
+packages somente dois QAs novos, runtime limitado a oito arquivos, .env por hash,
+testes antes de reiniciar apenas backend-solicitacoes. Sem DDL/dependencias,
+memoria ou operacao financeira automatica; DEV remoto inalterado.
+Conferir consultas em producao, sem gerar baixa/importacao so para smoke.
+[Escopo, validacao, operacao e limites](../../handoffs/2026-10-22-promocao-ofx-receber-main.md).
+
 ## Promocao MAIN RH, centros e pedidos - 2026-10-21
 
 Usuario autorizou os tres commits pendentes2d161b85/ba4a41b2/a00a15f6 e confirmou
@@ -31,6 +47,62 @@ Conferir lista da fatura e relatorio de permutas em leitura apos atualizar
 backend/health e frontend main na Vercel. O caso PIX/cartao/desconto foi provado
 em memoria/DEV; nao repetir a baixa real somente para testar producao.
 [Escopo, evidencias e recuperacao](../../handoffs/2026-10-21-promocao-main-pendencias-dev.md).
+
+## OFX: candidatos exclusivos e codigo do titulo - 2026-10-22
+
+Lancamentos repetidos da mesma conta/data/valor com sinal mantem a quantidade
+de movimentos compativeis, inclusive quando so existe um candidato. Usar apenas
+prepara: reserva o movimento nesta tela, inclusive entre paginas, sem gravar
+conciliacao ou baixa. Quando sobra um candidato apos uma escolha ou match
+confirmado, ele e oferecido ao primeiro pendente global por ID; excedentes
+permanecem vazios. Liberar selecao recalcula as sugestoes. Conciliar confirma.
+Baixas parciais distintas de um mesmo titulo continuam validas por movimento.
+
+API le todos os pendentes do grupo, mesmo fora dos filtros/pagina, e devolve
+um pool autorizado por grupo no meta, sem duplicar candidatos em todas as
+linhas da resposta. Contagem nao e truncada em20. Confirmacao revalida sob
+locks ordenados, mantendo principal do payload, transacao e auditoria originais.
+Preparacoes nao sao reservas globais entre abas/usuarios: outro operador pode
+confirmar primeiro; o backend rejeita conflito e a tela atualiza sem repetir POST.
+Lote exige confirmar/liberar preparacoes manuais antes de executar.
+
+Card Fluxy mostra codigo real TIT junto da descricao e movimento, nas opcoes,
+preparacoes (codigos unicos) e confirmados. Sem codigo nao inventa numero por ID.
+Mesmos componentes/acoes/ACL, com empilhamento do card no celular para nao cortar
+os botoes. Sem mudar valores, dados financeiros, schema, flags ou dependencias.
+Entrega local baseada em refactor/frontend; main/producao nao alteradas.
+QA backend/frontend: npm run test:ofx-matches-exclusivos.
+[Handoff e limites](../../handoffs/2026-10-22-ofx-matches-exclusivos.md).
+
+Commit/push DEV autorizado em22/10. Roteiro exclusivo
+ops/deploy/atualizar-dev-ofx-matches-exclusivos-20261022.sh recebe SHA fixado,
+verifica identidade/schema readonly, ff-only desdebc2c69ed, runtime/pacotes
+limitados, QA antes do restart somente backend-dev8001 e .env preservado.
+Sem install/migrations/flags/memoria ou operacao financeira real pelo agente.
+Guardas puras: node backend/scripts/validarDeployOfxMatchesDev.js. Homologacao
+manual dos repetidos/parciais/codigo TIT no DEV permanece com o operador.
+
+## Forma prevista de contrato em Contas a Receber - 2026-10-21
+
+Listagem RECEBER COMERCIAL sem forma explicita passa a exibir a forma prevista
+das parcelas vinculadas, identificada como Prevista no contrato. Leitura em
+lotes500 dos IDs ja autorizados/paginados, sem hasMany na consulta principal.
+Forma explicitamente vinculada tem prioridade; sem vinculo ou dado permanece
+sem forma. Multiplas previsoes sao exibidas sem duplicar titulo, valor ou contador.
+
+Mesmo padrao CelulaDupla e CSV com previsao identificada; nenhuma escolha de
+baixa/cobranca ou FK e preenchida automaticamente. Filtro/ordenacao permanecem
+baseados na forma explicita. Nao muda dados de contratos/titulos/movimentos,
+permissoes/escopo, calculos, financeiro realizado, schema ou dependencias.
+Implementacao local DEV, sem commit/push/deploy ou producao nesta etapa.
+QA backend/frontend: npm run test:receber-forma-prevista.
+[Handoff, impacto e validacao](../../handoffs/2026-10-21-receber-forma-prevista-contrato.md).
+
+Publicacao DEV autorizada em22/10: roteiro exclusivo
+ops/deploy/atualizar-dev-receber-forma-prevista-20261022.sh. SHA fixado,
+identidade/schema readonly, ff-only desdea00a15f6, runtime/pacotes restritos,
+QA antes do restart somente backend-dev e .env preservado. Nao altera main,
+producao, dependencias, migrations ou dados financeiros. Detalhes no handoff.
 
 ## Distribuicao gerencial com centros de custo como destinos - 2026-10-21
 

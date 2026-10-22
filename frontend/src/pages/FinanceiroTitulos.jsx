@@ -21,6 +21,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import {podePermuta,ehPermuta} from '../utils/permuta';
 import { mensagemEnvioFila } from '../utils/filaPagamentoMensagem';
+import { apresentarFormaPagamentoTitulo } from '../utils/formaPagamentoTitulo';
 import { useFecharAoSair } from '../hooks/useFecharAoSair';
 import StatusBadge from '../components/StatusBadge';
 import {
@@ -2390,8 +2391,11 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
           break;
         case 'forma_pagamento':
           columns.push(
-            { key: 'forma_pagamento', value: (titulo) => titulo.formaPagamento?.nome || '' },
-            { key: 'forma_pagamento_codigo', value: (titulo) => titulo.formaPagamento?.codigo || '' }
+            { key: 'forma_pagamento', value: (titulo) => {
+              const forma = apresentarFormaPagamentoTitulo(titulo);
+              return forma.prevista ? `${forma.nome} (prevista no contrato)` : forma.nome;
+            } },
+            { key: 'forma_pagamento_codigo', value: (titulo) => apresentarFormaPagamentoTitulo(titulo).codigo }
           );
           break;
         case 'origem':
@@ -3478,12 +3482,10 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                 titulo: 'Forma pagamento',
                 ordenavel: true,
                 tipo: 'texto',
-                render: (titulo) => (
-                  <CelulaDupla
-                    principal={titulo.formaPagamento?.nome || '-'}
-                    sub={titulo.formaPagamento?.codigo || ''}
-                  />
-                )
+                render: (titulo) => {
+                  const forma = apresentarFormaPagamentoTitulo(titulo);
+                  return <CelulaDupla principal={forma.nome || '-'} sub={forma.sub} />;
+                }
               },
               {
                 id: 'origem',

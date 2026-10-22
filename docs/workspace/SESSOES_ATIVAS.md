@@ -1,5 +1,13 @@
 # Sessoes Ativas
 
+- codex-promocao-ofx-main-20261022: agente unico, backup cifrado/timer confirmados.
+  Pedido ampliado para todos os pendentes DEVbc2c69ed/41219c3a; base MAINb654.
+  Historicos integrados, oito runtimes identicos DEV e exclusivos MAIN preservados.
+  Roteiro PROD/QA combinado, canonico/handoff e quatro controles reservados.
+  Sem EC2/DB/Redis/S3 reais, DDL/.env/flags/dependencias/memoria ou operacoes reais.
+  18 QAs backend/quatro UI/build633/11,32s, guardas/pacotes/Node/Bash/docs612/19/
+  diff aprovados; runtime identico DEV e ownership liberado para merge/push MAIN.
+
 - codex-promocao-rh-pedidos-centros-main-20261021: agente unico; usuario confirmou
   RH no DEV e autorizou todos os tres pendentes2d161b85/ba4a41b2/a00a15f6.
   Backup cifrado/timer confirmados. Base main80df, runtime identico DEVa00.
@@ -62,6 +70,33 @@
   Simulacao real conferida; inventario inicial de schema alvo invalidado, lista
   vazia por cwd. Pendencia 202610190001 confirmada depois pelo operador. Roteiro
   sem DDL/regularizacao e QA aprovados; ownership liberado para PR/merge.
+
+- codex-publicar-ofx-matches-dev-20261022: agente unico, commit/push DEV e comandos
+  EC2 autorizados. Basebc2c69ed/main b654 conferidas por fetch. Pacote OFX/TIT,
+  novo roteiro/QA de guardas e docs/handoff/quatro controles reservados.
+  Sem outputs privados, force, EC2/DB real, DDL/.env/dependencias/memoria/producao.
+  Backend/UI/regressoes/build633/13,79s/guardas/pacotes/Node/Bash/docs599/19/diff
+  aprovados; ownership liberado para publicacao somente DEV.
+
+- codex-ofx-matches-exclusivos-20261022: agente unico, implementacao/QA local
+  baseada em DEVbc2c69ed, main b654 intocada. Grupos conta/data/valor, reserva
+  por movimento e codigo real TIT no card. Sem commit/push/deploy, DB/EC2 reais,
+  DDL/.env/dependencias ou escrita financeira real. Handoff dedicado22/10.
+  QAs/regressoes/build633/Node/docs599/19/diff aprovados; ownership liberado.
+
+- codex-publicar-receber-prevista-dev-20261022: agente unico; usuario autorizou
+  commit/push refactor/frontend e comandos DEV, sem producao. Pacote local e
+  roteiro/QA de deploy reservados no ownership; base DEVa00/main b654 conferidas.
+  Sem EC2/DB real, DDL/dependencias/.env/flags ou escrita financeira pelo agente.
+  Backend/UI/regressoes/CSV/relatorio, build632/14,60s, guardas/Node/Bash/
+  docs598/19/diff aprovados; ownership liberado para commit/push exclusivo DEV.
+
+- codex-receber-forma-prevista-contrato-20261021: agente unico, base DEVa00.
+  Entrega local concluida, ownership liberado. Listagem readonly por IDs
+  autorizados/paginados; forma explicita prioritaria, previsao identificada
+  na coluna/CSV. Backend/SQL/ACL/serializacao/regressoes, UI1366/390 e
+  build632/13,93s aprovados; Node/docs/diff conferidos. Sem commit/push/deploy,
+  producao, dados financeiros, .env/schema/dependencias ou EC2 reais alterados.
 
 - codex-rh-demissao-query-20261021: agente unico, hotfix400 da query DEV,
   implementacao/QA/commit/push autorizados. Runtime so rhValidators; cadeia

@@ -1,5 +1,18 @@
 # Quadro de Agentes
 
+## Promocao MAIN OFX/Receber (todos pendentes) - 2026-10-22
+
+- Usuario homologou OFX e autorizou TODOS pendentes (bc2c69ed/41219c3a).
+  Backup recente Drive cifrado e timer ativo confirmados. Base mainb654 fixada.
+- Merge historico DEV, sete conflitos so packages/docs resolvidos mantendo
+  os dois lados; oito runtimes identicos DEV, arquivos exclusivos MAIN preservados.
+- Novo roteiro atualizar-producao-ofx-receber-20261022.sh/QA puro: somente PROD8000,
+  backup/timer/SHA/base/ff-only/identidade/schema readonly, QA antes do restart.
+  Sem EC2/DB real, DDL/dependencias/.env/flags/memoria ou escrita financeira real.
+- Backend18 QAs e quatro UI aprovados, build633/11,32s; Node/Bash/guardas/pacotes/
+  docs612/19/diff e runtime identico DEV conferidos. Ownership liberado para
+  merge/push MAIN autorizado; EC2 permanece com operador.
+
 ## Promocao MAIN RH, centros e pedidos - 2026-10-21
 
 - Integracao main80df + DEVa00 autorizada com todos os tres pendentes.
@@ -101,6 +114,51 @@
   isolado/snapshot e evidencia EC2 recebidos. CORRECAO: inventario inicial do
   alvo vazio, nao comprovava schema concluido. Migration 202610190001 pendente;
   roteiro sem DDL/regularizacao aprovado e ownership liberado para PR/merge.
+
+## Publicacao DEV OFX/TIT - 2026-10-22
+
+- Usuario autorizou commit/push refactor/frontend e comandos exclusivos DEV.
+  Fetch confirmou HEAD/DEVbc2c69ed e main b654; sem divergencias novas.
+- Roteiro exige base/SHA/ff-only, identidade/schema readonly, PM28001/sem watch,
+  delta runtime limitado e packages somente novo QA. Testes antes de restart
+  backend-dev; .env/flags/dependencias/memoria preservados. Sem EC2/DB reais.
+- Publicar somente pacote OFX/codigo TIT e docs, sem outputs privados ou producao.
+- Backend/UI/regressoes repetidos, build633/13,79s e guardas/pacotes/Node/Bash/
+  docs599/19/diff aprovados; ownership liberado para commit/push exclusivo DEV.
+
+## OFX matches exclusivos e titulo - 2026-10-22
+
+- Usuario autorizou implementar/testar em refactor/frontend, com numero TIT
+  no card Fluxy. Branch local codex/ofx-matches-exclusivos-20261022, basebc2c69ed.
+- Novo pool por grupo com leitura global/batches100; preparacao local exclusiva
+  por movimento, preservando parciais; confirmar revalida locks/transacao/ACL.
+  Mesmo padrao visual, card empilhado no celular e sem inventar codigo por ID.
+- Backend/UI1366/390/regressoes e build633/17,20s aprovados. Homologacao real
+  DEV ainda pendente. Sem commit/push/deploy, main/producao, DB/EC2 reais,
+  DDL/.env/dependencias/memoria; detalhes/limites no handoff22/10.
+- Modal manual multiplo e exclusao de reservas tambem aprovados; Node/docs599/19/
+  diff conferidos, ownership liberado. Aguardar autorizacao de publicacao DEV.
+
+## Publicacao DEV forma prevista - 2026-10-22
+
+- Commit/push e comandos EC2 DEV autorizados. Reservado pacote de exibicao
+  validado e roteiro/QA exclusivo DEV, docs/handoff/quatro controles.
+- Base DEVa00/main b654; publicar somente DEV sem force e sem outputs privados.
+  Operador atualiza backend-dev/8001 apos identidade/schema readonly e QA;
+  nao alterar dados reais, .env/flags, dependencias, migrations ou memoria.
+- Backend/UI/regressoes/CSV/relatorio repetidos e aprovados; build632/14,60s,
+  guardas/pacotes/Node/Bash/docs598/19/diff aprovados. Ownership liberado.
+
+## Forma prevista contrato em Contas a Receber - 2026-10-21
+
+- Implementacao local em branch derivada DEVa00, sem producao ou publicacao.
+  Leitura em lotes500 apos ACL/filtros/paginacao, sem join hasMany/N+1.
+  Coluna/CSV identificam previsao; explicita preservada, sem interpretar baixa.
+- Backend com listagem/modelos reais isolados/SQL offline, escopo403/negativas/
+  legado/parcial/quitado/serializacao e regressoes financeiros/comerciais OK.
+  UI real1366/390/CSV/403/retry/sem exportar/PAGAR e build632/13,93s OK.
+- Sintaxe/docs/diff conferidos; ownership liberado. Handoff dedicado com
+  limites, arquivos e proximo passo condicionado a autorizacao commit/push DEV.
 
 ## Hotfix DEV query demissoes pendentes - 2026-10-21
 
