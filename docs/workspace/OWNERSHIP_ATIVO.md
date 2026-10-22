@@ -1,5 +1,19 @@
 # Ownership Ativo
 
+## Promocao MAIN OFX/codigo TIT - 2026-10-22
+
+- Usuario homologou DEV41219c3a e autorizou promocao isolada MAIN/comandos EC2.
+  Backup recente conferido no Drive cifrado e timer ativo confirmados nesta
+  promocao. Agente unico reserva quatro runtimes OFX, dois QAs de regressao,
+  packages so comando QA OFX, novo roteiro/QA PROD, canonico/handoff/quatro controles.
+- Base MAINb6546229 e DEV41219c3a fixadas por fetch. Escopo ampliado pelo usuario
+  para TODOS os pendentes, incluindo bc2c69ed (forma prevista dos contratos).
+  Reservados tambem os quatro runtimes de forma prevista, seus QAs e harness
+  validarRelatorioTitulosSelecao, docs/roteiros envolvidos; integrar historico DEV.
+- Preservar ajustes exclusivos MAIN, dependencias/migrations/.env/flags/memoria,
+  permissoes/historico e regras financeiras. Sem EC2/DB/S3/Redis/operacoes reais,
+  force push ou arquivos outputs no commit. Branch codex/promocao-ofx-main-20261022.
+
 ## Promocao RH, centros e pedidos MAIN - 2026-10-21
 
 - Usuario confirmou backup cifrado/timer ativo e autorizou todos os commits

@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { chaveGrupo, carregarGrupos, projetarGrupo } = require('./conciliacaoGruposMatch');
 const { Op, fn, col } = require('sequelize');
 const {
   ConciliacaoBancaria,
@@ -550,7 +551,7 @@ function buildConciliacaoInclude() {
       model: TituloFinanceiro,
       as: 'titulo',
       required: false,
-      attributes: ['id', 'tipo', 'descricao', 'numero_documento', 'obra_id'],
+      attributes: ['id', 'codigo', 'tipo', 'descricao', 'numero_documento', 'obra_id'],
       include: [
         {
           model: Parceiro,
@@ -950,7 +951,7 @@ async function loadUnavailableMovementIds(movimentoIds = [], exceptConciliacaoId
   ]);
 }
 
-async function queryMovimentoCandidates(req, conciliacao, searchFilters = {}) {
+async function queryMovimentoCandidates(req, conciliacao, searchFilters = {}, { todosExatos = false } = {}) {
   const tituloWhere = await buildTituloWhere(req, conciliacao);
 
   const defaultDateInitial = subtractDays(conciliacao.data_movimento, 5);
@@ -980,7 +981,7 @@ async function queryMovimentoCandidates(req, conciliacao, searchFilters = {}) {
         as: 'titulo',
         required: true,
         where: tituloWhere,
-        attributes: ['id', 'tipo', 'descricao', 'numero_documento', 'obra_id'],
+        attributes: ['id', 'codigo', 'tipo', 'descricao', 'numero_documento', 'obra_id'],
         include: [
           {
             model: Parceiro,
@@ -1030,7 +1031,7 @@ async function queryMovimentoCandidates(req, conciliacao, searchFilters = {}) {
           as: 'titulo',
           required: true,
           where: tituloWhere,
-          attributes: ['id', 'tipo', 'descricao', 'numero_documento', 'obra_id'],
+          attributes: ['id', 'codigo', 'tipo', 'descricao', 'numero_documento', 'obra_id'],
           include: [
             { model: Parceiro, as: 'parceiro', attributes: ['id', 'nome', 'cpf_cnpj'] },
             { model: CategoriaFinanceira, as: 'categoriaFinanceira', attributes: ['id', 'nome', 'tipo'] },
@@ -1148,7 +1149,7 @@ async function queryMovimentoCandidates(req, conciliacao, searchFilters = {}) {
     return true;
   });
 
-  return filtered.slice(0, limit);
+  return todosExatos && exactMatchOnly ? filtered : filtered.slice(0, limit);
 }
 
 function scoreSuggestion(conciliacao, movimento) {
@@ -1209,6 +1210,7 @@ function serializeSuggestion(movimento, ranking) {
   return {
     movimento_financeiro_id: movimento.id,
     titulo_financeiro_id: movimento.titulo?.id || null,
+    titulo_codigo: movimento.titulo?.codigo || null,
     titulo_descricao: movimento.titulo?.descricao
       || (cheque ? `Deposito do cheque ${cheque.codigo || cheque.numero_cheque}` : `Titulo #${movimento.titulo?.id || '-'}`),
     tipo: movimento.titulo?.tipo || (cheque ? 'RECEBER' : null),
@@ -1234,12 +1236,12 @@ function serializeSuggestion(movimento, ranking) {
 
 async function analyzeSuggestions(req, conciliacao, options = {}) {
   const maxSuggestions = Math.max(Number(options.maxSuggestions || 3), 1);
-  const candidates = await queryMovimentoCandidates(req, conciliacao, {
+  const candidates = await (options.candidates || queryMovimentoCandidates(req, conciliacao, {
     data_inicial: conciliacao.data_movimento,
     data_final: conciliacao.data_movimento,
     exact_match: true,
     limit: Math.max(maxSuggestions * 3, 20)
-  });
+  }, { todosExatos: true }));
 
   const ranked = candidates
     .map((item) => ({
@@ -1275,7 +1277,10 @@ async function analyzeSuggestions(req, conciliacao, options = {}) {
     .slice(0, limiteSugestoesVisiveis)
     .map((entry) => serializeSuggestion(entry.item, entry.ranking));
 
-  return {
+  const grupo = options.grupo || (await carregarGrupos([conciliacao], ConciliacaoBancaria)).get(chaveGrupo(conciliacao));
+  const candidatosGrupo = ranked.map(entry => serializeSuggestion(entry.item, entry.ranking));
+  const projecao = projetarGrupo(conciliacao.id, grupo, candidatosGrupo);
+  const analiseSemGrupo = {
     sugestoes: sugestoesVisiveis,
     sugestao_automatica: sugestaoAutomatica,
     total_candidatos: ranked.length,
@@ -1283,13 +1288,21 @@ async function analyzeSuggestions(req, conciliacao, options = {}) {
     associacao_manual_recomendada: associacaoManualRecomendada,
     conciliacao_em_lote_disponivel: Boolean(sugestaoAutomatica)
   };
+  if (!grupo) return analiseSemGrupo;
+  return {
+    ...analiseSemGrupo,
+    ...projecao,
+    sugestoes: projecao.sugestoes.slice(0, limiteSugestoesVisiveis),
+    // Pool unico por grupo no meta da listagem, sem repetir contratos/baixas.
+    grupo_match: grupo ? { ...grupo, candidatos: candidatosGrupo } : null
+  };
 }
 
 async function registrarClassificacaoInicialMatch(req, conciliacao) {
   const analise = await analyzeSuggestions(req, conciliacao, { maxSuggestions: 20 });
   const tipo = analise.sugestao_automatica
     ? 'AUTO_UNICO'
-    : analise.total_candidatos > 1
+    : analise.associacao_manual_recomendada
       ? 'AMBIGUO'
       : 'SEM_MATCH';
 
@@ -1598,7 +1611,7 @@ async function listarConciliacoes(req, filters = {}) {
     tituloIds.length
       ? TituloFinanceiro.findAll({
           where: { id: { [Op.in]: tituloIds } },
-          attributes: ['id', 'tipo', 'descricao', 'numero_documento', 'obra_id'],
+          attributes: ['id', 'codigo', 'tipo', 'descricao', 'numero_documento', 'obra_id'],
           include: [
             {
               model: Parceiro,
@@ -1658,6 +1671,8 @@ async function listarConciliacoes(req, filters = {}) {
   const faturaMap = new Map(faturas.map((item) => [Number(item.id), item.toJSON()]));
   const usuarioMap = new Map(usuarios.map((item) => [Number(item.id), item.toJSON()]));
   const contrapartesTransferenciaMap = await carregarContrapartesTransferenciaExatas(itens);
+  const gruposMatch = await carregarGrupos(itens, ConciliacaoBancaria);
+  const analisesPorGrupo = new Map(), metaGruposMatch = new Map();
 
   const rows = await Promise.all(itens.map(async (item) => {
     const json = item.toJSON();
@@ -1671,8 +1686,12 @@ async function listarConciliacoes(req, filters = {}) {
       ? contrapartesTransferencia[0]
       : null;
     const estornoBancario = await analisarPossivelEstornoBancario(item);
-    const analise = String(item.status || '').toUpperCase() === 'PENDENTE' && !estornoBancario
-      ? await analyzeSuggestions(req, item)
+    const chave = chaveGrupo(item) || `item:${item.id}`;
+    if (item.status === 'PENDENTE' && !estornoBancario && !analisesPorGrupo.has(chave)) {
+      analisesPorGrupo.set(chave, analyzeSuggestions(req, item, { grupo: gruposMatch.get(chave) }));
+    }
+    const baseAnalise = String(item.status || '').toUpperCase() === 'PENDENTE' && !estornoBancario
+      ? await analisesPorGrupo.get(chave)
       : {
           sugestoes: [],
           sugestao_automatica: null,
@@ -1681,7 +1700,10 @@ async function listarConciliacoes(req, filters = {}) {
           associacao_manual_recomendada: false,
           conciliacao_em_lote_disponivel: false
         };
+    const analise = baseAnalise.grupo_match ? { ...baseAnalise,
+      ...projetarGrupo(item.id, baseAnalise.grupo_match, baseAnalise.grupo_match.candidatos) } : baseAnalise;
 
+    if (analise.grupo_match && !metaGruposMatch.has(chave)) metaGruposMatch.set(chave, analise.grupo_match);
     return {
       id: json.id,
       conta_bancaria_id: json.conta_bancaria_id,
@@ -1707,6 +1729,7 @@ async function listarConciliacoes(req, filters = {}) {
             descricao: titulo.descricao,
             numero_documento: titulo.numero_documento,
             parceiro_nome: titulo.parceiro?.nome || '-',
+            codigo: titulo.codigo || null,
             categoria_financeira_id: titulo.categoriaFinanceira?.id || null,
             categoria_financeira_nome: titulo.categoriaFinanceira?.nome || null,
             obra_id: titulo.obra?.id || titulo.obra_id || null,
@@ -1738,7 +1761,7 @@ async function listarConciliacoes(req, filters = {}) {
             cartao_final: faturaCartao.cartao?.ultimos_digitos || null
           }
         : null,
-      sugestoes: analise.sugestoes,
+      sugestoes: analise.sugestoes.slice(0, 20),
       sugestao_automatica: analise.sugestao_automatica,
       total_candidatos: analise.total_candidatos,
       total_candidatos_exatos_mesmo_dia: analise.total_candidatos_exatos_mesmo_dia,
@@ -1791,7 +1814,8 @@ async function listarConciliacoes(req, filters = {}) {
       total_listado: rows.length,
       current_page: currentPage,
       page_size: pageSize,
-      total_pages: Math.max(Math.ceil(totalRegistros / pageSize), 1)
+      total_pages: Math.max(Math.ceil(totalRegistros / pageSize), 1),
+      grupos_match: [...metaGruposMatch.values()]
     },
     itens: rows
   };
@@ -1922,7 +1946,8 @@ async function resolveMovimentoForConciliacao(req, conciliacao, movimentoId, opt
           'movimento_entrada_id', 'movimento_deposito_id'
         ]
       }
-    ]
+    ],
+    ...(options.transaction ? { transaction: options.transaction } : {})
   });
 
   if (!movimento) {
@@ -2003,7 +2028,8 @@ async function resolveMovimentoForConciliacao(req, conciliacao, movimentoId, opt
         [Op.ne]: conciliacao.id
       }
     },
-    attributes: ['id']
+    attributes: ['id'],
+    ...(options.transaction ? { transaction: options.transaction } : {})
   });
 
   if (jaConciliado) {
@@ -3656,11 +3682,18 @@ async function confirmarConciliacao(req, conciliacaoId, payload = {}, options = 
       transaction,
       lock: transaction.LOCK.UPDATE
     });
-    if (!conciliacaoBloqueada || String(conciliacaoBloqueada.status || '').toUpperCase() !== 'PENDENTE') {
+    if (!conciliacaoBloqueada || conciliacaoBloqueada.deleted_at || String(conciliacaoBloqueada.status || '').toUpperCase() !== 'PENDENTE') {
       throw createHttpError(409, 'Este lancamento bancario recebeu outra conciliacao. Atualize a tela.');
     }
+    if (Number(conciliacaoBloqueada.valor) !== Number(conciliacao.valor)
+      || Number(conciliacaoBloqueada.conta_bancaria_id) !== Number(conciliacao.conta_bancaria_id)
+      || Number(conciliacaoBloqueada.empresa_id) !== Number(conciliacao.empresa_id)
+      || String(conciliacaoBloqueada.data_movimento) !== String(conciliacao.data_movimento)) {
+      throw createHttpError(409, 'O lancamento bancario foi alterado. Atualize a conciliacao.');
+    }
 
-    for (const movimento of movimentos) {
+    // Ordem de locks estavel, sem mudar a ordem/primeiro movimento do payload.
+    for (const movimento of [...movimentos].sort((a, b) => Number(a.id) - Number(b.id))) {
       const movimentoBloqueado = await MovimentoFinanceiro.findByPk(movimento.id, {
         transaction,
         lock: transaction.LOCK.UPDATE
@@ -3668,12 +3701,21 @@ async function confirmarConciliacao(req, conciliacaoId, payload = {}, options = 
       if (!movimentoBloqueado || String(movimentoBloqueado.status || '').toUpperCase() !== 'ATIVO') {
         throw createHttpError(409, 'Um dos movimentos selecionados deixou de estar disponivel.');
       }
+      if (['valor_quitacao', 'conta_bancaria_id', 'empresa_id', 'titulo_financeiro_id'].some(c => Number(movimentoBloqueado[c] || 0) !== Number(movimento[c] || 0))
+        || String(movimentoBloqueado.data_movimento) !== String(movimento.data_movimento)) {
+        throw createHttpError(409, 'Um movimento foi alterado durante a confirmacao. Atualize a conciliacao.');
+      }
       if (
         movimentoBloqueado.conciliacao_bancaria_id
         && Number(movimentoBloqueado.conciliacao_bancaria_id) !== Number(conciliacao.id)
       ) {
         throw createHttpError(409, 'Um dos movimentos selecionados ja foi usado em outra conciliacao.');
       }
+      // Conta/empresa/obra/data/valor/cheque e uso legado podem ter mudado
+      // entre a sugestao e o lock. Revalidar sem gerar nova baixa.
+      await resolveMovimentoForConciliacao(req, conciliacaoBloqueada, movimento.id, {
+        validarValor: !isAssociacaoMultipla, transaction
+      });
       await movimentoBloqueado.update({ conciliacao_bancaria_id: conciliacao.id }, { transaction });
       await confirmarCompensacaoChequePorMovimento({
         movimentoId: movimentoBloqueado.id,

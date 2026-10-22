@@ -39,6 +39,7 @@ import { formatCurrencyInput, normalizeCurrencyTyping, parseCurrencyInput } from
 import { useAuth } from '../contexts/AuthContext';
 import { hasPermissao } from '../utils/acessoProduto';
 import DateInputBR from '../components/DateInputBR';
+import { chaveGrupoOfx, projetarMatchesOfx } from '../utils/conciliacaoAlocacao';
 
 const TIPOS_INTERCOMPANY = [
   { value: 'APORTE', label: 'Aporte' },
@@ -854,6 +855,11 @@ function NovoTituloRapidoModal({ item, contas, onClose, onConciliar }) {
 
 // ─── ItemConciliacao — layout 2 colunas ──────────────────────────────────────
 
+function CodigosTitulosOfx({ registros = [] }) {
+  const codigos = [...new Set(registros.map(r => r?.titulo_codigo || r?.codigo).filter(Boolean))];
+  return codigos.length ? <p className="text-xs font-semibold text-[var(--c-text)] break-words">{codigos.join(' · ')}</p> : null;
+}
+
 function ContextoObraTitulo({ registro }) {
   const codigo = String(registro?.obra_codigo || '').trim();
   const nome = String(registro?.obra_nome || '').trim();
@@ -883,7 +889,7 @@ function candidatoEstornoApto(candidato) {
   return baixaDeTitulo || tarifaRegistrada || saidaPendenteSemBaixa;
 }
 
-function ItemConciliacao({ item, associacaoPreparada = null, processingId, selected = false, canConciliar = false, canEstornarTransferencia = false, onToggleSelecao, onConfirmar, onConfirmarEstorno, onIgnorar, onRemover, onAssociarManual, onPrepararSugestao, onAssociarFatura, onAssociarTransferencia, onEstornarTransferencia, onAcoesRapidas }) {
+function ItemConciliacao({ item, associacaoPreparada = null, processingId, selected = false, canConciliar = false, canEstornarTransferencia = false, onToggleSelecao, onConfirmar, onConfirmarEstorno, onIgnorar, onRemover, onAssociarManual, onPrepararSugestao, onLiberarAssociacao, onAssociarFatura, onAssociarTransferencia, onEstornarTransferencia, onAcoesRapidas }) {
   const [expandirSugestoes, setExpandirSugestoes] = useState(false);
   const [estornoExpandido, setEstornoExpandido] = useState(false);
   const [estornoOrigemId, setEstornoOrigemId] = useState(() => {
@@ -925,11 +931,11 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
   const pidConfirmar = movimentoIdsConfirmacao.length
     ? `confirmar-${item.id}-${movimentoIdsConfirmacao.join('-')}`
     : null;
-  const isConfirmando = processingId === pidConfirmar;
+  const isConfirmando = Boolean(pidConfirmar && processingId === pidConfirmar);
   const isIgnorando = processingId === `ignorar-${item.id}`;
   const isRemovendo = processingId === `remover-${item.id}`;
   const isConfirmandoEstorno = processingId === `estorno-bancario-${item.id}`;
-  const podeConfirmar = isPendente && movimentoIdsConfirmacao.length > 0 && !isConfirmando;
+  const podeConfirmar = isPendente && movimentoIdsConfirmacao.length > 0 && !processingId;
   const candidatoEstornoSelecionado = alertaEstorno?.candidatos?.find((candidato) => Number(candidato.conciliacao_id) === Number(estornoOrigemId));
   const candidatoSelecionadoApto = candidatoEstornoApto(candidatoEstornoSelecionado);
   const podeConfirmarEstorno = Boolean(
@@ -1026,10 +1032,10 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
           )}
         </div>
       )}
-      <div className="grid items-stretch" style={{ gridTemplateColumns: 'minmax(0,1fr) auto minmax(0,1fr)' }}>
+      <div className="grid grid-cols-1 items-stretch md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
 
         {/* ── Coluna esquerda: lançamento OFX ── */}
-        <div className="flex flex-col gap-1 p-2">
+        <div className="order-1 flex min-w-0 flex-col gap-1 p-2">
           {canConciliar && isPendente && !alertaEstorno && (
             <label className="mb-1 flex items-center gap-2 text-xs font-semibold text-[var(--c-muted)]">
               <input
@@ -1063,7 +1069,7 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
           {/* conciliado info */}
           {item.titulo && (
             <p className="text-xs text-[var(--sem-success)] leading-tight">
-              ✓ #{item.titulo.id} {item.titulo.descricao}{item.titulo.parceiro_nome ? ` · ${item.titulo.parceiro_nome}` : ''}
+              ✓ {item.titulo.codigo || `#${item.titulo.id}`} {item.titulo.descricao}{item.titulo.parceiro_nome ? ` · ${item.titulo.parceiro_nome}` : ''}
             </p>
           )}
           {/* ignorar */}
@@ -1096,7 +1102,7 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
         </div>
 
         {/* ── Centro: botão conciliar ── */}
-        <div className="flex items-center justify-center px-2">
+        <div className="order-3 flex items-center justify-center px-2 py-2 md:order-2">
           {canConciliar && isPendente && !alertaEstorno && (
             <button
               type="button"
@@ -1116,7 +1122,7 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
         </div>
 
         {/* ── Coluna direita: sugestão / vazio ── */}
-        <div className="flex flex-col gap-1 p-2">
+        <div className="order-2 flex min-w-0 flex-col gap-1 p-2 md:order-3">
           {/* header */}
           {/*
             O alerta de estorno continua impedindo a conciliacao automatica,
@@ -1126,7 +1132,7 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
             classificacao correta pelos atalhos abaixo.
           */}
           {isPendente && (
-            <div className="flex items-center justify-between gap-1">
+            <div className="flex flex-wrap items-center justify-between gap-1">
               <p className="text-xs uppercase tracking-wide font-semibold text-[var(--c-muted)]">Lançamento Fluxy</p>
               {/*
                 D3 + R2/M1 — as quatro ações do lado Fluxy eram quadrados de
@@ -1161,6 +1167,7 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
 
           {!isPendente && item.titulo ? (
             <div className="flex-1 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-2 space-y-1">
+              <CodigosTitulosOfx registros={[item.titulo]} />
               <p className="font-semibold text-xs text-[var(--c-text)] truncate">{item.titulo.descricao}</p>
               {item.titulo.parceiro_nome && <p className="text-xs text-[var(--c-muted)]">{item.titulo.parceiro_nome}</p>}
               {item.titulo.categoria_financeira_nome && (
@@ -1210,7 +1217,7 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
             <div className="flex flex-col gap-1 flex-1">
               <div className="flex-1 rounded border border-[var(--sem-info-border)] bg-[var(--sem-info-bg)] px-2 py-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sem-info)]">
-                  Associação manual preparada
+                  {associacaoPreparada.automatica ? 'Sugestão exclusiva preparada' : 'Associação manual preparada'}
                 </p>
                 {/*
                   Família D — o número que a pessoa LÊ antes de clicar em
@@ -1228,6 +1235,7 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
                     ? movimentosPreparados[0]?.titulo_descricao
                     : `${movimentosPreparadosIds.length} movimentos selecionados`}
                 </p>
+                <CodigosTitulosOfx registros={movimentosPreparados} />
                 {movimentosPreparadosIds.length === 1 && movimentosPreparados.length === 1 ? (
                   <>
                     <p className="text-xs text-[var(--c-muted)] leading-tight">
@@ -1254,8 +1262,12 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
                 )}
                 <ValorBanco value={associacaoPreparada?.total} size="sm" />
                 <p className="mt-1 text-xs font-medium text-[var(--sem-info)]">
-                  Clique em Conciliar para confirmar.
+                  {associacaoPreparada.automatica ? 'Sugestão exclusiva. Revise e clique em Conciliar.' : 'Clique em Conciliar para confirmar.'}
                 </p>
+                {canConciliar && <button type="button" className="mt-1 text-xs text-[var(--c-primary)] underline underline-offset-2"
+                  disabled={Boolean(processingId)} onClick={() => onLiberarAssociacao(item.id)}>
+                  Liberar seleção
+                </button>}
               </div>
             </div>
           ) : sugestoesCompativeis.length > 0 ? (
@@ -1266,7 +1278,7 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
                 aria-expanded={expandirSugestoes}
                 onClick={() => setExpandirSugestoes((value) => !value)}
               >
-                {expandirSugestoes ? 'Ocultar opções' : `+ ${totalSugestoesCompativeis} títulos compatíveis`}
+                {expandirSugestoes ? 'Ocultar opções' : `+ ${totalSugestoesCompativeis} ${totalSugestoesCompativeis === 1 ? 'título compatível' : 'títulos compatíveis'}`}
               </button>
               <p className="mt-1 text-xs leading-tight text-[var(--c-muted)]">
                 Mesma data e valor. Escolha um título para preparar a conciliação.
@@ -1279,6 +1291,7 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
                       className="flex items-center gap-2 rounded border border-[var(--c-border)] bg-[var(--c-surface)] px-2 py-2"
                     >
                       <div className="min-w-0 flex-1">
+                        <CodigosTitulosOfx registros={[sugestao]} />
                         <p className="truncate text-xs font-semibold text-[var(--c-text)]" title={sugestao.titulo_descricao}>
                           {sugestao.titulo_descricao}
                         </p>
@@ -1294,6 +1307,7 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
                       {canConciliar && <button
                         type="button"
                         className="btn btn-outline btn-sm shrink-0 text-xs"
+                        disabled={Boolean(processingId)}
                         onClick={() => onPrepararSugestao(item, sugestao)}
                       >
                         Usar
@@ -1306,6 +1320,7 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
           ) : topSugestao ? (
             <div className="flex flex-col gap-1 flex-1">
               <div className="flex-1 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-2">
+                <CodigosTitulosOfx registros={[topSugestao]} />
                 <p className="font-semibold text-xs text-[var(--c-text)] leading-tight truncate">{topSugestao.titulo_descricao}</p>
                 <p className="text-xs text-[var(--c-muted)] leading-tight">
                   {topSugestao.parceiro_nome}{topSugestao.documento ? ` · Doc. ${topSugestao.documento}` : ''}
@@ -1338,6 +1353,7 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
                     return (
                       <div key={s.movimento_financeiro_id} className="rounded border border-[var(--c-border)] px-2 py-2 flex items-center gap-2">
                         <div className="flex-1 min-w-0">
+                          <CodigosTitulosOfx registros={[s]} />
                           <p className="text-xs font-medium truncate">{s.titulo_descricao}</p>
                           {s.categoria_financeira_nome && (
                             <p className="truncate text-xs text-[var(--c-muted)]" title={s.categoria_financeira_nome}>
@@ -1768,6 +1784,32 @@ export default function FinanceiroConciliacao() {
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [processingId, setProcessingId] = useState(null);
   const [associacoesPreparadas, setAssociacoesPreparadas] = useState({});
+  const associacoesRef = useRef({});
+  const [dispensasAutomaticas, setDispensasAutomaticas] = useState([]);
+  const dispensasRef = useRef([]), confirmacaoEmAndamentoRef = useRef(false), revisaoMatchRef = useRef(false);
+  const dadosMatchRef = useRef(dados);
+  const consultaMatchRef = useRef(0);
+  dadosMatchRef.current = dados;
+  const planoMatches = useMemo(() => projetarMatchesOfx(dados.itens, dados.meta.grupos_match || [], associacoesPreparadas, dispensasAutomaticas),
+    [dados, associacoesPreparadas, dispensasAutomaticas]);
+  function planoMatchAtual() {
+    const atual = dadosMatchRef.current;
+    return projetarMatchesOfx(atual.itens, atual.meta.grupos_match || [], associacoesRef.current, dispensasRef.current);
+  }
+  function definirPreparadas(atualizar) {
+    const proximo = atualizar(associacoesRef.current);
+    associacoesRef.current = proximo;
+    setAssociacoesPreparadas(proximo);
+  }
+  function liberarAssociacao(conciliacaoId) {
+    if (!canConciliar || confirmacaoEmAndamentoRef.current) return;
+    const atual = planoMatchAtual().preparadas[Number(conciliacaoId)];
+    if (atual?.automatica) {
+      dispensasRef.current = [...new Set([...dispensasRef.current, Number(conciliacaoId)])];
+      setDispensasAutomaticas(dispensasRef.current);
+    }
+    definirPreparadas(current => { const next = { ...current }; delete next[Number(conciliacaoId)]; return next; });
+  }
   const tarifaRequestsEmAndamentoRef = useRef(new Set());
   const [acoesRapidasItem, setAcoesRapidasItem] = useState(null);
   const [acoesRapidasError, setAcoesRapidasError] = useState('');
@@ -1916,13 +1958,15 @@ export default function FinanceiroConciliacao() {
   }
 
   async function carregarConciliacoes() {
+    const consultaId = ++consultaMatchRef.current;
     try {
       setLoading(true);
       const [response, importacoesResponse] = await Promise.all([
         getConciliacoesBancarias(appliedFilters),
         getImportacoesConciliacao({ conta_bancaria_id: appliedFilters.conta_bancaria_id, data_inicial: appliedFilters.data_inicial, data_final: appliedFilters.data_final, limit: 8 })
       ]);
-      setDados({
+      if (consultaId !== consultaMatchRef.current) return false;
+      const proximoDados = {
         resumo: {
           total: Number(response?.resumo?.total || 0),
           pendentes: Number(response?.resumo?.pendentes || 0),
@@ -1936,10 +1980,14 @@ export default function FinanceiroConciliacao() {
           total_listado: Number(response?.meta?.total_listado || 0),
           current_page: Number(response?.meta?.current_page || appliedFilters.page || 1),
           page_size: Number(response?.meta?.page_size || appliedFilters.page_size || 100),
-          total_pages: Number(response?.meta?.total_pages || 1)
+          total_pages: Number(response?.meta?.total_pages || 1),
+          grupos_match: Array.isArray(response?.meta?.grupos_match) ? response.meta.grupos_match : []
         },
         itens: Array.isArray(response?.itens) ? response.itens : []
-      });
+      };
+      dadosMatchRef.current = proximoDados;
+      setDados(proximoDados);
+      revisaoMatchRef.current = false;
       setImportacoes({
         resumo: {
           total_importacoes: Number(importacoesResponse?.resumo?.total_importacoes || 0),
@@ -1949,11 +1997,14 @@ export default function FinanceiroConciliacao() {
         },
         itens: Array.isArray(importacoesResponse?.itens) ? importacoesResponse.itens : []
       });
+      return true;
     } catch (err) {
+      if (consultaId !== consultaMatchRef.current) return false;
       avisar.erro(err?.message || 'Erro ao carregar conciliacoes bancarias');
       setDados({ resumo: { total: 0, pendentes: 0, conciliados: 0, ignorados: 0, valor_total: 0, valor_absoluto_total: 0 }, meta: { total_disponivel: 0, total_listado: 0, current_page: 1, page_size: 100, total_pages: 1 }, itens: [] });
       setImportacoes({ resumo: { total_importacoes: 0, total_lidos: 0, total_importados: 0, total_ignorados: 0 }, itens: [] });
-    } finally { setLoading(false); }
+      return false;
+    } finally { if (consultaId === consultaMatchRef.current) setLoading(false); }
   }
 
   useEffect(() => { carregarContas(); carregarTarifasBancarias(); }, []);
@@ -2060,6 +2111,8 @@ export default function FinanceiroConciliacao() {
   async function handleConfirmar(conciliacaoId, movimentoIdOrIds, { fecharModal = false } = {}) {
     // Se conciliacaoId for null, apenas recarrega (fluxo do novo título sem movimento_id)
     if (!conciliacaoId) { await carregarConciliacoes(); return; }
+    if (!canConciliar || confirmacaoEmAndamentoRef.current) return;
+    if (revisaoMatchRef.current) { avisar.erro('Atualize a conciliação antes de confirmar outro lançamento.'); return; }
     const movimentoIds = Array.isArray(movimentoIdOrIds)
       ? [...new Set(movimentoIdOrIds.map((id) => Number(id)).filter(Boolean))]
       : [Number(movimentoIdOrIds)].filter(Boolean);
@@ -2069,6 +2122,11 @@ export default function FinanceiroConciliacao() {
       else avisar.erro(message);
       return;
     }
+    const plano = planoMatchAtual();
+    if (movimentoIds.some(id => plano.reservados.has(id) && plano.reservados.get(id) !== Number(conciliacaoId))) {
+      avisar.erro('Um movimento já está preparado em outro lançamento. Libere a seleção antes de usar aqui.'); return;
+    }
+    confirmacaoEmAndamentoRef.current = true;
     try {
       const processingKey = `confirmar-${conciliacaoId}-${movimentoIds.join('-')}`;
       setProcessingId(processingKey);
@@ -2080,19 +2138,25 @@ export default function FinanceiroConciliacao() {
           ? { movimento_financeiro_ids: movimentoIds }
           : { movimento_financeiro_id: movimentoIds[0] }
       );
-      setAssociacoesPreparadas((current) => {
+      definirPreparadas((current) => {
         const next = { ...current };
         delete next[Number(conciliacaoId)];
         return next;
       });
       avisar.sucesso('Conciliação confirmada com sucesso.');
       if (fecharModal) setAssociacaoModal((c) => ({ ...c, open: false, processing: false, error: '', selecionados: [], dados: { conciliacao: null, meta: { total: 0, limit: 30 }, itens: [] } }));
+      revisaoMatchRef.current = true;
       await carregarConciliacoes();
     } catch (err) {
       const message = err?.message || 'Erro ao confirmar conciliacao';
       if (fecharModal) setAssociacaoModal((c) => ({ ...c, processing: false, error: message }));
       else avisar.erro(message);
+      // Resposta perdida/409: nunca repetir POST automaticamente. Reconciliar
+      // pelo GET antes de permitir outra confirmacao nesta tela.
+      revisaoMatchRef.current = true;
+      await carregarConciliacoes();
     } finally {
+      confirmacaoEmAndamentoRef.current = false;
       setProcessingId(null);
       if (fecharModal) setAssociacaoModal((c) => ({ ...c, processing: false }));
     }
@@ -2188,6 +2252,10 @@ export default function FinanceiroConciliacao() {
   }
 
   async function handleConciliarSugeridos() {
+    if (!canConciliar || confirmacaoEmAndamentoRef.current || revisaoMatchRef.current) return;
+    if (Object.values(planoMatchAtual().preparadas).some(p => !p.automatica)) {
+      avisar.erro('Confirme ou libere as associações preparadas antes de conciliar em lote.'); return;
+    }
     /*
       R3/R19 + R21 + classe CONSENTIMENTO (DoD) — e aqui está o cuidado que
       define esta ação.
@@ -2218,13 +2286,15 @@ export default function FinanceiroConciliacao() {
       destrutiva: true
     });
     if (!ok) return;
+    if (confirmacaoEmAndamentoRef.current || Object.values(planoMatchAtual().preparadas).some(p => !p.automatica)) return;
+    confirmacaoEmAndamentoRef.current = true;
     try {
       setBulkReconciling(true); limparAvisos();
       const response = await conciliarSugestoesBancarias({ status: appliedFilters.status === 'TODOS' ? 'TODOS' : 'PENDENTE', conta_bancaria_id: appliedFilters.conta_bancaria_id, data_inicial: appliedFilters.data_inicial, data_final: appliedFilters.data_final });
       const r = response?.resumo || {};
       avisar.sucesso(`${r.total_conciliadas || 0} confirmada(s) em lote. ${r.associacao_manual || 0} para associação manual. ${r.sem_sugestao || 0} sem sugestão.`);
       await carregarConciliacoes();
-    } catch (err) { avisar.erro(err?.message || 'Erro ao conciliar sugestoes em lote'); } finally { setBulkReconciling(false); }
+    } catch (err) { avisar.erro(err?.message || 'Erro ao conciliar sugestoes em lote'); } finally { confirmacaoEmAndamentoRef.current = false; setBulkReconciling(false); }
   }
 
   async function carregarMovimentosAssociacao(conciliacaoId, filtersPayload, { manterAberto = true, selecionadosIniciais = null } = {}) {
@@ -2239,7 +2309,10 @@ export default function FinanceiroConciliacao() {
       }));
       const response = await getMovimentosAssociacaoConciliacao(conciliacaoId, filtersPayload);
       setAssociacaoModal((c) => {
-        const itens = Array.isArray(response?.itens) ? response.itens : [];
+        const reservas = planoMatchAtual().reservados;
+        const itens = (Array.isArray(response?.itens) ? response.itens : []).filter(m => (
+          !reservas.has(Number(m.movimento_financeiro_id)) || reservas.get(Number(m.movimento_financeiro_id)) === Number(conciliacaoId)
+        ));
         const idsDisponiveis = new Set(itens.map((item) => Number(item.movimento_financeiro_id || 0)));
         const selecionados = (Array.isArray(selecionadosIniciais) ? selecionadosIniciais : c.selecionados)
           .map(Number)
@@ -2253,7 +2326,7 @@ export default function FinanceiroConciliacao() {
           dados: {
             conciliacao: response?.conciliacao || null,
             meta: {
-              total: Number(response?.meta?.total || 0),
+              total: itens.length,
               limit: Number(response?.meta?.limit || filtersPayload?.limit || c.filters.limit || 30)
             },
             itens
@@ -2329,9 +2402,15 @@ export default function FinanceiroConciliacao() {
     const movimentos = associacaoModal.dados.itens.filter((item) => (
       resumo.selecionados.includes(Number(item.movimento_financeiro_id || 0))
     ));
-    setAssociacoesPreparadas((current) => ({
+    const reservas = planoMatchAtual().reservados, dono = Number(associacaoModal.item.id);
+    if (!canConciliar || confirmacaoEmAndamentoRef.current) return;
+    if (resumo.selecionados.some(id => reservas.has(Number(id)) && reservas.get(Number(id)) !== dono)) {
+      setAssociacaoModal(current => ({ ...current, error: 'Um movimento já está preparado em outro lançamento. Atualize as opções.' })); return;
+    }
+    definirPreparadas((current) => ({
       ...current,
       [Number(associacaoModal.item.id)]: {
+        grupo: chaveGrupoOfx(associacaoModal.item), origem: 'MANUAL',
         movimentoIds: resumo.selecionados,
         movimentos,
         total: resumo.totalSelecionado
@@ -2349,10 +2428,16 @@ export default function FinanceiroConciliacao() {
       avisar.erro('Não foi possível preparar o título selecionado para conciliação.');
       return;
     }
-
-    setAssociacoesPreparadas((current) => ({
+    if (!canConciliar || confirmacaoEmAndamentoRef.current) return;
+    const plano = planoMatchAtual();
+    if ((plano.reservados.has(movimentoId) && plano.reservados.get(movimentoId) !== conciliacaoId)
+      || !plano.itens.find(i => Number(i.id) === conciliacaoId)?.sugestoes?.some(s => Number(s.movimento_financeiro_id) === movimentoId)) {
+      avisar.erro('Este movimento não está mais disponível nesta linha. Atualize as opções.'); return;
+    }
+    definirPreparadas((current) => ({
       ...current,
       [conciliacaoId]: {
+        grupo: chaveGrupoOfx(item), origem: 'SUGESTAO',
         movimentoIds: [movimentoId],
         movimentos: [sugestao],
         total: valorAbsolutoMovimentoAssociacao(sugestao)
@@ -2755,7 +2840,8 @@ export default function FinanceiroConciliacao() {
         acaoPrincipal={canConciliar && viewMode === 'DETALHE' ? {
           rotulo: bulkReconciling ? 'Conciliando...' : 'Conciliar em lote',
           onClick: handleConciliarSugeridos,
-          desabilitada: bulkReconciling
+          desabilitada: bulkReconciling || Boolean(processingId)
+            || Object.values(planoMatches.preparadas).some(p => !p.automatica)
             || appliedFilters.status === 'CONCILIADO'
             || appliedFilters.status === 'IGNORADO'
             || resumoSugestoesPagina.prontos === 0,
@@ -3110,11 +3196,11 @@ export default function FinanceiroConciliacao() {
 
             {dados.itens.length === 0
               ? <div className="app-empty-card sol-surface-card">Nenhum lançamento encontrado com os filtros atuais.</div>
-              : dados.itens.map((item) => (
+              : planoMatches.itens.map((item) => (
                   <ItemConciliacao
                     key={item.id}
                     item={item}
-                    associacaoPreparada={associacoesPreparadas[Number(item.id)] || null}
+                    associacaoPreparada={planoMatches.preparadas[Number(item.id)] || null}
                     processingId={processingId}
                     canConciliar={canConciliar}
                     canEstornarTransferencia={canEstornarTransferencia}
@@ -3125,6 +3211,7 @@ export default function FinanceiroConciliacao() {
                     onRemover={handleRemover}
                     onAssociarManual={abrirAssociacaoManual}
                     onPrepararSugestao={prepararSugestaoCompativel}
+                    onLiberarAssociacao={liberarAssociacao}
                     onAssociarFatura={abrirAssociacaoFatura}
                     onAssociarTransferencia={abrirAssociacaoTransferencia}
                     onEstornarTransferencia={(it) => setEstornoTransferenciaModal({

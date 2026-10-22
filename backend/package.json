@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
+    "test:ofx-matches-exclusivos": "node scripts/validarOfxMatchesExclusivos.js",
     "test:pedido-reabertura": "node scripts/validarPedidoReabertura.js",
     "test:centro-custo-distribuicao": "node scripts/validarDistribuicaoCentroCustoDestinos.js && node scripts/validarAdiantamentoCentroCusto.js",
     "test:rhdp-demissao-conclusao": "node scripts/validarRhDemissaoConclusao.js",
