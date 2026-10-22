@@ -11,7 +11,7 @@ const hash = v => crypto.createHash('sha256').update(JSON.stringify(v)).digest('
 
 function validarPayload(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) falhar(400,'Negociação inválida.');
-  const campos=['titulo_ids','juros','multa','quantidade_parcelas','primeiro_vencimento','parcelas','motivo','preview_hash'];
+  const campos=['titulo_ids','juros','multa','quantidade_parcelas','primeiro_vencimento','parcelas','motivo','preview_hash','pagamento'];
   if(Object.keys(body).some(k=>!campos.includes(k)))falhar(400,'Campos não permitidos na negociação.');
   if(!Array.isArray(body.titulo_ids)||!body.titulo_ids.length||body.titulo_ids.length>100
     ||body.titulo_ids.some(id=>!Number.isSafeInteger(id)||id<=0)
@@ -80,13 +80,14 @@ async function preparar(req,body,transaction) {
   const {titulos,origens}=await carregarOrigens(req,body.titulo_ids,transaction);
   const calculo=calcularNegociacao(titulos.map(t=>t.valor_saldo),body,hojeBrasil());
   const alocacoes=alocarParcelas(origens,calculo);
+  const pagamento=await require('./tituloNegociacaoPagamentoService').resolver(body.pagamento,titulos[0],transaction);
   const snapshot=titulos.map(t=>plain(t));
-  const preview_hash=hash({snapshot,origens,calculo,motivo:body.motivo});
-  return {titulos,origens,snapshot,calculo,alocacoes,preview_hash};
+  const preview_hash=hash({snapshot,origens,calculo,motivo:body.motivo,pagamento});
+  return {titulos,origens,snapshot,calculo,alocacoes,preview_hash,pagamento};
 }
 
 function previa(preparo) {
-  return {...preparo.calculo,preview_hash:preparo.preview_hash,
+  return {...preparo.calculo,preview_hash:preparo.preview_hash,pagamento:preparo.pagamento,
     titulos:preparo.snapshot.map(t=>({id:t.id,codigo:t.codigo,tipo:t.tipo,valor_original:t.valor_original,
       valor_baixado:t.valor_baixado,valor_saldo:t.valor_saldo,obra_id:t.obra_id})),
     parcelas:preparo.calculo.parcelas.map((p,i)=>({...p,rateios:preparo.alocacoes[i]}))};
@@ -129,6 +130,8 @@ async function confirmar(req,raw,chave) {
         descricao:`Negociação #${n.id} — parcela ${i+1}/${p.calculo.parcelas.length}`,
         juros_renegociacao:dinheiro(alocacoes.reduce((s,a)=>s+centavos(a.juros),0)),
         multa_renegociacao:dinheiro(alocacoes.reduce((s,a)=>s+centavos(a.multa),0)),
+        forma_pagamento_id:p.pagamento.forma_pagamento_id,favorecido_pagamento_id:p.pagamento.favorecido_id,
+        pagamento_negociacao:p.pagamento,
         observacoes:body.motivo,criado_por:req.user.id,atualizado_por:req.user.id},{transaction});
       for(const a of alocacoes){
         const {saldo,...campos}=a;
@@ -141,7 +144,7 @@ async function confirmar(req,raw,chave) {
     }
     for(const t of p.titulos)await t.update({status:'RENEGOCIADO',valor_saldo:0,renegociado_por_id:n.id,atualizado_por:req.user.id},
       {transaction,operacaoRenegociacao:true});
-    const resultado={id:n.id,...p.calculo,titulos:novos,origens:body.titulo_ids};
+    const resultado={id:n.id,...p.calculo,titulos:novos,origens:body.titulo_ids,pagamento:p.pagamento};
     await n.update({resultado},{transaction});
     await require('./tituloRenegociacaoSincronizacao').sincronizarOrigens(body.titulo_ids, { transaction, usuarioId:req.user.id });
     for(const id of [...body.titulo_ids,...novos.map(t=>t.id)])await db.SecurityEventLog.create({

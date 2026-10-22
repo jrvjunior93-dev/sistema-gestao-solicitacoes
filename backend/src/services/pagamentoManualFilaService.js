@@ -76,7 +76,7 @@ function filaInclude() {
         'forma_pagamento_id', 'empresa_id', 'linha_digitavel', 'codigo_barras',
         'banco_cobranca', 'observacoes', 'solicitacao_id', 'favorecido_pagamento_id',
         'cartao_id', 'fatura_cartao_id', 'origem_titulo', 'status_interno_pagar', 'compartilhamento_id',
-        'medicao_pagamento', 'medicao_pagamento_origem_id', 'bloqueio_pagamento_proprietario',
+        'medicao_pagamento', 'medicao_pagamento_origem_id', 'bloqueio_pagamento_proprietario', 'pagamento_negociacao',
         'parceiro_id', 'obra_id', 'data_emissao', 'updatedAt'
       ],
       include: [

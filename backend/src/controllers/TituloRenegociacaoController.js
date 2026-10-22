@@ -1,6 +1,10 @@
 const service=require('../services/tituloRenegociacaoService');
 const {responderErroController}=require('../utils/controllerError');
 module.exports={
+  async consultarPagamento(req,res){try{return res.json(await require('../services/tituloNegociacaoPagamentoService').consultar(req,Number(req.params.id)));}
+    catch(e){return responderErroController(res,e,'Erro ao consultar pagamento da negociacao.');}},
+  async atualizarPagamento(req,res){try{return res.json(await require('../services/tituloNegociacaoPagamentoService').atualizar(req,Number(req.params.id),req.body));}
+    catch(e){return responderErroController(res,e,'Erro ao editar pagamento da negociacao.');}},
   async consultar(req,res){try{return res.json(await service.consultar(req,Number(req.params.id)));}
     catch(e){return responderErroController(res,e,'Erro ao consultar a negociação.');}},
   async preview(req,res){try{return res.json(await service.preview(req,req.body));}

@@ -1,5 +1,54 @@
 # Ownership Ativo
 
+## Publicacao DEV Compra Direta e pagamento negociado - 2026-10-22
+
+- Usuario autorizou commit/push dos dois ajustes na refactor/frontend e comandos
+  EC2 DEV com migration. Agente unico; reserva temporaria dos deltas existentes,
+  aplicarMigrationNegociacaoPagamentoDev.js, validarDeployCompraNegociacaoDev.js,
+  atualizar-dev-compra-negociacao-20261022.sh e documentacao correspondente.
+- Base DEV41219c3a e main fe663151 conferidas remotamente. Sem main, EC2,
+  banco real, DDL real, flags, segredos, dependencias ou producao pelo agente.
+- outputs/ privado fora do commit; migration aditiva unica, backup DEV exigido,
+  guardas de caminho/processo/porta/identidade/schema e restart exclusivo DEV.
+- QAs dedicados e regressoes repetidos aprovados; UI1366/390, build635/11,99s,
+  Node/Bash/diff e documentacao602/19 aprovados. Reserva encerrada e ownership
+  liberado para commit/push autorizado. Aplicacao real somente pelo usuario.
+
+## Negociacao - forma e dados de pagamento - 2026-10-22
+
+- Agente unico; usuario autorizou implementar/testar na base refactor/frontend,
+  inclusive edicao restrita de parcelas existentes como TIT-011543. Sem
+  escrita no registro real, banco/EC2/servicos reais, producao ou commit/push.
+- Reservados: tituloRenegociacaoService/controller, novo helper de pagamento,
+  routes.js (preservar delta Compra Direta), TituloNegociacaoModal, novo
+  componente reutilizavel de pagamento, FinanceiroTituloDetalhe e servico
+  financeiro frontend, QAs correspondentes, canonico Financeiro/handoff.
+- Preservar bloqueios do acordo, valores/rateios/origens, ACL, historico,
+  idempotencia, autorizacoes e o ajuste de credor ainda nao commitado.
+- Inclui migration JSON aditiva/modelo de titulo (sem aplicacao), projecao da
+  instrucao na fila e hash condicional do dossie; hashes legados preservados.
+- Implementacao/testes locais concluidos: QAs dedicados backend/UI1366/390,
+  regressoes de negociacao, workspace, fila, autorizacao e Compra Direta;
+  build635/11,62s, Node/diff/documentacao601/19 aprovados. Migration somente
+  em memoria, nao aplicada. Reserva encerrada, ownership liberado, sem
+  commit/push/deploy. Handoff: 2026-10-22-negociacao-pagamento.md.
+
+## Compra Direta - credor conforme configuracao - 2026-10-22
+
+- Agente unico desta conversa; usuario autorizou implementar/testar sobre
+  refactor/frontend, base 41219c3a, sem commit/push ou producao nesta etapa.
+- Reservados: NovaSolicitacaoCompra.jsx, SolicitacaoCompraController.js,
+  helper/endpoint de leitura da regra do credor se necessario, testes isolados
+  backend/UI e handoff deste ajuste. Preservar rascunhos, ACL, idempotencia,
+  vinculos, dados existentes e todas as regras/calculos financeiros.
+- Inclui routes.js, frontend/src/services/compras.js, o canonico de Compras
+  e docs/handoffs/2026-10-22-compra-direta-credor-obrigatorio.md.
+- Sem banco/EC2/S3/Redis reais, migrations, dependencias, flags ou reinicios.
+- Implementacao e QAs dedicados backend/UI1366/390 aprovados, mais quatro
+  regressoes backend, UI de gestao, build633/17,60s, Node/diff/documentacao.
+  Um QA antigo de frete tem marcador estatico obsoleto, documentado no handoff.
+  Reserva encerrada e ownership liberado; trabalho ainda sem commit/push.
+
 ## Publicacao DEV OFX e codigo TIT - 2026-10-22
 
 - Usuario autorizou commit/push exclusivo refactor/frontend e comandos EC2 DEV.

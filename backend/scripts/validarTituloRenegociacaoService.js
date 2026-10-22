@@ -5,6 +5,7 @@ const { Op } = require('sequelize');
 const { centavos } = require('../src/services/tituloRenegociacaoDomain');
 const mock = (path, value) => { require.cache[require.resolve(path)] = { exports: value, loaded: true }; };
 let state, permitir, obras, falharCriacao, bancario;
+const permissoesNegadas = new Set();
 const clone = value => structuredClone(value);
 function reset() {
   state = { titulos: [
@@ -14,10 +15,11 @@ function reset() {
     { id: 2, codigo: 'TIT-2', tipo: 'PAGAR', status: 'ABERTO', parceiro_id: 7, empresa_id: 8, obra_id: 4,
       solicitacao_id: 12, categoria_financeira_id: 9, considera_dre: false,
       valor_original: '200.00', valor_baixado: '0.00', valor_saldo: '200.00' }
-  ], negociacoes: [], alocacoes: [], rateios: [], auditoria: [], historico: [], sync: [] };
+  ], negociacoes: [], alocacoes: [], rateios: [], auditoria: [], historico: [], sync: [], bloqueios: {} };
   permitir = true; obras = null; falharCriacao = false; bancario = false;
+  permissoesNegadas.clear();
 }
-const instance = row => row && { ...row, toJSON: () => clone(row), update: async values => { Object.assign(row, values); } };
+const instance = row => row && { ...row, toJSON: () => clone(row), async update(values) { Object.assign(row, values); Object.assign(this, values); } };
 const model = name => ({
   create: async (value, { transaction }) => {
     assert.ok(transaction, `${name} sem transação`);
@@ -40,7 +42,7 @@ const db = {
   } },
   TituloFinanceiro: {
     findByPk: async (id, options) => {
-      assert.equal(options?.lock, 'UPDATE');
+      if (options?.transaction) assert.equal(options.lock, 'UPDATE');
       return instance(state.titulos.find(t => t.id === id));
     },
     create: async (value, { transaction }) => {
@@ -53,12 +55,23 @@ const db = {
   TituloRenegociacao: { ...model('negociacoes'), findOne: async ({ where }) => instance(state.negociacoes.find(n => n.chave === where.chave)) },
   TituloRenegociacaoAlocacao: model('alocacoes'), TituloFinanceiroRateio: model('rateios'),
   SecurityEventLog: model('auditoria'), Historico: model('historico'),
-  PaymentIntent: { findOne: async () => bancario ? { id: 1 } : null },
-  PagamentoManualFilaItem: { findOne: async () => null }
+  FormaPagamentoFinanceira: { findByPk: async id => ({
+    1: { id: 1, nome: 'PIX', codigo: 'PIX', ativo: true },
+    2: { id: 2, nome: 'Boleto', codigo: 'BOLETO', gera_boleto: true, ativo: true },
+    3: { id: 3, nome: 'Transferencia', codigo: 'TED', ativo: true },
+    4: { id: 4, nome: 'Forma inativa', ativo: false },
+    5: { id: 5, nome: 'FOPAG', codigo: 'FOPAG', ativo: true }
+  })[id] },
+  Parceiro: { findByPk: async id => ({ 7: { id: 7, nome: 'Credor QA', ativo: true },
+    9: { id: 9, nome: 'Favorecido QA', ativo: true }, 10: { id: 10, nome: 'Inativo QA', ativo: false } })[id] },
+  MovimentoFinanceiro: { findOne: async () => state.bloqueios.MovimentoFinanceiro ? {} : null },
+  PagamentoAutorizacaoItem: { findOne: async () => state.bloqueios.PagamentoAutorizacaoItem ? {} : null },
+  PaymentIntent: { findOne: async () => bancario || state.bloqueios.PaymentIntent ? { id: 1 } : null },
+  PagamentoManualFilaItem: { findOne: async () => state.bloqueios.PagamentoManualFilaItem ? {} : null }
 };
 mock('../src/models', db);
 mock('../src/services/authorizationService', {
-  userHasAreaPermission: async () => permitir, getFinanceiroObraScopeIds: async () => obras
+  userHasAreaPermission: async (_, permissoes) => permitir && !permissoes.some(p => permissoesNegadas.has(p)), getFinanceiroObraScopeIds: async () => obras
 });
 mock('../src/services/tituloRenegociacaoSincronizacao', {
   sincronizarOrigens: async (ids, options) => { assert.ok(options.transaction); state.sync.push(ids); }
@@ -66,7 +79,8 @@ mock('../src/services/tituloRenegociacaoSincronizacao', {
 const service = require('../src/services/tituloRenegociacaoService');
 const req = { user: { id: 99 } };
 const payload = { titulo_ids: [2, 1], motivo: 'Acordo com fornecedor', primeiro_vencimento: '2090-01-31', quantidade_parcelas: 3,
-  juros: { tipo: 'PERCENTUAL', valor: '2.50' }, multa: { tipo: 'VALOR', valor: '10.00' } };
+  juros: { tipo: 'PERCENTUAL', valor: '2.50' }, multa: { tipo: 'VALOR', valor: '10.00' },
+  pagamento: { forma_pagamento_id: 1, favorecido_id: 7, chave_pix: 'pix-qa' } };
 const preparar = async () => ({ ...payload, preview_hash: (await service.preview(req, payload)).preview_hash });
 const chave = 'teste-idempotencia-00001';
 
@@ -103,4 +117,6 @@ async function main() {
   reset(); state.titulos[0].status = 'QUITADO'; await assert.rejects(service.preview(req, payload), /saldo/);
   console.log('OK: prévia sem escrita, confirmação atômica simulada, rollback, idempotência, corrida simulada, escopo, parceiro, auditoria e vínculos. Não substitui teste MySQL.');
 }
-main().catch(error => { console.error(error); process.exitCode = 1; });
+module.exports = { db, reset, service, req, payload, preparar, permissoesNegadas,
+  get state() { return state; }, setObras: value => { obras = value; } };
+if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });

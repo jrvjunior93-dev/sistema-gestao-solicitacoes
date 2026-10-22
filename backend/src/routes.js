@@ -2406,6 +2406,8 @@ router.patch('/financeiro/titulos/status-interno-pagar', allowFinanceiro, critic
 router.post('/financeiro/titulos/negociacoes/preview', allowFinanceiro, criticalRateLimit, require('./controllers/TituloRenegociacaoController').preview);
 router.post('/financeiro/titulos/negociacoes/confirmar', allowFinanceiro, criticalRateLimit, require('./controllers/TituloRenegociacaoController').confirmar);
 router.get('/financeiro/titulos/:id/negociacao', allowFinanceiro, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro') }), require('./controllers/TituloRenegociacaoController').consultar);
+router.get('/financeiro/titulos/:id/negociacao/pagamento', allowFinanceiro, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro') }), require('./controllers/TituloRenegociacaoController').consultarPagamento);
+router.patch('/financeiro/titulos/:id/negociacao/pagamento', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro') }), require('./controllers/TituloRenegociacaoController').atualizarPagamento);
 router.get('/financeiro/titulos/relatorio.pdf', allowFinanceiro, validateRequest({ query: validateFinanceTituloQuery }), TituloFinanceiroController.relatorioPdf);
 router.post('/financeiro/titulos/relatorio.pdf', allowFinanceiro, validateRequest({ query: validateFinanceTituloQuery, body: validateFinanceTituloRelatorioBody }), TituloFinanceiroController.relatorioPdf);
 router.post('/financeiro/titulos', allowFinanceiro, criticalRateLimit, validateRequest({ body: validateFinanceTituloCreateBody }), TituloFinanceiroController.create);
@@ -2528,6 +2530,7 @@ router.post(
   ParceiroController.createCredorCompraDireta
 );
 router.get('/compras/solicitacoes-diretas/modelo-itens-xlsx', allowCompraSolicitacoesCreate, SolicitacaoCompraController.modeloCompraDiretaXlsx);
+router.get('/compras/solicitacoes-diretas/regra-credor', allowCompraSolicitacoesCreate, requireCompraQueryObraCreationAccess, SolicitacaoCompraController.regraCredorCompraDireta);
 router.post('/compras/solicitacoes-diretas/importar-itens-xlsx', allowCompraSolicitacoesCreate, uploadRateLimit, uploadComprovantes.single('file'), SolicitacaoCompraController.importarCompraDiretaXlsx);
 router.get('/compras/solicitacoes-diretas/por-solicitacao/:solicitacaoId', allowCompraSolicitacoesCreateFlowRead, validateRequest({ params: validateNumericIdParam('solicitacaoId', 'Solicitacao principal') }), SolicitacaoCompraController.showCompraDiretaPorSolicitacao);
 router.get('/compras/solicitacoes/por-solicitacao/:solicitacaoId', allowCompraSolicitacoesCreateFlowRead, validateRequest({ params: validateNumericIdParam('solicitacaoId', 'Solicitacao principal') }), SolicitacaoCompraController.showPorSolicitacaoPrincipal);

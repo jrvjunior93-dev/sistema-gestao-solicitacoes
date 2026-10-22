@@ -4,6 +4,7 @@ import useWorkspaceRecordDraft from '../navigation/useWorkspaceRecordDraft';
 import useQueryRevision from '../navigation/useQueryRevision';
 import useWorkspaceOpenRecord from '../navigation/useWorkspaceOpenRecord';
 import TituloNegociacaoHistorico from '../components/financeiro/TituloNegociacaoHistorico';
+import TituloNegociacaoPagamento from '../components/financeiro/TituloNegociacaoPagamento';
 import ParticipacoesTitulo from '../components/financeiro/ParticipacoesTitulo';
 import CancelarLoteCompartilhado from '../components/financeiro/CancelarLoteCompartilhado';
 import CancelarTitulo from '../components/financeiro/CancelarTitulo';
@@ -812,7 +813,7 @@ export default function FinanceiroTituloDetalhe() {
               : podeEditarDadosTitulo ? {
                 rotulo: 'Editar título',
                 desabilitada: true,
-                title: titulo?.compartilhamento_id ? 'Título compartilhado: as participações do lote devem ser preservadas. Baixas e estornos seguem disponíveis.' : 'Somente titulos em aberto, sem baixa e sem pagamento em massa vinculado podem ser editados',
+                title: titulo?.renegociacao_id ? 'Título negociado: use Editar dados de pagamento na seção de pagamento. Valores e vínculos permanecem protegidos.' : titulo?.compartilhamento_id ? 'Título compartilhado: as participações do lote devem ser preservadas. Baixas e estornos seguem disponíveis.' : 'Somente titulos em aberto, sem baixa e sem pagamento em massa vinculado podem ser editados',
                 onClick: () => {}
               } : null
           ].filter(Boolean)}
@@ -826,6 +827,7 @@ export default function FinanceiroTituloDetalhe() {
           }}>Usar cobrança atual</button>
         </div>}
         <TituloNegociacaoHistorico titulo={titulo} />
+        <TituloNegociacaoPagamento key={titulo.id} titulo={titulo} permitido={podeEditarDadosTitulo} onSaved={carregar} />
 
         {error && (
           <div className="app-alert app-alert--error">

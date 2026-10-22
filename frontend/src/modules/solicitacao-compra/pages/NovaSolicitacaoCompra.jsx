@@ -9,6 +9,7 @@ import {
   importarItensSolicitacaoCompra,
   importarItensCompraDireta,
   listarFormasPagamentoCompraDireta,
+  obterRegraCredorCompraDireta,
   listarInsumos,
   listarUnidades,
   obterUrlAssinadaCompra,
@@ -264,6 +265,10 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   const [apropriacoes, setApropriacoes] = useState([]);
   const [obraId, setObraId] = useWorkspaceState('novaCompra:obraId', '');
   const [tipoSolicitacaoIdContexto, setTipoSolicitacaoIdContexto] = useWorkspaceState('novaCompra:tipoSolicitacaoIdContexto', tipoSolicitacaoIdInicial);
+  const [regraCredor, setRegraCredor] = useState(null);
+  const [tentativaRegraCredor, setTentativaRegraCredor] = useState(0);
+  const chaveRegraCredor = `${obraId}:${tipoSolicitacaoIdContexto}`;
+  const regraCredorAtual = regraCredor?.chave === chaveRegraCredor ? regraCredor : null;
   const [areaResponsavelContexto, setAreaResponsavelContexto] = useWorkspaceState('novaCompra:areaResponsavelContexto', areaResponsavelInicial);
   const [necessarioPara, setNecessarioPara] = useWorkspaceState('novaCompra:necessarioPara', '');
   const [tituloSolicitacao, setTituloSolicitacao] = useWorkspaceState('novaCompra:tituloSolicitacao', '');
@@ -547,6 +552,21 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     }
   }, []);
   useEffect(() => () => { apropriacaoConsultaRef.current += 1; }, []);
+
+  useEffect(() => {
+    if (!modoCompraDireta || !obraId) return;
+    let ativo = true;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    setRegraCredor(null);
+    obterRegraCredorCompraDireta({ obra_id: obraId, tipo_solicitacao_id: tipoSolicitacaoIdContexto }, { signal: controller.signal })
+      .then(regra => { if (ativo) setRegraCredor({ ...regra, chave: chaveRegraCredor }); })
+      .catch(() => {
+        if (ativo) setRegraCredor({ chave: chaveRegraCredor, erro: 'Não foi possível conferir a regra do credor. Tente novamente antes de revisar.' });
+      })
+      .finally(() => clearTimeout(timeout));
+    return () => { ativo = false; clearTimeout(timeout); controller.abort(); };
+  }, [modoCompraDireta, obraId, tipoSolicitacaoIdContexto, chaveRegraCredor, tentativaRegraCredor]);
 
   const itemModalAtual = modalApropriacaoIndex !== null ? itens[modalApropriacaoIndex] || null : null;
   // Obra travada em Custos e Recebiveis: GET /obras/minhas?modo=CRIACAO marca
@@ -1661,6 +1681,16 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       return;
     }
 
+    if (modoCompraDireta && (!regraCredorAtual || regraCredorAtual.erro)) {
+      reprovarCampo('credor', regraCredorAtual?.erro || 'Aguarde a conferência da regra do credor antes de revisar.');
+      return;
+    }
+    if (modoCompraDireta && regraCredorAtual.obrigatorio && !parceiroId) {
+      reprovarCampo('credor', 'Selecione o credor da compra direta na lista de resultados.');
+      campoCredorRef.current?.querySelector('input')?.focus();
+      return;
+    }
+
     if (modoCompraDireta && formaPagamentoIds.length === 0) {
       reprovarCampo('forma_pagamento', 'Selecione ao menos uma forma de pagamento.');
       return;
@@ -2063,7 +2093,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
           </CampoForm>
 
           {modoCompraDireta && (
-            <CampoForm label="Credor" linha erro={errosCampo.credor}>
+            <CampoForm label="Credor" obrigatorio={regraCredorAtual?.obrigatorio === true} linha erro={errosCampo.credor || regraCredorAtual?.erro}>
               <div className="flex flex-wrap gap-2">
                 <div ref={campoCredorRef} className="relative min-w-0 flex-1 app-busca">
                   <input
@@ -2093,10 +2123,14 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                     placeholder="Digite nome, CPF ou CNPJ"
                     autoComplete="off"
                     role="combobox"
+                    aria-required={regraCredorAtual?.obrigatorio === true}
+                    aria-invalid={Boolean(errosCampo.credor || regraCredorAtual?.erro)}
+                    aria-describedby={errosCampo.credor || regraCredorAtual?.erro ? 'compra-direta-credor-erro' : undefined}
                     aria-autocomplete="list"
                     aria-expanded={autocompleteCredorAberto}
                     aria-controls="compra-direta-credores-opcoes"
                   />
+                  {(errosCampo.credor || regraCredorAtual?.erro) && <span id="compra-direta-credor-erro" className="sr-only">{errosCampo.credor || regraCredorAtual?.erro}</span>}
 
                   {autocompleteCredorAberto && !parceiroId && String(parceiroBusca || '').trim().length >= 2 && (
                     <div
@@ -2158,6 +2192,14 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                   </svg>
                 </button>
               </div>
+              {regraCredorAtual?.erro && (
+                <div>
+                  <button type="button" className="btn btn-outline btn-sm" aria-label="Tentar conferir regra novamente" onClick={() => {
+                    limparErroCampo('credor');
+                    setTentativaRegraCredor(atual => atual + 1);
+                  }}>Tentar novamente</button>
+                </div>
+              )}
               {parceiroId && (
                 <span className="text-sm text-[var(--sem-success)]">
                   Credor selecionado: <strong>{parceiroBusca || formatarCredor(parceiroSelecionado)}</strong>

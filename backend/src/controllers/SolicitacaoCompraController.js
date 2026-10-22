@@ -99,6 +99,7 @@ const {
 } = require('../services/authorizationService');
 const { assertPodeInteragirSolicitacao, assertPodeVisualizarSolicitacao } = require('../services/solicitacaoRetornoService');
 const { editarCompraDireta, revisaoGestao } = require('../services/compraDiretaGestaoService');
+const { resolverRegraCredorCompraDireta } = require('../services/compraDiretaCredorRegraService');
 const { ACAO_ENCAMINHAMENTO_COMPRA, extrairEncaminhamentoCompra } = require('../services/historicoEncaminhamentoCompraService');
 const { validateCompraEnviarBody } = require('../validators/operationalValidators');
 const { publishComprasRealtimeEventSafe } = require('../services/comprasRealtimeService');
@@ -470,7 +471,7 @@ async function montarFluxoAprovacaoCompraDireta({ transaction }) {
   };
 }
 
-async function buscarTipoSolicitacaoCompraDireta(tipoSolicitacaoId, transaction) {
+async function buscarTipoSolicitacaoCompraDireta(tipoSolicitacaoId, transaction, { somenteLeitura = false } = {}) {
   if (tipoSolicitacaoId) {
     const tipoInformado = await TipoSolicitacao.findByPk(tipoSolicitacaoId, {
       attributes: ['id', 'nome', 'ativo', 'codigo_interno', 'comportamento', 'disponivel_para_obras'],
@@ -493,11 +494,13 @@ async function buscarTipoSolicitacaoCompraDireta(tipoSolicitacaoId, transaction)
   });
 
   if (tipoExistente) {
-    if (!tipoExistente.ativo) {
+    if (!tipoExistente.ativo && !somenteLeitura) {
       await tipoExistente.update({ ativo: true }, { transaction });
     }
     return tipoExistente;
   }
+
+  if (somenteLeitura) return { id: null, nome: 'Compra Direta', codigo_interno: 'COMPRA_DIRETA' };
 
   return TipoSolicitacao.create(
     {
@@ -4018,6 +4021,24 @@ module.exports = {
     }
   },
 
+  async regraCredorCompraDireta(req, res) {
+    try {
+      if (!await validarAcesso(req, res)) return;
+      const { obra_id, tipo_solicitacao_id } = req.query;
+      if (!/^[1-9]\d*$/.test(String(obra_id || ''))
+        || (tipo_solicitacao_id && !/^[1-9]\d*$/.test(String(tipo_solicitacao_id)))) {
+        return res.status(400).json({ error: 'Informe uma obra e um tipo de solicitacao validos.' });
+      }
+      const obra = await Obra.findByPk(obra_id);
+      if (!obra) return res.status(400).json({ error: 'Obra nao encontrada' });
+      const tipo = await buscarTipoSolicitacaoCompraDireta(tipo_solicitacao_id, undefined, { somenteLeitura: true });
+      const credor = await resolverRegraCredorCompraDireta({ tipo, obra });
+      return res.json({ credor });
+    } catch (error) {
+      return responderErroController(res, error, 'Erro ao consultar obrigatoriedade do credor');
+    }
+  },
+
   async create(req, res) {
     const transaction = await SolicitacaoCompra.sequelize.transaction();
 
@@ -4075,6 +4096,16 @@ module.exports = {
       }
 
       await require('../services/pedidoEntregaService').assertObraPodeCriarCompra(obra_id, transaction);
+
+      let tipoCompraDireta;
+      if (compraDireta) {
+        tipoCompraDireta = await buscarTipoSolicitacaoCompraDireta(tipo_solicitacao_id, transaction);
+        const regraCredor = await resolverRegraCredorCompraDireta({ tipo: tipoCompraDireta, obra, transaction });
+        if (regraCredor.obrigatorio && !parceiro_id) {
+          await transaction.rollback();
+          return res.status(400).json({ error: 'Selecione o credor da compra direta na lista de resultados.' });
+        }
+      }
 
       const itensPreparados = [];
       const itensManuaisPreparados = [];
@@ -4373,7 +4404,7 @@ module.exports = {
       }
 
       const tipoSolicitacao = compraDireta
-        ? await buscarTipoSolicitacaoCompraDireta(tipo_solicitacao_id, transaction)
+        ? tipoCompraDireta
         : await buscarTipoSolicitacaoCompra(transaction);
       await assertTipoCompraDisponivelNoDestino(obra, tipoSolicitacao, { transaction });
       const fluxoCompra = compraDireta

@@ -1,5 +1,52 @@
 # Modulo FINANCEIRO
 
+## Negociacao: forma e instrucao de pagamento - 2026-10-22
+
+Implementacao sobre refactor/frontend41219c3a; publicacao DEV dos dois ajustes
+(Compra Direta e pagamento negociado) autorizada pelo usuario em22/10/2026.
+A negociacao exige forma ativa e permite indicar favorecido e instrucao
+(PIX/chave ou copia e cola, boleto, dados bancarios/outras instrucoes). Os
+mesmos dados previstos sao aplicados a todas as novas parcelas; cada parcela
+pode ser corrigida individualmente depois. Nao altera Pessoas/beneficiarios
+globais, valores, vencimentos, rateios ou calculos e nao cria baixa/fatura.
+
+O bloco `Pagamento do titulo negociado` no detalhe permite a quem possui
+`financeiro.titulos.editar` consultar e editar somente esses dados. Serve
+tambem para parcelas legadas sem instrucao, como TIT-011543. O registro real
+nao foi alterado pelo agente. A edicao generica do acordo continua bloqueada.
+
+GET/PATCH `/financeiro/titulos/:id/negociacao/pagamento` conservam a barreira
+Financeiro; o servico revalida permissao, escopo da parcela e de todas as
+origens. Exige parcela vigente ABERTO/sem baixa, sem movimentos vigentes,
+fila, autorizacao pendente/autorizada/enfileirada, pagamento bancario,
+boleto emitido/dados de cobranca ou cartao/fatura. Retorno a Obra e rejeicao
+do proprietario nas origens tambem bloqueiam. Nunca regulariza esses fluxos
+automaticamente. Para editar, regularizar primeiro no fluxo que bloqueou.
+
+PATCH estrito apenas pagamento/revisao, transacao/locks da parcela e origens,
+revisao otimista e no-op idempotente. Grava antes/depois na auditoria e nos
+historicos das solicitacoes de origem, na mesma transacao. Previa/hash da
+negociacao consideram a instrucao, mas snapshots/resultados originais do
+acordo nao sao reescritos pela edicao. Campos de valor e origem nao entram
+no payload da correcao. Falha na auditoria reverte toda a alteracao.
+
+A instrucao aparece na fila pelo projetor autorizado existente; hash do
+dossie considera o campo novo apenas quando presente, preservando hashes
+legados. A instrucao nao configura automaticamente pagamento bancario.
+
+Migration aditiva `202610220001_titulo_negociacao_pagamento.js`: JSON nullable
+`pagamento_negociacao` em titulos_financeiros, sem atualizar registros.
+Criada/testada somente em memoria, NAO aplicada. Exige implantacao coordenada
+backend/schema/frontend DEV em etapa autorizada. Rollback de dados automatico
+bloqueado para preservar as instrucoes. Nenhuma migration executada neste trabalho.
+
+QA: `node backend/scripts/validarTituloNegociacaoPagamento.js` e, em frontend,
+`node scripts/validarTituloNegociacaoPagamento.mjs`; mantidos os testes de
+negociacao/parcelas/ACL/rollback/workspace, fila, autorizacao unica e Compra Direta.
+[Handoff e limites](../../handoffs/2026-10-22-negociacao-pagamento.md).
+Atualizacao exclusiva DEV, migration unica e roteiro de homologacao:
+[publicacao DEV](../../handoffs/2026-10-22-publicacao-compra-negociacao-dev.md).
+
 ## OFX: candidatos exclusivos e codigo do titulo - 2026-10-22
 
 Lancamentos repetidos da mesma conta/data/valor com sinal mantem a quantidade
