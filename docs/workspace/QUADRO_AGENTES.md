@@ -1,5 +1,29 @@
 # Quadro de Agentes
 
+## Publicacao DEV OFX/TIT - 2026-10-22
+
+- Usuario autorizou commit/push refactor/frontend e comandos exclusivos DEV.
+  Fetch confirmou HEAD/DEVbc2c69ed e main b654; sem divergencias novas.
+- Roteiro exige base/SHA/ff-only, identidade/schema readonly, PM28001/sem watch,
+  delta runtime limitado e packages somente novo QA. Testes antes de restart
+  backend-dev; .env/flags/dependencias/memoria preservados. Sem EC2/DB reais.
+- Publicar somente pacote OFX/codigo TIT e docs, sem outputs privados ou producao.
+- Backend/UI/regressoes repetidos, build633/13,79s e guardas/pacotes/Node/Bash/
+  docs599/19/diff aprovados; ownership liberado para commit/push exclusivo DEV.
+
+## OFX matches exclusivos e titulo - 2026-10-22
+
+- Usuario autorizou implementar/testar em refactor/frontend, com numero TIT
+  no card Fluxy. Branch local codex/ofx-matches-exclusivos-20261022, basebc2c69ed.
+- Novo pool por grupo com leitura global/batches100; preparacao local exclusiva
+  por movimento, preservando parciais; confirmar revalida locks/transacao/ACL.
+  Mesmo padrao visual, card empilhado no celular e sem inventar codigo por ID.
+- Backend/UI1366/390/regressoes e build633/17,20s aprovados. Homologacao real
+  DEV ainda pendente. Sem commit/push/deploy, main/producao, DB/EC2 reais,
+  DDL/.env/dependencias/memoria; detalhes/limites no handoff22/10.
+- Modal manual multiplo e exclusao de reservas tambem aprovados; Node/docs599/19/
+  diff conferidos, ownership liberado. Aguardar autorizacao de publicacao DEV.
+
 ## Publicacao DEV forma prevista - 2026-10-22
 
 - Commit/push e comandos EC2 DEV autorizados. Reservado pacote de exibicao

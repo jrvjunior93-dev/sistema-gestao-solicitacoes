@@ -1,5 +1,39 @@
 # Modulo FINANCEIRO
 
+## OFX: candidatos exclusivos e codigo do titulo - 2026-10-22
+
+Lancamentos repetidos da mesma conta/data/valor com sinal mantem a quantidade
+de movimentos compativeis, inclusive quando so existe um candidato. Usar apenas
+prepara: reserva o movimento nesta tela, inclusive entre paginas, sem gravar
+conciliacao ou baixa. Quando sobra um candidato apos uma escolha ou match
+confirmado, ele e oferecido ao primeiro pendente global por ID; excedentes
+permanecem vazios. Liberar selecao recalcula as sugestoes. Conciliar confirma.
+Baixas parciais distintas de um mesmo titulo continuam validas por movimento.
+
+API le todos os pendentes do grupo, mesmo fora dos filtros/pagina, e devolve
+um pool autorizado por grupo no meta, sem duplicar candidatos em todas as
+linhas da resposta. Contagem nao e truncada em20. Confirmacao revalida sob
+locks ordenados, mantendo principal do payload, transacao e auditoria originais.
+Preparacoes nao sao reservas globais entre abas/usuarios: outro operador pode
+confirmar primeiro; o backend rejeita conflito e a tela atualiza sem repetir POST.
+Lote exige confirmar/liberar preparacoes manuais antes de executar.
+
+Card Fluxy mostra codigo real TIT junto da descricao e movimento, nas opcoes,
+preparacoes (codigos unicos) e confirmados. Sem codigo nao inventa numero por ID.
+Mesmos componentes/acoes/ACL, com empilhamento do card no celular para nao cortar
+os botoes. Sem mudar valores, dados financeiros, schema, flags ou dependencias.
+Entrega local baseada em refactor/frontend; main/producao nao alteradas.
+QA backend/frontend: npm run test:ofx-matches-exclusivos.
+[Handoff e limites](../../handoffs/2026-10-22-ofx-matches-exclusivos.md).
+
+Commit/push DEV autorizado em22/10. Roteiro exclusivo
+ops/deploy/atualizar-dev-ofx-matches-exclusivos-20261022.sh recebe SHA fixado,
+verifica identidade/schema readonly, ff-only desdebc2c69ed, runtime/pacotes
+limitados, QA antes do restart somente backend-dev8001 e .env preservado.
+Sem install/migrations/flags/memoria ou operacao financeira real pelo agente.
+Guardas puras: node backend/scripts/validarDeployOfxMatchesDev.js. Homologacao
+manual dos repetidos/parciais/codigo TIT no DEV permanece com o operador.
+
 ## Forma prevista de contrato em Contas a Receber - 2026-10-21
 
 Listagem RECEBER COMERCIAL sem forma explicita passa a exibir a forma prevista

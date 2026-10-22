@@ -1,5 +1,18 @@
 # Sessoes Ativas
 
+- codex-publicar-ofx-matches-dev-20261022: agente unico, commit/push DEV e comandos
+  EC2 autorizados. Basebc2c69ed/main b654 conferidas por fetch. Pacote OFX/TIT,
+  novo roteiro/QA de guardas e docs/handoff/quatro controles reservados.
+  Sem outputs privados, force, EC2/DB real, DDL/.env/dependencias/memoria/producao.
+  Backend/UI/regressoes/build633/13,79s/guardas/pacotes/Node/Bash/docs599/19/diff
+  aprovados; ownership liberado para publicacao somente DEV.
+
+- codex-ofx-matches-exclusivos-20261022: agente unico, implementacao/QA local
+  baseada em DEVbc2c69ed, main b654 intocada. Grupos conta/data/valor, reserva
+  por movimento e codigo real TIT no card. Sem commit/push/deploy, DB/EC2 reais,
+  DDL/.env/dependencias ou escrita financeira real. Handoff dedicado22/10.
+  QAs/regressoes/build633/Node/docs599/19/diff aprovados; ownership liberado.
+
 - codex-publicar-receber-prevista-dev-20261022: agente unico; usuario autorizou
   commit/push refactor/frontend e comandos DEV, sem producao. Pacote local e
   roteiro/QA de deploy reservados no ownership; base DEVa00/main b654 conferidas.

@@ -1,5 +1,33 @@
 # Ownership Ativo
 
+## Publicacao DEV OFX e codigo TIT - 2026-10-22
+
+- Usuario autorizou commit/push exclusivo refactor/frontend e comandos EC2 DEV.
+  Agente unico reserva pacote OFX validado, novo roteiro atualizar-dev-ofx-matches-
+  exclusivos-20261022.sh e seu QA puro, README/handoff e quatro controles.
+- Base remota/HEADbc2c69ed conferida; main b6546229 somente leitura.
+  Sem outputs privados no commit, force push, EC2/DB reais, DDL/.env/flags,
+  dependencias/memoria ou escrita financeira real pelo agente.
+- QAs backend/UI1366/390/modal/regressoes repetidos; build633/13,79s,
+  guardas/pacotes/Node/Bash/docs599/19/diff aprovados. Ownership liberado
+  para commit/push exclusivo DEV e entrega dos comandos ao operador.
+
+## OFX matches exclusivos por movimento - 2026-10-22
+
+- Usuario autorizou implementar/testar DEV, sem producao. Agente unico, entrega
+  local validada e ownership liberado:
+  conciliacaoBancariaService (sugestoes/grupos e confirmacao), novo domain readonly
+  de grupos, FinanceiroConciliacao.jsx e helper puro de alocacao/reserva local,
+  novos QAs/regressoes se necessario, scripts npm, README/handoff/quatro controles.
+- Adicao autorizada: codigo real TIT no card Fluxy (sugestao/preparacao/confirmado), somente leitura.
+- Base DEVbc2c69ed, branch codex/ofx-matches-exclusivos-20261022. Preservar
+  formas previstas ja publicadas, ACL/escopo, baixas parciais por movimento,
+  historico/estornos/transferencias/cheques/tarifas/faturas e regras financeiras.
+- Sem commit/push/deploy, DDL/dependencias/.env, DB/Redis/S3/EC2 reais ou producao.
+  Preparacao nao grava conciliacao nem cria baixa; confirmacao revalida locks.
+- Backend/UI1366/390/modal multiplo/regressoes/build633/17,20s/Node/docs599/19/diff
+  aprovados. Handoff2026-10-22-ofx-matches-exclusivos.md; aguardar publicacao DEV.
+
 ## Publicacao DEV forma prevista em Contas a Receber - 2026-10-22
 
 - Usuario autorizou commit/push refactor/frontend e comandos exclusivos EC2 DEV.

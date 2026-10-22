@@ -1,5 +1,32 @@
 # Handoff Global
 
+## Publicacao DEV OFX/codigo TIT - 2026-10-22
+
+- Commit/push DEV e comandos EC2 autorizados. Base remota/HEADbc2c69ed, mainb654
+  somente leitura; publicar pacote OFX/TIT sem outputs privados e sem force.
+- Novo roteiro atualizar-dev-ofx-matches-exclusivos-20261022.sh exige SHA fixado,
+  identidade/schema readonly, PM2 online8001 sem watch, basebc2c69ed ja presente,
+  runtime/pacotes limitados e QA antes de reiniciar somente backend-dev.
+- Handoff22/10 atualizado com limites e teste manual; sem EC2/DB reais, DDL,
+  dependencias/.env/flags/memoria ou producao alterados pelo agente.
+- QAs backend/UI/regressoes repetidos e aprovados; build633/13,79s, guardas/
+  pacotes/Node/Bash/docs599/19/diff aprovados. Ownership liberado para publicacao.
+
+## OFX candidatos exclusivos e codigo TIT - 2026-10-22
+
+- Entrega local baseada em DEVbc2c69ed; novo grupo por conta/data/valor e reservas
+  locais por movimento. Remanescente unico vai ao primeiro pendente por ID;
+  excedentes vazios. Card mostra TIT real em opcoes/preparadas/confirmados.
+- Backend revalida locks/escopo/vinculos, sem recalcular valores ou criar baixa.
+  Preparacoes nao sao globais entre abas/usuarios; conflito no POST atualiza GET
+  sem retry. Mesmo padrao de card/acoes e empilhamento mobile sem cortar botoes.
+- QAs isolados/backend/UI1366/390/regressoes/build633 aprovados; handoff
+  2026-10-22-ofx-matches-exclusivos.md informa arquivos, limites e proximo passo.
+  Aguardar autorizacao de commit/push DEV; atualizar backend-dev antes do frontend.
+  Sem main/producao, EC2/bancos reais, .env/schema/dependencias/memoria alterados.
+- QA manual multiplo/consulta sem movimentos reservados aprovado; Node/docs599/19/
+  diff conferidos. Ownership liberado, sem commit/push nesta entrega.
+
 ## Publicacao DEV forma prevista - 2026-10-22
 
 - Usuario autorizou commit/push refactor/frontend e comandos DEV, sem producao.

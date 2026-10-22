@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:ofx-matches-exclusivos": "node scripts/validarOfxMatchesExclusivos.mjs",
     "test:receber-forma-prevista": "node scripts/validarFormaPrevistaContratoReceber.mjs",
     "test:pedido-reabertura": "node scripts/validarPedidoReabertura.mjs",
     "test:centro-custo-distribuicao": "node scripts/validarDistribuicaoCentroCustoDestinos.mjs",
