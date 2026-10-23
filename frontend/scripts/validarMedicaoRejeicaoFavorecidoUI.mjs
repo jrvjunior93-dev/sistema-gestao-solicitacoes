@@ -12,17 +12,17 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outputs = path.join(root, '../outputs/medicao-rejeicao-favorecido'); fs.mkdirSync(outputs, { recursive: true });
 const medicao = { id: 9, numero: 2, aprovada_em: null, favorecido: { id: 11, nome: 'Anterior', cpf_cnpj: '222' },
   favorecido_chave_pix: 'pix-antigo', forma_pagamento: { id: 3, nome: 'PIX', tipo: 'PIX' }, anexos: [{ id: 1, nome_original: 'medicao.pdf', caminho_arquivo: '/medicao.pdf' }] };
-const parcela = { id: 1, numero: 1, valor: 1000, vencimento: '2026-11-01', titulo_valor_baixado: 0, titulo_financeiro_id: 101, medicao };
+const parcela = { id: 1, numero: 1, status: 'PREVISAO', valor: 1000, vencimento: '2026-11-01', titulo_valor_baixado: 0, titulo_financeiro_id: 101, medicao };
 const fixture = `import React,{useState}from'react';import{createRoot}from'react-dom/client';import{MemoryRouter,Routes,Route}from'react-router-dom';
 import ModalMedicao from '/src/pages/SolicitacaoDetalhe/ModalMedicao.jsx';import FavorecidoEditor from '/src/components/financeiro/FavorecidoEditor.jsx';
 import FinanceiroTituloEditar from '/src/pages/FinanceiroTituloEditar.jsx';
 import '/src/index.css';import '/src/styles/design-tokens.css';import '/src/styles/componentes-padrao.css';
 function App(){const[id,setId]=useState(9),[aberto,setAberto]=useState(true);window.trocar=()=>setId(10);window.salvos=0;
-const readonly=location.search.includes('readonly'),approved=location.search.includes('approved');
+const readonly=location.search.includes('readonly'),approved=location.search.includes('approved'),rejectOnly=location.search.includes('reject-only');
 if(location.search.includes('pagina-titulo'))return <MemoryRouter initialEntries={['/financeiro/titulos/101/editar']}><Routes><Route path="/financeiro/titulos/:id/editar" element={<FinanceiroTituloEditar/>}/></Routes></MemoryRouter>;
 return <MemoryRouter><main className="p-3">{location.search.includes('titulo')?<FavorecidoEditor key={id} id={id} permitido={!readonly} onSalvo={()=>window.salvos++}/>:aberto?<ModalMedicao key={id}
 medicao={{...${JSON.stringify(medicao)},id,aprovada_em:approved?'2026-10-01':null}} parcelas={[{...${JSON.stringify(parcela)},medicao:{...${JSON.stringify(medicao)},id}}]}
-solicitacaoId={42} podeEditar={!readonly} podeAprovar={!readonly} podeEditarFavorecido={!readonly} podeRejeitar={!readonly}
+solicitacaoId={42} podeEditar={!readonly&&!rejectOnly} podeAprovar={!readonly&&!rejectOnly} podeEditarFavorecido={!readonly&&!rejectOnly} podeRejeitar={!readonly}
 onSalvo={()=>window.salvos++} onFechar={()=>setAberto(false)}/>:<p role="status">Operação concluída. Atualize para conferir o saldo e enviar nova medição.</p>}</main></MemoryRouter>};createRoot(document.getElementById('root')).render(<App/>);`;
 const server = await createServer({ root, configFile: false, logLevel: 'error',
   css: { postcss: { plugins: [tailwindcss(tailwindConfig), autoprefixer()] } }, server: { host: '127.0.0.1', port: 0 },
@@ -44,12 +44,12 @@ try {
   await server.listen(); browser = await chromium.launch({ channel: 'chrome', headless: true });
   const page = await browser.newPage(), erros = [], inesperadas = [], writes = [];
   page.on('pageerror', e => erros.push(e.message));
-  let negar = false;
+  let negar = false, negarConsultaRejeicao = false;
   await page.route('**/*', async route => {
     const r = route.request(), u = new URL(r.url());
     if (u.hostname === '127.0.0.1') return route.continue();
     const json = (data, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) });
-    if (/\/medicoes\/\d+\/rejeicao$/.test(u.pathname)) return json({ referencia: 'a'.repeat(64), pode_rejeitar: true });
+    if (/\/medicoes\/\d+\/rejeicao$/.test(u.pathname)) return negarConsultaRejeicao ? json({ error: 'Sem permissão para rejeitar.' }, 403) : json({ referencia: 'a'.repeat(64), pode_rejeitar: true });
     if (/\/medicoes\/\d+\/rejeitar$/.test(u.pathname) || /\/favorecido$/.test(u.pathname) && r.method() === 'PATCH') {
       assert.equal(r.headers()['content-type'], 'application/json'); assert.equal(r.headers()['x-qa'], '1');
       writes.push({ path: u.pathname, body: r.postDataJSON() });
@@ -73,6 +73,13 @@ try {
   });
   const base = `http://127.0.0.1:${server.httpServer.address().port}/fixture`;
   async function carregar(q = '') { await page.goto(base + q); }
+  async function naTela(locator) {
+    return locator.evaluate(el => {
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 && r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight
+        && (el.matches(':disabled') || el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)));
+    });
+  }
   async function editar() {
     await page.getByRole('button', { name: 'Editar favorecido', exact: true }).click();
     await page.getByRole('button', { name: 'Alterar favorecido', exact: true }).click();
@@ -91,8 +98,22 @@ try {
   }
   for (const width of [1366, 390]) {
     await page.setViewportSize({ width, height: 880 }); await carregar();
+    const rodape = page.locator('[data-modal="rodape"]');
+    const rejeitar = rodape.getByRole('button', { name: 'Rejeitar medição', exact: true });
+    await rejeitar.waitFor();
+    assert.equal(await page.getByTestId('modal-medicao').getByRole('button', { name: 'Rejeitar medição', exact: true }).count(), 0);
+    assert.deepEqual(await rodape.getByRole('button').allTextContents(), ['Rejeitar medição', 'Salvar alteracoes', 'Aprovar medição']);
+    assert(await rejeitar.evaluate(el => el.classList.contains('btn-danger')));
+    const corAprovar = await page.getByTestId('aprovar-medicao').evaluate(el => getComputedStyle(el).backgroundColor);
+    assert.equal(await page.getByRole('button', { name: 'Editar favorecido', exact: true }).evaluate(el => getComputedStyle(el).backgroundColor), corAprovar);
+    assert.notEqual(await rejeitar.evaluate(el => getComputedStyle(el).backgroundColor), corAprovar);
+    assert(await naTela(rejeitar));
+    assert(await naTela(page.getByTestId('aprovar-medicao')));
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await page.screenshot({ path: path.join(outputs, `acoes-${width}.png`) });
     await editar();
     assert(await page.getByTestId('aprovar-medicao').isDisabled()); assert(await page.getByTestId('salvar-medicao').isDisabled());
+    assert(await rejeitar.isDisabled());
     await page.screenshot({ path: path.join(outputs, `favorecido-${width}.png`) });
     const antes = writes.length; await confirmarFavorecido(true); assert.equal(writes.length, antes);
     await confirmarFavorecido(); await page.getByRole('status').filter({ hasText: 'Operação concluída' }).waitFor();
@@ -100,6 +121,9 @@ try {
     assert.equal(writes.at(-1).body.chave_pix, 'pix-novo'); assert.equal(writes.at(-1).body.confirmado, true);
     await carregar(); await page.getByRole('button', { name: 'Rejeitar medição', exact: true }).click();
     assert(await page.getByTestId('aprovar-medicao').isDisabled());
+    assert(await page.getByTestId('salvar-medicao').isDisabled());
+    assert(await page.getByRole('button', { name: 'Rejeitar medição', exact: true }).isDisabled());
+    assert(await page.getByLabel('Motivo da rejeição').evaluate(el => document.activeElement === el));
     await page.getByLabel('Motivo da rejeição').fill('Servico nao realizado. Enviar nova medicao.');
     await page.getByRole('button', { name: 'Confirmar rejeição', exact: true }).click();
     let dialog = page.getByRole('dialog', { name: 'Rejeitar medição pendente', exact: true });
@@ -112,8 +136,38 @@ try {
     assert.equal(writes.length, antesRej + 1); assert(writes.at(-1).body.idempotency_key);
     assert.equal(writes.at(-1).body.referencia, 'a'.repeat(64));
   }
+  // Rodape tambem existe para quem pode rejeitar, mas nao salvar/aprovar.
+  await carregar('?reject-only');
+  assert.equal(await page.locator('[data-modal="rodape"]').getByRole('button').count(), 1);
+  await page.getByRole('button', { name: 'Rejeitar medição', exact: true }).click();
+  const antesVoltar = writes.length; await page.getByRole('button', { name: 'Voltar', exact: true }).click();
+  assert.equal(writes.length, antesVoltar);
+  assert(await page.getByRole('button', { name: 'Rejeitar medição', exact: true }).isEnabled());
+  // Viewport baixo: rodape continua visivel; formulario rola sem empurra-lo.
+  await page.setViewportSize({ width: 320, height: 568 }); await carregar();
+  await page.getByRole('button', { name: 'Rejeitar medição', exact: true }).waitFor();
+  assert(await naTela(page.getByRole('button', { name: 'Rejeitar medição', exact: true })));
+  await page.getByRole('button', { name: 'Rejeitar medição', exact: true }).click();
+  await page.getByLabel('Motivo da rejeição').waitFor();
+  await page.screenshot({ path: path.join(outputs, 'rejeicao-corpo-320.png') });
+  assert(await naTela(page.getByLabel('Motivo da rejeição')));
+  assert(await naTela(page.getByTestId('salvar-medicao')));
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.getByRole('button', { name: 'Confirmar rejeição', exact: true }).scrollIntoViewIfNeeded();
+  assert(await naTela(page.getByRole('button', { name: 'Confirmar rejeição', exact: true })));
+  assert(await naTela(page.getByTestId('salvar-medicao')));
+  // Erro de consulta aparece no corpo, sem esconder o acionador do rodape.
+  await carregar(); negarConsultaRejeicao = true;
+  await page.getByRole('button', { name: 'Rejeitar medição', exact: true }).click();
+  const erroRejeicao = page.getByRole('alert').filter({ hasText: 'Sem permissão para rejeitar' });
+  await erroRejeicao.waitFor(); assert(await naTela(erroRejeicao));
+  assert(await page.getByRole('button', { name: 'Rejeitar medição', exact: true }).isEnabled());
+  negarConsultaRejeicao = false;
+  await page.setViewportSize({ width: 1366, height: 880 });
   // Titulo: transporte isolado, erro/retry preserva preenchimento e nova conferencia.
-  await carregar('?titulo'); await editar(); negar = true; await confirmarFavorecido();
+  await carregar('?titulo');
+  assert(await page.getByRole('button', { name: 'Editar favorecido', exact: true }).evaluate(el => el.classList.contains('btn-outline')));
+  await editar(); negar = true; await confirmarFavorecido();
   await page.getByRole('alert').filter({ hasText: 'Operação vinculada' }).waitFor();
   assert.equal(await page.getByLabel('Chave PIX do favorecido').inputValue(), 'pix-novo');
   negar = false; await confirmarFavorecido(); await page.getByRole('status').filter({ hasText: 'atualizados' }).waitFor();

@@ -113,6 +113,7 @@ export default function ModalMedicao({
   const [aprovando, setAprovando] = useState(false);
   const [editandoFavorecido, setEditandoFavorecido] = useState(false);
   const [rejeitando, setRejeitando] = useState(false);
+  const [acoesRejeicao, setAcoesRejeicao] = useState(null);
   const operacoesFilhas = useRef({ favorecido: false, rejeicao: false });
   const [aprovacaoLocal, setAprovacaoLocal] = useState(null);
   const aprovacaoPendenteRef = useRef(false);
@@ -431,10 +432,11 @@ export default function ModalMedicao({
 
             {!medicaoAprovada && <>
               <FavorecidoEditor key={`favorecido-${medicao.id}`} tipo="medicao" id={medicao.id}
-                permitido={podeEditarFavorecido} disabled={salvando || aprovando || rejeitando || enviandoAnexos}
+                permitido={podeEditarFavorecido} destaque disabled={salvando || aprovando || rejeitando || enviandoAnexos}
                 onOcupado={v => { operacoesFilhas.current.favorecido = v; setEditandoFavorecido(v); }}
                 onSalvo={async () => { try { await onSalvo?.(); } finally { onFechar?.(); } }} />
               <RejeitarMedicao key={`rejeicao-${medicao.id}`} medicaoId={medicao.id}
+                destinoAcao={acoesRejeicao}
                 permitido={podeRejeitar} disabled={salvando || aprovando || editandoFavorecido || enviandoAnexos}
                 onOcupado={v => { operacoesFilhas.current.rejeicao = v; setRejeitando(v); }}
                 onRejeitada={async () => { try { await onSalvo?.(); } finally { onFechar?.(); } }} />
@@ -624,7 +626,7 @@ export default function ModalMedicao({
 
         {/* R27: rodape FIXO — os botoes que gravam e que aprovam nunca saem da vista, por mais
             anexos e comentarios que a medicao tenha. Antes eles eram parte do corpo rolante. */}
-        {(podeSalvar || (podeAprovar && !medicaoAprovada) || podeEnviarTitulos) && (
+        {(podeSalvar || ((podeAprovar || podeRejeitar) && !medicaoAprovada) || podeEnviarTitulos) && (
           <div
             data-modal="rodape"
             className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--c-border)] px-4 py-3"
@@ -639,6 +641,7 @@ export default function ModalMedicao({
                   : 'Aprovar libera os títulos desta medição para envio.'}
             </span>
             <div className="flex flex-wrap items-center gap-2">
+              {!medicaoAprovada && podeRejeitar && <span ref={setAcoesRejeicao} className="contents" />}
               {podeSalvar && (
                 <button
                   type="button"

@@ -1,5 +1,31 @@
 # Ownership Ativo
 
+## Publicacao DEV: botoes da medicao - 2026-10-23
+
+- Usuario autorizou commit/push exclusivo dos botoes na refactor/frontend.
+  Reserva temporaria: tres componentes/UI QA e handoff, staging seletivo
+  de ownership. Preservar fora do commit o arranjo independente dos filtros.
+- Base93a38617; sem backend, dependencias ou migration. Roteiro EC2 apenas
+  fast-forward protegido do checkout DEV; sem reiniciar processos ou gravar
+  banco/.env. Frontend publicado pela Vercel DEV, nao por build na EC2.
+- Reserva encerrada e ownership liberado. Seis arquivos selecionados, tres
+  runtimes; copia isolada do index sem filtros aprovada em UI1366/390/320,
+  documentacao610/19 e build643/21,41s. Regressoes de valor/pagamento e
+  servico rejeicao aprovadas; pronto para commit/push autorizado.
+
+## Medicao: posicao e cores das acoes - 2026-10-23
+
+- Agente unico, base93a38617. Usuario pediu Rejeitar medicao vermelho junto
+  de Salvar alteracoes e Editar favorecido azul como Aprovar medicao.
+- Reserva: ModalMedicao, RejeitarMedicao, FavorecidoEditor, QA real da medicao
+  e handoff. Reusar tokens/classes atuais; preservar confirmacoes, mutex,
+  permissoes e transporte. Nao alterar backend, calculos ou filtros locais.
+- Somente implementacao/teste local; sem commit/push/deploy/banco/producao.
+- Concluido; reserva encerrada e ownership liberado. QA real1366/390 e320x568,
+  fluxo de valor/pagamento e servico de rejeicao aprovados. Build643/12,66s e
+  diffcheck aprovados. Handoff:2026-10-23-medicao-acoes-rodape.md. Tokens de
+  cor existentes e skill frontend-design aplicados somente ao ajuste pedido.
+
 ## Publicacao DEV: rejeicao da medicao e favorecido - 2026-10-23
 
 - Usuario autorizou commit/push exclusivo para refactor/frontend e roteiro

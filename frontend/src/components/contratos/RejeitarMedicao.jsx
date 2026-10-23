@@ -1,15 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useConfirmacao } from '../padrao';
 import { consultarRejeicaoMedicao, rejeitarMedicao } from '../../services/medicaoOperacoes';
 import { useWorkspaceWork } from '../../navigation/WorkspaceContext';
 
-export default function RejeitarMedicao({ medicaoId, permitido = false, disabled = false, onRejeitada, onOcupado }) {
+export default function RejeitarMedicao({ medicaoId, permitido = false, disabled = false, destinoAcao, onRejeitada, onOcupado }) {
   const [dados, setDados] = useState(null), [motivo, setMotivo] = useState(''), [erro, setErro] = useState(''), [busy, setBusy] = useState(false);
   const trava = useRef(false), geracao = useRef(0), chave = useRef(null);
+  const painelRef = useRef(null), botaoRef = useRef(null), erroRef = useRef(null);
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   useWorkspaceWork(false, busy, `medicao-rejeicao-operacao:${medicaoId}`);
   useEffect(() => { geracao.current++; setDados(null); setMotivo(''); setErro(''); setBusy(false); trava.current = false; chave.current = null;
     return () => { geracao.current++; }; }, [medicaoId]);
+  // So o acionador vai ao rodape. Motivo/erro continuam no corpo rolante,
+  // sem aumentar a altura do rodape ou recriar o estado da operacao.
+  useEffect(() => {
+    if (!destinoAcao) return;
+    if (dados) painelRef.current?.querySelector('textarea')?.focus({ preventScroll: true });
+    (erro ? erroRef : painelRef).current?.scrollIntoView({ block: 'nearest' });
+  }, [dados, erro, destinoAcao]);
   async function abrir() {
     if (trava.current || disabled) return;
     const g = geracao.current;
@@ -41,15 +50,17 @@ export default function RejeitarMedicao({ medicaoId, permitido = false, disabled
     finally { if (g === geracao.current) { trava.current = false; setBusy(false); } }
   }
   if (!permitido) return null;
-  return <section className="my-2 text-sm" aria-label="Rejeitar medição pendente">
-    {!dados && <button type="button" className="btn btn-outline btn-sm" disabled={busy || disabled} onClick={abrir}>{busy ? 'Conferindo...' : 'Rejeitar medição'}</button>}
-    {erro && <p role="alert" className="app-alert app-alert--error mt-2">{erro}</p>}
-    {dados && <fieldset disabled={busy || disabled} className="space-y-2 border-t border-[var(--c-border)] pt-3">
+  const acao = <button ref={botaoRef} type="button" className="btn btn-danger btn-sm" disabled={busy || disabled || Boolean(dados)}
+    onClick={abrir} aria-expanded={Boolean(dados)} aria-controls={dados ? `rejeicao-medicao-${medicaoId}` : undefined}>{busy ? 'Conferindo...' : 'Rejeitar medição'}</button>;
+  return <section className={dados || erro || destinoAcao === undefined ? 'my-2 text-sm' : 'contents'} aria-label="Rejeitar medição pendente">
+    {destinoAcao === undefined ? !dados && acao : destinoAcao ? createPortal(acao, destinoAcao) : null}
+    {erro && <p ref={erroRef} role="alert" className="app-alert app-alert--error mt-2">{erro}</p>}
+    {dados && <fieldset ref={painelRef} id={`rejeicao-medicao-${medicaoId}`} disabled={busy || disabled} className="space-y-2 border-t border-[var(--c-border)] pt-3">
       <legend className="font-semibold">Rejeitar medição pendente</legend>
       <p className="app-note">Cancela os títulos desta medição e libera o valor para nova medição. Histórico e anexos serão preservados.</p>
       <label className="block">Motivo da rejeição *<textarea aria-label="Motivo da rejeição" className="input mt-1 w-full" rows={2} maxLength={2000} value={motivo} onChange={e => setMotivo(e.target.value)} /></label>
-      <div className="flex flex-wrap justify-end gap-2"><button type="button" className="btn btn-outline btn-sm" onClick={() => { setDados(null); onOcupado?.(false); }}>Voltar</button>
-        <button type="button" className="btn btn-outline btn-sm" onClick={rejeitar}>{busy ? 'Rejeitando...' : 'Confirmar rejeição'}</button></div>
+      <div className="flex flex-wrap justify-end gap-2"><button type="button" className="btn btn-outline btn-sm" onClick={() => { setDados(null); onOcupado?.(false); requestAnimationFrame(() => botaoRef.current?.focus()); }}>Voltar</button>
+        <button type="button" className="btn btn-danger btn-sm" onClick={rejeitar}>{busy ? 'Rejeitando...' : 'Confirmar rejeição'}</button></div>
     </fieldset>}
     {elementoConfirmacao}
   </section>;

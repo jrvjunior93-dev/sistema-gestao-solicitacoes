@@ -6,7 +6,7 @@ import { formaPagamentoEhPix } from '../../utils/formaPagamento';
 import { PIX_TEXTO_MAX } from '../../utils/pix';
 import { useWorkspaceWork } from '../../navigation/WorkspaceContext';
 
-export default function FavorecidoEditor({ tipo = 'titulo', id, permitido = false, disabled = false, onSalvo, onOcupado }) {
+export default function FavorecidoEditor({ tipo = 'titulo', id, permitido = false, disabled = false, destaque = false, onSalvo, onOcupado }) {
   const [dados, setDados] = useState(null), [edicao, setEdicao] = useState(null), [erro, setErro] = useState('');
   const [busy, setBusy] = useState(false), [aviso, setAviso] = useState('');
   const mutex = useRef(false), geracao = useRef(0);
@@ -53,7 +53,7 @@ export default function FavorecidoEditor({ tipo = 'titulo', id, permitido = fals
   }
   if (!permitido) return null;
   return <section className="my-2 text-sm" aria-label="Editar favorecido">
-    {!dados && <button type="button" className="btn btn-outline btn-sm" disabled={busy || disabled} onClick={abrir}>{busy ? 'Conferindo...' : 'Editar favorecido'}</button>}
+    {!dados && <button type="button" className={`btn ${destaque ? 'btn-primary' : 'btn-outline'} btn-sm`} disabled={busy || disabled} onClick={abrir}>{busy ? 'Conferindo...' : 'Editar favorecido'}</button>}
     {erro && <p role="alert" className="app-alert app-alert--error mt-2">{erro}</p>}
     {aviso && <p role="status" className="app-alert app-alert--success mt-2">{aviso}</p>}
     {dados && <div className="space-y-3 border-y border-[var(--c-border)] py-3">
