@@ -1,5 +1,15 @@
 # Ownership Ativo
 
+## Promocao MAIN: reprogramacao parcial de contrato - 2026-10-23
+
+- Usuario homologou DEVfee28b6d e autorizou migrar este ajuste para main.
+  Backup recente no Drive cifrado conferido e timer ativo reconfirmados.
+- Agente unico reserva merge de fee28b6d sobre MAIN8982855e, docs/conflitos,
+  roteiro/QA PROD exclusivos e handoff. Branch isolada de main; DEV intocado.
+- Preservar exclusividades main, parcelas/baixas/medicoes antigas, ACL/locks,
+  dependencias/migrations/.env/flags/TLS/sessao. Sem EC2 ou banco real pelo
+  agente, nenhum estorno/baixa/reprogramacao real no deploy. Outputs privados.
+
 ## Promocao de todas as pendencias DEV para main - 2026-10-23
 
 - Usuario autorizou migrar os quatro commits pendentes e fornecer comandos EC2
