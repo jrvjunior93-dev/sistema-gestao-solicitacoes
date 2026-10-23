@@ -4,10 +4,12 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), path = re
 const { executar, conferirPlano, MIGRATION, BACKEND } = require('./aplicarMigrationMedicaoReenvioDev');
 const source = fs.readFileSync(path.resolve(__dirname, '../../ops/deploy/atualizar-dev-medicao-reenvio-20261023.sh'), 'utf8');
 const blocos = [...source.matchAll(/<<'NODE'\r?\n([^]*?)\r?\nNODE/g)].map(m => m[1]);
+const retomada = fs.readFileSync(path.resolve(__dirname, '../../ops/deploy/retomar-dev-medicao-reenvio-20261023.sh'), 'utf8');
+const blocosRetomada = [...retomada.matchAll(/<<'NODE'\r?\n([^]*?)\r?\nNODE/g)].map(m => m[1]);
 function fixture() {
   const runtimeEnv = {}, logs = [], chamadas = { apply: 0, assert: 0, leituras: 0 };
   const pm = { name: 'backend-dev', pm2_env: { pm_exec_path: `${BACKEND}/server.js`, PORT: 8001, status: 'online', watch: false } };
-  const processos = [pm], state = { tableExists: true, pending: [MIGRATION] }, banco = { aplicado: false };
+  const processos = [pm], state = { tableExists: true, pending: [MIGRATION], executed: new Set() }, banco = { aplicado: false };
   const identidade = { uuid: '60f043e9-4025-11f1-9a61-06d8a063012d', banco: 'gestao_solicitacoes' };
   const args = { modo: '--aplicar', cwd: BACKEND, runtimeEnv, log: x => logs.push(x), validateRequiredEnv() {},
     env: { deploymentEnvironment: 'development', port: 8001, dbHost: 'fluxy-staging.cn820k66sdx7.us-east-2.rds.amazonaws.com',
@@ -22,7 +24,7 @@ function fixture() {
     } },
     schema: { getMigrationState: async () => state, runMigrations: async o => {
       assert.deepEqual(o, { authorized: true }); assert.equal(runtimeEnv.ALLOW_SCHEMA_MIGRATIONS, 'true');
-      chamadas.apply++; state.pending = []; banco.aplicado = true;
+      chamadas.apply++; state.pending = []; state.executed.add(MIGRATION); banco.aplicado = true;
     }, assertMigrationsUpToDate: async () => { chamadas.assert++; assert.deepEqual(state.pending, []); } },
     execFileSync(cmd, params) { assert.equal(cmd, 'pm2'); assert.deepEqual(params, ['jlist']); return JSON.stringify(processos); } };
   return { args, runtimeEnv, logs, chamadas, processos, pm, state, identidade, banco };
@@ -58,8 +60,56 @@ function validarShell() {
   assert(source.includes('http://127.0.0.1:8001/health'));
   assert(!/--update-env|backend-solicitacoes|pm2 (?:reload|start|stop|delete)|npm (?:ci|install|run migrate)|\bgit reset\b/.test(source));
 }
+function validarRetomada() {
+  const merge = retomada.indexOf('git merge --ff-only'), conferir = retomada.indexOf('node scripts/aplicarMigrationMedicaoReenvioDev.js --verificar-aplicada');
+  const restart = retomada.indexOf('pm2 restart backend-dev');
+  assert.equal(blocosRetomada.length, 2); assert(merge > 0 && conferir > merge && restart > conferir);
+  for (const token of ['[[ "$versao_dev" =~ ^[0-9a-f]{40}$ ]]', 'base_dev=41bec992a463fb914302628a28fa9deec11d6084',
+    'test "$(pwd -P)" = /home/ubuntu/sistema-gestao-solicitacoes-dev', 'flock -n 9',
+    'test "$(git branch --show-current)" = refactor/frontend', 'test -z "$(git status --porcelain --untracked-files=no)"',
+    'git merge-base --is-ancestor "$versao_dev" origin/refactor/frontend', 'git merge-base --is-ancestor "$base_dev" "$versao_dev"',
+    'test "$head_dev" = "$base_dev" || test "$head_dev" = "$versao_dev"',
+    'p.watch', 'p.ALLOW_SCHEMA_MIGRATIONS', 'process.env.ALLOW_SCHEMA_MIGRATIONS',
+    'configurarSessao12hDev.js --verificar', 'assert.deepEqual(arquivos, [']) assert(retomada.indexOf(token) > 0 && retomada.indexOf(token) < merge, token);
+  assert.equal((retomada.match(/pm2 restart/g) || []).length, 1);
+  assert.equal((retomada.match(/--verificar-aplicada/g) || []).length, 2);
+  assert.equal((retomada.match(/test "\$env_hash_dev"/g) || []).length, 3);
+  assert(retomada.indexOf('validarMedicaoVerificadorMetadata.js') < conferir);
+  assert(retomada.includes('env -u CONFIRM_DEV_BACKUP -u ALLOW_SCHEMA_MIGRATIONS pm2 restart backend-dev'));
+  assert(retomada.includes('http://127.0.0.1:8001/health'));
+  assert(!/--aplicar|runMigrations|--update-env|backend-solicitacoes|npm (?:ci|install|run migrate)|pm2 (?:reload|start|stop|delete)|\bgit reset\b/.test(retomada.replace(/#.*$/gm, '')));
+  // Executar a allowlist real da retomada em VM, nao somente procurar tokens.
+  const arquivos = [
+    'M\tbackend/scripts/aplicarMigrationMedicaoReenvioDev.js', 'M\tbackend/scripts/validarDeployMedicaoReenvioDev.js',
+    'A\tbackend/scripts/validarMedicaoVerificadorMetadata.js', 'A\tdocs/handoffs/2026-10-23-medicao-verificador-retomada.md',
+    'M\tdocs/workspace/OWNERSHIP_ATIVO.md', 'A\tops/deploy/retomar-dev-medicao-reenvio-20261023.sh'
+  ];
+  function inventarioRetomada(lista) {
+    vm.runInNewContext(blocosRetomada[1], { process: { argv: ['node', '-', 'base', 'versao'] }, require(nome) {
+      if (nome === 'node:assert/strict') return { deepEqual(a, b, m) { assert.deepEqual(Array.from(a), Array.from(b), m); } };
+      assert.equal(nome, 'node:child_process'); return { execFileSync(cmd, params) {
+        assert.equal(cmd, 'git'); assert.deepEqual(Array.from(params), ['diff', '--name-status', 'base', 'versao']); return lista.join('\n');
+      } };
+    } });
+  }
+  inventarioRetomada(arquivos);
+  for (const extra of ['M\tbackend/migrations/' + MIGRATION, 'M\tbackend/src/controllers/SolicitacaoController.js',
+    'M\tbackend/.env', 'M\tfrontend/package-lock.json', 'M\tfrontend/src/App.jsx']) assert.throws(() => inventarioRetomada([...arquivos, extra]));
+  assert.throws(() => inventarioRetomada(arquivos.slice(1)));
+  // Executar tambem os bloqueios PM2/DDL anteriores ao fast-forward.
+  for (const alterar of [null, p => { p.PORT = 8000; }, p => { p.watch = ['src']; }, p => { p.status = 'stopped'; },
+    p => { p.ALLOW_SCHEMA_MIGRATIONS = 'true'; }, p => { p.pm_exec_path = '/producao/server.js'; }]) {
+    const p = { pm_exec_path: `${BACKEND}/server.js`, PORT: 8001, status: 'online', watch: false };
+    alterar?.(p);
+    const exec = flag => vm.runInNewContext(blocosRetomada[0], { process: { env: { ALLOW_SCHEMA_MIGRATIONS: flag } }, require(nome) {
+      if (nome === './backend/src/config/env') return {};
+      assert.equal(nome, 'node:child_process'); return { execFileSync: () => JSON.stringify([{ name: 'backend-dev', pm2_env: p }]) };
+    } });
+    if (alterar) assert.throws(() => exec('false')); else { exec('false'); assert.throws(() => exec('true')); }
+  }
+}
 async function qa() {
-  validarShell(); inventario(); inventario(d => { d.arquivos = d.arquivos.replaceAll('\n', '\r\n'); });
+  validarShell(); validarRetomada(); inventario(); inventario(d => { d.arquivos = d.arquivos.replaceAll('\n', '\r\n'); });
   for (const alterar of [d => { d.arquivos += '\nM\tfrontend/src/components/financeiro/FiltrosFilaPagamentos.jsx'; },
     d => { d.arquivos = ''; }, d => { d.migration = ''; }, d => { d.migration += '\nA\tbackend/migrations/outra.js'; },
     d => { d.dependencies.qa = '2'; }]) assert.throws(() => inventario(alterar));
@@ -73,8 +123,12 @@ async function qa() {
     x => { x.pm.pm2_env.PAYMENT_OWNER_APPROVAL_MODE = 'ENFORCE'; }, x => { x.identidade.uuid = 'outro'; },
     x => { x.identidade.banco = 'outro'; }, x => { x.state.pending.push('202610230001_medicao_rejeicao_favorecido_titulo.js'); },
     x => { x.state.tableExists = false; }]) {
-    const x = fixture(); x.runtimeEnv.CONFIRM_DEV_BACKUP = 'SIM'; alterar(x); await assert.rejects(executar(x.args));
-    assert.equal(x.chamadas.apply, 0); assert(!x.logs.join('').includes('NAO_EXIBIR'));
+    for (const modo of ['--aplicar', '--verificar-aplicada']) {
+      const x = fixture(); x.runtimeEnv.CONFIRM_DEV_BACKUP = 'SIM'; x.args.modo = modo;
+      if (modo === '--verificar-aplicada') { x.state.pending = []; x.state.executed.add(MIGRATION); x.banco.aplicado = true; }
+      alterar(x); await assert.rejects(executar(x.args));
+      assert.equal(x.chamadas.apply, 0); assert(!x.logs.join('').includes('NAO_EXIBIR'));
+    }
   }
   let x = fixture(); x.args.modo = '--verificar'; await executar(x.args);
   assert.equal(x.chamadas.apply, 0); assert.equal(x.chamadas.assert, 0); assert.equal(x.chamadas.leituras, 1);
@@ -90,6 +144,10 @@ async function qa() {
   await assert.rejects(executar(x.args), /SCHEMA_INCOMPLETO/);
   x = fixture(); x.args.migration.up = async () => { throw Error('MEDICAO_VINCULOS_ATIVOS_DUPLICADOS'); };
   await assert.rejects(executar(x.args), /VINCULOS_ATIVOS_DUPLICADOS/); assert.equal(x.chamadas.apply, 0);
+  x = fixture(); x.args.modo = '--verificar-aplicada';
+  await assert.rejects(executar(x.args), /NAO_REGISTRADA/); assert.equal(x.chamadas.apply, 0);
+  x = fixture(); x.args.modo = '--verificar-aplicada'; x.state.pending = []; x.state.executed.add(MIGRATION); x.banco.aplicado = true;
+  await executar(x.args); await executar(x.args); assert.equal(x.chamadas.apply, 0); assert.equal(x.chamadas.assert, 2);
   await assert.rejects(conferirPlano({}, { up: async ({ sequelize }) => sequelize.query('DELETE FROM medicao_parcelas') }), /ESCRITA_BLOQUEADA/);
   console.log('OK deploy/migration DEV reenvio: SHA/ff/lock/inventario2/migration002, ambiente/UUID/PM2/flags/backup, plano read-only, retomada/schema e restart exclusivo. Sem banco/EC2/rede.');
 }

@@ -1,5 +1,21 @@
 # Ownership Ativo
 
+## DEV: verificador MySQL e retomada sem migration - 2026-10-23
+
+- Agente unico; usuario autorizou corrigir/testar, commitar/push exclusivo
+  refactor/frontend e fornecer retomada EC2 DEV sem reaplicar migration002.
+- Reserva: aplicarMigrationMedicaoReenvioDev.js, validarDeployMedicaoReenvioDev.js,
+  novo QA de metadata/retomada, roteiro retomar-dev-medicao-reenvio-20261023.sh
+  e handoff correspondente. Base41bec992; preservar filtros locais fora do commit.
+- Migration002 ja aplicada pelo usuario; nao editar migration historica,
+  schema, financeiro, permissoes, .env ou frontend. Nenhum acesso EC2/RDS,
+  reinicio/deploy ou alteracao de main/producao pelo agente.
+- Concluido: escape S/M reconhecido somente nos metadados; modo somente
+  leitura exige registro002/schema completo. QAs de metadata/retomada/deploy,
+  SQL SQLite/servico de rejeicao, dez regressoes financeiras, docs613/19 e
+  sintaxe Bash/Node aprovados. Reserva encerrada e ownership liberado para
+  publicacao seletiva; EC2/homologacao serao executadas pelo usuario.
+
 ## Publicacao DEV: reenvio da medicao - 2026-10-23
 
 - Usuario autorizou commit/push da correcao para refactor/frontend e roteiro

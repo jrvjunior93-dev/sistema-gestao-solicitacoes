@@ -9,7 +9,15 @@ async function conferirPlano(db, migration) {
   const planos = [];
   await migration.up({ queryInterface: { showIndex: t => db.getQueryInterface().showIndex(t) }, sequelize: {
     query(sql, options) {
-      if (/^SELECT\b/i.test(sql.trim())) return db.query(sql, options);
+      if (/^SELECT\b/i.test(sql.trim())) return Promise.resolve(db.query(sql, options)).then(resultado => {
+        // MySQL pode devolver os literais do metadata como _utf8mb4\'S\'.
+        // Adaptar SOMENTE essa representacao de S/M; a migration historica
+        // continua conferindo expressao, tipo, nullable e indices integralmente.
+        if (!/FROM information_schema\.COLUMNS\b/i.test(sql) || options?.replacements?.[0] !== 'medicao_parcelas') return resultado;
+        return [resultado[0].map(coluna => coluna.nome !== 'evento_chave' || typeof coluna.expressao !== 'string' ? coluna : {
+          ...coluna, expressao: coluna.expressao.replace(/(_(?:utf8mb4|utf8mb3|utf8|latin1|ascii))\\'([SM])\\'/g, "$1'$2'")
+        }), ...resultado.slice(1)];
+      });
       if (/^ALTER TABLE medicao_parcelas\b/.test(sql)) { planos.push(sql); return Promise.resolve([]); }
       throw Error('PREFLIGHT_DEV_ESCRITA_BLOQUEADA');
     }
@@ -19,7 +27,7 @@ async function conferirPlano(db, migration) {
 async function executar({ modo, cwd, env, validateRequiredEnv, db, schema, execFileSync,
   runtimeEnv = process.env, log = console.log,
   migration = require('../migrations/202610230002_medicao_vinculos_ativos') }) {
-  if (!['--verificar', '--aplicar'].includes(modo)) throw Error('MODO_DEV_INVALIDO');
+  if (!['--verificar', '--verificar-aplicada', '--aplicar'].includes(modo)) throw Error('MODO_DEV_INVALIDO');
   validateRequiredEnv();
   if (cwd !== BACKEND || env.deploymentEnvironment !== 'development' || Number(env.port) !== 8001
     || env.dbHost !== 'fluxy-staging.cn820k66sdx7.us-east-2.rds.amazonaws.com') throw Error('AMBIENTE_DEV_DIFERENTE');
@@ -42,12 +50,16 @@ async function executar({ modo, cwd, env, validateRequiredEnv, db, schema, execF
   if (rows[0]?.uuid !== '60f043e9-4025-11f1-9a61-06d8a063012d' || rows[0]?.banco !== 'gestao_solicitacoes') throw Error('BANCO_DEV_DIFERENTE');
   const state = await schema.getMigrationState();
   if (!state.tableExists || state.pending.some(nome => nome !== MIGRATION)) throw Error('MIGRATIONS_DEV_INESPERADAS');
+  if (modo === '--verificar-aplicada' && (state.pending.length || !state.executed?.has(MIGRATION))) throw Error('MIGRATION_DEV_NAO_REGISTRADA');
   const plano = await conferirPlano(db, migration);
   if (!state.pending.includes(MIGRATION) && plano) throw Error('MIGRATION_DEV_REGISTRADA_SCHEMA_DIVERGENTE');
   log('DEV confirmado: identidade do banco, processo/8001, flags, versao/engine e vinculos sem duplicidades.');
   log('Migrations pendentes: ' + (state.pending.join(', ') || 'nenhuma'));
   log(plano ? 'Plano: um ALTER de indices/colunas virtuais; COPY pode bloquear escritas durante a operacao.' : 'Protecoes do reenvio ja conferidas; nenhum ALTER necessario.');
-  if (modo === '--verificar') { log('Somente leitura; nenhuma migration aplicada.'); return; }
+  if (modo !== '--aplicar') {
+    if (modo === '--verificar-aplicada') await schema.assertMigrationsUpToDate();
+    log('Somente leitura; nenhuma migration aplicada.'); return;
+  }
   if (state.pending.includes(MIGRATION)) {
     if (runtimeEnv.CONFIRM_DEV_BACKUP !== 'SIM') throw Error('BACKUP_DEV_NAO_CONFIRMADO');
     const anterior = runtimeEnv.ALLOW_SCHEMA_MIGRATIONS;
