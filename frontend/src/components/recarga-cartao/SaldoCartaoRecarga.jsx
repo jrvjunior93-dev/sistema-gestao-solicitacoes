@@ -19,6 +19,15 @@ export default function SaldoCartaoRecarga({ contexto, solicitacaoId, onAtualiza
   const extratoInput = useRef(null);
   const { abrirPreview, modalPreview } = useVisualizadorArquivo();
   if (!saldo) return null;
+  const recarga = contexto.ultima_recarga;
+  const titulo = recarga?.titulo;
+  const avisoPagamento = solicitacaoId && recarga && titulo
+    && ['PREVISAO', 'ABERTO', 'PARCIAL'].includes(titulo.status)
+    && Number.isFinite(Number(titulo.valor_baixado)) && titulo.valor_baixado != null
+    ? Number(titulo.valor_baixado) <= 0 ? 'Esta recarga ainda não compõe o saldo do cartão.'
+      : Number(titulo.valor_saldo) > 0 ? 'Recarga paga parcialmente: somente o valor já pago compõe o saldo do cartão.' : null
+    : null;
+  const origens = contexto.prestacoes_pendentes_saldo || [];
   async function ajustar(e) {
     e.preventDefault();
     if (trava.current) return;
@@ -42,10 +51,18 @@ export default function SaldoCartaoRecarga({ contexto, solicitacaoId, onAtualiza
   }
   return <section className="space-y-2 border-y border-[var(--c-border)] py-3" aria-label="Saldo do cartão">
     <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm tabular-nums">
-      <span>Saldo após gastos validados: <strong>{moeda(saldo.saldo_validado)}</strong></span>
-      <span>Gastos a validar/corrigir: <strong>{moeda(saldo.despesas_pendentes)}</strong></span>
+      <span>Saldo antes dos gastos pendentes: <strong>{moeda(saldo.saldo_validado)}</strong></span>
+      <span>Gastos pendentes de validação/correção: <strong>{moeda(saldo.despesas_pendentes)}</strong></span>
       <span>Saldo disponível estimado: <strong>{moeda(saldo.saldo_disponivel)}</strong></span>
     </div>
+    {Number(saldo.despesas_pendentes) > 0 && <div className="space-y-1 text-xs" aria-label="Solicitações com gastos pendentes">
+      {origens.map(origem => <p key={origem.prestacao_id}>
+        <a className="font-semibold text-[var(--c-primary)] underline underline-offset-2" href={`/solicitacoes/${origem.solicitacao_id}`}>{origem.solicitacao_codigo}</a>
+        {' · '}{origem.status === 'REJEITADA' ? 'Prestação aguardando correção' : 'Prestação aguardando validação'} · {moeda(origem.valor)}
+      </p>)}
+      {(contexto.origens_prestacoes_incompletas || !origens.length) && <p className="text-[var(--c-muted)]">Há gastos pendentes cuja solicitação de origem não está disponível para consulta neste contexto.</p>}
+    </div>}
+    {avisoPagamento && <p className="text-xs font-medium text-[var(--c-muted)]" role="note">{avisoPagamento}</p>}
     <p className="text-xs text-[var(--c-muted)]">Calculado pelas baixas, gastos e ajustes registrados; não é uma consulta à operadora. A sobra permanece no cartão e não vira despesa.</p>
     {saldo.saldo_disponivel < 0 && <p className="text-xs text-red-700" role="alert">Saldo negativo: confira estornos e extrato com o GEO antes de prestar contas.</p>}
     {contexto.pode_validar && solicitacaoId && <details>

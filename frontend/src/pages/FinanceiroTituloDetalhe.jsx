@@ -4,7 +4,10 @@ import useWorkspaceRecordDraft from '../navigation/useWorkspaceRecordDraft';
 import useQueryRevision from '../navigation/useQueryRevision';
 import useWorkspaceOpenRecord from '../navigation/useWorkspaceOpenRecord';
 import TituloNegociacaoHistorico from '../components/financeiro/TituloNegociacaoHistorico';
+import TituloNegociacaoPagamento from '../components/financeiro/TituloNegociacaoPagamento';
 import ParticipacoesTitulo from '../components/financeiro/ParticipacoesTitulo';
+import DadosPagamentoFila from '../components/financeiro/DadosPagamentoFila';
+import { beneficiaryData } from '../utils/filaPagamentoDestinatarios.mjs';
 import CancelarLoteCompartilhado from '../components/financeiro/CancelarLoteCompartilhado';
 import CancelarTitulo from '../components/financeiro/CancelarTitulo';
 import DesvincularFaturaTitulo from '../components/financeiro/DesvincularFaturaTitulo';
@@ -381,6 +384,10 @@ export default function FinanceiroTituloDetalhe() {
     event.preventDefault(); openRecord(`/solicitacoes/${titulo.solicitacao.id}`, titulo.solicitacao.codigo || 'Solicitação');
   };
   const podeVerPagamentosBancarios = hasPermissao(user, 'financeiro.titulos.pagamentos_bancarios.visualizar');
+  const destinatarioPagamento = beneficiaryData(titulo || {});
+  const instrucaoPagamento = titulo?.pagamento_negociacao || titulo?.instrucao_favorecido;
+  const dadosPagamentoAdicionais = destinatarioPagamento.dadosComplementares
+    || (!destinatarioPagamento.chavePix ? destinatarioPagamento.pagamento : null);
   const podeVerMovimentosFinanceiros = hasPermissao(user, 'financeiro.titulos.movimentos.visualizar');
   const podeVerAuditoriaFinanceira = hasPermissao(user, 'financeiro.titulos.auditoria.visualizar');
   const podeBaixarTitulo = hasPermissao(user, 'financeiro.titulos.baixar');
@@ -812,7 +819,7 @@ export default function FinanceiroTituloDetalhe() {
               : podeEditarDadosTitulo ? {
                 rotulo: 'Editar título',
                 desabilitada: true,
-                title: titulo?.compartilhamento_id ? 'Título compartilhado: as participações do lote devem ser preservadas. Baixas e estornos seguem disponíveis.' : 'Somente titulos em aberto, sem baixa e sem pagamento em massa vinculado podem ser editados',
+                title: titulo?.renegociacao_id ? 'Título negociado: use Editar dados de pagamento na seção de pagamento. Valores e vínculos permanecem protegidos.' : titulo?.compartilhamento_id ? 'Título compartilhado: as participações do lote devem ser preservadas. Baixas e estornos seguem disponíveis.' : 'Somente titulos em aberto, sem baixa e sem pagamento em massa vinculado podem ser editados',
                 onClick: () => {}
               } : null
           ].filter(Boolean)}
@@ -826,6 +833,7 @@ export default function FinanceiroTituloDetalhe() {
           }}>Usar cobrança atual</button>
         </div>}
         <TituloNegociacaoHistorico titulo={titulo} />
+        <TituloNegociacaoPagamento key={titulo.id} titulo={titulo} permitido={podeEditarDadosTitulo} onSaved={carregar} />
 
         {error && (
           <div className="app-alert app-alert--error">
@@ -876,8 +884,18 @@ export default function FinanceiroTituloDetalhe() {
           <CamposComVazios
             colunas={4}
             campos={[
-              { label: 'Parceiro', valor: titulo.parceiro?.nome, span: 2 },
+              { label: titulo.tipo === 'PAGAR' ? 'Credor' : 'Parceiro',
+                valor: titulo.tipo === 'PAGAR' ? destinatarioPagamento.credor : titulo.parceiro?.nome, span: 2 },
               { label: 'Obra', valor: titulo.obra?.nome, span: 2 },
+              { label: 'Favorecido', contexto: titulo.tipo === 'PAGAR', valor: destinatarioPagamento.nome, span: 2 },
+              { label: 'Forma de pagamento prevista', contexto: titulo.tipo === 'PAGAR',
+                valor: instrucaoPagamento?.forma_pagamento_nome || titulo.formaPagamento?.nome || titulo.solicitacao?.formaPagamento?.nome, span: 2 },
+              { label: 'Chave PIX / PIX copia e cola', contexto: titulo.tipo === 'PAGAR', span: 2,
+                valor: destinatarioPagamento.chavePix ? <DadosPagamentoFila inline texto={destinatarioPagamento.chavePix}
+                  titulo={`${titulo.codigo} · chave PIX`} favorecido={destinatarioPagamento.nome} /> : null },
+              { label: 'Dados para pagamento', contexto: titulo.tipo === 'PAGAR', span: 2,
+                valor: dadosPagamentoAdicionais ? <DadosPagamentoFila inline texto={dadosPagamentoAdicionais}
+                  titulo={titulo.codigo} favorecido={destinatarioPagamento.nome} /> : null },
               { label: 'Vencimento', valor: formatDate(titulo.data_vencimento) === '-' ? null : formatDate(titulo.data_vencimento) },
               { label: 'Emissão', valor: formatDate(titulo.data_emissao) === '-' ? null : formatDate(titulo.data_emissao) },
               { label: 'Valor baixado', valor: Number(titulo.valor_baixado) > 0 ? formatCurrency(titulo.valor_baixado) : null },
@@ -911,6 +929,10 @@ export default function FinanceiroTituloDetalhe() {
               }
             ]}
           />
+
+          {titulo.tipo === 'PAGAR' && <p className="mt-2 text-xs text-[var(--c-muted)]">
+            Instruções de pagamento informadas na origem. Não substituem o comprovante da baixa realizada.
+          </p>}
 
           {podeVerMovimentosFinanceiros && fontesFinanceirasAtivas.length > 0 && (
             <div className="mt-3 border-t border-[var(--c-border)] pt-3">

@@ -10,6 +10,10 @@
   restrito as migrations202610220001/002 e QAs/documentacao/handoff proprios.
 - Sem executar EC2, DDL, estorno/baixa real ou reinicio pelo agente. Nao alterar
   refactor/frontend, flags/.env, dependencias ou outputs/ privados.
+- Integracao concluida; ownership liberado para commit/push MAIN. Backend,
+  regressoes/ACL, UI1366/390 dos quatro pacotes, build637/13,30s, Node/Bash,
+  guardas PROD/DEV e docs619/19 aprovados. Inventario por stdin sem depender
+  de novos arquivos locais; runtime identico DEV, exclusividades MAIN mantidas.
 
 ## Promocao MAIN OFX/codigo TIT e Receber - 2026-10-22
 
@@ -208,6 +212,147 @@
   Produto e dependencias conferidos contra2e146629; reserva encerrada,
   ownership liberado para commit/push main autorizados. Roteiro e limites em
   docs/handoffs/2026-10-18-promocao-main-pwa-historico.md.
+
+## Publicacao DEV: destinatarios da fila e do detalhe - 2026-10-23
+
+- Usuario autorizou commit/push direto na refactor/frontend e comandos EC2 DEV.
+  Agente unico, sem PR/delegacao; reserva do delta ja aprovado, novo
+  atualizar-dev-fila-destinatarios-20261023.sh, validarDeployFilaDestinatariosDev.js
+  e documentacao/handoff correspondente.
+- Sem alterar main/producao, executar EC2/banco real, migrations ou reinicios
+  pelo agente. outputs/ privado, fora do commit. Apenas scripts npm novos;
+  dependencias/lockfiles e motores financeiros permanecem iguais a5123de39.
+- Validacoes de publicacao repetidas: backend/ACL/regressoes, fila/detalhe
+  UI1366/390, build12,68s, documentacao605/19 e Bash/VM/negativas do roteiro.
+  Reserva encerrada e ownership liberado para commit/push autorizado.
+
+## Fila: credor, favorecido e instrucao da medicao - 2026-10-23
+
+- Agente unico desta conversa; implementacao/testes concluidos, reserva liberada.
+- Escopo autorizado: separar Credor/Favorecido em todas as origens, retirar
+  documento sob o nome e consultar a instrucao da medicao vinculada ao titulo.
+- Reservados: pagamentoManualFilaService, novo pagamentoFilaDestinatarioService,
+  FinanceiroFilaPagamentos, novo helper frontend de destinatarios, testes locais
+  backend/UI correspondentes e documentacao/handoff desta tarefa.
+- Somente leitura/projecao dos titulos ja autorizados. Nao alterar baixa do
+  TIT-009886, valores, permissoes, historico, banco real, main ou producao.
+- Sem migration, EC2, commit, push ou deploy nesta etapa; outputs/ preservado.
+- Escopo adicional autorizado: exibir favorecido/PIX/instrucoes no detalhe do
+  titulo. Reserva ampliada para TituloFinanceiroController, FinanceiroTituloDetalhe,
+  QA do detalhe/workspace e testes/documentacao da projecao compartilhada.
+- Componente DadosPagamentoFila e fixtures de cancelamento tambem ajustados.
+  Backend, seguranca/ACL, fila integral, detalhe/workspace, UI1366/390, build e
+  documentacao aprovados localmente. Handoff: docs/handoffs/2026-10-23-fila-credor-favorecido-pix.md.
+  Sem publicacao nesta etapa; aguardando autorizacao para commit/push DEV.
+
+## Publicacao DEV do saldo da recarga - 2026-10-23
+
+- Usuario autorizou commit/push direto na refactor/frontend e comandos EC2 DEV,
+  sem PR, main ou producao. Agente unico, sem delegacao.
+- Reserva temporaria: delta de rotulos/origens/aviso ja implementado, novo
+  atualizar-dev-recarga-saldo-20261023.sh, validarDeployRecargaSaldoDev.js,
+  README Financeiro e handoff. Sem migration/dependencias/flags/.env novos.
+- Agente nao executa EC2, banco real, DDL, reinicio ou operacao financeira.
+  outputs/ permanece privado e fora do commit.
+- Validacoes repetidas aprovadas: backend/ACL/regressoes, UI1366/390 e saldo
+  regressivo, build13,80s, guardas do roteiro DEV/negativas em VM, sessao/UUID,
+  Node/Bash/diff, navegacao e documentacao604/19. Sem SQL ou processo real.
+  Reserva encerrada, ownership liberado para commit/push autorizado.
+
+## Saldo de recarga - rotulos e origem das prestacoes - 2026-10-23
+
+- Agente unico, sem delegacao. Usuario autorizou implementar/testar na base
+  refactor/frontendc44b1add, sem publicar ou alterar producao.
+- Reserva temporaria: SaldoCartaoRecarga.jsx, RecargaCartaoController.js,
+  novo recargaCartaoSaldoLeituraService.js e testes backend/UI dedicados,
+  adaptacao da fixture de validarRecargasMultiplosCartoes.js, docs/handoff.
+- Rotulos, origem com ACL normal e aviso de recarga nao paga; nao alterar
+  formulas/saldos, pagamentos, prestacao/ajuste GEO, permissoes ou migrations.
+- Sem banco real/EC2/servicos externos, commit, push ou deploy. outputs/ privado.
+- Concluido: backend dedicado/ACL real, multicartoes/saldo/regularizacao,
+  medicao, acesso/anexos, UI1366/390 e regressoes GEO/prestacao, build13,44s,
+  navegacao, Node/diff e docs604/19 aprovados. Capturas inspecionadas.
+  Reserva encerrada, ownership liberado. Handoff2026-10-23-recarga-saldo-origens.md.
+
+## Publicacao DEV da devolucao seletiva de cheques - 2026-10-22
+
+- Usuario autorizou commit/push na refactor/frontend e roteiro EC2 DEV.
+- Agente unico, sem delegacao. Reserva temporaria: delta de devolucao seletiva,
+  aplicarMigrationDevolucaoChequesDev.js, validarDeployDevolucaoChequesDev.js,
+  atualizar-dev-devolucao-cheques-20261022.sh e documentacao/handoff.
+- Sem main/producao, banco real, EC2 ou reinicio pelo agente. Somente migration
+  202610220002 no roteiro; exige anteriores aplicadas e backup DEV conferido.
+- outputs/ privado, fora do commit. Preservar dependencias, flags e .env.
+- Backend dedicado/regressoes, UI1366/390/HTTP, build636/11,34s, roteiro DEV
+  com guardas negativas em memoria, Node/Bash/diff e docs603/19 aprovados.
+  Reserva encerrada, ownership liberado para publicacao autorizada.
+
+## Devolucao seletiva de cheques recebidos compostos - 2026-10-22
+
+- Agente unico; usuario autorizou implementar/testar DEV um ou varios cheques,
+  inclusive cheque rateado, mantendo outros recebimentos e estorno integral.
+- Reserva: novo baixaCompostaChequeEstornoService/QA, migration JSON de estornos
+  no BaixaFinanceiraGrupo/modelo, chequeTerceiroService/controller/routes,
+  FinanceiroBaixasCompostas, FinanceiroChequesTerceiros, servico financeiro,
+  novo componente de devolucao/QA UI, canonico Financeiro e handoff.
+- Base refactor/frontend28670b81. Caso real usado apenas como fixture anonimizada:
+  cheque85/componente8/movimento5430/TIT-007520, principal8000. Nenhum registro
+  real sera alterado. Sem commit/push, banco/EC2/S3/Redis reais ou producao.
+- Skill frontend-design: direcao utilitaria compacta; tokens/componentes atuais,
+  estados claros, previa/aceite explicitos e sem sucesso financeiro otimista.
+- Implementacao e QA local concluidos: backend dedicado/regressoes, UI real
+  1366/390/pagina/HTTP, regressoes workspace/fila, build636, Node/diff e
+  documentacao603/19 aprovados. Sem teste MySQL real; migration nao aplicada.
+  Reserva encerrada, ownership liberado. Handoff2026-10-22-devolucao-cheques-compostos.md.
+
+## Publicacao DEV Compra Direta e pagamento negociado - 2026-10-22
+
+- Usuario autorizou commit/push dos dois ajustes na refactor/frontend e comandos
+  EC2 DEV com migration. Agente unico; reserva temporaria dos deltas existentes,
+  aplicarMigrationNegociacaoPagamentoDev.js, validarDeployCompraNegociacaoDev.js,
+  atualizar-dev-compra-negociacao-20261022.sh e documentacao correspondente.
+- Base DEV41219c3a e main fe663151 conferidas remotamente. Sem main, EC2,
+  banco real, DDL real, flags, segredos, dependencias ou producao pelo agente.
+- outputs/ privado fora do commit; migration aditiva unica, backup DEV exigido,
+  guardas de caminho/processo/porta/identidade/schema e restart exclusivo DEV.
+- QAs dedicados e regressoes repetidos aprovados; UI1366/390, build635/11,99s,
+  Node/Bash/diff e documentacao602/19 aprovados. Reserva encerrada e ownership
+  liberado para commit/push autorizado. Aplicacao real somente pelo usuario.
+
+## Negociacao - forma e dados de pagamento - 2026-10-22
+
+- Agente unico; usuario autorizou implementar/testar na base refactor/frontend,
+  inclusive edicao restrita de parcelas existentes como TIT-011543. Sem
+  escrita no registro real, banco/EC2/servicos reais, producao ou commit/push.
+- Reservados: tituloRenegociacaoService/controller, novo helper de pagamento,
+  routes.js (preservar delta Compra Direta), TituloNegociacaoModal, novo
+  componente reutilizavel de pagamento, FinanceiroTituloDetalhe e servico
+  financeiro frontend, QAs correspondentes, canonico Financeiro/handoff.
+- Preservar bloqueios do acordo, valores/rateios/origens, ACL, historico,
+  idempotencia, autorizacoes e o ajuste de credor ainda nao commitado.
+- Inclui migration JSON aditiva/modelo de titulo (sem aplicacao), projecao da
+  instrucao na fila e hash condicional do dossie; hashes legados preservados.
+- Implementacao/testes locais concluidos: QAs dedicados backend/UI1366/390,
+  regressoes de negociacao, workspace, fila, autorizacao e Compra Direta;
+  build635/11,62s, Node/diff/documentacao601/19 aprovados. Migration somente
+  em memoria, nao aplicada. Reserva encerrada, ownership liberado, sem
+  commit/push/deploy. Handoff: 2026-10-22-negociacao-pagamento.md.
+
+## Compra Direta - credor conforme configuracao - 2026-10-22
+
+- Agente unico desta conversa; usuario autorizou implementar/testar sobre
+  refactor/frontend, base 41219c3a, sem commit/push ou producao nesta etapa.
+- Reservados: NovaSolicitacaoCompra.jsx, SolicitacaoCompraController.js,
+  helper/endpoint de leitura da regra do credor se necessario, testes isolados
+  backend/UI e handoff deste ajuste. Preservar rascunhos, ACL, idempotencia,
+  vinculos, dados existentes e todas as regras/calculos financeiros.
+- Inclui routes.js, frontend/src/services/compras.js, o canonico de Compras
+  e docs/handoffs/2026-10-22-compra-direta-credor-obrigatorio.md.
+- Sem banco/EC2/S3/Redis reais, migrations, dependencias, flags ou reinicios.
+- Implementacao e QAs dedicados backend/UI1366/390 aprovados, mais quatro
+  regressoes backend, UI de gestao, build633/17,60s, Node/diff/documentacao.
+  Um QA antigo de frete tem marcador estatico obsoleto, documentado no handoff.
+  Reserva encerrada e ownership liberado; trabalho ainda sem commit/push.
 
 ## Publicacao DEV OFX e codigo TIT - 2026-10-22
 

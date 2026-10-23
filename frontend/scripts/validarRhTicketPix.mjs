@@ -48,10 +48,8 @@ const incompleto=contaSandbox.carregar({...colaboradores[1],pagamento:{banco:'00
 assert.equal(incompleto.agencia,'','Cadastro parcial nao mistura outra agencia/conta');assert.equal(contaSandbox.validar(incompleto),false);
 assert.equal(contaSandbox.validar({...contaSandbox.carregar(colaboradores[0]),banco:'Banco com nome longo'}),false);
 // Formatador real da fila: o snapshot bancario nunca e exibido como chave Pix.
-const filaSource=readFileSync(path.join(root,'src/pages/FinanceiroFilaPagamentos.jsx'),'utf8');
-const filaSandbox={};
-vm.runInNewContext(filaSource.slice(filaSource.indexOf('function beneficiaryData('),filaSource.indexOf('\nfunction valorParaInput('))
-  +'\nglobalThis.dados=beneficiaryData;',filaSandbox);
+const { beneficiaryData } = await import('../src/utils/filaPagamentoDestinatarios.mjs');
+const filaSandbox={dados:beneficiaryData};
 const tituloConta={formaPagamento:{tipo:'TRANSFERENCIA',nome:'Transferência bancária'},paymentBeneficiary:{nome:'Ana',cpf_cnpj:'52998224725',
   metodo_preferencial:'CONTA_BANCARIA',pix_tipo_chave:'DADOS_BANCARIOS',pix_chave:'001:1234-5:001234-5',banco_codigo:'001',agencia:'1234-5',conta:'001234-5'}};
 assert.equal(filaSandbox.dados(tituloConta).pagamento,'Banco 001 · Ag. 1234-5 · Conta 001234-5');

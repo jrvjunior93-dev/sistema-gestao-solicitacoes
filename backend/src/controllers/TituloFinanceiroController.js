@@ -141,6 +141,8 @@ module.exports = {
     try {
       const titulo = await carregarTituloPorId(req, req.params.id, { includeMovimentos: true });
       const payload = await filtrarDetalheTituloPorPermissoes(req, titulo);
+      // Somente consulta autorizada: nao muda a carga usada nas operacoes financeiras.
+      if (payload.tipo === 'PAGAR') await require('../services/pagamentoFilaDestinatarioService').anexarDetalheTitulo(payload);
       if (payload.status === 'CANCELADO') {
         payload.cancelamento = await require('../services/tituloCancelamentoAuditoriaService').resumoCancelamento(titulo.id);
       }

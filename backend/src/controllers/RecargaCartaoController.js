@@ -15,6 +15,7 @@ const {
   assertPodeVisualizarSolicitacao,
   montarContextoInteracao
 } = require('../services/solicitacaoRetornoService');
+const { enriquecerOrigensSaldo } = require('../services/recargaCartaoSaldoLeituraService');
 
 function responderErro(res, error, fallback) {
   console.error(error);
@@ -52,7 +53,7 @@ module.exports = {
         }
         contexto.contexto_interacao = await montarContextoInteracao(req, solicitacaoAnterior);
       }
-      return res.json(contexto);
+      return res.json(await enriquecerOrigensSaldo(contexto, req));
     } catch (error) {
       return responderErro(res, error, 'Erro ao conferir a ultima recarga do cartao.');
     }
@@ -61,9 +62,10 @@ module.exports = {
   async contextoSolicitacao(req, res) {
     try {
       await assertPodeVisualizarSolicitacao(req, req.params.id);
-      return res.json(await obterContextoSolicitacao(req.params.id, req.user, {
+      const contexto = await obterContextoSolicitacao(req.params.id, req.user, {
         acessoSolicitacaoValidado: true
-      }));
+      });
+      return res.json(await enriquecerOrigensSaldo(contexto, req));
     } catch (error) {
       return responderErro(res, error, 'Erro ao carregar o fluxo da recarga.');
     }

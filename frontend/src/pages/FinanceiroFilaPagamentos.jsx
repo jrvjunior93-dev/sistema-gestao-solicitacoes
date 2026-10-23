@@ -51,6 +51,7 @@ import StatusBadge from '../components/StatusBadge';
 import OverlayModal from '../components/ui/OverlayModal';
 import ArquivosSolicitacaoFilaModal from '../components/financeiro/ArquivosSolicitacaoFilaModal';
 import DadosPagamentoFila from '../components/financeiro/DadosPagamentoFila';
+import { beneficiaryData } from '../utils/filaPagamentoDestinatarios.mjs';
 import BaixaMassaFilaModal from '../components/financeiro/BaixaMassaFilaModal';
 import BaixaCompostaModal from '../components/financeiro/BaixaCompostaModal';
 import InstrumentoPagamentoFila, { payloadInstrumentoFila, tipoInstrumentoFila } from '../components/financeiro/InstrumentoPagamentoFila';
@@ -108,7 +109,8 @@ const PAYMENT_QUEUE_COLUMNS = [
   { key: 'titulo', titulo: 'Título / documento', size: 'wider', sempreVisivel: true },
   { key: 'observacoes', titulo: 'Observações', size: 'wide', antesDe: 'local' },
   { key: 'local', titulo: 'Obra / Centro de Custo', size: 'wide' },
-  { key: 'credor', titulo: 'Credor / favorecido', size: 'wide' },
+  { key: 'credor', titulo: 'Credor', size: 'wide' },
+  { key: 'favorecido', titulo: 'Favorecido', size: 'wide', antesDe: 'empresa_colaborador' },
   { key: 'empresa_colaborador', titulo: 'Empresa do colaborador', size: 'wide', antesDe: 'dados' },
   { key: 'recebimento_dp', titulo: 'Recebimento DP', size: 'standard', antesDe: 'dados' },
   { key: 'dados', titulo: 'Dados para pagamento', size: 'wide' },
@@ -181,51 +183,6 @@ function statusKind(status) {
   if (status === 'NAO_PAGO') return 'warning';
   if (status === 'BAIXADO' || status === 'RESOLVIDO') return 'success';
   return 'info';
-}
-
-function beneficiaryData(titulo) {
-  if (ehTituloDp(titulo) && titulo.recebimento_dp === 'DINHEIRO') return {
-    nome: titulo.parceiro?.nome || 'Não informado', documento: titulo.parceiro?.cpf_cnpj || '', pagamento: 'Recebimento em dinheiro'
-  };
-  const beneficiary = titulo?.paymentBeneficiary;
-  const instrucao = titulo?.instrucao_favorecido;
-  const solicitacao = instrucao ? { ...titulo?.solicitacao,
-    favorecido: { nome: instrucao.nome_favorecido, cpf_cnpj: instrucao.cpf_cnpj },
-    favorecido_chave_pix: instrucao.favorecido_chave_pix, dados_pagamento: instrucao.dados_pagamento,
-    boletos: (instrucao.boleto_nomes || []).map(nome => ({ nome })) } : titulo?.solicitacao || {};
-  const formaPagamento = titulo?.formaPagamento || solicitacao?.formaPagamento;
-  const form = [formaPagamento?.tipo, formaPagamento?.codigo, formaPagamento?.nome]
-    .filter(Boolean).join(' ').toUpperCase();
-  const boletoData = titulo?.linha_digitavel || titulo?.codigo_barras;
-  const boletoAnexado = solicitacao?.boletos?.[0];
-  const favorecidoSolicitacao = solicitacao?.favorecido;
-  if (beneficiary) {
-    let pagamento = 'Sem dados bancários cadastrados';
-    if (form.includes('BOLETO') && boletoData) pagamento = `Boleto: ${boletoData}`;
-    else if (form.includes('BOLETO') && boletoAnexado) pagamento = `Boleto anexado: ${boletoAnexado.nome}`;
-    else if (beneficiary.pix_chave && beneficiary.pix_tipo_chave !== 'DADOS_BANCARIOS'
-      && beneficiary.metodo_preferencial !== 'CONTA_BANCARIA') pagamento = `PIX ${beneficiary.pix_tipo_chave || ''}: ${beneficiary.pix_chave}`;
-    else if (form.includes('PIX') && solicitacao.favorecido_chave_pix) pagamento = `PIX: ${solicitacao.favorecido_chave_pix}`;
-    else if (beneficiary.banco_codigo || beneficiary.agencia || beneficiary.conta) {
-      pagamento = `Banco ${beneficiary.banco_codigo || '—'} · Ag. ${beneficiary.agencia || '—'} · Conta ${beneficiary.conta || '—'}`;
-    }
-    else if (solicitacao.dados_pagamento) pagamento = solicitacao.dados_pagamento;
-    return {
-      nome: beneficiary.nome || favorecidoSolicitacao?.nome || titulo?.parceiro?.nome || 'Não informado',
-      documento: beneficiary.cpf_cnpj || favorecidoSolicitacao?.cpf_cnpj || titulo?.parceiro?.cpf_cnpj || '',
-      pagamento
-    };
-  }
-  let pagamento = titulo?.observacoes || 'Sem instrução bancária cadastrada';
-  if (form.includes('BOLETO') && boletoData) pagamento = `Boleto: ${boletoData}`;
-  else if (form.includes('BOLETO') && boletoAnexado) pagamento = `Boleto anexado: ${boletoAnexado.nome}`;
-  else if (form.includes('PIX') && solicitacao.favorecido_chave_pix) pagamento = `PIX: ${solicitacao.favorecido_chave_pix}`;
-  else if (solicitacao.dados_pagamento) pagamento = solicitacao.dados_pagamento;
-  return {
-    nome: titulo?.favorecidoPagamento?.nome || favorecidoSolicitacao?.nome || titulo?.parceiro?.nome || 'Não informado',
-    documento: titulo?.favorecidoPagamento?.cpf_cnpj || favorecidoSolicitacao?.cpf_cnpj || titulo?.parceiro?.cpf_cnpj || '',
-    pagamento
-  };
 }
 
 function valorParaInput(value) {
@@ -1442,7 +1399,8 @@ export default function FinanceiroFilaPagamentos() {
                 <ResizableTh columnKey="titulo" className="px-3 py-3">Título / documento</ResizableTh>
                 <ResizableTh columnKey="observacoes" className="px-3 py-3">Observações</ResizableTh>
                 <ResizableTh columnKey="local" className="px-3 py-3">Obra / Centro de Custo</ResizableTh>
-                <ResizableTh columnKey="credor" className="px-3 py-3">Credor / favorecido</ResizableTh>
+                <ResizableTh columnKey="credor" className="px-3 py-3">Credor</ResizableTh>
+                <ResizableTh columnKey="favorecido" className="px-3 py-3">Favorecido</ResizableTh>
                 <ResizableTh columnKey="empresa_colaborador" className="px-3 py-3">Empresa do colaborador</ResizableTh>
                 <ResizableTh columnKey="recebimento_dp" className="px-3 py-3">Recebimento DP</ResizableTh>
                 <ResizableTh columnKey="dados" className="px-3 py-3">Dados para pagamento</ResizableTh>
@@ -1583,8 +1541,10 @@ export default function FinanceiroFilaPagamentos() {
                       <div className="max-w-60 font-medium" title={title.obra?.nome}>{[title.obra?.codigo, title.obra?.nome].filter(Boolean).join(' · ') || 'Não informado'}</div>
                     </td>
                     <td className="px-3 py-3 align-top">
+                      <div className="max-w-60 font-medium" title={beneficiary.credor}>{beneficiary.credor}</div>
+                    </td>
+                    <td className="px-3 py-3 align-top">
                       <div className="max-w-60 font-medium" title={beneficiary.nome}>{beneficiary.nome}</div>
-                      <div className="text-xs text-[var(--c-muted)]">{beneficiary.documento || 'Documento não informado'}</div>
                     </td>
                     <td className="px-3 py-3 align-top">{ehTituloDp(title) ? title.empresa?.nome || 'Não informada no título' : '—'}</td>
                     <td className="px-3 py-3 align-top">{ehTituloDp(title) ? rotuloRecebimentoDp(title.recebimento_dp) : '—'}</td>

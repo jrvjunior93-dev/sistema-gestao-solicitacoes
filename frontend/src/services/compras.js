@@ -67,6 +67,15 @@ function buildQueryString(params = {}) {
   return search.toString();
 }
 
+export async function obterRegraCredorCompraDireta(params, { signal } = {}) {
+  const response = await fetch(`${API_URL}/compras/solicitacoes-diretas/regra-credor?${buildQueryString(params)}`, {
+    headers: authHeaders(), signal
+  });
+  const data = await handleJsonResponse(response, 'Erro ao consultar obrigatoriedade do credor');
+  if (typeof data?.credor?.obrigatorio !== 'boolean') throw new Error('Regra do credor indisponível. Tente novamente.');
+  return data.credor;
+}
+
 export async function listarUnidades() {
   const response = await fetch(`${API_URL}/compras/unidades`, {
     headers: authHeaders()

@@ -1,5 +1,19 @@
 # Modulo FINANCEIRO
 
+## Promocao MAIN de todas as pendencias - 2026-10-23
+
+Usuario autorizou Compra Direta/pagamento negociado, devolucao seletiva de
+cheques, saldo da recarga e dados da fila/detalhe; backup cifrado/timer ativo
+confirmados. Merge MAINfe663151 com DEVd641 preserva hotfixes, scripts e
+historico MAIN. Dependencias/flags/.env/memoria e DEV remoto inalterados.
+Duas migrations JSON nullable (pagamento_negociacao e estornos_cheques),
+sem backfill, baixa, estorno ou ajuste de saldo executado pelo deploy.
+Roteiro PROD exclusivo ops/deploy/atualizar-producao-pendencias-20261023.sh:
+SHA/inventario/ff-only/backup/timer/PM28000, preflight identidade/TLS/12h/flags,
+QAs offline antes do aplicador restrito001/002, verificacoes e restart somente
+backend-solicitacoes. Nao reutilizar scripts DEV nem migrate geral.
+[Escopo, evidencias, limites e recuperacao](../../handoffs/2026-10-23-promocao-pendencias-main.md).
+
 ## Promocao MAIN OFX e forma prevista - 2026-10-22
 
 Usuario homologou OFX/codigo TIT no DEV e autorizou promover TODOS os pendentes:
@@ -47,6 +61,161 @@ Conferir lista da fatura e relatorio de permutas em leitura apos atualizar
 backend/health e frontend main na Vercel. O caso PIX/cartao/desconto foi provado
 em memoria/DEV; nao repetir a baixa real somente para testar producao.
 [Escopo, evidencias e recuperacao](../../handoffs/2026-10-21-promocao-main-pendencias-dev.md).
+
+## Fila: Credor e Favorecido separados - 2026-10-23
+
+- Credor identifica o parceiro comercial; Favorecido identifica o destinatario
+  informado no titulo, na instrucao especifica ou na solicitacao de origem.
+  Sem documento cadastral abaixo dos nomes. Ausencia nao e preenchida com o
+  credor: mostra "Favorecido nao informado". No DP em dinheiro, o recebedor e
+  o colaborador/responsavel registrado no titulo, nao uma conta bancaria.
+- Instrucao da negociacao/parte do titulo prevalece sobre cadastro bancario
+  e dados gerais da solicitacao. Destinatario diferente no titulo nao herda a
+  chave de outro favorecido da solicitacao. Documento nao vira PIX presumido.
+- Medicao escalar aprovada: consulta a medicao ligada a parcela daquele
+  titulo (ou sua origem medicao_pagamento_origem_id), nunca a ultima medicao
+  do contrato. Chave lida da medicao; credor contratual recuperado somente
+  para exibicao, pois a aprovacao legada substituia parceiro_id pelo recebedor.
+  Multiplos credores sao exibidos nominalmente sem escolher um por suposicao.
+- Vinculo ambiguo, forma divergente ou conta/favorecido com documentos
+  diferentes produz aviso de conferencia; nao substitui a chave por cadastro
+  atual. Isso nao autoriza, bloqueia ou registra uma baixa por si so.
+- Apenas projecoes de leitura apos ACL/escopo existentes. Sem migration,
+  backfill, alteracao de permissao, saldo, baixa ou historico. TIT-009886
+  permanece quitado; dados exibidos sao instrucoes previstas, nao prova do
+  destino bancario efetivamente usado na baixa historica.
+- O detalhe do titulo a pagar tambem mostra Credor, Favorecido, Forma prevista,
+  Chave PIX/PIX copia e cola e demais dados/instrucoes, usando o mesmo
+  formatador da fila. Dados longos abrem consulta/copia integral. O complemento
+  e executado somente no GET show autorizado, nunca na carga usada por baixa,
+  edicao ou criacao. As permissoes de movimentos/intencoes continuam separadas.
+  Titulos RECEBER mantem o bloco de cobranca externa existente.
+- QA local: npm run test:fila-destinatarios em backend e frontend. Inclui
+  consultas em lote, ORM MySQL interceptado, tela real desktop/mobile e
+  preferencias de colunas antigas sem perder ordem, selecao ou valores.
+  validarTituloDadosPagamento.js e validarTituloDetalheWorkspace.mjs
+  --dados-pagamento cobrem detalhe/ACL e consulta/copia sem baixa.
+  [Escopo, validacoes e proximo passo](../../handoffs/2026-10-23-fila-credor-favorecido-pix.md).
+- Publicacao direta DEV autorizada. Roteiro exclusivo
+  ops/deploy/atualizar-dev-fila-destinatarios-20261023.sh com SHA completo,
+  base5123de39/ff-only, preflight de identidade/schema/sessao e QAs antes de
+  reiniciar somente backend-dev8001. Sem migration/instalacao/flags/.env novos;
+  validarDeployFilaDestinatariosDev.js cobre guardas e negativas em memoria.
+
+## Recarga: saldo e origem das prestacoes pendentes - 2026-10-23
+
+- Resumo mantem os valores calculados, com rotulos "Saldo antes dos gastos
+  pendentes", "Gastos pendentes de validacao/correcao" e "Saldo disponivel
+  estimado". Nao e consulta a operadora nem saldo exclusivo daquela recarga.
+- As origens mostram codigo/link da solicitacao, situacao (aguardando validacao
+  ou correcao) e gasto declarado. A associacao e por prestacao/cartao, nunca por
+  igualdade entre o valor gasto e o valor de uma nova recarga.
+- Recarga ABERTO/PREVISAO sem baixa informa que ainda nao compoe o saldo;
+  PARCIAL informa que somente a parte paga compoe o saldo. Sem evidencia de
+  baixa no DTO nao presume pagamento. Cancelados/estornados nao recebem aviso
+  de pagamento pendente. Formulario da nova solicitacao nao confunde a ultima
+  recarga com o pedido ainda em preenchimento.
+- Projecao auxiliar de leitura nos endpoints de contexto existentes: uma
+  consulta para os cartoes da resposta e ACL normal de detalhe por solicitacao,
+  com cache local a requisicao. Origem negada/excluida/falha nao revela numero,
+  ID, status, valor individual ou link, nem amplia acesso GEO/obra/cartao.
+- Consulta limitada a101 candidatos e no maximo100 origens processadas. Falha,
+  limite ou diferenca entre o agregado e as origens gera aviso generico de
+  origens incompletas; o saldo autorizado permanece inalterado e nao e recalculado.
+- Preservados prestacao, ajuste GEO/extrato, revisao/idempotencia, pagamentos,
+  valores, permissoes e calculo historico. Nenhuma migration/backfill ou escrita.
+- QA: validarRecargaSaldoOrigens.js (ACL real/controller/motor de saldo em memoria)
+  e validarRecargaSaldoOrigensUI.mjs (tela/CSS reais e HTTP interceptado).
+  [Handoff e validacoes](../../handoffs/2026-10-23-recarga-saldo-origens.md).
+- Publicacao DEV autorizada. Roteiro proprio
+  ops/deploy/atualizar-dev-recarga-saldo-20261023.sh com SHA publicado; sem
+  migration/dependencias/flags novos, preflight de identidade/schema, ff-only,
+  testes e reinicio apenas backend-dev8001. Pendencia de banco interrompe;
+  validarDeployRecargaSaldoDev.js cobre as guardas sem EC2/banco real.
+
+## Devolucao seletiva de cheques recebidos compostos - 2026-10-22
+
+Pacote DEV sobre28670b81, com publicacao em refactor/frontend autorizada;
+sem deploy, migration aplicada ou dados reais alterados pelo agente.
+Na baixa composta de RECEBIMENTO, selecionar um ou varios cheques da mesma
+baixa, informar data/motivo bancario/justificativa, conferir os saldos por
+titulo e aceitar explicitamente antes de confirmar. Carteira oferece link
+para o grupo. Cheque rateado reverte todas as suas alocacoes; mesmo valor nao
+confunde documentos. Demais recebimentos e as origens dos titulos permanecem.
+
+Exige permissoes de visualizar/estornar baixa composta e devolver cheques,
+Financeiro e escopo de todos os titulos. Somente cheques EM_CARTEIRA sem
+processamento bancario/uso posterior; depositados/compensados devem seguir
+o fluxo bancario, sem contrapartida automatica aqui. Um bloqueado desfaz toda
+a selecao. Snapshot, transacao/locks, recibo idempotente, auditoria/historico
+e sincronizacao de contrato/solicitacoes protegem a confirmacao. Resposta
+perdida exige GET, nunca reenvio automatico do POST. Rascunhos preservados.
+
+Grupo PARCIAL_ESTORNADO preserva valores originais e recibos; estorno integral
+posterior trata so o restante ativo, sem reabrir valores devolvidos duas vezes.
+Nao cria receita ou recebimento substituto; este deve ser conferido e registrado
+separadamente pelo usuario para evitar duplicidade. Estorno generico de uma
+baixa composta continua bloqueado. Operacao limitada a100cheques/200titulos/
+1000alocacoes. Casos fora dessas protecoes exigem analise propria.
+
+Migration202610220002 adiciona JSON nullable estornos_cheques no grupo;
+NAO aplicada, sem backfill e down destrutivo bloqueado. Testes dedicados:
+backend/scripts/validarDevolucaoChequesComposta.js e
+frontend/scripts/validarDevolucaoChequesComposta.mjs.
+Deploy DEV dedicado: ops/deploy/atualizar-dev-devolucao-cheques-20261022.sh,
+com SHA publicado e backup DEV confirmado. Aplicador
+backend/scripts/aplicarMigrationDevolucaoChequesDev.js aceita somente002 no
+UUID DEV; interrompe se001 ou outra migration estiver pendente. Preserva
+flags/.env/dependencias e reinicia somente backend-dev apos schema/testes.
+Guarda em memoria: backend/scripts/validarDeployDevolucaoChequesDev.js.
+[Handoff, arquivos, limites e gates DEV](../../handoffs/2026-10-22-devolucao-cheques-compostos.md).
+
+## Negociacao: forma e instrucao de pagamento - 2026-10-22
+
+Implementacao sobre refactor/frontend41219c3a; publicacao DEV dos dois ajustes
+(Compra Direta e pagamento negociado) autorizada pelo usuario em22/10/2026.
+A negociacao exige forma ativa e permite indicar favorecido e instrucao
+(PIX/chave ou copia e cola, boleto, dados bancarios/outras instrucoes). Os
+mesmos dados previstos sao aplicados a todas as novas parcelas; cada parcela
+pode ser corrigida individualmente depois. Nao altera Pessoas/beneficiarios
+globais, valores, vencimentos, rateios ou calculos e nao cria baixa/fatura.
+
+O bloco `Pagamento do titulo negociado` no detalhe permite a quem possui
+`financeiro.titulos.editar` consultar e editar somente esses dados. Serve
+tambem para parcelas legadas sem instrucao, como TIT-011543. O registro real
+nao foi alterado pelo agente. A edicao generica do acordo continua bloqueada.
+
+GET/PATCH `/financeiro/titulos/:id/negociacao/pagamento` conservam a barreira
+Financeiro; o servico revalida permissao, escopo da parcela e de todas as
+origens. Exige parcela vigente ABERTO/sem baixa, sem movimentos vigentes,
+fila, autorizacao pendente/autorizada/enfileirada, pagamento bancario,
+boleto emitido/dados de cobranca ou cartao/fatura. Retorno a Obra e rejeicao
+do proprietario nas origens tambem bloqueiam. Nunca regulariza esses fluxos
+automaticamente. Para editar, regularizar primeiro no fluxo que bloqueou.
+
+PATCH estrito apenas pagamento/revisao, transacao/locks da parcela e origens,
+revisao otimista e no-op idempotente. Grava antes/depois na auditoria e nos
+historicos das solicitacoes de origem, na mesma transacao. Previa/hash da
+negociacao consideram a instrucao, mas snapshots/resultados originais do
+acordo nao sao reescritos pela edicao. Campos de valor e origem nao entram
+no payload da correcao. Falha na auditoria reverte toda a alteracao.
+
+A instrucao aparece na fila pelo projetor autorizado existente; hash do
+dossie considera o campo novo apenas quando presente, preservando hashes
+legados. A instrucao nao configura automaticamente pagamento bancario.
+
+Migration aditiva `202610220001_titulo_negociacao_pagamento.js`: JSON nullable
+`pagamento_negociacao` em titulos_financeiros, sem atualizar registros.
+Criada/testada somente em memoria, NAO aplicada. Exige implantacao coordenada
+backend/schema/frontend DEV em etapa autorizada. Rollback de dados automatico
+bloqueado para preservar as instrucoes. Nenhuma migration executada neste trabalho.
+
+QA: `node backend/scripts/validarTituloNegociacaoPagamento.js` e, em frontend,
+`node scripts/validarTituloNegociacaoPagamento.mjs`; mantidos os testes de
+negociacao/parcelas/ACL/rollback/workspace, fila, autorizacao unica e Compra Direta.
+[Handoff e limites](../../handoffs/2026-10-22-negociacao-pagamento.md).
+Atualizacao exclusiva DEV, migration unica e roteiro de homologacao:
+[publicacao DEV](../../handoffs/2026-10-22-publicacao-compra-negociacao-dev.md).
 
 ## OFX: candidatos exclusivos e codigo do titulo - 2026-10-22
 
@@ -859,7 +1028,7 @@ migration aditiva DEV em [Contratos](../contratos/README.md#valor-medido-e-valor
 
 - Saldo calculado por cartao = baixas efetivas nao estornadas + ajustes auditados
   - despesas declaradas. Previsoes/pedidos ainda nao pagos nao creditam saldo.
-- A interface distingue saldo apos gastos validados, gastos enviados/rejeitados
+- A interface distingue saldo antes dos gastos pendentes, gastos enviados/rejeitados
   ainda a conferir e saldo disponivel estimado. Nao consulta a operadora.
 - Prestacao aceita gasto inferior a recarga e uso de sobra anterior. Rateios
   somam os gastos reais, nao o credito; motivo e documento obrigatorios para

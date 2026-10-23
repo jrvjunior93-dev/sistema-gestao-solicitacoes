@@ -27,6 +27,7 @@ for (const [name, as, key] of [['Parceiro', 'parceiro', 'parceiro_id'], ['Parcei
   ['PaymentBeneficiary', 'paymentBeneficiary', 'payment_beneficiary_id'], ['FormaPagamentoFinanceira', 'formaPagamento', 'forma_pagamento_id'],
   ['Obra', 'obra', 'obra_id'], ['EmpresaGrupo', 'empresa', 'empresa_id'], ['Solicitacao', 'solicitacao', 'solicitacao_id']]) titulo.belongsTo(models[name], { as, foreignKey: key });
 models.Solicitacao.belongsTo(models.Parceiro, { as: 'favorecido', foreignKey: 'favorecido_id' });
+models.Solicitacao.belongsTo(models.Parceiro, { as: 'parceiro', foreignKey: 'parceiro_id' });
 models.Solicitacao.belongsTo(models.FormaPagamentoFinanceira, { as: 'formaPagamento', foreignKey: 'forma_pagamento_id' });
 const autorizacoes = [];
 models.PagamentoAutorizacaoItem = { findAll: async o => { autorizacoes.push(['lista', o]); return []; }, count: async o => { autorizacoes.push(['contagem', o]); return 0; } };
@@ -46,6 +47,7 @@ vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/paga
     if (id === './pagamentoFilaFiltrosDomain') return filtros;
     if (id === './pagamentoFilaComprovanteDomain') return require('../src/services/pagamentoFilaComprovanteDomain');
     if (id === './instrucaoFinanceiraFavorecidoService') return { anexarInstrucoes: async () => {} };
+    if (id === './pagamentoFilaDestinatarioService') return { anexarDestinatarios: async () => {} };
     if (id === './recebimentoDpConsultaService') return { anexarRecebimentosDp: async () => {} };
     if (id === './authorizationService') return { getFinanceiroObraScopeIds: async () => null };
     if (id === './tituloCompartilhadoLeitura') return { anexarParticipacoes: async () => {} };

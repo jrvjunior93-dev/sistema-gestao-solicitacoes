@@ -1,5 +1,13 @@
 # Modulo COMPRAS
 
+## Promocao MAIN Compra Direta e pendencias financeiras - 2026-10-23
+
+Credor configurado como obrigatorio passa a ser exigido na nova tela e no
+backend, mantendo rascunhos/ACL/financeiro. Usuario autorizou todos os quatro
+commits pendentes com backup/timer confirmados. Runtime identico DEVd641,
+sem regravar solicitacoes existentes ou alterar dados de compras no deploy.
+[Pacotes, migrations e roteiro produtivo](../../handoffs/2026-10-23-promocao-pendencias-main.md).
+
 ## Promocao MAIN RH, centros e pedidos - 2026-10-21
 
 Usuario autorizou os tres commits pendentes2d161b85/ba4a41b2/a00a15f6 e confirmou
@@ -18,6 +26,36 @@ readonly e restart somente backend-solicitacoes, executado pelo operador.
   antes de restart exclusivo backend-solicitacoes; .env/schema/TLS/12h/PILOT
   preservados, sem migration/dependencia/backfill ou alteracao do DEV.
 - [Escopo, evidencias e recuperacao](../../handoffs/2026-10-20-promocao-main-motivo-encerramento.md).
+
+## Credor obrigatorio na nova Compra Direta - 2026-10-22
+
+Correcao local DEV sobre refactor/frontend41219c3a. A nova tela consulta
+`GET /compras/solicitacoes-diretas/regra-credor` no contexto da obra/tipo.
+Leitura protegida pelas mesmas permissoes e escopo de criacao, sem criar ou
+reativar tipos. Devolve somente a obrigatoriedade efetiva do credor.
+
+Backend e tela usam o mesmo resolver de Campos da Nova Solicitacao: regra
+por destino/area prevalece sobre global, no tipo efetivamente utilizado;
+aliases codigo/nome do GEO sao considerados. Campo opcional/oculto continua
+nao obrigatorio. Nao aceita obrigatoriedade ou area fornecida pelo cliente.
+
+Quando obrigatorio, apenas selecionar um cadastro preenche o credor; texto
+digitado nao basta. O POST reconsulta a regra e rejeita ausencia com400 e
+rollback antes de criar solicitacoes/itens/historico. Validacao atual de
+credor ativo/fornecedor permanece, inclusive se o campo for opcional.
+
+Rascunhos incompletos continuam no autosave. A tela nao avanca para revisao
+enquanto a regra estiver pendente/indisponivel; consulta tem timeout15s e
+tentativa explicita, cancelando leituras antigas ao trocar obra/tipo.
+Rascunhos antigos ja em revisao tambem passam pela verificacao do POST;
+uma negativa nao remove o rascunho. Sem alterar dados existentes, valores,
+desconto, favorecido, frete, permissoes, historico ou calculos financeiros.
+
+QA isolado: `node backend/scripts/validarCompraDiretaCredorObrigatorio.js`
+e, em frontend, `node scripts/validarCompraDiretaCredorObrigatorio.mjs`.
+Detalhes/limitacoes: [handoff](../../handoffs/2026-10-22-compra-direta-credor-obrigatorio.md).
+Publicacao conjunta autorizada com pagamento negociado, somente DEV:
+[roteiro de atualizacao e homologacao](../../handoffs/2026-10-22-publicacao-compra-negociacao-dev.md).
 
 ## Reabertura e novo fechamento do pedido - 2026-10-21
 

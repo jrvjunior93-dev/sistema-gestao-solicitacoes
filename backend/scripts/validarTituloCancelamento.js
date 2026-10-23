@@ -182,6 +182,7 @@ async function main() {
   const leitura = fixture(); await leitura.call();
   const controller = load('src/controllers/TituloFinanceiroController.js', {
     '../services/tituloFinanceiroService': { carregarTituloPorId: async () => leitura.state.titulo },
+    '../services/pagamentoFilaDestinatarioService': { anexarDetalheTitulo: async () => {} },
     '../services/tituloFinanceiroRelatorioPdfService': {}, '../validators/financialValidators': {},
     '../services/authorizationService': { userHasAreaPermission: async () => true }, '../utils/controllerError': {},
     '../services/tituloCancelamentoAuditoriaService': leitura.auditoria

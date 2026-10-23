@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
+import react from '@vitejs/plugin-react';
 import { chromium } from 'playwright';
 import tailwindcss from 'tailwindcss';
 import autoprefixer from 'autoprefixer';
@@ -15,6 +16,7 @@ import { validarPaginacaoFila } from './filaPaginacaoQA.mjs';
 import { validarRolagemFila } from './filaRolagemQA.mjs';
 import { validarDatasChequesFila } from './datasChequesFilaQA.mjs';
 import { validarImagensComprovantesFila } from './filaComprovantesImagensQA.mjs';
+import { validarDestinatariosFilaUI } from './filaDestinatariosQA.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const stub = '\0qa-fila-instrumentos-';
 const forms = [
@@ -51,6 +53,23 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
         if(window.__uploadedName)row.comprovante_nome=window.__uploadedName;
         row.titulo.descricao='SOL-QA - MEDIÇÃO';
         row.titulo.observacoes='Entrega conferida. Pagamento conforme combinado.';
+        if(new URLSearchParams(location.search).has('destinatarios')) {
+          const item=(id,extra={})=>({...structuredClone(row),id,status:'PENDENTE',movimento_financeiro_id:null,
+            titulo:{...structuredClone(row.titulo),id,codigo:'TIT-DEST-'+id,forma_pagamento_id:3,formaPagamento:{tipo:'PIX'},
+              parceiro:{id:1,nome:'Credor comercial QA',cpf_cnpj:'DOC-CREDOR-NAO-EXIBIR'},...extra}});
+          const data=[item(1,{codigo:'TIT-009886',status:'QUITADO',valor_saldo:0,
+              parceiro:{nome:'Favorecido medicao QA'},credor_fila:{nome:'Credor contrato QA'},
+              instrucao_medicao_fila:{nome_favorecido:'Favorecido medicao QA',favorecido_chave_pix:'15048245636',forma_pagamento_id:3}}),
+            item(2,{favorecido_pagamento_id:22,favorecidoPagamento:{id:22,nome:'Favorecido manual QA',cpf_cnpj:'DOC-FAV-NAO-EXIBIR'},observacoes:'PIX: chave-titulo@example.test'}),
+            item(3,{solicitacao:{favorecido_id:23,favorecido:{id:23,nome:'Favorecido solicitacao QA',cpf_cnpj:'DOC-FAV-NAO-EXIBIR'},favorecido_chave_pix:'chave-solicitacao@example.test'}}),
+            item(4,{instrucao_favorecido:{nome_favorecido:'Favorecido parte QA',favorecido_chave_pix:'chave-parte@example.test',forma_pagamento_tipo:'PIX'},
+              paymentBeneficiary:{nome:'Cadastro errado QA',pix_chave:'chave-errada@example.test'}}),
+            item(5,{pagamento_negociacao:{nome_favorecido:'Favorecido negociacao QA',favorecido_chave_pix:'chave-negociacao@example.test',forma_pagamento_tipo:'PIX'}}),
+            item(6,{origem_titulo:'RH_DP',recebimento_dp:'DINHEIRO',parceiro:{nome:'Colaborador dinheiro QA'}}),
+            item(7),item(8,{paymentBeneficiary:{nome:'Favorecido bancario QA',pix_chave:'chave-bancaria@example.test',pix_tipo_chave:'EMAIL'}})];
+          data[0].status='BAIXADO';data[0].movimento_financeiro_id=801;
+          return {data,resumo:{PENDENTE:7,BAIXADO:1}};
+        }
         if(new URLSearchParams(location.search).has('arquivos'))row.titulo.solicitacao.boletos=[{id:1,nome:'boleto.PDF',tipo:'BOLETO_COMPRA'},{id:2,nome:'foto.jpeg',tipo:'BOLETO_FRETE'}];
         if(volumeScenario) {
           if(window.__volumeDelay && params.pagina>1) await new Promise(resolve=>setTimeout(resolve,window.__volumeDelay));
@@ -119,7 +138,7 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
     res.end(await server.transformIndexHtml('/qa-fila', `<html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root" style="padding:12px;min-width:0"></div><script type="module">import React from 'react';import{createRoot}from'react-dom/client';import{BrowserRouter}from'react-router-dom';import{PreferenciasProvider}from'/src/contexts/PreferenciasContext.jsx';import Page from '/src/pages/FinanceiroFilaPagamentos.jsx';import '/src/index.css';import '/src/styles/design-tokens.css';import '/src/styles/escala.css';import '/src/styles/componentes-padrao.css';import '/src/styles/responsive-system.css';window.__settles=[];window.__alerts=[];window.__uploads=0;window.__receiptScenario=new URLSearchParams(location.search).has('receipt');window.__readOnly=new URLSearchParams(location.search).has('readonly');window.__paid=window.__readOnly;const tela=React.createElement(BrowserRouter,null,React.createElement(Page));createRoot(document.getElementById('root')).render(new URLSearchParams(location.search).has('preferencias')?React.createElement(PreferenciasProvider,null,tela):tela);</script></body></html>`));
   }); }
 };
-const server = await createServer({ root, cacheDir: path.join(root,'../outputs/fila-qa-cache'), plugins: [plugin],
+const server = await createServer({ root, configFile: false, cacheDir: path.join(root,'../outputs/fila-qa-cache'), plugins: [react(), plugin],
   css:{postcss:{plugins:[tailwindcss({...tailwindConfig,content:[path.join(root,'src/**/*.{js,jsx,ts,tsx}')]}),autoprefixer()]}},
   server: { host: '127.0.0.1', port: 5308, strictPort: true, proxy: {} } });
 await server.listen(); let browser;
@@ -129,13 +148,17 @@ try {
   page.on('pageerror', e => { errors.push(e.message); console.error('Erro da tela QA:', e.message); });
   page.on('console', message => { if (message.type() === 'error') console.error(message.text()); });
   await page.route('**/*', route => {
-    if (new URL(route.request().url()).pathname.endsWith('/listas/financeiro-fila-pagamentos/preferencias/visual')) {
+    if (new URL(route.request().url()).pathname.includes('/listas/financeiro-fila-pagamentos/preferencias/')) {
       return route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
     }
     if (new URL(route.request().url()).origin === 'http://127.0.0.1:5308') return route.continue();
     unexpected.push(route.request().url()); return route.abort();
   });
-  if (process.argv.includes('--comprovantes-imagens')) {
+  if (process.argv.includes('--destinatarios')) {
+    await validarDestinatariosFilaUI(page, root);
+    await validarColunasFila(browser);
+    assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
+  } else if (process.argv.includes('--comprovantes-imagens')) {
     await validarImagensComprovantesFila(page,root);
     assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
   } else if (process.argv.includes('--datas-cheques')) {

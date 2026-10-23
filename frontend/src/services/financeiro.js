@@ -73,6 +73,20 @@ export async function getNegociacaoTitulo(id) {
   return parseJson(response, 'Não foi possível consultar a negociação.');
 }
 
+export async function getPagamentoNegociacaoTitulo(id) {
+  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(`${API_URL}/financeiro/titulos/${id}/negociacao/pagamento`, { headers: authHeaders(), cache: 'no-store', signal: controller.signal });
+    return await parseJson(response, 'Nao foi possivel consultar os dados de pagamento.');
+  } finally { clearTimeout(timer); }
+}
+export async function atualizarPagamentoNegociacaoTitulo(id, payload) {
+  const response = await fetch(`${API_URL}/financeiro/titulos/${id}/negociacao/pagamento`, {
+    method: 'PATCH', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(payload)
+  });
+  return parseJson(response, 'Nao foi possivel corrigir os dados de pagamento. Confira o titulo antes de tentar novamente.');
+}
+
 function buildFilaPagamentosQuery(params = {}) {
   return new URLSearchParams(
     Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '')
@@ -1417,6 +1431,25 @@ export async function estornarBaixaFinanceiraComposta(id, motivo) {
   return parseJson(response, 'Erro ao estornar baixa composta');
 }
 
+export async function getChequesDevolucaoComposta(id) {
+  const response = await fetch(`${API_URL}/financeiro/baixas-compostas/${id}/cheques-devolucao`, {
+    headers: authHeaders(), signal: AbortSignal.timeout(15000)
+  });
+  return parseJson(response, 'Erro ao conferir cheques; tente consultar novamente');
+}
+export async function previewDevolucaoChequesComposta(id, data) {
+  const response = await fetch(`${API_URL}/financeiro/baixas-compostas/${id}/cheques-devolucao/preview`, {
+    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(data), signal: AbortSignal.timeout(15000)
+  });
+  return parseJson(response, 'Erro ao conferir devolucao dos cheques');
+}
+export async function confirmarDevolucaoChequesComposta(id, data, chave) {
+  const response = await fetch(`${API_URL}/financeiro/baixas-compostas/${id}/cheques-devolucao/confirmar`, {
+    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json', 'Idempotency-Key': chave }), body: JSON.stringify(data), signal: AbortSignal.timeout(30000)
+  });
+  return parseJson(response, 'Nao foi possivel confirmar; consulte os dados atuais antes de tentar novamente');
+}
+
 export async function baixarTituloPorConciliacoes(id, data) {
   const response = await fetch(`${API_URL}/financeiro/titulos/${id}/baixas/conciliacoes`, {
     method: 'POST',
@@ -1445,9 +1478,9 @@ export async function getContasBancarias() {
   return parseJson(response, 'Erro ao buscar contas bancarias');
 }
 
-export async function getFormasPagamentoFinanceiras() {
+export async function getFormasPagamentoFinanceiras({ signal } = {}) {
   const response = await fetch(`${API_URL}/financeiro/formas-pagamento`, {
-    headers: authHeaders()
+    headers: authHeaders(), signal
   });
 
   return parseJson(response, 'Erro ao buscar formas de pagamento');

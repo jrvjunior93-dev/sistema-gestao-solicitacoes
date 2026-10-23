@@ -7,6 +7,7 @@ import {createServer,transformWithEsbuild} from 'vite';
 import react from '@vitejs/plugin-react';
 import {chromium} from 'playwright';
 import { validarTituloDesvincularFatura } from './tituloDesvincularFaturaQA.mjs';
+import { validarTituloDadosPagamentoUI } from './tituloDadosPagamentoQA.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const output=path.join(root,'../outputs/titulo-detalhe-workspace');mkdirSync(output,{recursive:true});
 const names=[...readFileSync(path.join(root,'src/services/financeiro.js'),'utf8').matchAll(/export (?:async )?function (\w+)/g)].map(m=>m[1]);
@@ -27,6 +28,20 @@ const query=new URLSearchParams(location.search);const correction=query.has('cor
 window.titulo={id:1,codigo:'TIT-QA',tipo:query.has('receber')?'RECEBER':'PAGAR',status:correction?'PARCIAL':'ABERTO',valor_original:100,
 valor_saldo:correction?60:100,valor_baixado:correction?40:0,empresa_id:1,parceiro:{nome:'Credor QA'},movimentos:correction?[{id:5,status:'ATIVO',valor:40,forma_recebimento:'PIX',data_movimento:'2026-10-12',conta_bancaria_id:1,empresa_id:1}]:[],paymentIntents:[]};
 if(query.has('desvincular')){window.titulo.fatura_cartao_id=79;window.titulo.cartao_id=40;window.titulo.forma_pagamento_id=1;window.titulo.total_parcelas=2;}
+if(query.has('dados-pagamento')){
+  const modo=query.get('dados-pagamento');
+  Object.assign(window.titulo,{id:11053,codigo:'TIT-009886',tipo:'PAGAR',status:'QUITADO',valor_saldo:0,valor_baixado:100,
+    forma_pagamento_id:3,formaPagamento:{id:3,nome:'Pix',tipo:'PIX'},parceiro:{id:1,nome:'Credor QA'}});
+  if(modo==='medicao')Object.assign(window.titulo,{credor_fila:{nome:'Credor contrato QA'},
+    instrucao_medicao_fila:{nome_favorecido:'Favorecido medicao QA',forma_pagamento_id:3,favorecido_chave_pix:'15048245636'}});
+  if(modo==='solicitacao')window.titulo.solicitacao={favorecido_id:2,favorecido:{id:2,nome:'Favorecido solicitacao QA'},favorecido_chave_pix:'chave-solicitacao@example.test',dados_pagamento:'Contato para confirmar: QA'};
+  if(modo==='manual')Object.assign(window.titulo,{favorecido_pagamento_id:3,favorecidoPagamento:{id:3,nome:'Favorecido titulo QA'},observacoes:'Banco 104; Agencia 123; Conta 456-7'});
+  if(modo==='dados')Object.assign(window.titulo,{forma_pagamento_id:4,formaPagamento:{id:4,nome:'Transferencia',tipo:'TRANSFERENCIA'},
+    instrucao_favorecido:{nome_favorecido:'Favorecido parte QA',forma_pagamento_id:4,forma_pagamento_nome:'Transferencia',forma_pagamento_tipo:'TRANSFERENCIA',
+      dados_pagamento:'Banco 104; Agencia 123; Conta 456-7; '+('Instrucao integral sem truncamento. '.repeat(100))}});
+  if(modo==='pix-longo')Object.assign(window.titulo,{pagamento_negociacao:{nome_favorecido:'Favorecido negociacao QA',forma_pagamento_id:3,forma_pagamento_tipo:'PIX',
+    favorecido_chave_pix:'000201'+('aB0123456789/'.repeat(300))}});
+}
 window.readonly=query.has('readonly');window.forceUnlinkError=query.has('recusa');
 function App(){const[active,A]=useState(true);const memory=useMemo(()=>createWorkspaceMemory(),[]);window.qaTab=A;window.qaMemory=memory;
 return <WorkspacePageContext.Provider value={{key:'titulo-qa',memory,snapshot:true,active:true}}>{active?<Page/>:<p>Consulta auxiliar</p>}</WorkspacePageContext.Provider>}
@@ -48,8 +63,9 @@ try{
   const css=readFileSync(path.join(root,'dist/index.html'),'utf8').match(/href="\/assets\/([^\"]+\.css)"/)[1];
   const goto=async(search='')=>{await page.goto(base+search);await page.addStyleTag({path:path.join(root,'dist/assets',css)})};
   const alternate=async()=>{await page.evaluate(()=>window.qaTab(false));await page.getByText('Consulta auxiliar',{exact:true}).waitFor();await page.evaluate(()=>window.qaTab(true))};
-  await validarTituloDesvincularFatura(page, goto, alternate, output);
-  if(!process.argv.includes('--desvincular-fatura')) for(const width of [1366,390]){
+  if(process.argv.includes('--dados-pagamento')) await validarTituloDadosPagamentoUI(page, goto, alternate, output);
+  else await validarTituloDesvincularFatura(page, goto, alternate, output);
+  if(!process.argv.includes('--desvincular-fatura')&&!process.argv.includes('--dados-pagamento')) for(const width of [1366,390]){
     await page.setViewportSize({width,height:900});await goto();
     await page.getByRole('button',{name:'Registrar baixa',exact:true}).click();
     const modal=page.getByRole('dialog',{name:'Registrar baixa',exact:true});

@@ -91,6 +91,7 @@ const deps = {
   './pagamentoFilaFiltrosDomain': require('../src/services/pagamentoFilaFiltrosDomain'),
   './pagamentoAutorizacaoEventosService': {},
   './instrucaoFinanceiraFavorecidoService': { anexarInstrucoes: async () => {} },
+  './pagamentoFilaDestinatarioService': { anexarDestinatarios: async () => {} },
   './recebimentoDpConsultaService': { anexarRecebimentosDp: async () => {} },
   './pagamentoFilaValoresDomain': require('../src/services/pagamentoFilaValoresDomain'),
   './tituloFinanceiroService': { baixarTitulo: async (_, id, payload, options) => {

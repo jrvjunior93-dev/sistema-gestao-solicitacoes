@@ -13,12 +13,13 @@ import{WorkspacePageContext,createWorkspaceMemory}from'/src/navigation/Workspace
 const titulos=[{id:1,codigo:'TIT-000101',parceiro_id:7,empresa_id:8,status:'PARCIAL',valor_original:150,valor_baixado:50,valor_saldo:100,parceiro:{nome:'Fornecedor de materiais'}},
 {id:2,codigo:'TIT-000102',parceiro_id:7,empresa_id:8,status:'ABERTO',valor_original:200,valor_baixado:0,valor_saldo:200,parceiro:{nome:'Fornecedor de materiais'}}];
 window.titulos=structuredClone(titulos);window.reads=0;window.denied=false;window.readonly=false;
-function Page(){const[rows,R]=useState(null);useEffect(()=>{let live=true;setTimeout(()=>{window.reads++;if(live)R(window.denied?[]:structuredClone(window.titulos))},100);return()=>{live=false}},[]);
+function Page(){const[rows,R]=useState(null);window.qaRows=R;useEffect(()=>{let live=true;setTimeout(()=>{window.reads++;if(live)R(window.denied?[]:structuredClone(window.titulos))},100);return()=>{live=false}},[]);
 return rows&&rows.length===2&&!window.readonly?<Modal titulos={rows} onClose={()=>window.qaTab(false)} onConfirmed={r=>window.resultado=r}/>:<p>{rows?'Negociação indisponível':'Consultando títulos'}</p>}
 function Host(){const[active,A]=useState(true);const memory=useMemo(()=>createWorkspaceMemory(),[]);window.qaTab=A;window.memory=memory;
 return <WorkspacePageContext.Provider value={{key:'negociacao-qa',memory,snapshot:true,active:true}}>{active?<Page/>:<p>Consulta auxiliar</p>}</WorkspacePageContext.Provider>}
 createRoot(document.getElementById('root')).render(<MemoryRouter>{location.search.includes('workspace')?<Host/>:<Modal titulos={titulos} onClose={()=>window.fechou=true} onConfirmed={r=>window.resultado=r}/>}</MemoryRouter>);`;
-const mockService = `export async function previewNegociacaoTitulos(body){
+const mockService = `export const getFormasPagamentoFinanceiras=async()=>[{id:1,nome:'PIX',codigo:'PIX',ativo:true}];
+export async function previewNegociacaoTitulos(body){
 window.previas=(window.previas||0)+1;window.payloadPreview=body;
 await new Promise(r=>setTimeout(r,120));
 return {principal:'300.00',juros:'7.50',multa:'10.00',total:'317.50',preview_hash:'a'.repeat(64),
@@ -52,6 +53,8 @@ try {
   await page.getByLabel('Motivo da negociação').fill('Negociação de saldos com fornecedor');
   await page.getByLabel('Quantidade de parcelas').fill('3');
   await page.getByLabel('Primeiro vencimento').fill('2090-01-31');
+  await page.getByLabel('Forma de pagamento', { exact: true }).selectOption('1');
+  await page.getByLabel('Chave PIX ou copia e cola', { exact: true }).fill('pix-qa');
   await page.getByRole('button', { name: 'Validar prévia' }).click();
   await page.getByRole('checkbox').waitFor(); assert.equal(await confirmar.isDisabled(), true);
   await page.getByRole('checkbox').check(); assert.equal(await confirmar.isDisabled(), false);
@@ -85,7 +88,8 @@ try {
   for(const width of [1366,390]){
     await page.setViewportSize({width,height:900});await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/fixture?workspace`);await page.addStyleTag({path:path.join(root,'dist/assets',css)});
     const motivo=page.getByLabel('Motivo da negociação',{exact:true}), confirmar=page.getByRole('button',{name:'Confirmar negociação',exact:true});
-    await motivo.fill('Motivo com última tecla Z');await page.getByLabel('Quantidade de parcelas',{exact:true}).fill('3');await alternate();
+    await motivo.fill('Motivo com última tecla Z');await page.getByLabel('Quantidade de parcelas',{exact:true}).fill('3');
+    await page.getByLabel('Forma de pagamento',{exact:true}).selectOption('1');await page.getByLabel('Chave PIX ou copia e cola',{exact:true}).fill('pix-qa');await alternate();
     assert.equal(await motivo.inputValue(),'Motivo com última tecla Z');assert.equal(await page.evaluate(()=>window.previas||0),0);assert.equal(await page.evaluate(()=>window.envios?.length||0),0);
     await page.getByRole('button',{name:'Validar prévia',exact:true}).evaluate(el=>{el.click();el.click()});await page.getByRole('checkbox').waitFor();assert.equal(await page.evaluate(()=>window.previas),1);
     await page.getByLabel('Valor da parcela 1',{exact:true}).fill('106.84');await page.getByLabel('Valor da parcela 2',{exact:true}).fill('104.83');
@@ -98,11 +102,13 @@ try {
     await page.evaluate(()=>window.titulos[0].valor_saldo=95);await alternate();await page.getByRole('alert').filter({hasText:'Os saldos ou dados'}).waitFor();assert.ok(await motivo.isDisabled());
     await page.getByRole('button',{name:'Validar prévia',exact:true}).evaluate(el=>el.click());assert.equal(await page.evaluate(()=>window.previas),2);
     await page.getByRole('button',{name:'Descartar negociação digitada',exact:true}).click();assert.equal(await motivo.inputValue(),'');assert.equal(await page.getByLabel('Valor da parcela 1',{exact:true}).count(),0);
-    await motivo.fill('Nova negociação');await page.getByRole('button',{name:'Validar prévia',exact:true}).click();await page.getByRole('checkbox').check();
+    await motivo.fill('Nova negociação');await page.getByLabel('Forma de pagamento',{exact:true}).selectOption('1');await page.getByLabel('Chave PIX ou copia e cola',{exact:true}).fill('pix-qa');await page.getByRole('button',{name:'Validar prévia',exact:true}).click();await page.getByRole('checkbox').check();
     await confirmar.evaluate(el=>{el.click();el.click()});await page.getByRole('alert').filter({hasText:'Falha simulada'}).waitFor();assert.equal(await page.evaluate(()=>window.envios.length),1);
     await confirmar.evaluate(el=>{el.click();el.click()});await page.getByRole('link',{name:'TIT-000031',exact:true}).waitFor();assert.equal(await page.evaluate(()=>window.envios.length),2);
     assert.equal(await page.evaluate(()=>window.envios[0].chave===window.envios[1].chave),true);
     await alternate();assert.equal(await motivo.inputValue(),'');assert.equal(await page.evaluate(()=>window.envios.length),2);assert.equal(await page.getByRole('checkbox').count(),0);
+    await page.evaluate(()=>{window.titulos.forEach(t=>{t.parceiro_id=77;t.parceiro={nome:'Novo credor QA'}});window.qaRows(structuredClone(window.titulos))});
+    await page.waitForFunction(()=>document.querySelector('input[role="combobox"]')?.value==='Novo credor QA');
     await motivo.fill('Não autorizar título baixado');await page.evaluate(()=>{window.titulos[0].status='QUITADO';window.titulos[0].valor_saldo=0});await alternate();
     await page.getByRole('alert').filter({hasText:'não estão disponíveis'}).waitFor();assert.ok(await confirmar.isDisabled());assert.ok(await motivo.isDisabled());
     await page.evaluate(()=>window.denied=true);await alternate();await page.getByText('Negociação indisponível',{exact:true}).waitFor();assert.equal(await page.getByRole('dialog').count(),0);assert.equal(await page.getByText('TIT-000101',{exact:true}).count(),0);

@@ -8,6 +8,7 @@ import titulosWorkspaceRevision from '../../navigation/titulosWorkspaceRevision'
 import OverlayModal from '../ui/OverlayModal';
 import DateInputBR from '../DateInputBR';
 import { confirmarNegociacaoTitulos, previewNegociacaoTitulos } from '../../services/financeiro';
+import NegociacaoPagamentoFields, { pagamentoNegociacaoForm, pagamentoNegociacaoPayload } from './NegociacaoPagamentoFields';
 
 const moeda = value => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const decimal = value => String(value || '0').trim().replace(',', '.');
@@ -24,7 +25,8 @@ export function podeNegociarTitulos(titulos, minimo = 1) {
 
 export default function TituloNegociacaoModal({ titulos, ready = true, onClose, onConfirmed }) {
   const [initial] = useState(() => ({ motivo: '', quantidade: 2, primeiro: hoje(),
-    jurosTipo: 'VALOR', juros: '0.00', multaTipo: 'VALOR', multa: '0.00', parcelas: null }));
+    jurosTipo: 'VALOR', juros: '0.00', multaTipo: 'VALOR', multa: '0.00', parcelas: null,
+    pagamento: pagamentoNegociacaoForm(null, titulos[0]) }));
   const slot = 'negociacao:' + titulos.map(t => t.id).sort((a,b) => Number(a)-Number(b)).join(':');
   const draft = useWorkspaceRecordDraft(slot, initial);
   const form = draft.value || initial;
@@ -46,7 +48,7 @@ export default function TituloNegociacaoModal({ titulos, ready = true, onClose, 
   useEffect(() => {
     setPrevia(null); setUltimaPrevia(null); setAceite(false); envio.current = null;
     setAvailable(ready);
-    if (ready) draft.hydrate(initial, revision);
+    if (ready) draft.hydrate({ ...initial, pagamento: pagamentoNegociacaoForm(null, titulos[0]) }, revision);
     else draft.conceal(initial);
   }, [ready, revision, draft.hydrate, draft.conceal, initial]);
   const eligible = podeNegociarTitulos(titulos);
@@ -69,8 +71,16 @@ export default function TituloNegociacaoModal({ titulos, ready = true, onClose, 
     parcelas[index][campo] = valor;
     setForm(atual => ({ ...atual, parcelas })); invalidar(); envio.current = null;
   }
+  function alterarPagamento(patch) {
+    if (travado.current || blocked) return;
+    setForm(atual => ({ ...atual, pagamento: { ...(atual.pagamento || initial.pagamento), ...patch } }));
+    invalidar(); envio.current = null;
+  }
   async function preparar() {
     if (travado.current || blocked || resultado) return;
+    if (!Number((form.pagamento || initial.pagamento).forma_pagamento_id)) {
+      setErro('Selecione a forma de pagamento da negociação.'); return;
+    }
     const token = query.begin();
     travado.current = true; setBusy(true); setErro('');
     try {
@@ -78,6 +88,7 @@ export default function TituloNegociacaoModal({ titulos, ready = true, onClose, 
         quantidade_parcelas: Number(form.quantidade), primeiro_vencimento: form.primeiro,
         juros: { tipo: form.jurosTipo, valor: decimal(form.juros) },
         multa: { tipo: form.multaTipo, valor: decimal(form.multa) },
+        pagamento: pagamentoNegociacaoPayload(form.pagamento || initial.pagamento),
         ...(parcelasEditadas ? { parcelas: parcelasEditadas.map(p => ({ vencimento: p.vencimento, valor: decimal(p.valor) })) } : {}) };
       const res = await previewNegociacaoTitulos(payload);
       if (!query.isCurrent(token)) return;
@@ -140,10 +151,11 @@ export default function TituloNegociacaoModal({ titulos, ready = true, onClose, 
             <label>Valor {form[`${campo}Tipo`] === 'PERCENTUAL' ? '(%)' : '(R$)'}<input className="input mt-1 w-full" inputMode="decimal" value={form[campo]} onChange={e => alterar(campo, e.target.value)} /></label>
           </div>)}
         </fieldset>
+        <NegociacaoPagamentoFields value={form.pagamento || initial.pagamento} onChange={alterarPagamento} tipo={titulos[0]?.tipo} disabled={busy || blocked} />
         <p className="text-xs text-[var(--c-muted)]">Juros e multa são aplicados uma única vez sobre o saldo selecionado, não por mês. O calendário sugerido é mensal; você pode ajustar cada parcela na prévia.</p>
         {(ultimaPrevia || parcelasEditadas) && <>
           {ultimaPrevia && <p className="border-y border-[var(--c-border)] py-3">Saldo: <strong>{moeda(ultimaPrevia.principal)}</strong> + juros: {moeda(ultimaPrevia.juros)} + multa: {moeda(ultimaPrevia.multa)} = <strong>{moeda(ultimaPrevia.total)}</strong></p>}
-          {!previa && <p role="status" className="text-[var(--sem-warning)]">Parcelas alteradas. Valide novamente a prévia antes de confirmar.</p>}
+          {!previa && <p role="status" className="text-[var(--sem-warning)]">Dados alterados. Valide novamente a prévia antes de confirmar.</p>}
           <div className="overflow-x-auto"><table className="w-full text-left"><thead><tr><th className="p-2">Parcela</th><th className="p-2">Vencimento</th><th className="p-2">Valor (R$)</th><th className="p-2">Origem / rateio</th></tr></thead>
             <tbody>{parcelas.map((p, i) => <tr key={i} className="border-t border-[var(--c-border)]">
               <td className="p-2">{i + 1}/{parcelas.length}</td>
@@ -155,7 +167,7 @@ export default function TituloNegociacaoModal({ titulos, ready = true, onClose, 
             </tr>)}</tbody></table></div>
         </>}
         {previa && <label className="flex items-start gap-2"><input type="checkbox" className="mt-1" checked={aceite} disabled={busy || blocked} onChange={e => setAceite(e.target.checked)} />
-          Conferi os valores e vencimentos. Confirmo a substituição dos saldos originais pelas novas parcelas.</label>}
+          Conferi os valores, vencimentos e dados de pagamento. Confirmo a substituição dos saldos originais pelas novas parcelas.</label>}
       </>}
     </div>
     <footer data-modal="rodape" className="flex flex-wrap justify-end gap-2 border-t border-[var(--c-border)] p-4">

@@ -7,6 +7,7 @@ module.exports = (sequelize, DataTypes) => sequelize.define('BaixaFinanceiraGrup
   parceiro_id: { type: DataTypes.INTEGER, allowNull: false },
   data_movimento: { type: DataTypes.DATEONLY, allowNull: false },
   status: { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'CONFIRMADO' },
+  estornos_cheques: { type: DataTypes.JSON, allowNull: true },
   valor_principal: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
   valor_quitacao: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
   observacoes: { type: DataTypes.TEXT, allowNull: true },

@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import DevolucaoChequesComposta from '../components/financeiro/DevolucaoChequesComposta';
 import { HiOutlineArrowPath, HiOutlineEye, HiOutlineXMark } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -26,10 +28,11 @@ const dateBr = (value) => value ? String(value).slice(0, 10).split('-').reverse(
 
 const STATUS_OPCOES = [
   { valor: 'CONFIRMADO', rotulo: 'Confirmados' },
+  { valor: 'PARCIAL_ESTORNADO', rotulo: 'Parcialmente estornados' },
   { valor: 'ESTORNADO', rotulo: 'Estornados' }
 ];
 
-function Modal({ item, onClose, onReverse, canReverse, saving }) {
+function Modal({ item, onClose, onReverse, canReverse, canReturn, saving, onChanged, onBusyChange }) {
   return (
     <div className="modal-overlay finance-operation-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="baixa-composta-detalhe-titulo">
       <section className="modal-dialog finance-operation-modal finance-operation-modal--detail">
@@ -40,7 +43,7 @@ function Modal({ item, onClose, onReverse, canReverse, saving }) {
               {item.tipo === 'RECEBIMENTO' ? 'Recebimento' : 'Pagamento'} · {item.parceiro?.nome} · {item.empresa?.nome} · {dateBr(item.data_movimento)}
             </p>
           </div>
-          <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Fechar detalhes da baixa">
+          <button type="button" className="modal-close-btn" disabled={saving} onClick={onClose} aria-label="Fechar detalhes da baixa">
             <HiOutlineXMark className="h-4 w-4" />
           </button>
         </header>
@@ -61,6 +64,12 @@ function Modal({ item, onClose, onReverse, canReverse, saving }) {
             </div>
           </div>
 
+          {item.tipo === 'RECEBIMENTO' && <DevolucaoChequesComposta key={item.id} grupoId={item.id} permitido={canReturn} onChanged={onChanged} onBusyChange={onBusyChange} externoOcupado={saving} />}
+          {!!item.estornos_cheques?.length && <p className="mb-3 text-sm text-[var(--c-muted)]">Os valores acima são os originais da operação. As devoluções abaixo reabrem somente os saldos dos cheques selecionados.</p>}
+          {!!item.estornos_cheques?.length && <div className="mt-3 border-t border-[var(--c-border)] pt-3 text-sm">
+            <h3 className="font-semibold">Devoluções registradas</h3>
+            {item.estornos_cheques.map(r => <p key={r.chave}>{dateBr(r.data_devolucao)} · motivo {r.motivo_bancario} · {r.resultado.cheque_ids.length} cheque(s) · {money(r.resultado.valor_total)} · {r.motivo}</p>)}
+          </div>}
           <div className="space-y-3">
             {(item.componentes || []).map((component) => (
               <section key={component.id} className="finance-operation-panel p-4">
@@ -71,6 +80,7 @@ function Modal({ item, onClose, onReverse, canReverse, saving }) {
                 <p className="mt-1 text-sm text-[var(--c-muted)]">
                   {component.contaBancaria?.nome || component.cartao?.nome || component.chequeTerceiro?.codigo || 'Sem instrumento financeiro'}
                 </p>
+                {item.estornos_cheques?.some(r => r.resultado.componente_ids.includes(component.id)) && <p className="mt-1 text-sm font-semibold">Cheque devolvido · baixa desta fonte estornada</p>}
                 <div className="mt-3">
                   <TabelaPadrao
                     colunas={[
@@ -113,14 +123,13 @@ function Modal({ item, onClose, onReverse, canReverse, saving }) {
             a justificativa é pedida e onde a irreversibilidade é declarada.
             A ação destrutiva fica APARTADA e em vermelho suave (D3/C5).
           */}
-          {canReverse && item.status === 'CONFIRMADO' ? (
+          {canReverse && ['CONFIRMADO', 'PARCIAL_ESTORNADO'].includes(item.status) ? (
             <div className="finance-operation-notice finance-operation-notice--danger mt-4 p-4">
               <p className="text-sm">
-                O estorno desfaz o grupo inteiro: todas as fontes e todas as alocações
-                desta operação voltam atrás de uma vez. Esta ação não pode ser desfeita.
+                O estorno desfaz todas as fontes e alocações ainda ativas. Devoluções já registradas não serão contadas novamente. Esta ação não pode ser desfeita.
               </p>
               <button type="button" className="btn btn-outline btn-perigo-suave mt-3" disabled={saving} onClick={onReverse}>
-                {saving ? 'Estornando...' : 'Estornar grupo completo'}
+                {saving ? 'Processando...' : item.status === 'PARCIAL_ESTORNADO' ? 'Estornar restante do grupo' : 'Estornar grupo completo'}
               </button>
             </div>
           ) : null}
@@ -132,6 +141,8 @@ function Modal({ item, onClose, onReverse, canReverse, saving }) {
 
 export default function FinanceiroBaixasCompostas() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const fullReverseLock = useRef(false);
   const [items, setItems] = useState([]);
   const [companies, setCompanies] = useState([]);
   /*
@@ -152,6 +163,7 @@ export default function FinanceiroBaixasCompostas() {
   const { avisos, avisar, fechar: fecharAviso } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const canReverse = hasPermissao(user, 'financeiro.baixas_compostas.estornar');
+  const canReturn = canReverse && hasPermissao(user, 'financeiro.baixas_compostas.visualizar') && hasPermissao(user, 'financeiro.cheques.devolver');
 
   const empresaId = useMemo(() => Array.from(filtrosAtivos.empresa || [])[0] || '', [filtrosAtivos.empresa]);
   const statusFiltro = useMemo(() => Array.from(filtrosAtivos.status || [])[0] || '', [filtrosAtivos.status]);
@@ -170,6 +182,10 @@ export default function FinanceiroBaixasCompostas() {
     try { setSelected(await getBaixaFinanceiraComposta(id)); }
     catch (err) { avisar.erro(err.message || 'Erro ao abrir a baixa composta.'); }
   }
+  useEffect(() => {
+    const id = searchParams.get('grupo');
+    if (/^[1-9]\d*$/.test(id || '')) open(Number(id));
+  }, [searchParams]);
 
   async function reverse() {
     /*
@@ -184,16 +200,18 @@ export default function FinanceiroBaixasCompostas() {
       objeto é sempre truthy; ler como booleano faria "Cancelar" estornar.
     */
     const alvo = selected;
-    if (!alvo?.id) return;
+    if (!alvo?.id || saving || fullReverseLock.current) return;
+    fullReverseLock.current = true;
 
+    setSaving(true);
     const { ok, texto } = await confirmar({
       titulo: 'Estornar grupo completo?',
-      mensagem: `O grupo ${alvo.codigo} (${money(alvo.valor_quitacao)}) será estornado por inteiro: todas as fontes e alocações voltam atrás. Esta ação não pode ser desfeita.`,
+      mensagem: `O grupo ${alvo.codigo} terá todas as fontes e alocações ainda ativas estornadas. Devoluções anteriores serão preservadas, sem reabrir o saldo duas vezes. Esta ação não pode ser desfeita.`,
       rotuloConfirmar: 'Estornar grupo',
       destrutiva: true,
       campo: { rotulo: 'Justificativa do estorno', obrigatorio: true, multilinha: true }
     });
-    if (!ok) return;
+    if (!ok) { fullReverseLock.current = false; setSaving(false); return; }
 
     setSaving(true);
     try {
@@ -203,7 +221,7 @@ export default function FinanceiroBaixasCompostas() {
       await load();
     }
     catch (err) { avisar.erro(err.message || 'Erro ao estornar grupo.'); }
-    finally { setSaving(false); }
+    finally { setSaving(false); fullReverseLock.current = false; }
   }
 
   return (
@@ -280,7 +298,8 @@ export default function FinanceiroBaixasCompostas() {
         />
       </BlocoConteudo>
 
-      {selected ? <Modal item={selected} onClose={() => setSelected(null)} onReverse={reverse} canReverse={canReverse} saving={saving} /> : null}
+      {selected ? <Modal item={selected} onClose={() => setSelected(null)} onReverse={reverse} canReverse={canReverse} canReturn={canReturn} saving={saving}
+        onBusyChange={setSaving} onChanged={async () => { const atual = await getBaixaFinanceiraComposta(selected.id); setSelected(atual); await load(); }} /> : null}
       {elementoConfirmacao}
     </Pagina>
   );
