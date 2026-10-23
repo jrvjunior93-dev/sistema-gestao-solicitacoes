@@ -3735,7 +3735,8 @@ module.exports = {
               : {})
           });
         } catch (erroMedicao) {
-          return res.status(Number(erroMedicao.statusCode) || 400).json({ error: erroMedicao.message });
+          return require('../services/medicaoRegistroErroService').responderErroRegistroMedicao(res, erroMedicao,
+            { usuarioId: req.user.id, contratoId: contrato_id, solicitacaoId: contratoAlvo.solicitacao_id });
         }
       }
       if (campoObrigatorio('itens_apropriacao') && !itens_apropriacao && rateioApropriacoes.length === 0) {

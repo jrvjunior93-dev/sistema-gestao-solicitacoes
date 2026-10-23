@@ -1,5 +1,24 @@
 # Modulo CONTRATOS
 
+## Reenviar parcela de medicao rejeitada - 2026-10-23
+
+- Corrige o conflito do indice antigo `medicao_parcelas_unico`: a mesma
+  solicitacao/parcela agora pode ter varios eventos historicos devolvidos,
+  mas apenas um vinculo ativo global por parcela, inclusive entre solicitacoes.
+- Migration `202610230002_medicao_vinculos_ativos.js` troca o indice em um unico
+  ALTER por unicidade ativa e identidade do evento, preservando tambem a
+  identidade legada sem medicao_id e o suporte das FKs. Nao altera/apaga
+  linhas antigas, valores, pagamentos, anexos ou o recibo de rejeicao.
+- A guarda do servico, transacao/lock do contrato, ACL e sequencial da nova
+  medicao continuam intactos. Historico devolvido nao volta a comprometer saldo.
+- Preflight somente leitura recusa ativas/eventos duplicados, schema divergente
+  ou engine/versao nao suportados, sem corrigir dados automaticamente. ALTER
+  utiliza COPY; planejar janela de DEV, pois pode bloquear escritas na tabela.
+- Registro informa conflito409 em vez de apenas Validation error; log seguro
+  guarda operacao/IDs/indice conhecido, sem SQL, chave PIX ou valores de erro.
+- Testes, limite do ambiente local e homologacao no
+  [handoff](../../handoffs/2026-10-23-medicao-reenvio-vinculo-ativo.md).
+
 ## Medicao pendente: rejeicao e favorecido - 2026-10-23
 
 - No detalhe da solicitacao, Financeiro > Medicao N, GEO autorizado/SUPERADMIN

@@ -1,5 +1,36 @@
 # Ownership Ativo
 
+## Publicacao DEV: reenvio da medicao - 2026-10-23
+
+- Usuario autorizou commit/push da correcao para refactor/frontend e roteiro
+  de EC2 DEV/migration/teste. Reserva temporaria: runner/roteiro/QAs dedicados,
+  correcao ja implementada e docs/handoff. Nao incluir filtros locais.
+- Base be303667; migration allowlist apenas202610230002, UUID/host/banco/porta
+  DEV, backup confirmado e restart exclusivo backend-dev. Sem executar EC2,
+  banco real, migration ou main/producao nesta sessao.
+- Reserva encerrada e ownership liberado. Inventario real do index:12arquivos,
+  dois runtimes e migration002, filtros/frontend fora. Copia isolada aprovada
+  nos QAs de deploy/runner, SQL/migration/rejeicao e docs611/19; regressoes
+  financeiras13, auditoria399/80rotas, sintaxe Bash/Node e diffcheck aprovados.
+  Pronto para publicacao autorizada, mantendo homologacao MySQL DEV pendente.
+
+## Medicao: reenvio apos rejeicao e unicidade ativa - 2026-10-23
+
+- Agente unico; usuario confirmou erro na mesma parcela apos rejeicao e
+  autorizou corrigir/testar na base refactor/frontend, preservando historico,
+  permissoes/financeiro e impedindo duas medicoes ativas por parcela.
+- Reserva: nova migration estrutural/QA de vinculos e restricciones reais,
+  QA de rejeicao, tratamento seguro do erro de registro no controller,
+  package backend, README Contratos e handoff. Preservar filtros locais.
+- Sem aplicar migration, banco real, EC2, commit/push ou main/producao.
+- Implementacao/testes locais concluidos; reserva encerrada e ownership
+  liberado. SQL SQLite real com expressoes/chaves da migration, mock com
+  unicidade, concorrencia/rollback, runner schema-only e13regressoes backend,
+  UI real, auditoria399/80rotas, docs612/19 e diffcheck aprovados.
+- DDL MySQL nativo nao executado (Docker sem daemon); requer homologacao no
+  DEV apos publicacao/aplicacao autorizadas. Handoff de limites/proximo passo:
+  2026-10-23-medicao-reenvio-vinculo-ativo.md. Filtros locais preservados.
+
 ## Publicacao DEV: botoes da medicao - 2026-10-23
 
 - Usuario autorizou commit/push exclusivo dos botoes na refactor/frontend.

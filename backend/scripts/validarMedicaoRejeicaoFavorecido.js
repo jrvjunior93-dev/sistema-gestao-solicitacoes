@@ -4,7 +4,7 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const crypto = require('node:crypto'), { Op } = require('sequelize');
 const copy = x => JSON.parse(JSON.stringify(x));
-let state, falha = '', serial = 0, fila = Promise.resolve();
+let state, falha = '', serial = 0, fila = Promise.resolve(), indiceLegado = false;
 const nomes = ['Contrato', 'ContratoMedicao', 'ContratoParcela', 'MedicaoParcela', 'Solicitacao', 'SolicitacaoFavorecido',
   'TituloFinanceiro', 'TituloFinanceiroRateio', 'Parceiro', 'FormaPagamentoFinanceira', 'Historico', 'SecurityEventLog', 'LogExclusao', 'Anexo',
   'MovimentoFinanceiro', 'PaymentIntent', 'PagamentoManualFilaItem', 'PagamentoAutorizacaoItem', 'FaturaCartaoTitulo', 'BoletoCaixa',
@@ -59,6 +59,7 @@ function instance(row, model, options = {}) {
       assert(o?.transaction, 'Escrita fora de transacao');
       if (model === 'TituloFinanceiro' && !o.transaction.locks.has(row.id)) throw Error('Titulo sem lock');
       if (falha === model) throw Error('FALHA_' + model);
+      if (model === 'MedicaoParcela') conferirVinculo({ ...row, ...p }, row.id);
       Object.assign(row, copy(p), { updatedAt: new Date(1800000000000 + ++serial).toISOString() }); Object.assign(this, copy(row)); return this;
     } }
   });
@@ -68,6 +69,16 @@ function instance(row, model, options = {}) {
     if (inc.as === 'medicao') result.medicao = copy(state.ContratoMedicao.find(m => m.id === row.medicao_id));
   }
   return result;
+}
+// Mesmo contrato de unicidade do banco (SQL real em validarMedicaoVinculoSchema).
+// O teste anterior nao representava o indice legado e deixava esse bug passar.
+function conferirVinculo(data, ignorarId) {
+  const evento = r => r.medicao_id == null ? `S${r.solicitacao_id}` : `M${r.medicao_id}`;
+  const outros = state.MedicaoParcela.filter(r => r.id !== ignorarId && r.contrato_parcela_id === data.contrato_parcela_id);
+  if (indiceLegado && outros.some(r => r.solicitacao_id === data.solicitacao_id)
+    || !indiceLegado && outros.some(r => evento(r) === evento(data) || r.devolvido_em == null && data.devolvido_em == null)) {
+    throw Object.assign(Error('Validation error'), { name: 'SequelizeUniqueConstraintError' });
+  }
 }
 const models = Object.fromEntries(nomes.map(model => [model, {
   async findAll(o = {}) {
@@ -87,6 +98,7 @@ const models = Object.fromEntries(nomes.map(model => [model, {
   async max(k, o) { return Math.max(0, ...(await this.findAll(o)).map(r => r[k])); },
   async create(data, o) {
     assert(o?.transaction); if (falha === model) throw Error('FALHA_' + model);
+    if (model === 'MedicaoParcela') conferirVinculo(data);
     const row = { id: Math.max(0, ...state[model].map(r => r.id)) + 1, ...copy(data) }; state[model].push(row);
     if (model === 'TituloFinanceiro') o.transaction.locks.add(row.id);
     return instance(row, model, o);
@@ -149,6 +161,16 @@ const editarBody = async (tipo, id, r = req()) => ({ referencia: (await favoreci
 async function semEscrita(fn, status = 409) { const antes = copy(state); await assert.rejects(fn, e => e.statusCode === status); assert.deepEqual(state, antes); }
 
 (async () => {
+  // Reproduzir o defeito original usando o servico real e o indice antigo:
+  // rejeicao funciona, mas inserir o novo vinculo falha e faz rollback.
+  reset(); await rejeicao.rejeitar(req(), 9, await rejeitarBody()); indiceLegado = true;
+  const pedirNovamente = () => medicao.registrarMedicaoDoContrato({ contratoId: 4, usuarioId: 9,
+    itens: [{ contrato_parcela_id: 1, valor_medido: 1000, vencimento: '2026-11-01' }],
+    pagamento: { forma_pagamento_id: 3, favorecido_id: 12, favorecido_chave_pix: 'pix-novo', dados_confirmados: true,
+      anexos_pendentes_nomes: ['nova-medicao.pdf'] } });
+  const antesIndice = copy(state);
+  await assert.rejects(pedirNovamente, { name: 'SequelizeUniqueConstraintError' }); assert.deepEqual(state, antesIndice);
+  indiceLegado = false;
   // Regra principal: cancelar ambos, nao duplicar, preservar 100% dos pagos/contrato,
   // liberar comprometimento e medir DE NOVO na previsao nova, sem reprogramacao extra.
   reset(); const body = await rejeitarBody(), total = copy(state.Contrato);
@@ -161,6 +183,7 @@ async function semEscrita(fn, status = 409) { const antes = copy(state); await a
   assert(state.MedicaoParcela.every(v => v.devolvido_em)); assert.equal((await medicao.calcularSaldoDoContrato(4)).saldo, 10000);
   assert.equal(await atual.obterMedicaoAtual(4), null); assert.equal(state.Historico.filter(h => h.acao === 'MEDICAO_REJEITADA').length, 1);
   assert.equal(state.LogExclusao.length, 2); assert.equal(state.Anexo.length, 1);
+  const vinculosAntigos = copy(state.MedicaoParcela), rejeicaoAntiga = copy(state.ContratoMedicao[0]);
   const novaMedicao = await medicao.registrarMedicaoDoContrato({ contratoId: 4, usuarioId: 9,
     itens: [{ contrato_parcela_id: 1, valor_medido: 1000, vencimento: '2026-11-01' }],
     pagamento: { forma_pagamento_id: 3, favorecido_id: 12, favorecido_chave_pix: 'pix-novo', dados_confirmados: true,
@@ -168,6 +191,16 @@ async function semEscrita(fn, status = 409) { const antes = copy(state); await a
   assert.equal(novaMedicao.medicao.numero, 3, 'Nao reutilizar o numero da medicao rejeitada');
   assert.equal(state.ContratoMedicao[0].rejeicao.motivo, body.motivo);
   assert.equal(state.MedicaoParcela.filter(v => !v.devolvido_em).length, 1);
+  assert.deepEqual(state.MedicaoParcela.slice(0, vinculosAntigos.length), vinculosAntigos);
+  assert.deepEqual(state.ContratoMedicao[0], rejeicaoAntiga);
+  await semEscrita(pedirNovamente);
+  // Duas requisicoes competindo depois da rejeicao: exatamente uma medicao.
+  reset(); await rejeicao.rejeitar(req(), 9, await rejeitarBody());
+  const simultaneas = await Promise.allSettled([pedirNovamente(), pedirNovamente()]);
+  assert.equal(simultaneas.filter(r => r.status === 'fulfilled').length, 1);
+  assert.equal(simultaneas.find(r => r.status === 'rejected').reason.statusCode, 409);
+  assert.equal(state.MedicaoParcela.filter(v => !v.devolvido_em && v.contrato_parcela_id === 1).length, 1);
+  assert.equal(state.ContratoMedicao.length, 2); assert.equal(state.MovimentoFinanceiro.length, 0);
   // Limite de 24: a rejeicao nao acrescenta parcelas nem impede medir novamente.
   reset(24); await rejeicao.rejeitar(req(), 9, await rejeitarBody()); assert.equal(state.ContratoParcela.length, 24);
   for (const f of ['CRIAR', 'LogExclusao', 'SecurityEventLog', 'Historico', 'MedicaoParcela', 'ContratoParcela']) {
