@@ -8,7 +8,7 @@ const { Contrato, ContratoMedicao, MedicaoParcela, ContratoParcela,
 // Leitura corrente em transacao: nao reutilizar snapshot anterior ao lock da solicitacao.
 async function obterMedicaoAtual(contratoId, transaction) {
   const medicoes = await ContratoMedicao.findAll({
-    where: { contrato_id: Number(contratoId) }, attributes: ['id', 'numero', 'aprovada_em'],
+    where: { contrato_id: Number(contratoId), rejeicao: null }, attributes: ['id', 'numero', 'aprovada_em'],
     order: [['numero', 'DESC'], ['id', 'DESC']],
     limit: 1, transaction, lock: transaction?.LOCK?.UPDATE
   });

@@ -21,6 +21,33 @@ Consultar registro inicial/final, uma ponta, sem datas, combinado com
 Resposta/Pagamento/status/obra e retorno/F5. Sem escrita de negocio para testar.
 [Promocao e recuperacao](../../handoffs/2026-10-21-promocao-main-pendencias-dev.md).
 
+- Publicacao DEV do bloco gerencial salva: roteiro conjunto com filtros da fila
+  atualizar-dev-filtros-distribuicao-20261023.sh, sem migration/dependencias,
+  guardas de ambiente e restart exclusivo backend-dev/8001. Ver
+  [handoff](../../handoffs/2026-10-23-solicitacao-distribuicao-gerencial.md).
+
+## Distribuicao gerencial no detalhe - 2026-10-23
+
+Bloco somente consulta, separado de Apropriacoes e Financeiro, exibe a
+distribuicao salva na criacao de despesas administrativas/comercial/marketing
+ou qualquer solicitacao autorizada que tenha esses registros persistidos.
+Fonte: distribuicoesCentroCusto no GET /solicitacoes/:id ja existente; valores,
+percentuais e criterio nao sao recalculados pelo valor atual, titulos ou config.
+Destinos mostram codigo/nome e tipo cadastral atual (Obra/Centro de Custo);
+nao existe snapshot historico do nome cadastral na tabela de distribuicao.
+Destino ausente conserva identificador, sem buscar outros registros; TODAS e
+uma classificacao unica, sem divisao automatica ou expansao das obras atuais.
+Solicitacao sem registros nao ganha rateio presumido nem bloco vazio.
+
+Visibilidade segue ACL do detalhe existente, sem exigir permissao financeira
+ou de edicao e sem ampliar acesso a outros destinos. Bloco recolhivel no
+catalogo/personalizacao e na aba Detalhes mobile, tabela curta que cabe no
+bloco sem recortar percentual/valor; sem editar, novos endpoints ou requests.
+Backend somente acrescenta tipo_centro_custo ao include cadastral existente
+e espelha o ID do bloco no catalogo de layout. Sem migration/backfill ou
+mudanca de calculos/gravacao/historico financeiro. QAs e limites no
+[handoff](../../handoffs/2026-10-23-solicitacao-distribuicao-gerencial.md).
+
 ## Periodo de registro na lista - 2026-10-21
 
 O filtro de registro apresenta `Data de registro de` e `Data de registro ate`,

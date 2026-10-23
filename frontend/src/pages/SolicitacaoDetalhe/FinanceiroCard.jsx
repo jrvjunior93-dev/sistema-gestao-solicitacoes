@@ -2499,6 +2499,8 @@ export default function FinanceiroCard({
         contratoId={dadosContrato?.contrato?.id}
         consultarValorPagamento={!somenteLeitura && podeConsultarTitulo}
         podeEditar={!somenteLeitura && dadosContrato?.contrato?.permissoes?.editar_medicao === true}
+        podeEditarFavorecido={!somenteLeitura && dadosContrato?.contrato?.permissoes?.editar_favorecido_medicao === true}
+        podeRejeitar={!somenteLeitura && dadosContrato?.contrato?.permissoes?.rejeitar_medicao === true}
         podeAprovar={!somenteLeitura && dadosContrato?.contrato?.permissoes?.aprovar === true}
         podeAnexar={somenteLeitura}
         titulos={titulosEnvio}

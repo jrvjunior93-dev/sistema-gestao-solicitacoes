@@ -83,7 +83,8 @@ export async function validarRolagemFila(page) {
   await page.locator('[data-rolagem-sentinela]').scrollIntoViewIfNeeded();
   await page.waitForFunction(() => window.__filterQueries.some(q => q.pagina === 2));
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.getByLabel('Status', { exact: true }).selectOption('BAIXADO');
+  await page.getByLabel('Status', { exact: true }).fill('Baixados');
+  await page.getByRole('button', { name: 'Baixados', exact: true }).click();
   await total(50).waitFor({ timeout: 6000 }).catch(async error => {
     console.log('Diagnostico QA de consulta atrasada:', await page.evaluate(() => ({ queries: window.__filterQueries,
       linhas: document.querySelectorAll('[data-fila-linha]').length, texto: document.body.innerText.slice(-1500), y: window.scrollY })));

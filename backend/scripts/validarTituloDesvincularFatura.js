@@ -22,6 +22,7 @@ const criarRecibo = models.LogExclusao.create;
 models.LogExclusao.create = async (...args) => { if (falharRecibo) throw Error('Recibo indisponivel'); return criarRecibo(...args); };
 const auditoria = load('tituloDesvincularFaturaAuditoriaService', dependencies);
 dependencies['./tituloDesvincularFaturaAuditoriaService'] = auditoria;
+dependencies['./favorecidoEdicaoAuditoriaService'] = { listarEventos: async () => [] };
 const atualizarFatura = models.FaturaCartaoFinanceiro.update;
 models.FaturaCartaoFinanceiro.update = async (...args) => {
   if (falharRecalculo) throw Error('Recalculo indisponivel'); return atualizarFatura(...args);

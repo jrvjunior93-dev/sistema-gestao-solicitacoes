@@ -1,5 +1,50 @@
 # Modulo CONTRATOS
 
+## Reenviar parcela de medicao rejeitada - 2026-10-23
+
+- Corrige o conflito do indice antigo `medicao_parcelas_unico`: a mesma
+  solicitacao/parcela agora pode ter varios eventos historicos devolvidos,
+  mas apenas um vinculo ativo global por parcela, inclusive entre solicitacoes.
+- Migration `202610230002_medicao_vinculos_ativos.js` troca o indice em um unico
+  ALTER por unicidade ativa e identidade do evento, preservando tambem a
+  identidade legada sem medicao_id e o suporte das FKs. Nao altera/apaga
+  linhas antigas, valores, pagamentos, anexos ou o recibo de rejeicao.
+- A guarda do servico, transacao/lock do contrato, ACL e sequencial da nova
+  medicao continuam intactos. Historico devolvido nao volta a comprometer saldo.
+- Preflight somente leitura recusa ativas/eventos duplicados, schema divergente
+  ou engine/versao nao suportados, sem corrigir dados automaticamente. ALTER
+  utiliza COPY; planejar janela de DEV, pois pode bloquear escritas na tabela.
+- Registro informa conflito409 em vez de apenas Validation error; log seguro
+  guarda operacao/IDs/indice conhecido, sem SQL, chave PIX ou valores de erro.
+- Testes, limite do ambiente local e homologacao no
+  [handoff](../../handoffs/2026-10-23-medicao-reenvio-vinculo-ativo.md).
+
+## Medicao pendente: rejeicao e favorecido - 2026-10-23
+
+- No detalhe da solicitacao, Financeiro > Medicao N, GEO autorizado/SUPERADMIN
+  pode corrigir o favorecido e seus dados antes da aprovacao, ou rejeitar com
+  motivo e confirmacao. Novas permissoes nominais independentes:
+  `contratos.medicao.editar_pagamento` e `contratos.medicao.rejeitar`.
+  O backend revalida escopo do contrato/obra, acesso/interacao da solicitacao
+  e todas as operacoes financeiras; nao ha concessao automatica a perfis comuns.
+- Rejeitar cancela as previsoes originais da medicao e libera seus vinculos
+  de comprometimento na mesma transacao. Titulos, medicoes, numeros, anexos e
+  historicos anteriores permanecem. Novas previsoes substituem as canceladas
+  nas mesmas parcelas, SEM baixa, acrescimo contratual ou parcela adicional.
+  Assim outra medicao pode ser solicitada inclusive no limite de24parcelas.
+- A solicitacao volta a OBRA, resolvida por capacidade, se nao houver outra
+  medicao pendente. A rejeitada nao governa mais o ciclo atual, e nao pode ser
+  aprovada/editada depois. Nova medicao recebe novo numero e novos dados de
+  pagamento; nao reutiliza a instrucao cancelada.
+- Medicao aprovada, previsao alterada/negociada, baixa, fila/autorizacao ativa,
+  remessa/boleto/cartao/cheque/conciliacao e demais vinculos especializados
+  impedem a operacao; regularizar primeiro, sem desfazer pagamentos aqui.
+- Edicao de uma parte favorecida preserva valores/divisao; a primeira tambem
+  atualiza os dados principais da medicao. Mudar recebedor limpa a chave/dados
+  antigos na UI e exige nova conferencia. Credor e forma prevista nao mudam.
+- Migration aditiva nao aplicada pelo agente, testes e roteiro de homologacao
+  no [handoff](../../handoffs/2026-10-23-medicao-rejeicao-favorecido.md).
+
 ## Valor medido e valor autorizado para pagamento - 2026-10-16
 
 No Financeiro da solicitacao, abrir uma medicao estruturada aprovada e usar

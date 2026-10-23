@@ -73,6 +73,79 @@ Conferir lista da fatura e relatorio de permutas em leitura apos atualizar
 backend/health e frontend main na Vercel. O caso PIX/cartao/desconto foi provado
 em memoria/DEV; nao repetir a baixa real somente para testar producao.
 [Escopo, evidencias e recuperacao](../../handoffs/2026-10-21-promocao-main-pendencias-dev.md).
+
+## Favorecido editavel na medicao e no titulo - 2026-10-23
+
+- Detalhe e pagina de edicao do titulo oferecem Editar favorecido, separado
+  do credor. Exige permissao nominal `financeiro.titulos.editar`, escopo de
+  todas as obras/rateios e ausencia de baixa/operacoes/vinculos protegidos.
+- Se a previsao pertence a medicao pendente, o editor consulta/altera a
+  instrucao dessa medicao (inclusive divisao por favorecidos), com sua ACL
+  propria. Nao cria override oculto divergente da conferencia de aprovacao.
+  Previsao de contrato ainda sem medicao recebe favorecido ao medir.
+- Em titulo vigente, a correcao e especifica daquele titulo: snapshot
+  `pagamento_favorecido` tem prioridade no detalhe, fila e filtro Favorecido.
+  Valores, vencimento, credor, medicao aprovada, outras parcelas e cadastro
+  global permanecem intactos. A mudanca e auditada com antes/depois e motivo;
+  a auditoria financeira tambem le recibo permanente, independente da retencao.
+- A conta bancaria antiga nao e reaproveitada silenciosamente: remessa exige
+  vinculo explicito e correspondente aos dados corrigidos. A fila manual usa
+  a instrucao salva no titulo. Nao altera remessas/autorizacoes ja existentes.
+  O dossie novo inclui hash da instrucao; fila/autorizacao ativa impede editar.
+- Pagos, negociados/compartilhados e origens DP/recarga/pedido/adiantamento
+  mantem seus fluxos especializados. Negociacao conserva editor anterior;
+  seu mapeamento GET/PATCH agora explicita a mesma permissao editar ja exigida
+  pelo servico, corrigindo a pendencia da auditoria de rotas sem ampliar acesso.
+- Skill frontend-design aplicada apenas ao padrao operacional existente:
+  editor reutilizavel, busca de Pessoas, avisos e confirmacao do sistema.
+  Migration/testes/limites no [handoff](../../handoffs/2026-10-23-medicao-rejeicao-favorecido.md).
+
+## Fila: campos vazios e arranjo pessoal dos filtros - 2026-10-23
+
+- Filtros opcionais continuam sem restricao quando vazios, mas exibem apenas
+  orientacoes como "Digite a origem...", sem Todos preenchido. Ao escolher
+  Todos ou limpar, o campo volta a ficar vazio. Selecionar texto ao focar/
+  clicar e opt-in desta fila, facilitando substituir uma escolha existente.
+- Organizar filtros usa o painel padrao: visibilidade, setas, arrasto e reset.
+  Preferencia de tipo filtros pelos endpoints existentes, chave propria com ID
+  do usuario para isolar tambem o espelho local em estacao compartilhada.
+  Nao persiste valores de consulta, pagamento, selecao ou rascunho financeiro.
+- Situacao mantem Pendentes como padrao; oculta-la quando nao padrao limpa
+  somente esse recorte, retornando a Pendentes. Busca geral sempre acessivel;
+  intervalo de vencimento e um grupo reposicionavel. Criterio de URL/workspace
+  revela automaticamente campo oculto, sem apagar a consulta recebida.
+- Esconder campo preenchido mostra aviso e limpa somente aquele criterio.
+  Reordenar/esconder vazio nao consulta novamente nem descarta selecao/drafts.
+  Painel bloqueado durante operacao financeira. Ordem no hook e opt-in;
+  demais telas preservam contrato anterior. Sem backend/migration/producao.
+- Testes e limites no [handoff](../../handoffs/2026-10-23-fila-filtros-arranjo.md).
+
+## Filtros digitaveis da fila - 2026-10-23
+
+- Origem, empresa do titulo/colaborador, credor e recebimento DP passam a
+  aceitar digitacao/selecao. Novos filtros: obra/centro de custo, favorecido,
+  solicitacao, titulo e forma de pagamento. Situacao e busca geral permanecem
+  disponiveis no mesmo bloco. Vencimento aceita intervalo inclusivo de datas.
+- Forma de pagamento filtra a **prevista no titulo**, conforme escolha do
+  proprietario; nao a forma efetiva da baixa ou edicao local ainda nao salva.
+- Sugestoes dos novos campos exigem2caracteres/debounce350ms; GET dedicado
+  `/financeiro/fila-pagamentos/sugestoes`, mesma guarda de leitura da fila,
+  status/escopo vigentes, ate20rotulos por consulta (21 para detectar excesso).
+  Nao retorna CPF/CNPJ, instrucoes bancarias, saldos ou cadastros integrais.
+- Filtros combinados sao aplicados no servidor antes de contar/paginar,
+  inclusive rejeicoes somente consulta. Obra/solicitacao tambem respeitam
+  vinculos compartilhados. Favorecido usa a prioridade da coluna: negociacao,
+  instrucao especifica, medicao exata e destinatario explicito/origem; ausencia
+  nao e preenchida com credor, exceto recebimento DP em dinheiro ja existente.
+- Trocar filtros reinicia pagina/selecao, sem descartar rascunhos financeiros;
+  URL preserva os criterios. Sugestoes antigas sao descartadas e o transporte
+  e cancelado no cliente; nao se presume cancelamento da consulta no MySQL.
+- Sem migration, escrita financeira, mudanca de permissoes ou producao.
+  Validacoes/limites: [handoff](../../handoffs/2026-10-23-fila-filtros-pesquisa.md).
+- Publicacao DEV autorizada junto do bloco gerencial da solicitacao. Roteiro
+  atualizar-dev-filtros-distribuicao-20261023.sh valida inventario, identidade/
+  schema/sessao sem mudar ambiente e reinicia somente backend-dev/8001.
+
 ## Reprogramacao parcial de saldo contratual - 2026-10-23
 
 - Novas parcelas de previsao podem somar ate o saldo contratual sem parcela

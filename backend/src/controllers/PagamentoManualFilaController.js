@@ -25,6 +25,10 @@ function responderErro(res, error, fallback) {
 }
 
 module.exports = {
+  async sugestoes(req, res) {
+    try { return res.json(await require('../services/pagamentoFilaAutocompleteService').listarSugestoesFila(req, req.query)); }
+    catch (error) { return responderErro(res, error, 'Erro ao consultar sugestoes da fila'); }
+  },
   async compostaPreview(req, res) {
     try { return res.json(await require('../services/filaBaixaCompostaService').previewFilaBaixaComposta(req, req.body)); }
     catch (error) { return responderErro(res, error, 'Erro ao validar fontes da fila'); }

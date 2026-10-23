@@ -26,6 +26,9 @@ assert.equal(beneficiaryData({ ...base, solicitacao, favorecido_pagamento_id: 99
 assert.equal(beneficiaryData({ ...base, solicitacao, payment_beneficiary_id: 999 }).nome, 'Favorecido não informado');
 assert(!beneficiaryData(base).pagamento.includes('DOCUMENTO-CREDOR'));
 const medicao = beneficiaryData({ ...base, instrucao_medicao_fila: instrucao, credor_fila: { nome: 'Credor da origem' } });
+const corrigida = beneficiaryData({ ...base, instrucao_medicao_fila: instrucao, pagamento_favorecido: {
+  ...instrucao, nome_favorecido: 'Novo favorecido', favorecido_chave_pix: 'nova-chave' } });
+assert.equal(corrigida.nome, 'Novo favorecido'); assert.equal(corrigida.chavePix, 'nova-chave'); assert.equal(corrigida.credor, 'Credor QA');
 assert.equal(medicao.credor, 'Credor da origem'); assert.equal(medicao.nome, instrucao.nome_favorecido);
 assert.equal(beneficiaryData({ ...base, pagamento_negociacao: instrucao,
   instrucao_favorecido: { ...instrucao, nome_favorecido: 'Outra' } }).nome, instrucao.nome_favorecido);

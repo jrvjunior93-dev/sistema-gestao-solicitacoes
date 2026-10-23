@@ -194,6 +194,7 @@ async function main() {
   assert(!Object.hasOwn(resposta.cancelamento, 'request_hash'));
   titulo.id = 10;
   h.dependencies['./tituloDesvincularFaturaAuditoriaService'] = { listarEventos: async () => [] };
+  h.dependencies['./favorecidoEdicaoAuditoriaService'] = { listarEventos: async () => [] };
   h.dependencies['./tituloCancelamentoAuditoriaService'] = leitura.auditoria;
   h.models.SecurityEventLog.findAll = async () => leitura.state.events;
   let eventos = await h.isolated.exports.listarAuditoriaTitulo(h.req, 10);

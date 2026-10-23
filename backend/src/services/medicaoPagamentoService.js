@@ -114,7 +114,7 @@ async function alterar(req, contratoId, medicaoId, raw) {
       const valores = pesos.length ? repartir(centavos(body.valor_autorizado), pesos) : [];
       if (body.destino === 'FUTURO') {
         const campos = Object.fromEntries(['solicitacao_id', 'obra_id', 'apropriacao_id', 'empresa_id', 'parceiro_id',
-          'favorecido_pagamento_id', 'payment_beneficiary_id', 'categoria_financeira_id', 'forma_pagamento_id', 'competencia_data',
+          'favorecido_pagamento_id', 'payment_beneficiary_id', 'pagamento_favorecido', 'categoria_financeira_id', 'forma_pagamento_id', 'competencia_data',
           'considera_dre', 'possui_rateio', 'intercompany', 'empresa_contraparte_id', 'empresa_origem_id', 'empresa_destino_id',
           'tipo_intercompany', 'motivo_intercompany', 'elimina_consolidado', 'transferencia_interna', 'data_emissao', 'data_vencimento',
           'grupo_parcelamento_id'].map(k => [k, base[k]]));

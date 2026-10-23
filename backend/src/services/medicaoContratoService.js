@@ -41,6 +41,17 @@ const STATUS_PARCELA_EDITAVEL = new Set(['PREVISAO', 'APROVADA']);
 
 const erro = (mensagem, statusCode = 400) => Object.assign(new Error(mensagem), { statusCode });
 
+// Mesmo ordenamento da criacao, rejeicao e correcao de favorecido. A leitura
+// bloqueante da medicao abaixo ve o estado atual apos aguardar o contrato;
+// nao reutilizar o snapshot anterior ao lock para aprovar uma rejeitada.
+async function bloquearMedicaoParaOperacao(medicaoId, transaction) {
+  const referencia = await ContratoMedicao.findByPk(Number(medicaoId), { transaction });
+  if (!referencia) return null;
+  const contrato = await Contrato.findByPk(referencia.contrato_id, { transaction, lock: transaction.LOCK.UPDATE });
+  if (!contrato) throw erro('Contrato da medicao nao encontrado.', 409);
+  return ContratoMedicao.findByPk(Number(medicaoId), { transaction, lock: transaction.LOCK.UPDATE });
+}
+
 /**
  * O status que a tela mostra e que decide se a linha e medivel: o do TITULO quando ele ja
  * existe, o da PARCELA enquanto nao existe. E o "vai depender do fluxo" do MD-6.
@@ -1347,11 +1358,9 @@ async function atualizarMedicaoDoContrato(medicaoId, { itens, favorecidos_valore
   if (lista.length === 0) throw erro('Informe ao menos uma parcela para alterar.');
 
   return sequelize.transaction(async (transaction) => {
-    const medicao = await ContratoMedicao.findByPk(Number(medicaoId), {
-      lock: transaction.LOCK.UPDATE,
-      transaction
-    });
+    const medicao = await bloquearMedicaoParaOperacao(medicaoId, transaction);
     if (!medicao) throw erro('Medicao nao encontrada.', 404);
+    if (medicao.rejeicao) throw erro('Medicao rejeitada: envie uma nova medicao.', 409);
     if (medicao.aprovada_em) {
       throw erro(
         `Medicao ${medicao.numero} ja foi aprovada; valor e vencimento nao podem mais ser alterados por este fluxo.`,
@@ -1629,11 +1638,9 @@ async function aprovarMedicaoDoContrato(medicaoId, { usuario, req } = {}) {
   }
 
   return sequelize.transaction(async (transaction) => {
-    const medicao = await ContratoMedicao.findByPk(Number(medicaoId), {
-      lock: transaction.LOCK.UPDATE,
-      transaction
-    });
+    const medicao = await bloquearMedicaoParaOperacao(medicaoId, transaction);
     if (!medicao) throw erro('Medicao nao encontrada.', 404);
+    if (medicao.rejeicao) throw erro('Medicao rejeitada: envie uma nova medicao.', 409);
     if (medicao.aprovada_em) {
       throw erro(`Medicao ${medicao.numero} ja foi aprovada.`, 409);
     }

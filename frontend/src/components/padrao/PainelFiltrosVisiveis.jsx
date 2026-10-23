@@ -165,10 +165,12 @@ function idsDe(filtros) {
  *             respondendo a duas perguntas diferentes.
  * `filtros` — [{ id, rotulo, obrigatorio?, padrao? }]. `padrao: false`
  *             nasce escondido; `obrigatorio: true` não desmarca.
- * `opcoes`  — { preenchidos: string[], aoEsconder(id), legado: string[]|null }
+ * `opcoes`  — { preenchidos: string[], aoEsconder(id), legado: string[]|null,
+ *              ordenavel?: boolean }. Ordem e setas/arrasto sao opt-in;
+ *             telas antigas preservam payload/comportamento de visibilidade.
  */
 export function useFiltrosVisiveis(chave, filtros = [], opcoes = {}) {
-  const { preenchidos = [], aoEsconder, legado = null } = opcoes;
+  const { preenchidos = [], aoEsconder, legado = null, ordenavel = false } = opcoes;
 
   const declarados = (filtros || []).filter(Boolean);
   const ids = idsDe(declarados);
@@ -185,6 +187,11 @@ export function useFiltrosVisiveis(chave, filtros = [], opcoes = {}) {
 
   const [preferencia, definirPreferencia] = usePreferenciaDeLista(chave, TIPO_FILTROS);
   const { pronto, erro } = usePreferencias();
+  const ordem = useMemo(() => {
+    const salva = ordenavel && Array.isArray(preferencia?.ordem) ? preferencia.ordem : [];
+    return [...new Set([...salva.filter(id => ids.includes(id)), ...ids])];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preferencia, assinatura, ordenavel]);
 
   const legadoConhecido = useMemo(() => {
     if (!assinaturaLegado) return null;
@@ -223,13 +230,21 @@ export function useFiltrosVisiveis(chave, filtros = [], opcoes = {}) {
     [escolhidos, assinaturaPreenchidos, assinatura]
   );
 
-  const gravar = useCallback((proximos) => {
+  const gravar = useCallback((proximos, novaOrdem = ordem) => {
     definirPreferencia({
+      ...(ordenavel ? { ...preferencia, ordem: novaOrdem } : {}),
       visiveis: ids.filter((id) => proximos.includes(id)),
       ocultas: ids.filter((id) => !proximos.includes(id))
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [definirPreferencia, assinatura]);
+  }, [definirPreferencia, assinatura, ordem, ordenavel, preferencia]);
+
+  const reordenar = (id, alvo) => {
+    const de = ordem.indexOf(id), para = ordem.indexOf(alvo);
+    if (!ordenavel || de < 0 || para < 0 || de === para) return;
+    const proxima = [...ordem]; proxima.splice(para, 0, proxima.splice(de, 1)[0]);
+    gravar(escolhidos, proxima);
+  };
 
   /*
     MIGRAÇÃO ÚNICA da chave antiga do navegador para o banco. O `ref`
@@ -282,7 +297,10 @@ export function useFiltrosVisiveis(chave, filtros = [], opcoes = {}) {
 
   return {
     chave,
-    declarados,
+    declarados: ordenavel ? ordem.map(id => declarados.find(filtro => filtro.id === id)) : declarados,
+    ordem,
+    reordenar: ordenavel ? reordenar : null,
+    mover: ordenavel ? (id, passo) => reordenar(id, ordem[ordem.indexOf(id) + passo]) : null,
     visiveis,
     /* O que a PREFERÊNCIA governa, sem a revelação por valor. A tela precisa
        distinguir os dois para uma coisa só, e ela é importante: o valor que
@@ -330,8 +348,9 @@ export function useFiltrosVisiveis(chave, filtros = [], opcoes = {}) {
  * seleção: `contains` continua verdadeiro para a caixa de marcação, e o
  * `mousedown` do hook não fecha o painel antes do `onChange` da opção.
  */
-export default function PainelFiltrosVisiveis({ visibilidade, rotulo = 'Filtros visíveis' }) {
+export default function PainelFiltrosVisiveis({ visibilidade, rotulo = 'Filtros visíveis', disabled = false }) {
   const [aberto, setAberto] = useState(false);
+  const [arrastando, setArrastando] = useState(null);
   const ref = useRef(null);
   const botaoRef = useRef(null);
   const menuRef = useRef(null);
@@ -366,6 +385,7 @@ export default function PainelFiltrosVisiveis({ visibilidade, rotulo = 'Filtros 
         ref={botaoRef}
         aria-haspopup="menu"
         aria-expanded={aberto}
+        disabled={disabled}
         title="Escolher quais filtros aparecem nesta tela"
         onClick={() => setAberto((atual) => !atual)}
       >
@@ -375,10 +395,11 @@ export default function PainelFiltrosVisiveis({ visibilidade, rotulo = 'Filtros 
         <span
           className="app-mais-menu app-colunas-menu"
           role="menu"
+          aria-label={rotulo}
           ref={menuRef}
           style={posicao.estilo}
         >
-          {declarados.map((filtro) => {
+          {declarados.map((filtro, indice) => {
             const visivel = visiveis.includes(filtro.id);
             const travado = Boolean(filtro.obrigatorio);
             const ultimo = visivel && !travado && visiveis.length <= 1;
@@ -395,12 +416,22 @@ export default function PainelFiltrosVisiveis({ visibilidade, rotulo = 'Filtros 
             */
             const avisa = visivel && !travado && (preenchidos || []).includes(filtro.id);
             return (
-              <span className="app-colunas-item" key={filtro.id}>
+              <span className="app-colunas-item" key={filtro.id} data-filtro-config={filtro.id}
+                onDragOver={event => { if (arrastando && !disabled) event.preventDefault(); }}
+                onDrop={event => {
+                  if (!arrastando || disabled || !visibilidade.reordenar) return;
+                  event.preventDefault(); visibilidade.reordenar(arrastando, filtro.id); setArrastando(null);
+                }}>
+                {visibilidade.reordenar && <button type="button" className="app-colunas-arrastar" draggable={!disabled}
+                  disabled={disabled} aria-label={`Arrastar filtro ${filtro.rotulo}`} title="Arraste para reordenar"
+                  onDragStart={event => {
+                    setArrastando(filtro.id); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', filtro.id);
+                  }} onDragEnd={() => setArrastando(null)}>⋮⋮</button>}
                 <label className="app-colunas-rotulo">
                   <input
                     type="checkbox"
                     checked={visivel}
-                    disabled={travado || ultimo}
+                    disabled={disabled || travado || ultimo}
                     title={travado
                       ? 'Este é o campo de busca da tela e fica sempre visível'
                       : (ultimo ? 'A tela precisa de pelo menos um filtro' : undefined)}
@@ -411,10 +442,16 @@ export default function PainelFiltrosVisiveis({ visibilidade, rotulo = 'Filtros 
                     {avisa ? ' — preenchido: esconder limpa e refaz a consulta' : ''}
                   </span>
                 </label>
+                {visibilidade.mover && <span className="app-colunas-mover">
+                  <button type="button" className="btn btn-outline btn-sm" aria-label={`Mover filtro ${filtro.rotulo} para cima`}
+                    disabled={disabled || indice === 0} onClick={() => visibilidade.mover(filtro.id, -1)}>↑</button>
+                  <button type="button" className="btn btn-outline btn-sm" aria-label={`Mover filtro ${filtro.rotulo} para baixo`}
+                    disabled={disabled || indice === declarados.length - 1} onClick={() => visibilidade.mover(filtro.id, 1)}>↓</button>
+                </span>}
               </span>
             );
           })}
-          <button type="button" className="app-mais-item" onClick={restaurar}>
+          <button type="button" className="app-mais-item" disabled={disabled} onClick={restaurar}>
             Restaurar padrão
           </button>
         </span>

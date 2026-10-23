@@ -10,6 +10,11 @@
   exclusivo para migrations202610230001/002 e handoff desta promocao.
 - Sem EC2/SSH/banco/S3/operacao financeira real pelo agente. Preservar .env,
   flags/12h/TLS/PM2/ACL e dados; nunca reiniciar DEV em deploy PROD.
+- Integracao/QA concluidos; reserva encerrada e ownership liberado para
+  publicar main.21suites backend/guardas PROD, tres guardas DEV, UI real
+  medicao/titulo/distribuicao/filtros1366/390, build643/17,51s, docs629/19 e
+  Node/Bash/diff aprovados. Runtime/schema igual DEVf598, exclusividades MAIN
+  preservadas; novo roteiro restrito001/002. Sem EC2 ou DDL real pelo agente.
 
 ## Promocao MAIN: reprogramacao parcial de contrato - 2026-10-23
 
@@ -237,6 +242,198 @@
   Produto e dependencias conferidos contra2e146629; reserva encerrada,
   ownership liberado para commit/push main autorizados. Roteiro e limites em
   docs/handoffs/2026-10-18-promocao-main-pwa-historico.md.
+
+## Publicacao DEV: placeholders e arranjo dos filtros - 2026-10-23
+
+- Usuario autorizou commit/push do complemento na refactor/frontend e roteiro
+  EC2 DEV. Agente unico, baseae9df9d3; main/producao fora do escopo.
+- Reserva temporaria: delta local documentado em fila-filtros-arranjo,
+  frontend/scripts/validarDeployFilaFiltrosArranjoDev.mjs, novo roteiro
+  atualizar-dev-fila-filtros-arranjo-20261023.sh e docs/handoff correspondentes.
+- Conferir testes UI/regressoes/build e publicar somente tres componentes,
+  testes/manifesto QA e documentacao. Sem backend runtime, migration, banco,
+  .env, instalacoes ou reinicio de processos. outputs/ fora do commit.
+- Concluido: UI1366/390, filtros/DP, regressao completa da fila650titulos/
+  13paginas/8status, hook legado/opt-in, preferencias por usuario, escopo/
+  paginacao backend, prova52faixas e build643/14,69s aprovados. Roteiro QA
+  validado contra index real12arquivos, sem backend/dependencias alterados.
+  Reserva encerrada e ownership liberado para commit/push autorizado.
+
+## DEV: verificador MySQL e retomada sem migration - 2026-10-23
+
+- Agente unico; usuario autorizou corrigir/testar, commitar/push exclusivo
+  refactor/frontend e fornecer retomada EC2 DEV sem reaplicar migration002.
+- Reserva: aplicarMigrationMedicaoReenvioDev.js, validarDeployMedicaoReenvioDev.js,
+  novo QA de metadata/retomada, roteiro retomar-dev-medicao-reenvio-20261023.sh
+  e handoff correspondente. Base41bec992; preservar filtros locais fora do commit.
+- Migration002 ja aplicada pelo usuario; nao editar migration historica,
+  schema, financeiro, permissoes, .env ou frontend. Nenhum acesso EC2/RDS,
+  reinicio/deploy ou alteracao de main/producao pelo agente.
+- Concluido: escape S/M reconhecido somente nos metadados; modo somente
+  leitura exige registro002/schema completo. QAs de metadata/retomada/deploy,
+  SQL SQLite/servico de rejeicao, dez regressoes financeiras, docs613/19 e
+  sintaxe Bash/Node aprovados. Reserva encerrada e ownership liberado para
+  publicacao seletiva; EC2/homologacao serao executadas pelo usuario.
+
+## Publicacao DEV: reenvio da medicao - 2026-10-23
+
+- Usuario autorizou commit/push da correcao para refactor/frontend e roteiro
+  de EC2 DEV/migration/teste. Reserva temporaria: runner/roteiro/QAs dedicados,
+  correcao ja implementada e docs/handoff. Nao incluir filtros locais.
+- Base be303667; migration allowlist apenas202610230002, UUID/host/banco/porta
+  DEV, backup confirmado e restart exclusivo backend-dev. Sem executar EC2,
+  banco real, migration ou main/producao nesta sessao.
+- Reserva encerrada e ownership liberado. Inventario real do index:12arquivos,
+  dois runtimes e migration002, filtros/frontend fora. Copia isolada aprovada
+  nos QAs de deploy/runner, SQL/migration/rejeicao e docs611/19; regressoes
+  financeiras13, auditoria399/80rotas, sintaxe Bash/Node e diffcheck aprovados.
+  Pronto para publicacao autorizada, mantendo homologacao MySQL DEV pendente.
+
+## Medicao: reenvio apos rejeicao e unicidade ativa - 2026-10-23
+
+- Agente unico; usuario confirmou erro na mesma parcela apos rejeicao e
+  autorizou corrigir/testar na base refactor/frontend, preservando historico,
+  permissoes/financeiro e impedindo duas medicoes ativas por parcela.
+- Reserva: nova migration estrutural/QA de vinculos e restricciones reais,
+  QA de rejeicao, tratamento seguro do erro de registro no controller,
+  package backend, README Contratos e handoff. Preservar filtros locais.
+- Sem aplicar migration, banco real, EC2, commit/push ou main/producao.
+- Implementacao/testes locais concluidos; reserva encerrada e ownership
+  liberado. SQL SQLite real com expressoes/chaves da migration, mock com
+  unicidade, concorrencia/rollback, runner schema-only e13regressoes backend,
+  UI real, auditoria399/80rotas, docs612/19 e diffcheck aprovados.
+- DDL MySQL nativo nao executado (Docker sem daemon); requer homologacao no
+  DEV apos publicacao/aplicacao autorizadas. Handoff de limites/proximo passo:
+  2026-10-23-medicao-reenvio-vinculo-ativo.md. Filtros locais preservados.
+
+## Publicacao DEV: botoes da medicao - 2026-10-23
+
+- Usuario autorizou commit/push exclusivo dos botoes na refactor/frontend.
+  Reserva temporaria: tres componentes/UI QA e handoff, staging seletivo
+  de ownership. Preservar fora do commit o arranjo independente dos filtros.
+- Base93a38617; sem backend, dependencias ou migration. Roteiro EC2 apenas
+  fast-forward protegido do checkout DEV; sem reiniciar processos ou gravar
+  banco/.env. Frontend publicado pela Vercel DEV, nao por build na EC2.
+- Reserva encerrada e ownership liberado. Seis arquivos selecionados, tres
+  runtimes; copia isolada do index sem filtros aprovada em UI1366/390/320,
+  documentacao610/19 e build643/21,41s. Regressoes de valor/pagamento e
+  servico rejeicao aprovadas; pronto para commit/push autorizado.
+
+## Medicao: posicao e cores das acoes - 2026-10-23
+
+- Agente unico, base93a38617. Usuario pediu Rejeitar medicao vermelho junto
+  de Salvar alteracoes e Editar favorecido azul como Aprovar medicao.
+- Reserva: ModalMedicao, RejeitarMedicao, FavorecidoEditor, QA real da medicao
+  e handoff. Reusar tokens/classes atuais; preservar confirmacoes, mutex,
+  permissoes e transporte. Nao alterar backend, calculos ou filtros locais.
+- Somente implementacao/teste local; sem commit/push/deploy/banco/producao.
+- Concluido; reserva encerrada e ownership liberado. QA real1366/390 e320x568,
+  fluxo de valor/pagamento e servico de rejeicao aprovados. Build643/12,66s e
+  diffcheck aprovados. Handoff:2026-10-23-medicao-acoes-rodape.md. Tokens de
+  cor existentes e skill frontend-design aplicados somente ao ajuste pedido.
+
+## Publicacao DEV: rejeicao da medicao e favorecido - 2026-10-23
+
+- Usuario autorizou commit/push exclusivo para refactor/frontend e roteiro
+  EC2 DEV com migration. Agente unico; producao/main fora do escopo.
+- Reserva temporaria: runner de migration e deploy/QAs dedicados, handoff,
+  docs e staging seletivo dos arquivos da medicao/favorecido. Preservar fora
+  do commit os ajustes locais independentes de arranjo dos filtros.
+- Validar banco/UUID/processo/porta DEV, backup confirmado e migration unica;
+  nao executar EC2, banco real, reinicio ou migration nesta sessao local.
+- Revisao/staging seletivo e QAs concluidos. Reserva encerrada; ownership
+  liberado. Copia isolada do index (sem filtros locais) passou nos QAs reais
+  UI1366/390, rejeicao/favorecido/deploy, docs609/19 e build643/13,61s.
+  Pronto para commit/push autorizado, sem execucao de deploy nesta sessao.
+
+## Medicao pendente: rejeicao e edicao do favorecido - 2026-10-23
+
+- Usuario autorizou implementar/testar na base DEV45513bfd. Agente unico.
+- Reserva: novos servicos/controllers/QAs de rejeicao/destinatario, rotas e
+  permissoes, migration aditiva/modelos, projecoes/ciclo da medicao, editores
+  de medicao/titulo e docs/handoff. Preservar delta local dos filtros.
+- Cancelamento atomico somente de medicao pendente; liberar vinculos/saldo,
+  devolver a origem e auditar. Sem apagar registros ou desfazer pagamentos.
+- Sem commit/push/main, EC2, banco real ou aplicacao de migration.
+- Reserva documental complementar: metricas399 em AGENTS/autenticacao,
+  READMEs Contratos/Financeiro, QAs de auditoria/consulta e handoff desta tarefa.
+- Concluido e testado localmente. Reserva encerrada e ownership liberado.
+  QAs de servico/UI1366/390/pagina original, financeiro/ACL/historico/replay/
+  rollback, seguranca399/80rotas, build643/12,28s, docs610/19 e diffcheck
+  aprovados. Migration aditiva preparada, nao aplicada; nenhuma publicacao.
+
+## Fila: placeholders e arranjo pessoal dos filtros - 2026-10-23
+
+- Agente unico, base DEV45513bfd no checkout atual. Usuario pediu campos sem
+  Todos preenchido e configuracao de ordem/visibilidade. Sem publicacao ou
+  producao nesta etapa; outputs privados preservados.
+- Reserva: FiltrosFilaPagamentos, callback opt-in de selecionar texto no
+  ApropriacaoAutocomplete, opt-in de ordem/disabled no PainelFiltrosVisiveis,
+  QAs de filtros/arranjo/preferencias e docs/handoff. Reusar PreferenciasContext
+  e endpoints existentes; sem alterar backend, permissoes ou motor financeiro.
+- Esconder criterio preenchido segue contrato do painel: aviso, limpar apenas
+  aquele criterio e reconsultar. URL/workspace com criterio oculto o revela;
+  reordenar e esconder campo vazio nao mudam consulta/selecao/drafts.
+- Concluido localmente; reserva encerrada e ownership liberado. Unitario legado/
+  opt-in, UI arranjo/isolamento/consultivo1366/390, filtros, regressao completa
+  da fila/financeiro, concorrencia, preferencias backend e prova52faixas
+  aprovados. Build640/16,61s, docs609/19 e diffcheck aprovados. Handoff criado;
+  sem commit/push/deploy/banco real/migrations ou alteracao de producao.
+
+## Publicacao DEV: filtros da fila e distribuicao gerencial - 2026-10-23
+
+- Usuario autorizou commit/push dos dois deltas na refactor/frontend e comandos
+  para EC2 DEV. Reserva temporaria: deltas ja implementados, novo roteiro/QA de
+  deploy, compatibilidade do QA SQLite opcional e handoffs/documentacao.
+- Agente unico, sem delegacao. Base fee28b6d, remote DEV igual ao HEAD; main
+  4922ebad fora do escopo. Nao alterar outro checkout, EC2, banco real ou .env.
+- Inventario fechado de runtimes, sem dependencias/migrations; restart apenas
+  backend-dev/8001 pelo roteiro que o usuario executara. Outputs privados fora
+  do commit. Push direto por fast-forward, sem PR/main/force-push.
+- Validacoes de publicacao repetidas: QAs dos dois ajustes,11regressoes backend,
+  seguranca2304/66/48rotas, UI1366/390, build640/12,24s, docs608/19 e Bash/VM
+  com negativas aprovados. Reserva encerrada, ownership liberado para publicar
+  somente o delta autorizado. Auditoria antiga da negociacao segue documentada.
+
+## Filtros digitaveis da fila de pagamentos - 2026-10-23
+
+- Agente unico; reserva temporaria para FinanceiroFilaPagamentos, novo bloco
+  de filtros/autocomplete, services/financeiro, dominio/servico de consulta,
+  controller/validator/rota GET, testes e documentacao correspondentes.
+- Base DEV na branch isolada atual. Preservar integralmente o delta anterior
+  de distribuicao gerencial. Sem commit/push, producao, EC2 ou banco real.
+- Consulta filtrada antes da paginacao; sugestoes limitadas e mesma permissao
+  de leitura da fila. Nao alterar baixas, selecao financeira ou calculos.
+- Reserva complementar: callback opcional de fechamento no autocomplete
+  reutilizado, para limpar pesquisas transitorias e fechar por Tab na fila;
+  outros usos mantem comportamento anterior sem o callback.
+- Concluido localmente; reserva encerrada e ownership liberado. Novos filtros,
+  regressao completa da fila/baixas/cheques/estornos/comprovantes/colunas,
+  paginacao/performance/concorrrencia, seguranca e UI1366/390 aprovados.
+  Build640/15,05s, docs608/19, Node/diffcheck e bloco anterior gerencial
+  aprovados. Falha antiga de auditoria geral da rota de negociacao documentada
+  no handoff; nao alterada. Sem commit/push/EC2/banco real ou producao.
+
+## Distribuicao gerencial no detalhe da solicitacao - 2026-10-23
+
+- Agente unico, base DEVfee28b6d em branch isolada
+  codex/solicitacao-distribuicao-gerencial-20261023. Usuario autorizou bloco
+  somente consulta, sem producao, mudancas de calculos ou permissoes.
+- Reserva: novo bloco/helper de leitura, SolicitacaoDetalhe index/catalogo,
+  espelho DetalheLayoutController, atributo cadastral do destino no show de
+  SolicitacaoController, QAs backend/UI e docs/handoff desta tarefa.
+- Fonte ja existe no GET autorizado: distribuicoesCentroCusto e obraGerencial.
+  Usar valores/percentuais persistidos, nunca recalcular pelo total atual,
+  titulos, apropriacoes ou configuracao de destinos. TODAS nao vira divisao.
+- Sem novos endpoints, migration, escrita em dados/historico, EC2, commit/push
+  ou deploy nesta etapa. Outputs privados preservados. Skill frontend-design
+  para bloco compacto/recolhivel/responsivo, conforme padroes Fluxy atuais.
+- Concluido localmente; ownership liberado. Backend show/ACL/centavos,
+  criacao/distribuicao/adiantamento/medicao e seguranca, UI detalhe/criacao/
+  edicao1366/390, leitura/legado/TODAS e geometria visual aprovados. Catalogos,
+  build639/12,67s, Node/diff e docs607/19 conferidos. Publicacao DEV ainda
+  depende de autorizacao; handoff 2026-10-23-solicitacao-distribuicao-gerencial.md.
+
 ## Publicacao DEV: reprogramacao parcial do contrato - 2026-10-23
 
 - Usuario autorizou commit/push exclusivo refactor/frontend e comandos EC2 DEV.

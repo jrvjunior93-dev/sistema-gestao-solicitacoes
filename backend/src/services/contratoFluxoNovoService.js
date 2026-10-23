@@ -2193,7 +2193,9 @@ async function permissoesDoUsuarioNoContrato(contrato, usuario) {
       rejeitar: false,
       reenviar: false,
       cancelar: false,
-      editar_medicao: false
+      editar_medicao: false,
+      editar_favorecido_medicao: false,
+      rejeitar_medicao: false
     };
   }
 
@@ -2231,7 +2233,9 @@ async function permissoesDoUsuarioNoContrato(contrato, usuario) {
     reenviar: daOrigem,
     cancelar: podeCancelarSolicitacaoContrato(contrato, usuario, cancelar),
     // Alterar valor/vencimento de uma medicao ja criada — o modal do botao "Medicao N".
-    editar_medicao: editarMedicao
+    editar_medicao: editarMedicao,
+    editar_favorecido_medicao: await require('./medicaoOperacaoContextoService').pode(usuario, 'contratos.medicao.editar_pagamento'),
+    rejeitar_medicao: await require('./medicaoOperacaoContextoService').pode(usuario, 'contratos.medicao.rejeitar')
   };
 }
 

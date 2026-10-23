@@ -1,17 +1,18 @@
 import assert from 'node:assert/strict';
+import { escolherFiltro } from './filaFiltrosPesquisaQA.mjs';
 export async function validarFiltrosDpFila(page) {
   await page.goto('http://127.0.0.1:5308/qa-fila?filtros-dp=1');
   await page.getByText('TIT-DP-DINHEIRO', { exact: true }).waitFor();
   assert.equal(await page.locator('thead th[data-coluna="recebimento_dp"]').count(), 1);
   assert.equal(await page.locator('thead th[data-coluna="empresa_colaborador"]').count(), 1);
   await page.getByLabel('Selecionar TIT-DP-DINHEIRO', { exact: true }).check();
-  await page.getByLabel('Origem dos títulos', { exact: true }).selectOption('RH_DP');
+  await escolherFiltro(page, 'Origem dos títulos', 'RH/DP');
   await page.getByText('TIT-EXTERNO', { exact: true }).waitFor({ state: 'hidden' });
   assert(!(await page.getByLabel('Selecionar TIT-DP-DINHEIRO', { exact: true }).isChecked()), 'Trocar filtro limpa selecao de baixa');
-  await page.getByLabel('Empresa do título / colaborador', { exact: true }).selectOption('3');
+  await escolherFiltro(page, 'Empresa do título / colaborador', 'Empresa colaborador QA');
   await page.getByText('TIT-DP-PIX', { exact: true }).waitFor({ state: 'hidden' });
-  await page.getByLabel('Credor', { exact: true }).selectOption('11');
-  await page.getByLabel('Recebimento DP', { exact: true }).selectOption('DINHEIRO');
+  await escolherFiltro(page, 'Credor', 'Credor 11');
+  await escolherFiltro(page, 'Recebimento DP', 'Dinheiro');
   await page.waitForFunction(() => window.__filterQueries?.at(-1)?.recebimento_dp === 'DINHEIRO');
   const row = page.locator('[data-fila-linha="1"]');
   assert((await row.innerText()).includes('Dinheiro'));

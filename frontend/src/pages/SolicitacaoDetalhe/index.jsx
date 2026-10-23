@@ -9,6 +9,7 @@ import { useLiveUpdateSubscription } from '../../contexts/LiveUpdatesContext';
 
 import Header, { apoioDoRegistro, formatarValorSolicitacao } from './Header';
 import ApropriacoesDoContrato from './ApropriacoesDoContrato';
+import DistribuicaoGerencial from './DistribuicaoGerencial';
 import AditivosDoContrato from './AditivosDoContrato';
 import Timeline from './Timeline';
 import Conversa from './Conversa';
@@ -1462,6 +1463,8 @@ export default function SolicitacaoDetalhe() {
   // aparecer; a configuração decide onde e se aparece quando pode.
   const resumoApropriacoesSolicitacao = montarResumoApropriacoesSolicitacao(solicitacao);
   const conteudoBlocos = {
+    distribuicao_gerencial: Array.isArray(solicitacao.distribuicoesCentroCusto) && solicitacao.distribuicoesCentroCusto.length
+      ? <DistribuicaoGerencial solicitacao={solicitacao} /> : null,
     apropriacoes: podeEditarApropriacoesSolicitacaoNormal ? (
       <BlocoConteudo
         titulo="Apropriações da solicitação"
@@ -1794,6 +1797,7 @@ export default function SolicitacaoDetalhe() {
 
   const ABA_DO_BLOCO = {
     apropriacoes: 'detalhes',
+    distribuicao_gerencial: 'detalhes',
     itens_compra_direta: 'detalhes',
     rateio_contrato: 'detalhes',
     aditivos_contrato: 'detalhes',

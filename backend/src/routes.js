@@ -249,6 +249,7 @@ const {
   validateManualPaymentQueueApproveBody,
   validateManualPaymentQueueProcessBody,
   validateManualPaymentQueueQuery,
+  validateManualPaymentQueueOptionsQuery,
   validateManualPaymentQueueResolveBody,
   validateManualPaymentQueueReverseBody,
   validateManualPaymentQueueResultBody,
@@ -2242,6 +2243,7 @@ router.delete('/financeiro/favorecidos/:id', allowFavorecidosManage, criticalRat
 router.post('/financeiro/favorecidos/:id/validar', allowFavorecidosManage, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Favorecido bancario') }), PaymentBeneficiaryController.validate);
 router.get('/financeiro/favorecidos/:id/auditoria', allowFavorecidosAudit, validateRequest({ params: validateNumericIdParam('id', 'Favorecido bancario') }), PaymentBeneficiaryController.auditoria);
 router.get('/financeiro/fila-pagamentos', allowFilaPagamentosRead, validateRequest({ query: validateManualPaymentQueueQuery }), PagamentoManualFilaController.index);
+router.get('/financeiro/fila-pagamentos/sugestoes', allowFilaPagamentosRead, validateRequest({ query: validateManualPaymentQueueOptionsQuery }), PagamentoManualFilaController.sugestoes);
 router.get('/financeiro/fila-pagamentos/contas', allowFilaPagamentosRead, PagamentoManualFilaController.contas);
 router.get('/financeiro/fila-pagamentos/instrumentos', allowFilaPagamentosBaixa, PagamentoManualFilaController.instrumentos);
 router.get('/financeiro/fila-pagamentos/solicitacoes/:id/arquivos', allowFilaPagamentosRead, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), PagamentoManualFilaController.arquivosSolicitacao);
@@ -2438,6 +2440,8 @@ router.post('/financeiro/titulos/baixas/parceladas', allowFinanceiro, criticalRa
 router.get('/financeiro/cheques-terceiros/disponiveis', allowFinanceiro, TituloFinanceiroController.chequesTerceirosDisponiveis);
 router.get('/financeiro/titulos/:id', allowFinanceiro, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro') }), TituloFinanceiroController.show);
 router.get('/financeiro/titulos/:id/auditoria', allowFinanceiro, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro') }), TituloFinanceiroController.auditoria);
+router.get('/financeiro/titulos/:id/favorecido', allowFinanceiro, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro') }), require('./controllers/MedicaoOperacoesController').consultarTitulo);
+router.patch('/financeiro/titulos/:id/favorecido', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro') }), require('./controllers/MedicaoOperacoesController').alterarTitulo);
 router.patch('/financeiro/titulos/:id', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro'), body: validateFinanceTituloUpdateBody }), TituloFinanceiroController.update);
 router.post('/financeiro/titulos/:id/desvincular-fatura', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro'), body: require('./validators/tituloDesvincularFaturaValidator').validateTituloDesvincularFaturaBody }), require('./controllers/TituloDesvincularFaturaController').desvincular);
 router.post('/financeiro/titulos/:id/cancelar', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro'), body: require('./validators/tituloCancelamentoValidator').validateTituloCancelamentoBody }), require('./controllers/TituloCancelamentoController').cancelar);
@@ -2870,6 +2874,11 @@ router.post('/contratos/fluxo-novo/:id/juridico', criticalRateLimit, ContratoFlu
 // Aprovar a medicao: leva a solicitacao a LIBERADO e a encaminha ao Financeiro (item 25, 23/08).
 router.post('/contratos/medicoes/:id/aprovar', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Medicao') }), ContratoFluxoNovoController.aprovarMedicao);
 router.put('/contratos/medicoes/:id', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Medicao') }), ContratoFluxoNovoController.atualizarMedicao);
+// id e da MEDICAO, nao do contrato. ACL por contrato/obra/solicitacao no servico.
+router.get('/contratos/medicoes/:id/favorecido', requireEnabledModule('CONTRATOS'), validateRequest({ params: validateNumericIdParam('id', 'Medicao') }), require('./controllers/MedicaoOperacoesController').consultarFavorecido);
+router.patch('/contratos/medicoes/:id/favorecido', requireEnabledModule('CONTRATOS'), criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Medicao') }), require('./controllers/MedicaoOperacoesController').alterarFavorecido);
+router.get('/contratos/medicoes/:id/rejeicao', requireEnabledModule('CONTRATOS'), validateRequest({ params: validateNumericIdParam('id', 'Medicao') }), require('./controllers/MedicaoOperacoesController').consultarRejeicao);
+router.post('/contratos/medicoes/:id/rejeitar', requireEnabledModule('CONTRATOS'), criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Medicao') }), require('./controllers/MedicaoOperacoesController').rejeitar);
 router.get('/contratos/:id/medicoes/:medicaoId/pagamento', validateRequest({ params: validateNumericIdParams(['id', 'medicaoId'], 'Contrato/medicao') }), requireContratoAccess, MedicaoPagamentoController.consultar);
 router.post('/contratos/:id/medicoes/:medicaoId/pagamento', criticalRateLimit, validateRequest({ params: validateNumericIdParams(['id', 'medicaoId'], 'Contrato/medicao') }), requireContratoAccess, MedicaoPagamentoController.alterar);
 // Termo aditivo: teto de 25% sobre o valor original, acumulando os aprovados (PI-12).

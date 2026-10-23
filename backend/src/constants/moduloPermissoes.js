@@ -767,6 +767,8 @@ const MODULO_PERMISSION_GROUPS = [
         key: 'contratos.medicao',
         label: 'Medicao de contrato',
         permissoes: [
+          { key: 'contratos.medicao.editar_pagamento', label: 'Editar favorecido da medicao pendente', descricao: 'Corrigir favorecido e dados de pagamento antes da aprovacao, com motivo e nova conferencia.' },
+          { key: 'contratos.medicao.rejeitar', label: 'Rejeitar medicao pendente', descricao: 'Cancelar os titulos sem baixa da medicao pendente e liberar o saldo para nova medicao, preservando o historico.' },
           {
             key: 'contratos.medicao.editar_valor',
             label: 'Editar valor de medicao ja criada',

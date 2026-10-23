@@ -43,6 +43,7 @@ const { registrarComprovantesFilaNoHistorico } = require('./pagamentoFilaHistori
 const { calcularValoresFila, filaSemBaixaAtualizavel } = require('./pagamentoFilaValoresDomain');
 const { distribuirCheques, conferirChequesUnicosLote } = require('./pagamentoFilaChequesDomain');
 const { tituloWhere, opcoesDosTitulos, buscaTituloWhere } = require('./pagamentoFilaFiltrosDomain');
+const { filaStatusWhere, rejeicaoWhere: rejeicaoBaseWhere, filaPesquisaWhere } = require('./pagamentoFilaPesquisaDomain');
 
 const ACTIVE_STATUSES = ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE', 'EM_EDICAO'];
 const PAYMENT_INTENT_INACTIVE_STATUSES = ['CANCELADO', 'REJEITADO', 'REJEITADO_BANCO', 'FALHA_INTEGRACAO', 'BAIXADO'];
@@ -76,7 +77,7 @@ function filaInclude() {
         'forma_pagamento_id', 'empresa_id', 'linha_digitavel', 'codigo_barras',
         'banco_cobranca', 'observacoes', 'solicitacao_id', 'favorecido_pagamento_id', 'payment_beneficiary_id',
         'cartao_id', 'fatura_cartao_id', 'origem_titulo', 'status_interno_pagar', 'compartilhamento_id',
-        'medicao_pagamento', 'medicao_pagamento_origem_id', 'bloqueio_pagamento_proprietario', 'pagamento_negociacao',
+        'medicao_pagamento', 'medicao_pagamento_origem_id', 'bloqueio_pagamento_proprietario', 'pagamento_negociacao', 'pagamento_favorecido',
         'parceiro_id', 'obra_id', 'data_emissao', 'updatedAt'
       ],
       include: [
@@ -149,24 +150,21 @@ async function listarFilaPagamentos(req, filters = {}) {
   const solicitada = Number(filters.pagina || 1);
   if (!Number.isSafeInteger(limite) || limite < 1 || limite > (paginado ? 100 : 500)
     || !Number.isSafeInteger(solicitada) || solicitada < 1 || solicitada > 100000) throw createHttpError(400, 'Paginacao invalida.');
-  const where = status === 'PENDENTE_COMPROVANTE' ? wherePendenteComprovante()
-    : status === 'BAIXADO' ? { status: { [Op.in]: ['BAIXADO', 'RESOLVIDO'] },
-      movimento_financeiro_id: { [Op.gt]: 0 }, [Op.and]: whereSemEstornoFila() }
-    : status === 'PENDENTE' ? { status: { [Op.in]: ['PENDENTE', 'EM_EDICAO'] } }
-      : (status && status !== 'TODOS' ? { status } : { status: { [Op.ne]: 'CANCELADO' } });
+  const where = filaStatusWhere(status);
   if (filters.fila_ids) where.id = { [Op.in]: filters.fila_ids };
   const filtroConsulta = tituloWhere(filters);
   const obrasCompartilhadas = await getFinanceiroObraScopeIds(req.user);
   if (obrasCompartilhadas !== null) filtroConsulta[Op.and] = [...(filtroConsulta[Op.and] || []), require('./tituloCompartilhadoLeitura').escopoCompletoSql(obrasCompartilhadas, 'titulo')];
   const filtroBusca = paginado && filters.q ? buscaTituloWhere(filters.q, valor => sequelize.escape(valor)) : null;
+  const filtroLinha = filaPesquisaWhere(filters, valor => sequelize.escape(valor));
   // Campos dos JOINs filhos so existem no WHERE externo, nao no ON do titulo.
-  const whereLista = filtroBusca ? { [Op.and]: [where, filtroBusca] } : where;
+  const whereLista = { [Op.and]: [where, filtroLinha, ...(filtroBusca ? [filtroBusca] : [])] };
   const includeTitulo = () => ({ ...filaInclude().find(i => i.as === 'titulo'), where: filtroConsulta });
   const semAtributos = i => ({ ...i, attributes: [], ...(i.include ? { include: i.include.map(semAtributos) } : {}) });
   const paraContagem = i => paginado && filters.q ? semAtributos(i) : { ...i, attributes: [], include: [] };
   const rejeicaoWhere = { status: 'REJEITADO', [Op.and]: [
-    literal('NOT EXISTS (SELECT 1 FROM pagamento_autorizacao_itens nova WHERE nova.titulo_financeiro_id = `PagamentoAutorizacaoItem`.titulo_financeiro_id AND nova.id > `PagamentoAutorizacaoItem`.id)'),
-    literal(`NOT EXISTS (SELECT 1 FROM pagamentos_manuais_fila ativa WHERE ativa.titulo_financeiro_id = \`PagamentoAutorizacaoItem\`.titulo_financeiro_id AND ativa.status IN ('PENDENTE','NAO_PAGO','DIVERGENTE','EM_EDICAO'))`),
+    ...rejeicaoBaseWhere()[Op.and],
+    filaPesquisaWhere(filters, valor => sequelize.escape(valor), null),
     ...(filtroBusca ? [filtroBusca] : []),
     ...(filters.fila_ids ? [literal('1 = 0')] : [])
   ] };
@@ -262,6 +260,7 @@ async function listarFilaPagamentos(req, filters = {}) {
   await require('./pagamentoFilaDestinatarioService').anexarDestinatarios(data.map(item => item.titulo).filter(Boolean));
   if (filters.fila_ids) return { data, total, pagina, limite, total_paginas: paginas, resumo: {}, filtros: { empresas: [], credores: [] } };
   const counts = await PagamentoManualFilaItem.findAll({
+    where: filtroLinha,
     attributes: ['status', [sequelize.fn('COUNT', sequelize.col('PagamentoManualFilaItem.id')), 'total']],
     include: [{ model: TituloFinanceiro, as: 'titulo', required: true, attributes: [], where: filtroConsulta }],
     group: ['PagamentoManualFilaItem.status'],
@@ -276,11 +275,11 @@ async function listarFilaPagamentos(req, filters = {}) {
   const rejeitadosResumo = paginado && mostrarRejeitados && filtroBusca ? Number(await contarRejeitadosResumo()) : totalRejeitados;
   resumo.NAO_PAGO = Number(resumo.NAO_PAGO || 0) + rejeitadosResumo;
   resumo.PENDENTE = Number(resumo.PENDENTE || 0) + Number(resumo.EM_EDICAO || 0);
-  resumo.BAIXADO = await PagamentoManualFilaItem.count({ where: {
+  resumo.BAIXADO = await PagamentoManualFilaItem.count({ where: { [Op.and]: [filtroLinha, {
     status: { [Op.in]: ['BAIXADO', 'RESOLVIDO'] }, movimento_financeiro_id: { [Op.gt]: 0 },
     [Op.and]: whereSemEstornoFila()
-  }, include: [{ model: TituloFinanceiro, as: 'titulo', required: true, attributes: [], where: tituloWhere(filters) }] });
-  resumo.PENDENTE_COMPROVANTE = await PagamentoManualFilaItem.count({ where: wherePendenteComprovante(),
+  }] }, include: [{ model: TituloFinanceiro, as: 'titulo', required: true, attributes: [], where: filtroConsulta }] });
+  resumo.PENDENTE_COMPROVANTE = await PagamentoManualFilaItem.count({ where: { [Op.and]: [wherePendenteComprovante(), filtroLinha] },
     include: [{ model: TituloFinanceiro, as: 'titulo', required: true, attributes: [], where: filtroConsulta }] });
   // Catalogo minimo apenas de titulos desta fila/status, nao de todas as empresas/credores.
   // Independente dos filtros estruturados para permitir trocar/limpar selecoes vazias.

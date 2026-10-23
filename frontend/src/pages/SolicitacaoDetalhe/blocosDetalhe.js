@@ -25,6 +25,7 @@ import { resolverLayoutBlocos } from '../../utils/layoutBlocos';
 export const BLOCOS_DETALHE = [
   { id: 'itens_compra_direta', rotulo: 'Itens da compra', larguraPadrao: 'total' },
   { id: 'apropriacoes', rotulo: 'Apropriações da solicitação', larguraPadrao: 'total' },
+  { id: 'distribuicao_gerencial', rotulo: 'Distribuição gerencial por obra / centro de custo', larguraPadrao: 'total' },
   { id: 'rateio_contrato', rotulo: 'Rateio do contrato', larguraPadrao: 'total' },
   // ITEM 26: aditivo pendente é decisão que trava o contrato — antes das ações.
   { id: 'aditivos_contrato', rotulo: 'Aditivos do contrato', larguraPadrao: 'total', removivel: false },

@@ -23,6 +23,9 @@ import {
   categoriaFinanceiraMatchesSearch
 } from '../utils/categoriaFinanceira';
 import ApropriacaoAutocomplete from '../components/ui/ApropriacaoAutocomplete';
+import FavorecidoEditor from '../components/financeiro/FavorecidoEditor';
+import { useAuth } from '../contexts/AuthContext';
+import { hasPermissao } from '../utils/acessoProduto';
 import {
   Pagina,
   PageHeader,
@@ -290,6 +293,7 @@ function buildFormFromTitulo(titulo) {
 }
 
 export default function FinanceiroTituloEditar() {
+  const { user } = useAuth();
   const { id } = useParams();
   const navigate = useNavigate();
   const [titulo, setTitulo] = useState(null);
@@ -303,6 +307,7 @@ export default function FinanceiroTituloEditar() {
   const [apropriacoes, setApropriacoes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [editandoFavorecido, setEditandoFavorecido] = useState(false);
   // R3/R19: erro de EVENTO (carga que falhou, validação do envio, erro do
   // salvamento) vira faixa do sistema. A CONDIÇÃO derivada do conteúdo
   // (`bloqueio`) NÃO passa por aqui — ela fica fixa no fluxo, porque fechar
@@ -803,7 +808,7 @@ export default function FinanceiroTituloEditar() {
   const submitLockRef = useRef(false);
   async function handleSubmit(event) {
     event.preventDefault();
-    if (submitLockRef.current || draft.conflict) return;
+    if (submitLockRef.current || draft.conflict || editandoFavorecido) return;
     const erroValidacao = validar();
     if (erroValidacao) {
       avisar.erro(erroValidacao);
@@ -960,6 +965,16 @@ export default function FinanceiroTituloEditar() {
 
       <Avisos avisos={avisos} aoFechar={fechar} />
 
+      {titulo.tipo === 'PAGAR' && !titulo.renegociacao_id && !titulo.renegociado_por_id && <BlocoConteudo titulo="Favorecido do pagamento" variante="secundario">
+        <FavorecidoEditor key={`favorecido-${titulo.id}`} id={titulo.id} permitido={hasPermissao(user, 'financeiro.titulos.editar')}
+          disabled={Boolean(bloqueio) || saving || draft.dirty || paymentDraft.preparar_pagamento_pix} onOcupado={setEditandoFavorecido}
+          onSalvo={async () => {
+            const atual = await getTituloFinanceiroById(id), base = buildFormFromTitulo(atual);
+            setTitulo(atual);
+            draft.hydrate(base, JSON.stringify([atual.id, atual.status, atual.valor_saldo, atual.updatedAt, base]));
+          }} />
+        <p className="app-note">Edição independente do credor. Salve ou descarte outras alterações antes de corrigir o favorecido; confira novamente os dados de pagamento.</p>
+      </BlocoConteudo>}
       <form onSubmit={handleSubmit} className="space-y-3">
         {draft.conflict && <div className="app-empty-card" role="alert">
           O título mudou durante a edição. Seu rascunho foi preservado; confira o registro atual antes de salvar.
@@ -1801,7 +1816,7 @@ export default function FinanceiroTituloEditar() {
 
         {/* C5: um primário sólido, secundário em contorno. */}
         <div className="app-actionbar">
-          <button type="submit" className="btn btn-primary" disabled={Boolean(bloqueio) || saving || draft.conflict}>
+          <button type="submit" className="btn btn-primary" disabled={Boolean(bloqueio) || saving || draft.conflict || editandoFavorecido}>
             {saving ? 'Salvando...' : 'Salvar alteracoes'}
           </button>
           {/*

@@ -38,6 +38,8 @@ export default function ApropriacaoAutocomplete({
   className = '',
   inputClassName = 'input w-full',
   onSearch,
+  onClose,
+  selecionarTextoAoFocar = false,
   loading = false,
   loadingText = 'Consultando...',
   ariaLabel,
@@ -134,7 +136,11 @@ export default function ApropriacaoAutocomplete({
     rotulo da opcao selecionada quando `open` vira falso, entao nao fica texto
     solto de busca no input.
   */
-  useFecharAoSair([campoRef, painelRef], open && !disabled, () => setOpen(false));
+  function fecharPesquisa() {
+    setOpen(false);
+    onClose?.();
+  }
+  useFecharAoSair([campoRef, painelRef], open && !disabled, fecharPesquisa);
 
   const filteredOptions = useMemo(() => {
     const q = normalize(query.trim());
@@ -169,7 +175,7 @@ export default function ApropriacaoAutocomplete({
 
   function select(option) {
     onChange(option ? String(option.id) : '');
-    setOpen(false);
+    fecharPesquisa();
   }
 
   function abrirConsultaCompleta() {
@@ -207,7 +213,7 @@ export default function ApropriacaoAutocomplete({
         select(filteredOptions[activeIndex] ?? filteredOptions[0]);
       }
     } else if (e.key === 'Escape') {
-      setOpen(false);
+      fecharPesquisa();
     } else if (e.key === 'Tab' && open && filteredOptions.length && query.trim()) {
       select(filteredOptions[activeIndex] ?? filteredOptions[0]);
     }
@@ -221,11 +227,16 @@ export default function ApropriacaoAutocomplete({
           style={mostrarConsultaCompleta ? { paddingRight: '2.75rem' } : undefined}
           value={query}
           onChange={handleInputChange}
-          onFocus={() => {
+          onFocus={event => {
+            if (selecionarTextoAoFocar) event.currentTarget.select();
             setOpen(true);
             onSearch?.(query);
           }}
           onKeyDown={handleKeyDown}
+          onClick={event => {
+            if (selecionarTextoAoFocar && query === selectedLabel) event.currentTarget.select();
+          }}
+          onBlur={onClose ? fecharPesquisa : undefined}
           placeholder={disabled ? disabledPlaceholder : placeholder}
           disabled={disabled}
           required={required && !value}

@@ -53,6 +53,7 @@ vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/rhTi
     if (id === 'sequelize') return require('sequelize');
     if (id === '../middlewares/validation') return require('../src/middlewares/validation');
     if (id === './pagamentoFilaFiltrosDomain') return require('../src/services/pagamentoFilaFiltrosDomain');
+    if (id === './pagamentoFilaPesquisaDomain') return require('../src/services/pagamentoFilaPesquisaDomain');
     throw Error('Dependencia inesperada ' + id);
   }
 });

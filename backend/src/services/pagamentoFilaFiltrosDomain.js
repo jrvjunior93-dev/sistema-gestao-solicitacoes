@@ -37,6 +37,11 @@ function tituloWhere(filters = {}) {
   if (filters.origem === 'OUTROS') clauses.push({ origem_titulo: { [Op.notIn]: ORIGENS_DP } });
   if (filters.empresa_id) clauses.push(require('./tituloCompartilhadoLeitura').whereOrigem({ empresa_id: Number(filters.empresa_id) }, 'titulo'));
   if (filters.credor_id) clauses.push({ parceiro_id: Number(filters.credor_id) });
+  if (filters.obra_id) clauses.push(require('./tituloCompartilhadoLeitura').whereOrigem({ obra_id: Number(filters.obra_id) }, 'titulo'));
+  if (filters.solicitacao_id) clauses.push(require('./tituloCompartilhadoLeitura').whereOrigem({ solicitacao_id: Number(filters.solicitacao_id) }, 'titulo'));
+  if (filters.titulo_id) clauses.push({ id: Number(filters.titulo_id) });
+  if (filters.forma_pagamento_id) clauses.push({ forma_pagamento_id: Number(filters.forma_pagamento_id) });
+  if (filters.favorecido) clauses.push(where(literal(`CONVERT(${require('./pagamentoFilaPesquisaDomain').favorecidoSql()} USING utf8mb4) COLLATE utf8mb4_unicode_ci`), filters.favorecido));
   if (filters.recebimento_dp) clauses.push(where(literal(recebimentoDpSql()), filters.recebimento_dp));
   return clauses.length ? { [Op.and]: clauses } : {};
 }

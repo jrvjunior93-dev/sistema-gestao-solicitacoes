@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
+    "test:medicao-reenvio": "node scripts/validarMedicaoVinculoSchema.js && node scripts/validarMedicaoRejeicaoFavorecido.js",
+    "test:medicao-rejeicao-favorecido": "node scripts/validarMedicaoRejeicaoFavorecido.js",
+    "test:fila-filtros-pesquisa": "node scripts/validarFilaFiltrosPesquisa.js && node scripts/validarFilaFiltrosDp.js && node scripts/validarFilaPaginacao.js",
+    "test:solicitacao-distribuicao-gerencial": "node scripts/validarSolicitacaoDistribuicaoGerencial.js",
     "test:fila-destinatarios": "node scripts/validarFilaDestinatarios.js && node scripts/validarTituloDadosPagamento.js",
     "test:ofx-matches-exclusivos": "node scripts/validarOfxMatchesExclusivos.js",
 
