@@ -1,5 +1,16 @@
 # Ownership Ativo
 
+## Promocao de todas as pendencias DEV para main - 2026-10-23
+
+- Usuario autorizou migrar os quatro commits pendentes e fornecer comandos EC2
+  de producao. Backup recente no Drive cifrado conferido e timer ativo,
+  confirmados nesta conversa. Agente unico, sem PR/delegacao.
+- Base mainfe663151; origem DEVd64137c7. Reserva da integracao completa,
+  resolucoes preservando exclusividades MAIN, novo roteiro PROD/aplicador
+  restrito as migrations202610220001/002 e QAs/documentacao/handoff proprios.
+- Sem executar EC2, DDL, estorno/baixa real ou reinicio pelo agente. Nao alterar
+  refactor/frontend, flags/.env, dependencias ou outputs/ privados.
+
 ## Promocao MAIN OFX/codigo TIT e Receber - 2026-10-22
 
 - Usuario homologou DEV41219c3a e autorizou promocao isolada MAIN/comandos EC2.
