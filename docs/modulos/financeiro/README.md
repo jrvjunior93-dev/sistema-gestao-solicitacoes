@@ -1,5 +1,17 @@
 # Modulo FINANCEIRO
 
+## Promocao MAIN: reprogramacao parcial do contrato - 2026-10-23
+
+Usuario homologou DEVfee28b6d e autorizou promover para main; backup cifrado
+e timer ativo reconfirmados. Merge sobre MAIN8982855e conserva exclusividades
+e leva somente dois runtimes homologados (service de reprogramacao e input/UI).
+Sem migration, dependencias, alteracao de medicoes/baixas/parcelas antigas.
+Roteiro exclusivo atualizar-producao-contrato-reprogramacao-20261023.sh exige
+SHA/base/ancestralidade DEV, inventario/ff-only, backup/timer/PM28000, preflight
+readonly UUID/TLS/schema/sessao/flags, QAs antes de restart apenas produtivo.
+DEV remoto/.env/configuracoes preservados; nenhuma programacao real no deploy.
+[Escopo e verificacoes](../../handoffs/2026-10-23-promocao-contrato-reprogramacao-main.md).
+
 ## Promocao MAIN de todas as pendencias - 2026-10-23
 
 Usuario autorizou Compra Direta/pagamento negociado, devolucao seletiva de
@@ -61,6 +73,23 @@ Conferir lista da fatura e relatorio de permutas em leitura apos atualizar
 backend/health e frontend main na Vercel. O caso PIX/cartao/desconto foi provado
 em memoria/DEV; nao repetir a baixa real somente para testar producao.
 [Escopo, evidencias e recuperacao](../../handoffs/2026-10-21-promocao-main-pendencias-dev.md).
+## Reprogramacao parcial de saldo contratual - 2026-10-23
+
+- Novas parcelas de previsao podem somar ate o saldo contratual sem parcela
+  livre, nao necessariamente todo ele. A sobra permanece disponivel para
+  outra reprogramacao; parcelas ja reservadas nao sao contadas novamente.
+- Tela aceita digitacao direta, edicao no meio e colagem de valores; a moeda
+  e formatada somente ao sair do campo. Total/sobra aparecem em centavos,
+  excesso bloqueia confirmacao. Saldo/referencia sao reconsultados apos criar,
+  permitindo nova programacao na mesma tela sem recarregar a solicitacao.
+- Backend preserva ACL/obra, contratos ativos/fluxo novo, bloqueio GEO de
+  totalmente medido, limite24, lock transacional e replay persistente. Historico
+  registra valor efetivamente reprogramado e saldo livre restante; somente
+  novas previsoes sao criadas. Nenhuma alteracao de medicoes, baixas anteriores,
+  valor/aditivos do contrato ou motor de calculo; sem migration/backfill.
+- Validacoes locais e limites: [handoff](../../handoffs/2026-10-23-contrato-reprogramacao-parcial.md).
+- Publicacao DEV autorizada; roteiro exclusivo atualizar-dev-contrato-reprogramacao-20261023.sh
+  confere ambiente/schema/sessao e inventario, sem migration, preservando main.
 
 ## Fila: Credor e Favorecido separados - 2026-10-23
 

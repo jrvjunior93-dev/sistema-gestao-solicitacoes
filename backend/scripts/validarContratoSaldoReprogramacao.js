@@ -107,6 +107,51 @@ const rejeita = (fn, status) => assert.rejects(fn, e => e.statusCode === status)
   assert.deepEqual(state.parcelas.slice(0, 2), original.parcelas); assert.deepEqual(state.titulos.slice(0, 2), original.titulos);
   assert.equal((await service.consultar(4, user)).saldo_disponivel, 0);
   await rejeita(() => service.reprogramar(4, payload, { usuario: { ...user, permite: false } }), 403);
+  assert.equal(a.valor_reprogramado, 24100.32);
+  assert.equal(a.saldo_disponivel_restante, 0);
+
+  // Caso do print: 50mil contratado, 1mil ja medido, programar somente 2800.
+  reset(); state.contrato.valor_total = 50000;
+  state.medidas = [{ contrato_parcela_id: 1, valor_medido: 500 }, { contrato_parcela_id: 2, valor_medido: 500 }];
+  const antesParcial = copia(state);
+  resumo = await service.consultar(4, user);
+  assert.equal(resumo.saldo_disponivel, 49000);
+  const parcial = { ...payload, referencia: resumo.referencia,
+    parcelas: [{ valor: 2800, vencimento: '2026-10-30' }] };
+  const [primeira, repetida] = await Promise.all([
+    service.reprogramar(4, parcial, { usuario: user }), service.reprogramar(4, parcial, { usuario: user })
+  ]);
+  assert.equal(primeira.valor_reprogramado, 2800); assert.equal(primeira.saldo_disponivel_restante, 46200);
+  assert.equal(repetida.repetido, true); assert.equal(state.historicos.length, 1);
+  assert.equal(state.parcelas.length, 3); assert.equal(state.titulos.length, 3);
+  assert.equal(state.titulos[2].status, 'PREVISAO'); assert.equal(state.titulos[2].valor, 2800);
+  assert.match(state.historicos[0].descricao, /2800\.00.*46200\.00/);
+  assert.deepEqual(JSON.parse(state.historicos[0].metadata).resultado, copia(primeira));
+  assert.deepEqual(state.contrato, antesParcial.contrato); assert.deepEqual(state.medidas, antesParcial.medidas);
+  assert.deepEqual(state.parcelas.slice(0, 2), antesParcial.parcelas); assert.deepEqual(state.titulos.slice(0, 2), antesParcial.titulos);
+  const proxima = await service.consultar(4, user);
+  assert.equal(proxima.saldo_disponivel, 46200); assert.equal(proxima.pode_reprogramar, true);
+  assert.equal(proxima.maximo_parcelas, 21); assert.notEqual(proxima.referencia, resumo.referencia);
+  await rejeita(() => service.reprogramar(4, { ...parcial, parcelas: [{ valor: 1, vencimento: '2026-11-30' }] }, { usuario: user }), 409);
+  await rejeita(() => service.reprogramar(4, { ...parcial, referencia: proxima.referencia,
+    parcelas: [{ valor: 46200.01, vencimento: '2026-11-30' }] }, { usuario: user }), 409);
+  for (const valor of [0, -1, null, 'invalido', Number.MAX_SAFE_INTEGER]) await rejeita(() => service.reprogramar(4,
+    { ...parcial, referencia: proxima.referencia, parcelas: [{ valor, vencimento: '2026-11-30' }] }, { usuario: user }), 400);
+  const segunda = { ...parcial, referencia: proxima.referencia, parcelas: [{ valor: 1200.01, vencimento: '2026-11-30' }] };
+  const outra = { ...segunda, parcelas: [{ valor: 1, vencimento: '2026-12-30' }] };
+  const concorrentes = await Promise.allSettled([
+    service.reprogramar(4, segunda, { usuario: user }), service.reprogramar(4, outra, { usuario: user })
+  ]);
+  assert.equal(concorrentes[0].value.valor_reprogramado, 1200.01);
+  assert.equal(concorrentes[0].value.saldo_disponivel_restante, 44999.99);
+  assert.equal(concorrentes[1].reason.statusCode, 409, 'Referencia stale nao reutiliza saldo');
+  const final = await service.consultar(4, user);
+  assert.equal(final.saldo_disponivel, 44999.99);
+  await service.reprogramar(4, { ...parcial, referencia: final.referencia,
+    parcelas: [{ valor: 44999.99, vencimento: '2026-12-30' }] }, { usuario: user });
+  assert.equal((await service.consultar(4, user)).saldo_disponivel, 0);
+  assert.equal((await service.consultar(4, user)).pode_reprogramar, false);
+  assert.deepEqual(state.contrato, antesParcial.contrato); assert.deepEqual(state.medidas, antesParcial.medidas);
   for (const falha of ['titulo', 'historico']) {
     reset(); falhar = falha; const antes = copia(state); resumo = await service.consultar(4, user);
     await assert.rejects(() => service.reprogramar(4, { ...payload, referencia: resumo.referencia }, { usuario: user }));
@@ -128,5 +173,5 @@ const rejeita = (fn, status) => assert.rejects(fn, e => e.statusCode === status)
   const rotas = fs.readFileSync(path.join(__dirname, '../src/routes.js'), 'utf8').split(/\r?\n/).filter(l => l.includes("'/contratos/:id/saldo-reprogramacao'"));
   assert.equal(rotas.length, 2);
   for (const rota of rotas) { assert.ok(rota.includes("requireEnabledModule('CONTRATOS')")); assert.ok(rota.includes('requireContratoAccess')); }
-  console.log('Saldo remanescente: centavos, ACL/obra, cronograma, previsao, historico, replay concorrente, rollback e pagamentos intactos aprovados. Sem banco/rede.');
+  console.log('Saldo remanescente: parcial/total/sobra, sequencia, reserva sem duplicidade, centavos, ACL/obra, cronograma, previsao, historico, replay/concorrencia, rollback e pagamentos intactos aprovados. Sem banco/rede.');
 })().catch(e => { console.error(e); process.exitCode = 1; });

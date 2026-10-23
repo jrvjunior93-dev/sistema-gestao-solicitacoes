@@ -37,9 +37,10 @@ export default function ReprogramarSaldoContrato({ contratoId, onConcluido }) {
   }
   const alterar = (i, campo, valor) => setLinhas(atual => atual.map((l, p) => p === i ? { ...l, [campo]: valor } : l));
   const soma = linhas.reduce((s, l) => s + (centavos(l.valor) || 0), 0);
+  const restante = saldo ? paraCentavosContrato(saldo.saldo_disponivel) - soma : 0;
   const valido = Boolean(saldo && linhas.length && justificativa.trim()
     && linhas.every(l => centavos(l.valor) > 0 && l.vencimento)
-    && soma === paraCentavosContrato(saldo.saldo_disponivel));
+    && Number.isSafeInteger(soma) && restante >= 0);
 
   async function confirmar() {
     if (enviando.current || !valido) return;
@@ -54,9 +55,12 @@ export default function ReprogramarSaldoContrato({ contratoId, onConcluido }) {
         });
         concluido.current = true;
       }
-      const dados = await getContratoParcelas(contratoId);
+      const [dados, novoSaldo] = await Promise.all([
+        getContratoParcelas(contratoId), getSaldoReprogramacaoContrato(contratoId)
+      ]);
       if (vivo.current) {
-        onConcluido(dados); setAberto(false); setSaldo(null);
+        onConcluido(dados); setAberto(false); setSaldo(novoSaldo);
+        setLinhas([]); setJustificativa(''); concluido.current = false;
         setAviso('Parcelas de previsão criadas. Selecione a nova parcela para solicitar a medição; pagamentos anteriores não foram alterados.');
       }
     } catch (e) {
@@ -75,22 +79,25 @@ export default function ReprogramarSaldoContrato({ contratoId, onConcluido }) {
     {aviso && <p role="status" className="form-hint">{aviso}</p>}
     {!aberto && saldo?.pode_reprogramar && <div className="flex flex-wrap items-center gap-3">
       <span className="text-sm">Saldo sem parcela para medir: <strong>{moeda(saldo.saldo_disponivel)}</strong></span>
-      <button type="button" className="btn btn-outline btn-sm" onClick={() => { quantidade(1); setAberto(true); setErro(''); }}>Reprogramar saldo</button>
+      <button type="button" className="btn btn-outline btn-sm" onClick={() => { if (!concluido.current) quantidade(1); setAberto(true); setErro(''); }}>Reprogramar saldo</button>
     </div>}
     {aberto && <div className="space-y-3">
-      <p className="form-hint">Distribua {moeda(saldo.saldo_disponivel)} em novas parcelas de previsão. O valor do contrato, as medições e as baixas anteriores permanecem intactos.</p>
+      <p className="form-hint">Distribua até {moeda(saldo.saldo_disponivel)} em novas parcelas de previsão. O restante fica disponível para futuras reprogramações. O valor do contrato, as medições e as baixas anteriores permanecem intactos.</p>
       <label className="grid gap-1 text-sm max-w-xs">Quantidade de novas parcelas
         <input type="number" min="1" max={saldo.maximo_parcelas} className="input input-sm" value={linhas.length} disabled={salvando || concluido.current} onChange={e => quantidade(e.target.value)} />
       </label>
       {linhas.map((l, i) => <div key={i} className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2">
         <label className="grid min-w-0 gap-1 text-sm">Valor da nova parcela {i + 1}
-          <input className="input input-sm min-w-0" inputMode="decimal" value={l.valor} disabled={salvando || concluido.current} onChange={e => alterar(i, 'valor', formatCurrencyInput(e.target.value))} />
+          <input className="input input-sm min-w-0" inputMode="decimal" value={l.valor} disabled={salvando || concluido.current}
+            onChange={e => alterar(i, 'valor', e.target.value)} onBlur={e => alterar(i, 'valor', formatCurrencyInput(e.target.value))} />
         </label>
         <label className="grid min-w-0 gap-1 text-sm">Vencimento da nova parcela {i + 1}
           <DateInputBR className="input input-sm min-w-0" value={l.vencimento} disabled={salvando || concluido.current} onChange={e => alterar(i, 'vencimento', e.target.value)} />
         </label>
       </div>)}
-      <p className="form-hint">Total: {moeda(soma / 100)} · Diferença: {moeda(saldo.saldo_disponivel - soma / 100)}</p>
+      <p className="form-hint" aria-live="polite">Total: {moeda(soma / 100)} · {restante >= 0
+        ? `Saldo para futuras reprogramações: ${moeda(restante / 100)}`
+        : `Excede o saldo disponível em ${moeda(-restante / 100)}`}</p>
       <label className="grid gap-1 text-sm">Justificativa da reprogramação
         <textarea className="input" maxLength={2000} value={justificativa} disabled={salvando || concluido.current} onChange={e => setJustificativa(e.target.value)} />
       </label>

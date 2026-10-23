@@ -75,8 +75,9 @@ function validarCronograma(payload, contextoAtual) {
     if (!Number.isSafeInteger(cent) || cent <= 0 || !data) throw erro('Informe valor positivo e vencimento valido em cada parcela.');
     return { valor: cent / 100, vencimento: formatarISO(data), cent };
   });
-  if (parcelas.reduce((soma, p) => soma + p.cent, 0) !== contextoAtual.cent) {
-    throw erro('A soma das novas parcelas deve corresponder exatamente ao saldo disponivel. Atualize a consulta.', 409);
+  const total = parcelas.reduce((soma, p) => soma + p.cent, 0);
+  if (!Number.isSafeInteger(total) || total > contextoAtual.cent) {
+    throw erro('A soma das novas parcelas nao pode ultrapassar o saldo disponivel. Atualize a consulta.', 409);
   }
   return parcelas;
 }
@@ -144,10 +145,12 @@ async function reprogramar(id, payload, { usuario, req } = {}) {
       await parcela.update({ titulo_financeiro_id: titulo.id, travada: true }, { transaction });
       criadas.push({ parcela_id: parcela.id, numero, titulo_id: titulo.id, valor: linha.valor, vencimento: linha.vencimento });
     }
-    const resultado = { contrato_id: c.contrato.id, valor_reprogramado: c.cent / 100, parcelas: criadas };
+    const reprogramadoCent = linhas.reduce((soma, p) => soma + p.cent, 0);
+    const resultado = { contrato_id: c.contrato.id, valor_reprogramado: reprogramadoCent / 100,
+      saldo_disponivel_restante: (c.cent - reprogramadoCent) / 100, parcelas: criadas };
     await Historico.create({ solicitacao_id: c.contrato.solicitacao_id, usuario_responsavel_id: usuario.id,
       setor: codigoDoSetor(usuario) || '-', acao: ACAO, observacao: chave,
-      descricao: `Saldo de R$ ${(c.cent / 100).toFixed(2)} reprogramado em ${criadas.length} parcela(s). Motivo: ${justificativa}`,
+      descricao: `Saldo de R$ ${(reprogramadoCent / 100).toFixed(2)} reprogramado em ${criadas.length} parcela(s). Saldo livre restante: R$ ${resultado.saldo_disponivel_restante.toFixed(2)}. Motivo: ${justificativa}`,
       metadata: JSON.stringify({ resultado, justificativa }) }, { transaction });
     return resultado;
   });
