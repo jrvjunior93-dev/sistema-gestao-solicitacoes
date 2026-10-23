@@ -17,6 +17,7 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
     multa: { type: DataTypes.DECIMAL(14, 2), allowNull: false, defaultValue: 0 },
     renegociacao_id: { type: DataTypes.INTEGER, allowNull: true },
     pagamento_negociacao: { type: DataTypes.JSON, allowNull: true },
+    pagamento_favorecido: { type: DataTypes.JSON, allowNull: true },
     compartilhamento_id: { type: DataTypes.INTEGER, allowNull: true },
     medicao_pagamento: { type: DataTypes.JSON, allowNull: true },
     medicao_pagamento_origem_id: { type: DataTypes.INTEGER, allowNull: true },

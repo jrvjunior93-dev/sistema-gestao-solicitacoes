@@ -1,5 +1,31 @@
 # Modulo FINANCEIRO
 
+## Favorecido editavel na medicao e no titulo - 2026-10-23
+
+- Detalhe e pagina de edicao do titulo oferecem Editar favorecido, separado
+  do credor. Exige permissao nominal `financeiro.titulos.editar`, escopo de
+  todas as obras/rateios e ausencia de baixa/operacoes/vinculos protegidos.
+- Se a previsao pertence a medicao pendente, o editor consulta/altera a
+  instrucao dessa medicao (inclusive divisao por favorecidos), com sua ACL
+  propria. Nao cria override oculto divergente da conferencia de aprovacao.
+  Previsao de contrato ainda sem medicao recebe favorecido ao medir.
+- Em titulo vigente, a correcao e especifica daquele titulo: snapshot
+  `pagamento_favorecido` tem prioridade no detalhe, fila e filtro Favorecido.
+  Valores, vencimento, credor, medicao aprovada, outras parcelas e cadastro
+  global permanecem intactos. A mudanca e auditada com antes/depois e motivo;
+  a auditoria financeira tambem le recibo permanente, independente da retencao.
+- A conta bancaria antiga nao e reaproveitada silenciosamente: remessa exige
+  vinculo explicito e correspondente aos dados corrigidos. A fila manual usa
+  a instrucao salva no titulo. Nao altera remessas/autorizacoes ja existentes.
+  O dossie novo inclui hash da instrucao; fila/autorizacao ativa impede editar.
+- Pagos, negociados/compartilhados e origens DP/recarga/pedido/adiantamento
+  mantem seus fluxos especializados. Negociacao conserva editor anterior;
+  seu mapeamento GET/PATCH agora explicita a mesma permissao editar ja exigida
+  pelo servico, corrigindo a pendencia da auditoria de rotas sem ampliar acesso.
+- Skill frontend-design aplicada apenas ao padrao operacional existente:
+  editor reutilizavel, busca de Pessoas, avisos e confirmacao do sistema.
+  Migration/testes/limites no [handoff](../../handoffs/2026-10-23-medicao-rejeicao-favorecido.md).
+
 ## Filtros digitaveis da fila - 2026-10-23
 
 - Origem, empresa do titulo/colaborador, credor e recebimento DP passam a

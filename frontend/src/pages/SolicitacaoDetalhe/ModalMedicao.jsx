@@ -17,6 +17,8 @@ import {
 import PreviewAnexoModal from './PreviewAnexoModal';
 import AcoesEnvioTitulosPagamento from '../../components/AcoesEnvioTitulosPagamento';
 import MedicaoValorPagamento from '../../components/contratos/MedicaoValorPagamento';
+import RejeitarMedicao from '../../components/contratos/RejeitarMedicao';
+import FavorecidoEditor from '../../components/financeiro/FavorecidoEditor';
 import { tituloElegivelParaEnvioPagamento, rotuloOperacionalPagamento } from '../../utils/envioTitulosPagamento';
 
 /**
@@ -85,6 +87,8 @@ export default function ModalMedicao({
   contratoId = null,
   consultarValorPagamento = false,
   podeEditar = false,
+  podeEditarFavorecido = false,
+  podeRejeitar = false,
   podeAprovar = false,
   podeAnexar = false,
   titulos = [],
@@ -107,6 +111,9 @@ export default function ModalMedicao({
   const [erroPorParcela, setErroPorParcela] = useState({});
   const [salvando, setSalvando] = useState(false);
   const [aprovando, setAprovando] = useState(false);
+  const [editandoFavorecido, setEditandoFavorecido] = useState(false);
+  const [rejeitando, setRejeitando] = useState(false);
+  const operacoesFilhas = useRef({ favorecido: false, rejeicao: false });
   const [aprovacaoLocal, setAprovacaoLocal] = useState(null);
   const aprovacaoPendenteRef = useRef(false);
   const [abrindoAnexoId, setAbrindoAnexoId] = useState(null);
@@ -132,6 +139,8 @@ export default function ModalMedicao({
 
   useEffect(() => {
     setAnexosAdicionados([]);
+    setEditandoFavorecido(false); setRejeitando(false);
+    operacoesFilhas.current = { favorecido: false, rejeicao: false };
     limpar();
     // Limpar apenas ao trocar de medicao; recarregar parcelas nao apaga o resultado do envio.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -171,6 +180,7 @@ export default function ModalMedicao({
   const totalDaMedicao = daMedicao.reduce((acc, p) => acc + Number(p.valor || 0), 0);
 
   async function salvar() {
+    if (salvando || aprovacaoPendenteRef.current || operacoesFilhas.current.favorecido || operacoesFilhas.current.rejeicao) return;
     // R26: alvo fixado ANTES do await — o modal nao congela a tela por tras.
     const alvo = medicao;
     const linhas = editaveis;
@@ -203,15 +213,15 @@ export default function ModalMedicao({
     }
     const totalNovo = itens.reduce((acc, i) => acc + Number(i.valor_medido || 0), 0);
 
-    const { ok } = await confirmar({
-      titulo: `Alterar a medicao ${alvo.numero}`,
-      mensagem: `Gravar ${itens.length} parcela(s) da medicao ${alvo.numero} (${periodo(alvo)}) somando ${moeda(totalNovo)}. A diferenca em relacao ao previsto e redistribuida nas ULTIMAS parcelas do contrato — o saldo do contrato muda junto.`,
-      rotuloConfirmar: 'Salvar alteracoes'
-    });
-    if (!ok) return;
-
     setSalvando(true);
     try {
+      const { ok } = await confirmar({
+        titulo: `Alterar a medicao ${alvo.numero}`,
+        mensagem: `Gravar ${itens.length} parcela(s) da medicao ${alvo.numero} (${periodo(alvo)}) somando ${moeda(totalNovo)}. A diferenca em relacao ao previsto e redistribuida nas ULTIMAS parcelas do contrato — o saldo do contrato muda junto.`,
+        rotuloConfirmar: 'Salvar alteracoes'
+      });
+      if (!ok) return;
+
       await atualizarMedicaoContrato(alvo.id, itens, favorecidosValores);
       onSalvo?.();
       onFechar?.();
@@ -223,7 +233,7 @@ export default function ModalMedicao({
   }
 
   async function aprovar() {
-    if (!podeAprovar || medicaoAprovada || aprovacaoPendenteRef.current || salvando || enviandoAnexos) return;
+    if (!podeAprovar || medicaoAprovada || aprovacaoPendenteRef.current || salvando || enviandoAnexos || operacoesFilhas.current.favorecido || operacoesFilhas.current.rejeicao) return;
     // R26: alvo fixado ANTES do await. Aprovar a medicao errada libera pagamento errado, e a
     // trilha registra um consentimento valido para a acao que ninguem autorizou.
     const alvo = medicao;
@@ -341,8 +351,8 @@ export default function ModalMedicao({
         aberto
         largura="var(--modal-max-w-lg, 860px)"
         rotulo={`Medição ${medicao.numero}`}
-        onFechar={aprovando || enviandoTitulos || salvando ? undefined : onFechar}
-        fecharComEscape={!previewAnexo && !aprovando && !enviandoTitulos && !salvando}
+        onFechar={aprovando || enviandoTitulos || salvando || editandoFavorecido || rejeitando ? undefined : onFechar}
+        fecharComEscape={!previewAnexo && !aprovando && !enviandoTitulos && !salvando && !editandoFavorecido && !rejeitando}
       >
         {/* R27: cabecalho FIXO — a identificacao da medicao e a situacao nao rolam para fora. */}
         <header
@@ -363,7 +373,7 @@ export default function ModalMedicao({
             </div>
             <p className="mt-1 text-xs text-[var(--c-muted)]">Periodo: {periodo(medicao)}</p>
           </div>
-          <button type="button" className="btn btn-outline btn-sm shrink-0" disabled={aprovando || enviandoTitulos} onClick={onFechar}>Fechar</button>
+          <button type="button" className="btn btn-outline btn-sm shrink-0" disabled={aprovando || enviandoTitulos || salvando || editandoFavorecido || rejeitando} onClick={onFechar}>Fechar</button>
         </header>
 
         <div data-testid="modal-medicao" className="space-y-4 px-4 py-4">
@@ -419,6 +429,16 @@ export default function ModalMedicao({
               </div>))}
             </div>}
 
+            {!medicaoAprovada && <>
+              <FavorecidoEditor key={`favorecido-${medicao.id}`} tipo="medicao" id={medicao.id}
+                permitido={podeEditarFavorecido} disabled={salvando || aprovando || rejeitando || enviandoAnexos}
+                onOcupado={v => { operacoesFilhas.current.favorecido = v; setEditandoFavorecido(v); }}
+                onSalvo={async () => { try { await onSalvo?.(); } finally { onFechar?.(); } }} />
+              <RejeitarMedicao key={`rejeicao-${medicao.id}`} medicaoId={medicao.id}
+                permitido={podeRejeitar} disabled={salvando || aprovando || editandoFavorecido || enviandoAnexos}
+                onOcupado={v => { operacoesFilhas.current.rejeicao = v; setRejeitando(v); }}
+                onRejeitada={async () => { try { await onSalvo?.(); } finally { onFechar?.(); } }} />
+            </>}
             <div className="mt-3 border-t border-[var(--c-border)] pt-3">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)]">
@@ -624,7 +644,7 @@ export default function ModalMedicao({
                   type="button"
                   className="btn btn-outline btn-sm"
                   data-testid="salvar-medicao"
-                  disabled={salvando || aprovando}
+                  disabled={salvando || aprovando || editandoFavorecido || rejeitando}
                   onClick={salvar}
                 >
                   {salvando ? 'Salvando...' : 'Salvar alteracoes'}
@@ -635,7 +655,7 @@ export default function ModalMedicao({
                   type="button"
                   className="btn btn-primary btn-sm"
                   data-testid="aprovar-medicao"
-                  disabled={aprovando || salvando || enviandoAnexos || !temAnexo}
+                  disabled={aprovando || salvando || enviandoAnexos || editandoFavorecido || rejeitando || !temAnexo}
                   title={!temAnexo ? 'Anexe ao menos um arquivo antes de aprovar.' : undefined}
                   onClick={aprovar}
                 >

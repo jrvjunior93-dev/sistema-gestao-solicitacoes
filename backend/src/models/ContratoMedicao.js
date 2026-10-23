@@ -42,6 +42,8 @@ module.exports = (sequelize, DataTypes) => {
       // A aprovacao da Gerencia de Processos. E ela que leva a solicitacao a LIBERADO.
       aprovada_em: { type: DataTypes.DATE, allowNull: true },
       aprovada_por: { type: DataTypes.INTEGER, allowNull: true },
+      // Recibo da rejeicao. Nao apagar o evento nem reutilizar seu numero.
+      rejeicao: { type: DataTypes.JSON, allowNull: true },
 
       criado_por: { type: DataTypes.INTEGER, allowNull: true }
     },

@@ -36,7 +36,8 @@ function matches(row, where = {}) {
     if (value && typeof value === 'object') return Reflect.ownKeys(value).every((op) =>
       op === Op.in ? value[op].includes(row[key]) : op === Op.notIn ? !value[op].includes(row[key])
         : op === Op.ne ? row[key] !== value[op] : false);
-    return row[key] === value;
+    // Coluna nullable adicionada a fixtures antigas equivale ao NULL do banco.
+    return value === null ? row[key] == null : row[key] === value;
   });
 }
 let state, grants = true, hasAnexo = true, failHistory = false;

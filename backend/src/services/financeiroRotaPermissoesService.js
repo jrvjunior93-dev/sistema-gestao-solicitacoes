@@ -70,6 +70,9 @@ const PERMISSOES_ROTAS_FINANCEIRAS = Object.freeze({
   'POST /financeiro/titulos/negociacoes/preview': ['financeiro.titulos.renegociar'],
   'POST /financeiro/titulos/negociacoes/confirmar': ['financeiro.titulos.renegociar'],
   'GET /financeiro/titulos/:id/negociacao': ['financeiro.titulos.visualizar'],
+  // Mesmo requisito ja imposto pelo servico do editor de pagamento.
+  'GET /financeiro/titulos/:id/negociacao/pagamento': ['financeiro.titulos.editar'],
+  'PATCH /financeiro/titulos/:id/negociacao/pagamento': ['financeiro.titulos.editar'],
   'GET /financeiro/titulos/relatorio.pdf': ['financeiro.titulos.exportar'],
   'POST /financeiro/titulos/relatorio.pdf': ['financeiro.titulos.exportar'],
   'POST /financeiro/titulos': ['financeiro.titulos.criar'],
@@ -79,6 +82,8 @@ const PERMISSOES_ROTAS_FINANCEIRAS = Object.freeze({
   'GET /financeiro/cheques-terceiros/disponiveis': ['financeiro.titulos.baixar', 'financeiro.baixas_compostas.criar'],
   'GET /financeiro/titulos/:id': ['financeiro.titulos.visualizar'],
   'GET /financeiro/titulos/:id/auditoria': ['financeiro.titulos.auditoria.visualizar'],
+  'GET /financeiro/titulos/:id/favorecido': ['financeiro.titulos.editar'],
+  'PATCH /financeiro/titulos/:id/favorecido': ['financeiro.titulos.editar'],
   'PATCH /financeiro/titulos/:id': ['financeiro.titulos.editar'],
   'PATCH /financeiro/titulos/:id/cobranca': ['financeiro.titulos.cobranca'],
   'POST /financeiro/titulos/:id/baixas/conciliacoes': ['financeiro.titulos.baixar'],

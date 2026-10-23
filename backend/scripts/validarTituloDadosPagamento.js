@@ -56,6 +56,18 @@ async function run() {
   assert.deepEqual(res.body.movimentos, origem.movimentos);
   assert.equal(res.body.valor_saldo, '0.00'); assert.equal(res.body.status, 'QUITADO');
   assert.deepEqual(origem, antes);
+  const previsao = { ...structuredClone(origem), status: 'PREVISAO', valor_baixado: 0, valor_saldo: 1000, forma_pagamento_id: null, formaPagamento: null };
+  await anexarDetalheTitulo(previsao, { ...db, FormaPagamentoFinanceira: model(async options => {
+    assert.deepEqual(options.where.id[Op.in], [3]); return [{ id: 3, nome: 'Pix da medicao', tipo: 'PIX' }];
+  }), ContratoParcela: model(async options => {
+    assert.deepEqual(options.include[0].include[0].where, { rejeicao: null }, 'Detalhe PREVISAO permite conferir medicao pendente, sem entrar na fila');
+    return [{ id: 1, contrato_id: 5, titulo_financeiro_id: 11053, medicoes: [{ solicitacao_id: 6345, medicao: {
+      id: 1, contrato_id: 5, solicitacao_id: 6345, favorecido_id: 9, aprovada_em: null, rejeicao: null,
+      favorecido_chave_pix: 'pix-pendente', forma_pagamento_id: 3
+    } }] }];
+  }) });
+  assert.equal(previsao.instrucao_medicao_fila.favorecido_chave_pix, 'pix-pendente');
+  assert.equal(previsao.instrucao_medicao_fila.forma_pagamento_tipo, 'PIX');
   const restrito = resposta();
   await modulo.exports.show({ user: { operador: false }, params: { id: 11053 } }, restrito);
   assert.equal(restrito.body.movimentos, undefined); assert.equal(restrito.body.paymentIntents, undefined);

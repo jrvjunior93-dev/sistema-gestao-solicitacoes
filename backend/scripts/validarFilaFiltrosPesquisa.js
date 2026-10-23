@@ -25,7 +25,7 @@ async function nomesEfetivos() {
   sqlite.function('JSON_EXTRACT', (text, key) => text ? JSON.parse(text)[key.slice(2)] ?? null : null);
   sqlite.function('JSON_UNQUOTE', value => value);
   sqlite.exec(`CREATE TABLE titulos_financeiros(id INTEGER PRIMARY KEY, solicitacao_id INT, medicao_pagamento_origem_id INT,
-    pagamento_negociacao TEXT, favorecido_pagamento_id INT, payment_beneficiary_id INT, parceiro_id INT, origem_titulo TEXT);
+    pagamento_negociacao TEXT, pagamento_favorecido TEXT, favorecido_pagamento_id INT, payment_beneficiary_id INT, parceiro_id INT, origem_titulo TEXT);
     CREATE TABLE solicitacoes_favorecidos(titulo_financeiro_id INT UNIQUE, nome_favorecido TEXT);
     CREATE TABLE parceiros(id INT PRIMARY KEY, nome TEXT);
     CREATE TABLE payment_beneficiaries(id INT PRIMARY KEY, nome TEXT);
@@ -50,6 +50,7 @@ async function nomesEfetivos() {
     [{ id: 101, medicao_pagamento_origem_id: 100, payment_beneficiary_id: 5 }, { instrucao_favorecido: { nome_favorecido: null } }],
     [{ id: 102, medicao_pagamento_origem_id: 100 }, { instrucao_favorecido: { nome_favorecido: 'Favorecido direto' } }],
     [{ pagamento_negociacao: { nome_favorecido: 'Favorecido negociacao' }, medicao_pagamento_origem_id: 100 }, {}],
+      [{ pagamento_favorecido: { nome_favorecido: 'Favorecido corrigido' }, pagamento_negociacao: { nome_favorecido: 'Anterior' }, medicao_pagamento_origem_id: 100 }, {}],
     [{ pagamento_negociacao: { nome_favorecido: null }, payment_beneficiary_id: 5 }, {}],
     [{ id: 200, solicitacao_id: 10 }, { instrucao_medicao_fila: { nome_favorecido: 'Favorecido medicao' } }],
     [{ id: 201, solicitacao_id: 10 }, { instrucao_medicao_fila: { nome_favorecido: null, pendencia: 'Ambigua' } }],

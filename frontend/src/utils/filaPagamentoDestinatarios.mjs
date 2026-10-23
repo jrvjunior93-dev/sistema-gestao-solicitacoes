@@ -7,7 +7,7 @@ const semDados = 'Sem instrução bancária cadastrada';
 // e documento cadastral nunca e convertido em chave PIX.
 export function beneficiaryData(titulo = {}) {
   const credor = titulo.credor_fila?.nome || titulo.parceiro?.nome || 'Credor não informado';
-  const instrucao = titulo.pagamento_negociacao || titulo.instrucao_favorecido || titulo.instrucao_medicao_fila;
+  const instrucao = titulo.pagamento_favorecido || titulo.pagamento_negociacao || titulo.instrucao_favorecido || titulo.instrucao_medicao_fila;
   const solicitacao = titulo.solicitacao || {};
   const banco = titulo.paymentBeneficiary;
   const favorecidoTitulo = titulo.favorecidoPagamento;

@@ -134,6 +134,19 @@ async function validateTituloEligibleForPayment(titulo, { beneficiary = null, tr
   if (beneficiary) {
     await validateBeneficiaryComplete(beneficiary);
   }
+  if (titulo.pagamento_favorecido) {
+    const p = titulo.pagamento_favorecido;
+    // O banco nao pode ignorar uma instrucao corrigida e escolher o cadastro
+    // antigo do credor. Exigir correspondencia explicita; nunca autoatualizar
+    // cadastro global, remessa ou snapshot que ja tenha sido autorizado.
+    const doc = v => String(v || '').replace(/\D/g, '');
+    if (!beneficiary || Number(titulo.payment_beneficiary_id) !== Number(beneficiary.id)
+      || !p.cpf_cnpj || doc(beneficiary.cpf_cnpj) !== doc(p.cpf_cnpj)
+      || (p.favorecido_chave_pix && String(beneficiary.pix_chave || '').trim() !== p.favorecido_chave_pix)
+      || (!p.favorecido_chave_pix && p.dados_pagamento)) {
+      throw createHttpError(409, 'Favorecido corrigido no titulo. Confira e vincule os mesmos dados no cadastro bancario antes de montar remessa, ou utilize a fila manual.');
+    }
+  }
 
   await validateNoActiveIntent(titulo.id, { transaction });
   return true;

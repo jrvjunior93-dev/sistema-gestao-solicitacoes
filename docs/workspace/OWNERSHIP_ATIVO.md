@@ -1,5 +1,35 @@
 # Ownership Ativo
 
+## Publicacao DEV: rejeicao da medicao e favorecido - 2026-10-23
+
+- Usuario autorizou commit/push exclusivo para refactor/frontend e roteiro
+  EC2 DEV com migration. Agente unico; producao/main fora do escopo.
+- Reserva temporaria: runner de migration e deploy/QAs dedicados, handoff,
+  docs e staging seletivo dos arquivos da medicao/favorecido. Preservar fora
+  do commit os ajustes locais independentes de arranjo dos filtros.
+- Validar banco/UUID/processo/porta DEV, backup confirmado e migration unica;
+  nao executar EC2, banco real, reinicio ou migration nesta sessao local.
+- Revisao/staging seletivo e QAs concluidos. Reserva encerrada; ownership
+  liberado. Copia isolada do index (sem filtros locais) passou nos QAs reais
+  UI1366/390, rejeicao/favorecido/deploy, docs609/19 e build643/13,61s.
+  Pronto para commit/push autorizado, sem execucao de deploy nesta sessao.
+
+## Medicao pendente: rejeicao e edicao do favorecido - 2026-10-23
+
+- Usuario autorizou implementar/testar na base DEV45513bfd. Agente unico.
+- Reserva: novos servicos/controllers/QAs de rejeicao/destinatario, rotas e
+  permissoes, migration aditiva/modelos, projecoes/ciclo da medicao, editores
+  de medicao/titulo e docs/handoff. Preservar delta local dos filtros.
+- Cancelamento atomico somente de medicao pendente; liberar vinculos/saldo,
+  devolver a origem e auditar. Sem apagar registros ou desfazer pagamentos.
+- Sem commit/push/main, EC2, banco real ou aplicacao de migration.
+- Reserva documental complementar: metricas399 em AGENTS/autenticacao,
+  READMEs Contratos/Financeiro, QAs de auditoria/consulta e handoff desta tarefa.
+- Concluido e testado localmente. Reserva encerrada e ownership liberado.
+  QAs de servico/UI1366/390/pagina original, financeiro/ACL/historico/replay/
+  rollback, seguranca399/80rotas, build643/12,28s, docs610/19 e diffcheck
+  aprovados. Migration aditiva preparada, nao aplicada; nenhuma publicacao.
+
 ## Publicacao DEV: filtros da fila e distribuicao gerencial - 2026-10-23
 
 - Usuario autorizou commit/push dos dois deltas na refactor/frontend e comandos

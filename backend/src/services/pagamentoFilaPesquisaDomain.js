@@ -37,7 +37,9 @@ function favorecidoSql(alias = 'titulo') {
       AND NOT EXISTS (SELECT 1 FROM solicitacoes s WHERE s.id = ${t}.solicitacao_id
         AND s.contrato_id IS NOT NULL AND s.contrato_id <> cp.contrato_id)`;
   const tituloNome = `(SELECT p.nome FROM parceiros p WHERE p.id = ${t}.favorecido_pagamento_id)`;
-  const instrucao = `CASE WHEN JSON_TYPE(${t}.pagamento_negociacao) = 'OBJECT'
+  const instrucao = `CASE WHEN JSON_TYPE(${t}.pagamento_favorecido) = 'OBJECT'
+    THEN NULLIF(JSON_UNQUOTE(JSON_EXTRACT(${t}.pagamento_favorecido, '$.nome_favorecido')), 'null')
+    WHEN JSON_TYPE(${t}.pagamento_negociacao) = 'OBJECT'
     THEN NULLIF(JSON_UNQUOTE(JSON_EXTRACT(${t}.pagamento_negociacao, '$.nome_favorecido')), 'null')
     WHEN EXISTS (SELECT 1 FROM solicitacoes_favorecidos sf WHERE sf.titulo_financeiro_id IN (${t}.id, ${t}.medicao_pagamento_origem_id))
     THEN (${partes})
@@ -50,7 +52,9 @@ function favorecidoSql(alias = 'titulo') {
   // A excecao DP/dinheiro recebe pelo colaborador, nao pelo cadastro bancario.
   const dp = require('./pagamentoFilaFiltrosDomain').recebimentoDpSql(alias);
   return `COALESCE(NULLIF(CASE WHEN ${t}.origem_titulo IN ('RH_DP','RH_DP_TICKET') AND (${dp}) = 'DINHEIRO'
-    THEN COALESCE(NULLIF(CASE WHEN JSON_TYPE(${t}.pagamento_negociacao) = 'OBJECT'
+    THEN COALESCE(NULLIF(CASE WHEN JSON_TYPE(${t}.pagamento_favorecido) = 'OBJECT'
+      THEN NULLIF(JSON_UNQUOTE(JSON_EXTRACT(${t}.pagamento_favorecido, '$.nome_favorecido')), 'null')
+      WHEN JSON_TYPE(${t}.pagamento_negociacao) = 'OBJECT'
       THEN NULLIF(JSON_UNQUOTE(JSON_EXTRACT(${t}.pagamento_negociacao, '$.nome_favorecido')), 'null')
       WHEN EXISTS (SELECT 1 FROM solicitacoes_favorecidos sf WHERE sf.titulo_financeiro_id IN (${t}.id, ${t}.medicao_pagamento_origem_id)) THEN (${partes})
       WHEN (SELECT COUNT(DISTINCT cm.id) ${vinculo}) = 1

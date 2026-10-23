@@ -141,6 +141,7 @@ function buildSnapshot(title) {
   return {
     titulo_id: Number(title.id),
     ...(title.pagamento_negociacao ? { pagamento_negociacao_hash: sha256(title.pagamento_negociacao) } : {}),
+    ...(title.pagamento_favorecido ? { pagamento_favorecido_hash: sha256(title.pagamento_favorecido) } : {}),
     ...(title.compartilhamento_id ? { compartilhamento_id: Number(title.compartilhamento_id),
       participacoes: (title.participacoesCompartilhadas || []).map(p => ({ solicitacao_id: Number(p.solicitacao_id),
         pedido_compra_id: p.pedido_compra_id ? Number(p.pedido_compra_id) : null, obra_id: Number(p.obra_id), empresa_id: Number(p.empresa_id),

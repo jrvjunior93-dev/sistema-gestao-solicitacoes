@@ -5,6 +5,7 @@ import useQueryRevision from '../navigation/useQueryRevision';
 import useWorkspaceOpenRecord from '../navigation/useWorkspaceOpenRecord';
 import TituloNegociacaoHistorico from '../components/financeiro/TituloNegociacaoHistorico';
 import TituloNegociacaoPagamento from '../components/financeiro/TituloNegociacaoPagamento';
+import FavorecidoEditor from '../components/financeiro/FavorecidoEditor';
 import ParticipacoesTitulo from '../components/financeiro/ParticipacoesTitulo';
 import DadosPagamentoFila from '../components/financeiro/DadosPagamentoFila';
 import { beneficiaryData } from '../utils/filaPagamentoDestinatarios.mjs';
@@ -385,7 +386,7 @@ export default function FinanceiroTituloDetalhe() {
   };
   const podeVerPagamentosBancarios = hasPermissao(user, 'financeiro.titulos.pagamentos_bancarios.visualizar');
   const destinatarioPagamento = beneficiaryData(titulo || {});
-  const instrucaoPagamento = titulo?.pagamento_negociacao || titulo?.instrucao_favorecido;
+  const instrucaoPagamento = titulo?.pagamento_favorecido || titulo?.pagamento_negociacao || titulo?.instrucao_favorecido;
   const dadosPagamentoAdicionais = destinatarioPagamento.dadosComplementares
     || (!destinatarioPagamento.chavePix ? destinatarioPagamento.pagamento : null);
   const podeVerMovimentosFinanceiros = hasPermissao(user, 'financeiro.titulos.movimentos.visualizar');
@@ -875,6 +876,9 @@ export default function FinanceiroTituloDetalhe() {
           cor="var(--module-financeiro)"
         >
           <ParticipacoesTitulo titulo={titulo} />
+          {titulo.tipo === 'PAGAR' && ['ABERTO', 'PREVISAO'].includes(titulo.status) && !titulo.renegociacao_id && !titulo.renegociado_por_id
+            && Number(titulo.valor_baixado || 0) === 0 && <FavorecidoEditor key={`favorecido-${titulo.id}`} id={titulo.id}
+              permitido={podeEditarDadosTitulo} onSalvo={carregar} />}
           <CancelarTitulo key={titulo.id} titulo={titulo} permitido={canCancelTitulosFinanceiros(user)}
             onCancelado={async () => { avisar.sucesso('Título cancelado. Histórico e documentos preservados.'); await carregar(); }} />
           <DesvincularFaturaTitulo key={`${titulo.id}:${titulo.fatura_cartao_id || 0}`}
