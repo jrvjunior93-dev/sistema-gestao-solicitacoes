@@ -130,11 +130,13 @@ export async function validarColunasFila(browser) {
     await alinhar(page);
 
     // A coluna condicional Motivo continua seguindo o recorte existente.
-    const status = page.locator('select').filter({ has: page.locator('option[value="TODOS"]') });
-    await status.selectOption('BAIXADO');
+    const status = page.getByRole('combobox', { name: 'Status', exact: true });
+    await status.fill('Baixados');
+    await page.getByRole('button', { name: 'Baixados', exact: true }).click();
     await page.waitForFunction(() => !document.querySelector('thead th[data-coluna="justificativa"]'));
     await alinhar(page);
-    await status.selectOption('TODOS');
+    await status.fill('Todos');
+    await page.getByRole('button', { name: 'Todos', exact: true }).click();
     await page.locator('thead th[data-coluna="justificativa"]').waitFor(); await alinhar(page);
     const menu3 = await painel(page);
     await menu3.getByLabel('Juros (R$)', { exact: true }).check();

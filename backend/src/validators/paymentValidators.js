@@ -220,7 +220,18 @@ function validateManualPaymentQueueCreateBody(payload = {}) {
 }
 
 function validateManualPaymentQueueQuery(payload = {}) {
-  ensureAllowedKeys(payload, ['status', 'q', 'origem', 'empresa_id', 'credor_id', 'recebimento_dp', 'pagina', 'limite', 'fila_ids'], 'Consulta da fila de pagamentos');
+  ensureAllowedKeys(payload, ['status', 'q', 'origem', 'empresa_id', 'credor_id', 'recebimento_dp', 'pagina', 'limite', 'fila_ids',
+    'obra_id', 'favorecido', 'vencimento_de', 'vencimento_ate', 'solicitacao_id', 'titulo_id', 'forma_pagamento_id'], 'Consulta da fila de pagamentos');
+  const vencimentoDe = parseDateOnly(payload.vencimento_de, 'Vencimento inicial'), vencimentoAte = parseDateOnly(payload.vencimento_ate, 'Vencimento final');
+  for (const data of [vencimentoDe, vencimentoAte].filter(Boolean)) {
+    const parsed = new Date(`${data}T00:00:00.000Z`);
+    if (data < '1000-01-01' || !Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== data) throw new ValidationError('Vencimento invalido.');
+  }
+  for (const key of ['obra_id', 'solicitacao_id', 'titulo_id', 'forma_pagamento_id']) {
+    const id = parseInteger(payload[key], key);
+    if (id !== undefined && !Number.isSafeInteger(id)) throw new ValidationError('Identificador invalido.');
+  }
+  if (vencimentoDe && vencimentoAte && vencimentoDe > vencimentoAte) throw new ValidationError('Vencimento inicial posterior ao final.');
   const pagina = parseInteger(payload.pagina, 'Pagina'), limite = parseInteger(payload.limite, 'Limite');
   if (pagina > 100000 || limite > 100) throw new ValidationError('Paginacao invalida.');
   let filaIds;
@@ -236,8 +247,22 @@ function validateManualPaymentQueueQuery(payload = {}) {
     origem: parseEnum(payload.origem, 'Origem', ['RH_DP', 'OUTROS']),
     empresa_id: parseInteger(payload.empresa_id, 'Empresa'),
     credor_id: parseInteger(payload.credor_id, 'Credor'),
+    obra_id: parseInteger(payload.obra_id, 'Obra / centro de custo'),
+    solicitacao_id: parseInteger(payload.solicitacao_id, 'Solicitacao'),
+    titulo_id: parseInteger(payload.titulo_id, 'Titulo'),
+    forma_pagamento_id: parseInteger(payload.forma_pagamento_id, 'Forma de pagamento'),
+    favorecido: parseOptionalText(payload.favorecido, 'Favorecido', 255),
+    vencimento_de: vencimentoDe, vencimento_ate: vencimentoAte,
     recebimento_dp: parseEnum(payload.recebimento_dp, 'Recebimento DP', ['CONTA_SALARIO', 'PIX', 'DINHEIRO', 'OUTRA_CONTA', 'NAO_INFORMADO'])
   });
+}
+
+function validateManualPaymentQueueOptionsQuery(payload = {}) {
+  ensureAllowedKeys(payload, ['status', 'campo', 'q'], 'Sugestoes da fila');
+  const consulta = validateManualPaymentQueueQuery({ status: payload.status, q: payload.q });
+  if (!consulta.q || consulta.q.length < 2) throw new ValidationError('Digite ao menos dois caracteres.');
+  if (!['obra_id', 'favorecido', 'solicitacao_id', 'titulo_id', 'forma_pagamento_id'].includes(payload.campo)) throw new ValidationError('Filtro invalido.');
+  return { ...consulta, campo: payload.campo };
 }
 
 function validateManualPaymentQueueProcessBody(payload = {}) {
@@ -388,6 +413,7 @@ module.exports = {
   validateManualPaymentQueueApproveBody,
   validateManualPaymentQueueProcessBody,
   validateManualPaymentQueueQuery,
+  validateManualPaymentQueueOptionsQuery,
   validateManualPaymentQueueResolveBody,
   validateManualPaymentQueueReverseBody,
   validateManualPaymentQueueResultBody,

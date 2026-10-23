@@ -33,6 +33,7 @@ const plugin={name:'qa-fila-fontes',enforce:'pre',resolveId(s){
   if(id===stub+'auth')return `const p=new URLSearchParams(location.search);const keys=['financeiro.fila_pagamentos.visualizar','financeiro.fila_pagamentos.baixar','financeiro.baixas_compostas.criar','financeiro.baixas_compostas.confirmar','financeiro.baixas_compostas.estornar','financeiro.titulos.estornar','financeiro.permutas.usar'];const perms=keys.filter(k=>!(p.has('sem-composta')&&k.includes('baixas_compostas'))&&!(p.has('sem-baixa')&&k==='financeiro.fila_pagamentos.baixar')&&!(p.has('sem-permuta')&&k==='financeiro.permutas.usar'));export const useAuth=()=>({user:{id:1,perfil:'USUARIO',financeiro_liberado:true,areas_permissoes_configuradas:true,areas_permissoes:perms}});`;
   if(id===stub+'padrao')return `export{default as Pagina}from'/src/components/padrao/Pagina.jsx';export{default as PageHeader}from'/src/components/padrao/PageHeader.jsx';export{default as BlocoConteudo}from'/src/components/padrao/BlocoConteudo.jsx';export{default as TabelaPadrao}from'/src/components/padrao/TabelaPadrao.jsx';const avisar={erro:s=>window.__alerts.push(s),alerta:s=>window.__alerts.push(s),sucesso:s=>window.__alerts.push(s)};export const useAvisos=()=>({avisos:[],fechar:()=>{},limpar:()=>{},avisar});export const Avisos=()=>null;export const useConfirmacao=()=>({confirmar:async()=>({ok:true})});`;
   if(id===stub+'api')return `const catalogo=${JSON.stringify(formas)};
+    export const getSugestoesFilaPagamentos=async()=>({data:[],mais:false});
     export const getFilaPagamentos=async(params={})=>{let rows=window.__rows.filter(r=>params.status==='TODOS'||r.status===(params.status||'PENDENTE'));if(params.fila_ids){const ids=String(params.fila_ids).split(',').map(Number);rows=rows.filter(r=>ids.includes(r.id));}return{data:structuredClone(rows),pagina:1,total:rows.length,total_paginas:1,resumo:{PENDENTE:rows.length},filtros:{empresas:[],credores:[]}}};
     export const getContasFilaPagamentos=async()=>[{id:5,nome:'Conta QA',empresa_id:1,ativo:true},{id:6,nome:'Caixa QA',empresa_id:1,ativo:true,tipo_operacional:'CAIXA_INTERNO',exige_abertura_fechamento:true}];
     export const getInstrumentosFilaPagamentos=async()=>({formas:${JSON.stringify(formas)},cartoes:[{id:20,nome:'Débito QA',tipo:'DEBITO',ativo:true,conta_bancaria_id:5},{id:10,nome:'Crédito QA',tipo:'CREDITO',ativo:true,conta_bancaria_id:5}],cheques:[],empresas:[{id:1,nome:'Empresa QA'},{id:2,nome:'Empresa2 QA'}]});
@@ -73,7 +74,8 @@ try{
     const writes=await page.evaluate(()=>window.__writes);assert.equal(writes.length,2);assert.equal(writes[0].key,writes[1].key);assert.deepEqual(writes[0].body,writes[1].body);
     assert.deepEqual(writes[0].body.fila_ids,[1]);assert.equal(writes[0].body.versao_revisao,'a'.repeat(64));assert.deepEqual(writes[0].body.componentes.map(c=>c.valor),[120,80]);
     assert.equal(await page.getByLabel('Selecionar TIT-QA-1',{exact:true}).count(),0);assert.equal(await page.getByLabel('Selecionar TIT-QA-2',{exact:true}).count(),1);
-    await page.getByLabel('Status',{exact:true}).selectOption('BAIXADO');
+    await page.getByLabel('Status',{exact:true}).fill('Baixados');
+    await page.getByRole('button',{name:'Baixados',exact:true}).click();
     await page.getByText('Múltiplas fontes',{exact:true}).waitFor();
     assert(await page.getByText(/PIX.*120,00/).isVisible());assert(await page.getByText(/Dinheiro.*80,00/).isVisible());
   }

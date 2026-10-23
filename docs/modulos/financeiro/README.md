@@ -1,5 +1,31 @@
 # Modulo FINANCEIRO
 
+## Filtros digitaveis da fila - 2026-10-23
+
+- Origem, empresa do titulo/colaborador, credor e recebimento DP passam a
+  aceitar digitacao/selecao. Novos filtros: obra/centro de custo, favorecido,
+  solicitacao, titulo e forma de pagamento. Situacao e busca geral permanecem
+  disponiveis no mesmo bloco. Vencimento aceita intervalo inclusivo de datas.
+- Forma de pagamento filtra a **prevista no titulo**, conforme escolha do
+  proprietario; nao a forma efetiva da baixa ou edicao local ainda nao salva.
+- Sugestoes dos novos campos exigem2caracteres/debounce350ms; GET dedicado
+  `/financeiro/fila-pagamentos/sugestoes`, mesma guarda de leitura da fila,
+  status/escopo vigentes, ate20rotulos por consulta (21 para detectar excesso).
+  Nao retorna CPF/CNPJ, instrucoes bancarias, saldos ou cadastros integrais.
+- Filtros combinados sao aplicados no servidor antes de contar/paginar,
+  inclusive rejeicoes somente consulta. Obra/solicitacao tambem respeitam
+  vinculos compartilhados. Favorecido usa a prioridade da coluna: negociacao,
+  instrucao especifica, medicao exata e destinatario explicito/origem; ausencia
+  nao e preenchida com credor, exceto recebimento DP em dinheiro ja existente.
+- Trocar filtros reinicia pagina/selecao, sem descartar rascunhos financeiros;
+  URL preserva os criterios. Sugestoes antigas sao descartadas e o transporte
+  e cancelado no cliente; nao se presume cancelamento da consulta no MySQL.
+- Sem migration, escrita financeira, mudanca de permissoes ou producao.
+  Validacoes/limites: [handoff](../../handoffs/2026-10-23-fila-filtros-pesquisa.md).
+- Publicacao DEV autorizada junto do bloco gerencial da solicitacao. Roteiro
+  atualizar-dev-filtros-distribuicao-20261023.sh valida inventario, identidade/
+  schema/sessao sem mudar ambiente e reinicia somente backend-dev/8001.
+
 ## Reprogramacao parcial de saldo contratual - 2026-10-23
 
 - Novas parcelas de previsao podem somar ate o saldo contratual sem parcela

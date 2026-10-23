@@ -103,6 +103,13 @@ export async function getFilaPagamentos(params = {}) {
   catch (error) { error.status = response.status; throw error; }
 }
 
+export async function getSugestoesFilaPagamentos(params, { signal } = {}) {
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/sugestoes?${buildFilaPagamentosQuery(params)}`, {
+    headers: authHeaders(), cache: 'no-store', signal
+  });
+  return parseJson(response, 'Não foi possível consultar as sugestões. Tente novamente.');
+}
+
 export async function getInstrumentosFilaPagamentos() {
   const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/instrumentos`, { headers: authHeaders(), cache: 'no-store' });
   return parseJson(response, 'Erro ao carregar formas, cartoes e cheques disponiveis');

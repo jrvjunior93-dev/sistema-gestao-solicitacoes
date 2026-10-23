@@ -26,6 +26,7 @@ const BLOCOS_POR_TELA = {
   'detalhe-solicitacao': new Set([
     'itens_compra_direta',
     'apropriacoes',
+    'distribuicao_gerencial',
     'rateio_contrato',
     'aditivos_contrato',
     'aprovacao_diretoria',

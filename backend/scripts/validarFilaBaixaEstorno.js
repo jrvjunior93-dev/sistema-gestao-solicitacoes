@@ -118,6 +118,7 @@ const deps = {
   './pagamentoFilaValoresDomain': valores, './pagamentoFilaInstrumentoDomain': instrumento,
   './pagamentoFilaChequesDomain': cheques,
   './pagamentoFilaFiltrosDomain': require('../src/services/pagamentoFilaFiltrosDomain'),
+  './pagamentoFilaPesquisaDomain': require('../src/services/pagamentoFilaPesquisaDomain'),
   './tituloBloqueioRetornoObraService': { assertTituloDisponivelParaBaixa: titulo => { if (titulo.status_interno_pagar === 'EM EDICAO DP') throw createHttpError(409, 'DP editando'); } },
   './securityLogService': { registrarEventoSeguranca: async data => audit.push(data), getRequestIp: () => '127.0.0.1' },
   './pagamentoAutorizacaoEventosService': { recordEvent: async data => eventos.push(data) },

@@ -14,8 +14,7 @@ import {
   HiOutlineDocumentArrowUp,
   HiOutlineExclamationTriangle,
   HiOutlineFolderOpen,
-  HiOutlineDocumentText,
-  HiOutlineMagnifyingGlass
+  HiOutlineDocumentText
 } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
 import { useWorkspaceActive, useWorkspaceState, useWorkspaceWork } from '../navigation/WorkspaceContext';
@@ -51,6 +50,7 @@ import StatusBadge from '../components/StatusBadge';
 import OverlayModal from '../components/ui/OverlayModal';
 import ArquivosSolicitacaoFilaModal from '../components/financeiro/ArquivosSolicitacaoFilaModal';
 import DadosPagamentoFila from '../components/financeiro/DadosPagamentoFila';
+import FiltrosFilaPagamentos, { CAMPOS_FILTROS_FILA } from '../components/financeiro/FiltrosFilaPagamentos';
 import { beneficiaryData } from '../utils/filaPagamentoDestinatarios.mjs';
 import BaixaMassaFilaModal from '../components/financeiro/BaixaMassaFilaModal';
 import BaixaCompostaModal from '../components/financeiro/BaixaCompostaModal';
@@ -59,7 +59,7 @@ import { previaParcelasCartao } from '../utils/parcelamentoCartao.mjs';
 import { ResizableTable, ResizableTh } from '../components/ResizableTable';
 import { listarComprovantesFila } from '../utils/comprovantesFila';
 import useRolagemModal from '../hooks/useRolagemModal';
-import { RECEBIMENTOS_DP, rotuloRecebimentoDp, ehTituloDp } from '../utils/recebimentoDp';
+import { rotuloRecebimentoDp, ehTituloDp } from '../utils/recebimentoDp';
 import useColunasOperacionais, { LinhaColunasOperacionais } from '../hooks/useColunasOperacionais';
 import {
   Avisos,
@@ -622,7 +622,7 @@ export default function FinanceiroFilaPagamentos() {
   const [search, setSearch] = useWorkspaceState('fila:busca', initialSearch);
   const [appliedSearch, setAppliedSearch] = useWorkspaceState('fila:buscaAplicada', initialSearch);
   const [filtros, setFiltros] = useWorkspaceState('fila:filtrosTitulos', Object.fromEntries(
-    ['origem', 'empresa_id', 'credor_id', 'recebimento_dp'].map(key => [key, searchParams.get(key) || ''])));
+    CAMPOS_FILTROS_FILA.map(key => [key, searchParams.get(key) || ''])));
   const [opcoesFiltros, setOpcoesFiltros] = useState({ empresas: [], credores: [] });
   const [rows, setRows] = useState([]);
   const [pagina, setPagina] = useWorkspaceState('fila:pagina', 1);
@@ -1314,55 +1314,11 @@ export default function FinanceiroFilaPagamentos() {
             {colunasConfiguradas.painel}
             <AlternadorPaginacaoConsulta numerada={numerada} ocupado={loading || busy || Boolean(baixaMassa || comprovanteLote || baixaFontes)}
               aoAlternar={() => { setPagina(1); remendarVisual({ numerada: !numerada }); }} />
-            <label className="text-sm">
-              <span className="sr-only">Status</span>
-              <select aria-label="Status" className="input input-sm" value={status} onChange={(event) => applyFilters(event.target.value, appliedSearch)} disabled={busy}>
-                {STATUS_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
-            </label>
-            <form
-              className="app-busca flex min-w-0 items-center gap-2"
-              onSubmit={(event) => { event.preventDefault(); applyFilters(status, search.trim()); }}
-            >
-              <input
-                className="input input-sm min-w-0 flex-1"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Título, credor, obra ou centro de custo"
-              />
-              <button className="btn btn-outline btn-sm" type="submit" title="Pesquisar">
-                <HiOutlineMagnifyingGlass className="h-4 w-4" aria-hidden="true" />
-              </button>
-            </form>
           </div>
         )}
       >
-        <div className="mb-3 flex flex-wrap items-end gap-2" aria-label="Filtros dos títulos da fila">
-          <label className="min-w-40 text-xs">Origem
-            <select aria-label="Origem dos títulos" className="input input-sm w-full" value={filtros.origem} disabled={busy}
-              onChange={e => applyFilters(status, appliedSearch, { ...filtros, origem: e.target.value })}>
-              <option value="">Todas</option><option value="RH_DP">RH/DP</option><option value="OUTROS">Outras origens</option>
-            </select></label>
-          <label className="min-w-40 max-w-full text-xs">Empresa do título / colaborador
-            <select aria-label="Empresa do título / colaborador" className="input input-sm w-full max-w-72" value={filtros.empresa_id} disabled={busy}
-              onChange={e => applyFilters(status, appliedSearch, { ...filtros, empresa_id: e.target.value })}>
-              <option value="">Todas</option>{opcoesFiltros.empresas.map(o => <option key={o.id} value={o.id}>{o.nome}</option>)}
-              {filtros.empresa_id && !opcoesFiltros.empresas.some(o => String(o.id) === String(filtros.empresa_id)) && <option value={filtros.empresa_id}>Empresa #{filtros.empresa_id} · sem títulos nesta situação</option>}
-            </select></label>
-          <label className="min-w-40 max-w-full text-xs">Credor
-            <select aria-label="Credor" className="input input-sm w-full max-w-72" value={filtros.credor_id} disabled={busy}
-              onChange={e => applyFilters(status, appliedSearch, { ...filtros, credor_id: e.target.value })}>
-              <option value="">Todos</option>{opcoesFiltros.credores.map(o => <option key={o.id} value={o.id}>{o.nome}</option>)}
-              {filtros.credor_id && !opcoesFiltros.credores.some(o => String(o.id) === String(filtros.credor_id)) && <option value={filtros.credor_id}>Credor #{filtros.credor_id} · sem títulos nesta situação</option>}
-            </select></label>
-          <label className="min-w-40 text-xs">Recebimento DP
-            <select aria-label="Recebimento DP" className="input input-sm w-full" value={filtros.recebimento_dp} disabled={busy}
-              onChange={e => applyFilters(status, appliedSearch, { ...filtros, recebimento_dp: e.target.value })}>
-              <option value="">Todos</option>{RECEBIMENTOS_DP.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select></label>
-          <button type="button" className="btn btn-outline btn-sm" disabled={busy || !Object.values(filtros).some(Boolean)}
-            onClick={() => applyFilters(status, appliedSearch, { origem: '', empresa_id: '', credor_id: '', recebimento_dp: '' })}>Limpar filtros dos títulos</button>
-        </div>
+        <FiltrosFilaPagamentos status={status} statusOptions={STATUS_OPTIONS} filtros={filtros} catalogo={opcoesFiltros} rows={rows}
+          search={search} onSearch={setSearch} onApply={applyFilters} busy={busy} />
         {numerada && <PaginacaoConsulta pagina={paginacao?.pagina || pagina} paginas={paginacao?.total_paginas || 1}
           total={paginacao?.total ?? rows.length} ocupado={loading || busy} aoMudar={setPagina} />}
         {(hasBulkAction || hasReceiptSelection) && <div className="mb-2 flex flex-wrap items-center gap-3 text-sm">

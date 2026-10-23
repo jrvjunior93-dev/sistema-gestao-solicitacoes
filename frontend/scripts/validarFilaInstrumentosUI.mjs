@@ -17,6 +17,7 @@ import { validarRolagemFila } from './filaRolagemQA.mjs';
 import { validarDatasChequesFila } from './datasChequesFilaQA.mjs';
 import { validarImagensComprovantesFila } from './filaComprovantesImagensQA.mjs';
 import { validarDestinatariosFilaUI } from './filaDestinatariosQA.mjs';
+import { validarFiltrosPesquisaFilaUI } from './filaFiltrosPesquisaQA.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const stub = '\0qa-fila-instrumentos-';
 const forms = [
@@ -30,6 +31,7 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
     if (source.endsWith('/ThemeContext')) return stub + 'tema';
     if (importer?.endsWith('/PreferenciasContext.jsx') && source === './AuthContext') return stub + 'auth';
     if (importer?.endsWith('/ArquivosSolicitacaoFilaModal.jsx') && source === '../../services/financeiro') return stub + 'api';
+    if (importer?.endsWith('/FiltrosFilaPagamentos.jsx') && source === '../../services/financeiro') return stub + 'api';
     if (!importer?.endsWith('/FinanceiroFilaPagamentos.jsx')) return;
     if (source === '../contexts/AuthContext') return stub + 'auth';
     if (source === '../components/padrao') return stub + 'padrao';
@@ -45,12 +47,34 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
       const onlyConsult=new URLSearchParams(location.search).has('somente-consulta');
       const filtrosDpScenario=new URLSearchParams(location.search).has('filtros-dp');
       const volumeScenario=new URLSearchParams(location.search).has('volume');
+      const pesquisaScenario=new URLSearchParams(location.search).has('filtros-pesquisa');
+      const sugestoes={obra_id:[{id:3,nome:'3 · Obra São João'}],favorecido:[{id:'Favorecido teste',nome:'Favorecido teste'}],
+        solicitacao_id:[{id:10,nome:'SOL-0010'}],titulo_id:[{id:520,nome:'TIT-00520 · Descrição do título'}],forma_pagamento_id:[{id:3,nome:'PIX'}]};
+      export const getSugestoesFilaPagamentos=async(params,{signal}={})=>{
+        (window.__sugestoes ||= []).push(params);
+        await new Promise(r=>setTimeout(r,params.q==='antiga'?700:30));
+        if(signal.aborted)(window.__abortadas ||= []).push(params.q);
+        if(params.q==='erro')throw Error('Falha ao consultar sugestões QA');
+        return {data:params.q==='antiga'?[{id:99,nome:'Opção antiga não deve aparecer'}]:sugestoes[params.campo]||[],mais:params.q==='muitos'};
+      };
       export const getFilaPagamentos=async(params)=>{
         const {status}=params;
         (window.__filterQueries ||= []).push(params);
         const paid=window.__paid,receipt=window.__receipt,saldo=window.__saldo||200;
         const row={id:1,status:paid?'BAIXADO':'PENDENTE',movimento_financeiro_id:paid?10:null,valor_informado:paid?200:null,valor_previsto:saldo,juros:window.__juros||0,multa:window.__multa||0,conta_bancaria_id:5,data_baixa:paid?'2026-10-08':null,pendente_comprovante:paid&&!receipt,comprovante_hash:receipt||!window.__receiptScenario?'qa':null,comprovante_url:receipt||!window.__receiptScenario?'qa':null,titulo:{id:1,codigo:'TIT-QA',status:paid?'QUITADO':'ABERTO',valor_saldo:paid?0:saldo,forma_pagamento_id:1,solicitacao_id:100,solicitacao:{id:100,codigo:'SOL-QA'}}};
         if(window.__uploadedName)row.comprovante_nome=window.__uploadedName;
+        if(pesquisaScenario){
+          const item={...row,id:520,titulo:{...row.titulo,id:520,codigo:'TIT-00520',data_vencimento:'2026-10-23',obra_id:3,
+            obra:{id:3,codigo:'3',nome:'Obra São João'},solicitacao_id:10,solicitacao:{id:10,codigo:'SOL-0010'},
+            favorecidoPagamento:{id:7,nome:'Favorecido teste'},forma_pagamento_id:3}};
+          let data=Array.from({length:600},(_,i)=>({...structuredClone(item),id:i+1,titulo:{...structuredClone(item.titulo),id:i+1,codigo:'TIT-'+String(i+1).padStart(5,'0')}}));
+          if(params.titulo_id)data=data.filter(r=>String(r.titulo.id)===String(params.titulo_id));
+          if(params.forma_pagamento_id)data=data.filter(r=>String(r.titulo.forma_pagamento_id)===String(params.forma_pagamento_id));
+          if(params.q)data=data.filter(r=>r.titulo.codigo.includes(params.q));
+          const total=data.length,pagina=Math.min(params.pagina,Math.max(1,Math.ceil(total/50)));
+          return {data:data.slice((pagina-1)*50,pagina*50),pagina,total,total_paginas:Math.max(1,Math.ceil(total/50)),
+            resumo:{PENDENTE:total},filtros:{empresas:[{id:3,nome:'Empresa São João'}],credores:[{id:11,nome:'Credor teste'}]}};
+        }
         row.titulo.descricao='SOL-QA - MEDIÇÃO';
         row.titulo.observacoes='Entrega conferida. Pagamento conforme combinado.';
         if(new URLSearchParams(location.search).has('destinatarios')) {
@@ -154,7 +178,11 @@ try {
     if (new URL(route.request().url()).origin === 'http://127.0.0.1:5308') return route.continue();
     unexpected.push(route.request().url()); return route.abort();
   });
-  if (process.argv.includes('--destinatarios')) {
+  if (process.argv.includes('--filtros-pesquisa')) {
+    await validarFiltrosPesquisaFilaUI(page, root);
+    await validarFiltrosDpFila(page);
+    assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
+  } else if (process.argv.includes('--destinatarios')) {
     await validarDestinatariosFilaUI(page, root);
     await validarColunasFila(browser);
     assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);

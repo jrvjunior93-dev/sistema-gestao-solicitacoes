@@ -4591,7 +4591,7 @@ module.exports = {
                 model: Obra,
                 as: 'obraGerencial',
                 required: false,
-                attributes: ['id', 'codigo', 'nome', 'classificacao']
+                attributes: ['id', 'codigo', 'nome', 'classificacao', 'tipo_centro_custo']
               }
             ]
           },

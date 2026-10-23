@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:fila-filtros-pesquisa": "node scripts/validarFilaInstrumentosUI.mjs --filtros-pesquisa",
+    "test:solicitacao-distribuicao-gerencial": "node scripts/validarDistribuicaoGerencialSalva.mjs && node scripts/validarSolicitacaoDistribuicaoGerencialUI.mjs",
     "test:fila-destinatarios": "node scripts/validarFilaDestinatarios.mjs && node scripts/validarFilaInstrumentosUI.mjs --destinatarios && node scripts/validarTituloDetalheWorkspace.mjs --dados-pagamento",
     "test:ofx-matches-exclusivos": "node scripts/validarOfxMatchesExclusivos.mjs",
     "test:receber-forma-prevista": "node scripts/validarFormaPrevistaContratoReceber.mjs",

@@ -1,5 +1,59 @@
 # Ownership Ativo
 
+## Publicacao DEV: filtros da fila e distribuicao gerencial - 2026-10-23
+
+- Usuario autorizou commit/push dos dois deltas na refactor/frontend e comandos
+  para EC2 DEV. Reserva temporaria: deltas ja implementados, novo roteiro/QA de
+  deploy, compatibilidade do QA SQLite opcional e handoffs/documentacao.
+- Agente unico, sem delegacao. Base fee28b6d, remote DEV igual ao HEAD; main
+  4922ebad fora do escopo. Nao alterar outro checkout, EC2, banco real ou .env.
+- Inventario fechado de runtimes, sem dependencias/migrations; restart apenas
+  backend-dev/8001 pelo roteiro que o usuario executara. Outputs privados fora
+  do commit. Push direto por fast-forward, sem PR/main/force-push.
+- Validacoes de publicacao repetidas: QAs dos dois ajustes,11regressoes backend,
+  seguranca2304/66/48rotas, UI1366/390, build640/12,24s, docs608/19 e Bash/VM
+  com negativas aprovados. Reserva encerrada, ownership liberado para publicar
+  somente o delta autorizado. Auditoria antiga da negociacao segue documentada.
+
+## Filtros digitaveis da fila de pagamentos - 2026-10-23
+
+- Agente unico; reserva temporaria para FinanceiroFilaPagamentos, novo bloco
+  de filtros/autocomplete, services/financeiro, dominio/servico de consulta,
+  controller/validator/rota GET, testes e documentacao correspondentes.
+- Base DEV na branch isolada atual. Preservar integralmente o delta anterior
+  de distribuicao gerencial. Sem commit/push, producao, EC2 ou banco real.
+- Consulta filtrada antes da paginacao; sugestoes limitadas e mesma permissao
+  de leitura da fila. Nao alterar baixas, selecao financeira ou calculos.
+- Reserva complementar: callback opcional de fechamento no autocomplete
+  reutilizado, para limpar pesquisas transitorias e fechar por Tab na fila;
+  outros usos mantem comportamento anterior sem o callback.
+- Concluido localmente; reserva encerrada e ownership liberado. Novos filtros,
+  regressao completa da fila/baixas/cheques/estornos/comprovantes/colunas,
+  paginacao/performance/concorrrencia, seguranca e UI1366/390 aprovados.
+  Build640/15,05s, docs608/19, Node/diffcheck e bloco anterior gerencial
+  aprovados. Falha antiga de auditoria geral da rota de negociacao documentada
+  no handoff; nao alterada. Sem commit/push/EC2/banco real ou producao.
+
+## Distribuicao gerencial no detalhe da solicitacao - 2026-10-23
+
+- Agente unico, base DEVfee28b6d em branch isolada
+  codex/solicitacao-distribuicao-gerencial-20261023. Usuario autorizou bloco
+  somente consulta, sem producao, mudancas de calculos ou permissoes.
+- Reserva: novo bloco/helper de leitura, SolicitacaoDetalhe index/catalogo,
+  espelho DetalheLayoutController, atributo cadastral do destino no show de
+  SolicitacaoController, QAs backend/UI e docs/handoff desta tarefa.
+- Fonte ja existe no GET autorizado: distribuicoesCentroCusto e obraGerencial.
+  Usar valores/percentuais persistidos, nunca recalcular pelo total atual,
+  titulos, apropriacoes ou configuracao de destinos. TODAS nao vira divisao.
+- Sem novos endpoints, migration, escrita em dados/historico, EC2, commit/push
+  ou deploy nesta etapa. Outputs privados preservados. Skill frontend-design
+  para bloco compacto/recolhivel/responsivo, conforme padroes Fluxy atuais.
+- Concluido localmente; ownership liberado. Backend show/ACL/centavos,
+  criacao/distribuicao/adiantamento/medicao e seguranca, UI detalhe/criacao/
+  edicao1366/390, leitura/legado/TODAS e geometria visual aprovados. Catalogos,
+  build639/12,67s, Node/diff e docs607/19 conferidos. Publicacao DEV ainda
+  depende de autorizacao; handoff 2026-10-23-solicitacao-distribuicao-gerencial.md.
+
 ## Publicacao DEV: reprogramacao parcial do contrato - 2026-10-23
 
 - Usuario autorizou commit/push exclusivo refactor/frontend e comandos EC2 DEV.

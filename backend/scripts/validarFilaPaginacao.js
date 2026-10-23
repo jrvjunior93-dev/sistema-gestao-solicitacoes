@@ -25,7 +25,7 @@ const mod={exports:{}};
 vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/services/pagamentoManualFilaService.js'),'utf8'),{
   module:mod,console,require(id){
     if(id==='../models')return models;if(id==='sequelize')return lib;if(id==='crypto')return require('node:crypto');
-    if(['./pagamentoFilaFiltrosDomain','./pagamentoFilaComprovanteDomain','./pagamentoFilaValoresDomain'].includes(id))return require('../src/services/'+id.slice(2));
+    if(['./pagamentoFilaFiltrosDomain','./pagamentoFilaPesquisaDomain','./pagamentoFilaComprovanteDomain','./pagamentoFilaValoresDomain'].includes(id))return require('../src/services/'+id.slice(2));
     if(id==='./recebimentoDpConsultaService')return{anexarRecebimentosDp:async()=>{}};
     if(id==='./instrucaoFinanceiraFavorecidoService')return{anexarInstrucoes:async()=>{}};
     if(id==='./pagamentoFilaDestinatarioService')return{anexarDestinatarios:async()=>{}};

@@ -18,7 +18,9 @@ const req = { user: { id: 99 } };
 const record = data => ({ ...data, async update(changes) { Object.assign(this, changes); return this; },
   toJSON() { return { ...this }; } });
 function matches(row, where = {}) {
+  if (where?.val?.startsWith('JSON_EXTRACT')) return !row.instrumento_pagamento_json?.estorno;
   return Reflect.ownKeys(where).every(key => {
+    if (key === Op.and && Array.isArray(where[key])) return where[key].every(clause => matches(row, clause));
     if (key === Op.or) return where[key].some(clause => matches(row, clause));
     if (key === Op.and && where[key]?.val?.startsWith('JSON_EXTRACT')) return !row.instrumento_pagamento_json?.estorno;
     const value = where[key];
@@ -89,6 +91,7 @@ const deps = {
   './pagamentoFilaInstrumentoDomain': require('../src/services/pagamentoFilaInstrumentoDomain'),
   './pagamentoFilaChequesDomain': require('../src/services/pagamentoFilaChequesDomain'),
   './pagamentoFilaFiltrosDomain': require('../src/services/pagamentoFilaFiltrosDomain'),
+  './pagamentoFilaPesquisaDomain': require('../src/services/pagamentoFilaPesquisaDomain'),
   './pagamentoAutorizacaoEventosService': {},
   './instrucaoFinanceiraFavorecidoService': { anexarInstrucoes: async () => {} },
   './pagamentoFilaDestinatarioService': { anexarDestinatarios: async () => {} },

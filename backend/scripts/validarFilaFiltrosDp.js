@@ -45,6 +45,7 @@ vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/paga
     if (id === 'sequelize') return SequelizeLib;
     if (id === 'crypto') return require('node:crypto');
     if (id === './pagamentoFilaFiltrosDomain') return filtros;
+    if (id === './pagamentoFilaPesquisaDomain') return require('../src/services/pagamentoFilaPesquisaDomain');
     if (id === './pagamentoFilaComprovanteDomain') return require('../src/services/pagamentoFilaComprovanteDomain');
     if (id === './instrucaoFinanceiraFavorecidoService') return { anexarInstrucoes: async () => {} };
     if (id === './pagamentoFilaDestinatarioService') return { anexarDestinatarios: async () => {} };
@@ -55,6 +56,17 @@ vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/paga
   }
 });
 (async () => {
+  contagemSimulada = 100;
+  await mod.exports.listarFilaPagamentos({ user: { id: 1 } }, { pagina: 1, limite: 50,
+    obra_id: 3, solicitacao_id: 10, titulo_id: 200, forma_pagamento_id: 4, favorecido: "Nome d'Teste", vencimento_de: '2026-10-01', vencimento_ate: '2026-10-31' });
+  const pesquisa = sqls.join('\n');
+  const listaPesquisa = sqls.find(sql => sql.includes('LIMIT 0, 50'));
+  assert(listaPesquisa, 'Consulta paginada real com o novo recorte');
+  assert(listaPesquisa.indexOf('data_vencimento_prevista') < listaPesquisa.lastIndexOf('LIMIT 0, 50'));
+  for (const trecho of ['`titulo`.`id` = 200', '`titulo`.`forma_pagamento_id` = 4', 'tc.obra_id IN (3)',
+    'tc.solicitacao_id IN (10)', 'data_vencimento_prevista', '2026-10-31', 'solicitacoes_favorecidos', 'cm.solicitacao_id = `titulo`.solicitacao_id']) assert(pesquisa.includes(trecho), trecho);
+  sqls.length = 0;
+  contagemSimulada = 0;
   const result = await mod.exports.listarFilaPagamentos({ user: { id: 1 } }, query);
   assert.equal(result.data.length, 0);
   const list = sqls.find(sql => sql.includes('LIMIT 500'));
@@ -83,6 +95,7 @@ vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/paga
       if (id === './authorizationService') return { canViewRhDpDashboard: async () => true,
         userHasAreaPermission: async () => true, getRhDpObraScopeIds: async () => [7] };
       if (id === './pagamentoFilaFiltrosDomain') return filtros;
+      if (id === './pagamentoFilaPesquisaDomain') return require('../src/services/pagamentoFilaPesquisaDomain');
       if (id === '../middlewares/validation') return require('../src/middlewares/validation');
       if (id === './recebimentoDpConsultaService') return { anexarRecebimentosDp: async () => {} };
       throw Error('Dependencia nao isolada: ' + id);

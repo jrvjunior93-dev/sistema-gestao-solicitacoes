@@ -26,6 +26,7 @@ const pessoal = require('../src/services/rhPessoalDomain');
   const antes = JSON.stringify(snapshot);
   const batch = load('services/recebimentoDpConsultaService.js', {
     sequelize: lib, './pagamentoFilaFiltrosDomain': require('../src/services/pagamentoFilaFiltrosDomain'),
+    './pagamentoFilaPesquisaDomain': require('../src/services/pagamentoFilaPesquisaDomain'),
     '../models': { RhSolicitacao: { findAll: async o => {
       queries++; assert.deepEqual(Array.from(o.where.id[Op.in]), [9]);
       assert.deepEqual(Array.from(o.attributes), ['id','dados_json']); return [snapshot];
@@ -52,6 +53,7 @@ const pessoal = require('../src/services/rhPessoalDomain');
   let lotes=0;
   const varias=load('services/recebimentoDpConsultaService.js',{
     sequelize:lib,'./pagamentoFilaFiltrosDomain':require('../src/services/pagamentoFilaFiltrosDomain'),
+    './pagamentoFilaPesquisaDomain':require('../src/services/pagamentoFilaPesquisaDomain'),
     '../models':{RhSolicitacao:{findAll:async o=>{
       const ids=Array.from(o.where.id[Op.in]);assert(ids.length<=100);lotes++;
       return ids.map(id=>({id,dados_json:JSON.stringify({titulos:[{id,modo_recebimento:'PIX'}]})}));
