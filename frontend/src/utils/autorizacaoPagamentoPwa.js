@@ -13,7 +13,7 @@ export function isAutorizadorPwa(user, installed = isInstalledPwa()) {
 }
 
 // Compactar a pagina nao concede permissao nem muda a rota inicial individual.
-// Navegador/PWA e todos os perfis com acesso usam a mesma area util.
-export function isAutorizacaoPwaCompacta(user, pathname) {
-  return String(pathname || '').replace(/\/+$/, '') === AUTORIZACAO_PAGAMENTO_ROUTE && canAccessAutorizacoesPagamento(user);
+// Na web a rota permanece no shell/abas; compactar apenas no modo instalado.
+export function isAutorizacaoPwaCompacta(user, pathname, installed = isInstalledPwa()) {
+  return Boolean(installed && String(pathname || '').replace(/\/+$/, '') === AUTORIZACAO_PAGAMENTO_ROUTE && canAccessAutorizacoesPagamento(user));
 }

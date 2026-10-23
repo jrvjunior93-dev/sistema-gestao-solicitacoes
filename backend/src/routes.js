@@ -2243,6 +2243,8 @@ router.delete('/financeiro/favorecidos/:id', allowFavorecidosManage, criticalRat
 router.post('/financeiro/favorecidos/:id/validar', allowFavorecidosManage, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Favorecido bancario') }), PaymentBeneficiaryController.validate);
 router.get('/financeiro/favorecidos/:id/auditoria', allowFavorecidosAudit, validateRequest({ params: validateNumericIdParam('id', 'Favorecido bancario') }), PaymentBeneficiaryController.auditoria);
 router.get('/financeiro/fila-pagamentos', allowFilaPagamentosRead, validateRequest({ query: validateManualPaymentQueueQuery }), PagamentoManualFilaController.index);
+router.post('/financeiro/envios/retirada/preview', requireEnabledModule('FINANCEIRO'), criticalRateLimit, require('./controllers/PagamentoEnvioRetiradaController').preview);
+router.post('/financeiro/envios/retirada/confirmar', requireEnabledModule('FINANCEIRO'), criticalRateLimit, require('./controllers/PagamentoEnvioRetiradaController').confirmar);
 router.get('/financeiro/fila-pagamentos/sugestoes', allowFilaPagamentosRead, validateRequest({ query: validateManualPaymentQueueOptionsQuery }), PagamentoManualFilaController.sugestoes);
 router.get('/financeiro/fila-pagamentos/contas', allowFilaPagamentosRead, PagamentoManualFilaController.contas);
 router.get('/financeiro/fila-pagamentos/instrumentos', allowFilaPagamentosBaixa, PagamentoManualFilaController.instrumentos);

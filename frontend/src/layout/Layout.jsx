@@ -26,7 +26,7 @@ import AtalhosTopbar from '../navigation/AtalhosTopbar';
 import { isNativeApp, registerNativeBackButtonHandler } from '../mobile/runtime';
 import { getFallbackRoute, hasSafeBrowserHistory } from '../utils/navigation';
 import { nomeProprio } from '../utils/texto';
-import { isAutorizacaoPwaCompacta } from '../utils/autorizacaoPagamentoPwa';
+import { isAutorizacaoPwaCompacta, isInstalledPwa } from '../utils/autorizacaoPagamentoPwa';
 import '../styles/financeiro-autorizacoes-pagamento.css';
 import OperationalAuditTracker from '../modules/governanca/components/OperationalAuditTracker';
 import DevUserSwitcher from '../components/DevUserSwitcher';
@@ -149,7 +149,7 @@ export default function Layout() {
   const podeVerComunicacao = canAccessComunicacao(user);
   const comprasResponsiveRoute = isComprasResponsiveRoute(location.pathname);
   const custosRecebiveisResponsiveRoute = location.pathname.startsWith('/custos-recebiveis');
-  const compactAuthorizationPwa = isAutorizacaoPwaCompacta(user, location.pathname);
+  const compactAuthorizationPwa = isAutorizacaoPwaCompacta(user, location.pathname, nativeApp || isInstalledPwa());
   const workspace = useWorkspaceTabs(user);
   const accessIdentity = workspaceAccessIdentity(user);
   const memory = useMemo(() => createWorkspaceMemory(), [accessIdentity]);

@@ -1,0 +1,47 @@
+# Retirada de envios de aprovação/fila — implementação local
+
+- Pedido: retirar um ou mais encaminhamentos, inclusive de saldo parcial, preservando títulos, baixas, comprovantes, permissões e histórico; corrigir shell web de autorizações.
+- Base: `origin/refactor/frontend` f598f25a; trabalho em `codex/retirada-envios-dev-20261023`. Sem autorização de publicação/deploy neste turno; produção intocada.
+- Ownership: seção correspondente em `docs/workspace/OWNERSHIP_ATIVO.md`.
+- Implementado: serviço/controller/model/migration de recibo idempotente `PagamentoEnvioRetirada`; rotas e permissões nominais; consulta/situação de autorizações; componente compartilhado `RetirarEnvios`, transportes/helpers, páginas da fila e autorizações, shell PWA/web e testes.
+- A retirada fecha somente o encaminhamento. Não remover movimentos, FK de baixa parcial, anexos, snapshots assinados nem modificar saldo do título. O item digital ganha situação RETIRADO e evento encadeado; fila RESOLVIDO com motivo e recibo; auditoria transacional obrigatória. Reenvio segue autorização normal.
+- Migration nova: `202610230003_pagamento_envios_retiradas.js`, ainda NÃO aplicada. Nenhum banco real acessado/escrito, nenhum processo reiniciado.
+
+## Comportamento e limites
+
+- Autorizações > Por obra: marcar de 1 a 50 envios ativos, inclusive entre páginas/obras, **Retirar envios**, conferir títulos/valores, motivo e confirmar. Na fila, mesma ação na barra de seleção.
+- Permissões novas: `financeiro.autorizacoes_pagamento.retirar` e `financeiro.fila_pagamentos.retirar`. Não são concedidas automaticamente a ADMIN nem substituem visualizar/aprovar/baixar; SUPERADMIN mantém exceção global. Seleção mista exige a permissão de cada origem. Sem passkey nova, pois esta ação não aprova nem rejeita pelo proprietário.
+- Não modifica valor/status financeiro, status interno do título, status global/setor da solicitação, documentos ou decisões assinadas. Data/motivo da decisão original são preservados. A retirada tem autor, motivo e evento próprios; apenas status operacional do envio muda. Não usar esta ação para cancelar título, rejeitar medição ou estornar pagamento.
+- Fila ativa PENDENTE/NAO_PAGO/DIVERGENTE passa a RESOLVIDO. Mesmo com baixa parcial, preserva `movimento_financeiro_id`, comprovantes e valores. Novo envio exige fluxo normal; não revive aprovação retirada. Título quitado, banco em andamento, revisão DP, ciclo/saldo alterado ou fora de escopo bloqueiam a operação inteira.
+- Histórico: filtro **Envios retirados** na consulta de autorizações e entrada **Resolvidos** na fila. Dossiês/eventos e recibo de idempotência não são apagados. Um novo envio ativo deixa de aparecer como retirado na projeção atual; o evento antigo permanece no histórico.
+- Web: cabeçalho/abas no acesso inicial, Voltar/Avançar e reload. Instalado/standalone/iOS e aplicativo nativo mantêm shell compacto. ACL, decisões, passkeys e rota inicial individual inalteradas.
+- Bloqueio de clique/envio, preview com referência do estado atual, locks transacionais ordenados e unique `(usuario_id,chave)` no recibo. Retry após resposta perdida usa mesmo corpo/chave. Falha de auditoria ou conflito reverte todos os selecionados.
+
+## Validações executadas localmente
+
+- Backend `npm run test:retirada-envios`: serviço real + SQLite em memória, HTTP/controller/CSRF reais em loopback, matrix de permissões/escopos/rateio/DP/banco/quitado/saldo/ciclo, replay, concorrência serializada, rollback tardio, lote parcialmente retirado e cadeia de eventos. Integração com gates reais de enfileiramento impede revisão antiga/aprovação retirada; criação de novo dossiê preserva anterior. DDL MySQL gerado/constraint única/FK e migration existente incompatível conferidos, **não** executados em MySQL/RDS.
+- Frontend `npm run test:retirada-envios`: componentes/telas/transportes reais em navegador headless, APIs interceptadas; StrictMode, permissão de retirada sem aprovar/baixar, preview/motivo, cancelar, duplo clique, resposta perdida e retry idêntico, stale409, fila parcial/não pago, atualização/seleção, 1366/390. Capturas em `outputs/retirada-envios-20261023/` inspecionadas; outputs não publicar.
+- `validarAutorizacoesPorObra.mjs`: regressão completa, 130 títulos entre obras/lotes/páginas, uma passkey/POST, ACL, negativas, detalhe/histórico e responsividade.
+- `validarAutorizacaoPwa.mjs`: shell instalado/iOS, web com abas, BrowserRouter/Layout/WorkspaceView, Voltar/Avançar/reload e seleção. Nesta máquina foi usado `PLAYWRIGHT_EXECUTABLE_PATH=C:/Program Files/Google/Chrome/Application/chrome.exe`; Chromium bundled não está instalado. O teste usa um marcador de abas no shell; `validarAbasInternas.mjs` confere a navegação real separadamente.
+- Backend: painel puro e CTE real SQLite com retirada digital/direta/parcial, novo envio e exclusão; fila manual; guards de 80 rotas financeiras e catálogo granular 401 permissões sem inválidas/duplicadas/risco só frontend. Nenhum banco real acessado.
+- Frontend: build aprovado; abas internas/navegação sem links mortos. Avisos preexistentes de Browserslist/chunk grande não tratados neste escopo.
+- Regressão completa `validarFilaInstrumentosUI.mjs` aprovada após o último ajuste: 650 títulos/13 páginas/8 status, baixa em massa/individual, cheques/estorno, anexos/prévia/clipboard, não pago, seleção/paginação, colunas/preferências e isolamento por usuário; desktop/mobile. Uma execução anterior foi interrompida por HMR enquanto o componente ainda era editado; a execução final limpa terminou exit0.
+- `validarLayout.mjs` global NÃO passa: 121 pendências herdadas. Comparado em memória com conteúdo HEAD dos arquivos alterados, normalizando apenas números de linha: **121 na base, 121 agora, zero novas**. Nenhum arquivo da base foi restaurado/sobrescrito para o comparativo.
+- Fixture antiga de `validarAnaliseProprietario.js` passou a declarar `rejeicao:null`, conforme filtro real introduzido anteriormente pela rejeição de medição. Sem mudança no domínio de medição.
+
+## Publicação DEV autorizada
+
+- Em novo pedido, o usuário autorizou commit/push destes ajustes na `refactor/frontend` e entrega dos códigos de atualização/migration/testes DEV. Não autorizou promover para main nem executar remotamente. O roteiro será executado pelo usuário na EC2; nenhum banco real/migration/PM2 foi acessado neste trabalho local.
+- Roteiro: `ops/deploy/atualizar-dev-retirada-envios-20261023.sh`, com inventário completo em `ops/deploy/retirada-envios-dev-20261023.json`. Base fixa f598f25a, SHA publicado explícito, branch/checkout/árvore limpa, mutex, inventário e manifests sem mudanças de dependências. Aceita checkout na base ou no próprio SHA para retomada; recusa estado anterior/desconhecido/mais novo.
+- Runner: `backend/scripts/aplicarMigrationRetiradaEnviosDev.js`. Reutiliza os guards de identidade/UUID/RDS/8001/PM2/flags/schema da retomada002, sem reaplicá-la. Só003 pode estar pendente. Preview captura CREATE sem executá-lo; apply exige `CONFIRM_DEV_BACKUP=SIM`. Flag DDL apenas no subprocesso, restaurada em `finally`, nunca salva no `.env` ou PM2. Registra003 sem recriar se o CREATE já terminou mas o registro ficou pendente; reexecução após sucesso é somente conferência.
+- Roteiro não instala dependências nem altera `.env`/flags/dados financeiros; preserva hash do `.env`, reinicia apenas `backend-dev`, verifica health8001 e schema depois. Falha para sem contornar guards, forçar Git ou apagar histórico. Não habilita PILOT/ENFORCED nem concede permissões automaticamente.
+- Publicação reconferida com os testes backend e UI da retirada, PWA/web/abas e build; QA novo de deploy/migration aprovado, incluindo negativas de inventário, dependências, processo/porta/watch/ambiente/UUID, schema antigo, backup, pendência inesperada, schema existente incompatível, retomada e restauração de flag em falha. `bash -n` e `git diff --check` aprovados. QAs SQLite locais exigem Node24; roteiro preserva versão do host e informa explicitamente se esses QAs adicionais não puderem rodar ali. Demais QAs puros do host continuam obrigatórios antes de DDL/restart.
+- Outputs privados e dist ficam fora do commit. Nenhuma pendência funcional conhecida neste fluxo; homologação MySQL/DEV será feita pelo usuário após a atualização.
+
+## Homologação manual no DEV após atualização
+
+1. Esperar frontend Vercel DEV do mesmo commit e entrar novamente em `refactor-dev.jrfluxy.com.br`. Conceder, conforme perfil de teste, **Retirar envios de aprovação** e/ou **Retirar envios da fila**, além da visualização correspondente. SUPERADMIN já mantém exceção. Não alterar permissões/flags na produção.
+2. Autorizações > Por obra > selecionar um ou mais títulos ativos > Retirar envios > conferir saldo/motivo > confirmar. Conferir saída de Aguardando aprovação e consulta em Envios retirados, com histórico preservado. Reenvio normal deve criar nova aprovação; tentativa antiga não deve reaproveitar aprovação retirada.
+3. Fila > retirar envio pendente e envio de saldo parcial. Antes/depois, comparar saldo, valor pago, movimentos e comprovantes: devem permanecer iguais. A fila retirada deve estar em Resolvidos. Novo envio do saldo usa o fluxo normal.
+4. Conferir seleção múltipla atômica e bloqueios para quitado, pagamento bancário ativo, revisão DP e usuário sem permissão. Não usar títulos reais de produção para homologar.
+5. Na web, abrir Autorizações pela navegação, alternar abas, Voltar/Avançar e atualizar página: manter cabeçalho/abas. PWA instalado segue compacto.

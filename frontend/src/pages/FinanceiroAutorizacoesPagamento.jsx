@@ -345,7 +345,7 @@ export default function FinanceiroAutorizacoesPagamento() {
       {/^[1-9]\d*$/.test(searchParams.get('reenvio') || '') && <AutorizacaoReenvioAviso loteId={Number(searchParams.get('reenvio'))}
         caps={caps} busy={busy} setBusy={setBusy} onAtualizado={() => { setRevisaoObras(n => n + 1); load(); }}
         onFechar={() => { const params = new URLSearchParams(searchParams); params.delete('reenvio'); setSearchParams(params, { replace: true }); }} />}
-      {visao === 'obras' && <AutorizacoesPorObra userId={user?.id} caps={caps} busy={busy} setBusy={setBusy} abrirDocumento={openDocument} revisao={revisaoObras} />}
+      {visao === 'obras' && <AutorizacoesPorObra user={user} userId={user?.id} caps={caps} busy={busy} setBusy={setBusy} abrirDocumento={openDocument} revisao={revisaoObras} />}
       {visao === 'lotes' && <div className="pa-layout">
         <aside className="pa-list" aria-label="Lotes de autorização">
           <div className="pa-list__head"><strong>Pendências e histórico</strong><span>{paginacaoLotes.total} lotes</span></div>

@@ -505,6 +505,7 @@ const MODULO_PERMISSION_GROUPS = [
         permissoes: [
           { key: 'financeiro.fila_pagamentos.visualizar', label: 'Visualizar fila', descricao: 'Acessar somente os titulos encaminhados para pagamento manual.' },
           { key: 'financeiro.fila_pagamentos.preparar', label: 'Enviar titulos para a fila', descricao: 'Selecionar contas a pagar e encaminha-las ao operador de pagamentos.' },
+          { key: 'financeiro.fila_pagamentos.retirar', label: 'Retirar envios da fila', descricao: 'Retirar o encaminhamento do saldo ainda nao pago, com motivo e historico, sem estornar baixas anteriores.' },
           { key: 'financeiro.fila_pagamentos.importar_comprovantes', label: 'Importar comprovantes PDF', descricao: 'Ler comprovantes bancarios, revisar a sugestao e vincula-los aos titulos da fila.' },
           { key: 'financeiro.fila_pagamentos.baixar', label: 'Registrar baixas da fila', descricao: 'Informar conta, data e valor efetivamente pago e registrar baixas individuais ou em massa.' },
           { key: 'financeiro.fila_pagamentos.reportar', label: 'Informar nao pagamento', descricao: 'Registrar que um titulo da fila nao foi pago, com justificativa.' },
@@ -517,6 +518,7 @@ const MODULO_PERMISSION_GROUPS = [
         permissoes: [
           { key: 'financeiro.autorizacoes_pagamento.visualizar', label: 'Visualizar autorizacoes', descricao: 'Consultar lotes e decisoes de autorizacao sem abrir a solicitacao operacional.' },
           { key: 'financeiro.autorizacoes_pagamento.preparar', label: 'Preparar autorizacoes', descricao: 'Selecionar titulos elegiveis e montar dossies para o proprietario.' },
+          { key: 'financeiro.autorizacoes_pagamento.retirar', label: 'Retirar envios de aprovacao', descricao: 'Encerrar o envio selecionado antes da fila, com motivo e historico, sem decidir pelo proprietario ou cancelar o titulo.' },
           { key: 'financeiro.autorizacoes_pagamento.decidir', label: 'Autorizar pagamentos', descricao: 'Decidir nominalmente, com passkey, quais titulos podem seguir para a fila.' },
           { key: 'financeiro.autorizacoes_pagamento.configurar', label: 'Configurar autorizadores', descricao: 'Gerenciar a lista nominal de proprietarios autorizadores e limites.' },
           { key: 'financeiro.autorizacoes_pagamento.auditar', label: 'Auditar autorizacoes', descricao: 'Consultar eventos, hashes e rastreabilidade das decisoes.' }

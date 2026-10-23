@@ -214,5 +214,21 @@ db.User = { findAll: async () => [{ id: 5, nome: 'Financeiro QA' }, { id:7,nome:
   assert.equal(loteExcluido[0].itens[0].situacao_financeira,'EXCLUIDO');
   assert.equal(loteExcluido[0].itens[0].status,'PENDENTE');
   assert.equal(loteExcluido[0].itens[0].exclusao_titulo.responsavel.nome,'Financeiro QA');
-  console.log('CTE real em SQLite memoria (JSON_ARRAYAGG adaptado): 650 titulos/150 obras + fila direta, filtros/datas/cursores/rateios, remetente e data originais no estorno e novo remetente apos rejeicao com envio direto/digital aprovados. Nao substitui MySQL/EXPLAIN DEV.');
+  // Retirada e uma situacao operacional distinta, sem apagar baixo parcial.
+  mudar(12, {status:'PARCIAL',valor_baixado:40,valor_saldo:60});
+  sqlite.prepare("UPDATE pagamento_autorizacao_itens SET status='RETIRADO' WHERE id=12").run();
+  itens.find(i=>i.id===12).status='RETIRADO';
+  const retirado=(await listarTitulos({item_ids:'12',situacao:'RETIRADO'},db)).data[0];
+  assert.equal(retirado.situacao_financeira,'RETIRADO');assert.equal(retirado.titulo.valor_baixado,40);assert.equal(retirado.titulo.valor_saldo,60);
+  assert.equal(situacaoItem(retirado),'RETIRADO');
+  inserir('pagamentos_manuais_fila',{id:50001,titulo_financeiro_id:12,status:'PENDENTE',valor_previsto:60});
+  assert.equal((await listarTitulos({item_ids:'12',situacao:'RETIRADO'},db)).data.length,0,'Novo envio direto nao permanece retirado');
+  assert.equal((await listarTitulos({item_ids:'12',situacao:'NA_FILA'},db)).data.length,1);
+  sqlite.prepare("UPDATE pagamentos_manuais_fila SET status='RESOLVIDO',instrumento_pagamento_json=? WHERE id=50001").run(JSON.stringify({retirada_envio:{id:1,motivo:'Retirada QA'}}));
+  assert.equal((await listarTitulos({item_ids:'12',situacao:'RETIRADO'},db)).data.length,1);
+  inserir('titulos_financeiros',{id:50002,tipo:'PAGAR',status:'ABERTO',valor_saldo:90,obra_id:1});
+  inserir('pagamentos_manuais_fila',{id:50002,titulo_financeiro_id:50002,status:'RESOLVIDO',valor_previsto:90,instrumento_pagamento_json:JSON.stringify({retirada_envio:{id:2}})});
+  const diretoRetirado=(await listarTitulos({item_ids:'-50002',situacao:'RETIRADO'},db)).data[0];
+  assert.equal(diretoRetirado.status,'RETIRADO');assert.equal(situacaoItem(diretoRetirado),'RETIRADO');
+  console.log('CTE real em SQLite memoria: 650 titulos/150 obras, fila direta, filtros/cursores/rateios, remetente, exclusao e retirada digital/direta/parcial com novo envio. Nao substitui MySQL/EXPLAIN DEV.');
 } finally { sqlite.close(); } })().catch(e => { console.error(e); process.exitCode = 1; });

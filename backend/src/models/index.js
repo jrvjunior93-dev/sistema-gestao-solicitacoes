@@ -8,6 +8,7 @@ db.sequelize = sequelize;
 db.CartaoBaixaParcela = require('./CartaoBaixaParcela')(sequelize, Sequelize);
 db.TituloCompartilhadoLote = require('./TituloCompartilhadoLote')(sequelize, Sequelize);
 db.TituloCompartilhadoOrigem = require('./TituloCompartilhadoOrigem')(sequelize, Sequelize);
+db.PagamentoEnvioRetirada = require('./PagamentoEnvioRetirada')(sequelize, Sequelize);
 
 /* =====================
    MODELS

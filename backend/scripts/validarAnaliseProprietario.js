@@ -26,7 +26,8 @@ const names = ['ConfiguracaoSistema', 'TituloFinanceiro', 'Solicitacao', 'Histor
   'TituloCompartilhadoOrigem',
   'Anexo', 'PagamentoAutorizacaoDocumento', 'PagamentoAutorizador', 'WebauthnCredential', 'PaymentIntent',
   'FormaPagamentoFinanceira', 'CartaoFinanceiro', 'ChequeTerceiro', 'ContaBancaria', 'ContratoParcela', 'Contrato',
-  'ContratoMedicao', 'MedicaoParcela', 'TituloRenegociacaoAlocacao', 'User', 'Notificacao', 'NotificacaoDestinatario'];
+  'ContratoMedicao', 'MedicaoParcela', 'TituloRenegociacaoAlocacao', 'User', 'Notificacao', 'NotificacaoDestinatario',
+  'TituloFinanceiroRateio', 'PagamentoEnvioRetirada'];
 function matches(row, where = {}) {
   if (where.val?.includes('pagamento_autorizacao_itens nova')) return !state.PagamentoAutorizacaoItem.some(i => i.titulo_financeiro_id === row.titulo_financeiro_id && i.id > row.id);
   if (where.val?.includes('pagamentos_manuais_fila ativa')) return !state.PagamentoManualFilaItem.some(i => i.titulo_financeiro_id === row.titulo_financeiro_id && ['PENDENTE','NAO_PAGO','DIVERGENTE','EM_EDICAO'].includes(i.status));
@@ -96,7 +97,7 @@ const stubs = {
       itens: state.PagamentoAutorizacaoItem.filter(i => Number(i.lote_id) === Number(l.id))
         .map(i => ({ ...i, titulo: state.TituloFinanceiro.find(t => t.id === i.titulo_financeiro_id) })) })) },
   '../utils/fileName': require('../src/utils/fileName'),
-  sequelize: { Op, literal: val => ({ val }) }, '../models': models, '../config/env': { env }, crypto,
+  sequelize: { Op, literal: val => ({ val }) }, '../models': models, '../config/env': { env }, crypto, 'node:crypto': crypto,
   './authorizationService': { getFinanceiroObraScopeIds: async () => scope,
     userHasNominalAreaPermission: async (actor, keys) => keys.every((key) => actor.grants.includes(key)) },
   './tituloFinanceiroService': {}, './tituloBloqueioRetornoObraService': { assertTituloDisponivelParaBaixa(title) {
@@ -169,7 +170,7 @@ function contratoComDuasMedicoes(aprovada = true) {
   reset();
   state.Contrato = [{ id: 1, fluxo_novo: true, obra_id: 7, solicitacao_id: 6 }];
   state.ContratoMedicao = [1, 2].map(id => ({ id, numero: id, contrato_id: 1,
-    aprovada_em: id === 1 || aprovada ? '2026-10-01' : null }));
+    rejeicao: null, aprovada_em: id === 1 || aprovada ? '2026-10-01' : null }));
   state.ContratoParcela = [1, 2].map(id => ({ id, contrato_id: 1, titulo_financeiro_id: id }));
   state.MedicaoParcela = [1, 2].map(id => ({ id, medicao_id: id, contrato_parcela_id: id, devolvido_em: null }));
   state.Solicitacao[0].status_global = aprovada ? 'LIBERADO' : 'NEC. DE MEDICAO';
@@ -722,5 +723,27 @@ async function testarMedicoesIndependentes() {
   assert.equal(pushes, 2);
   await require('./validarAutorizacaoSelecao')({ digital, queue, models, reset, req, user, env, locks, webauthnMetrics,
     getState: () => state, scope: value => { scope = value; }, serial: () => { serial = true; } });
+  // Integracao real com os gates existentes: autorizacao retirada nao pode
+  // enfileirar por um pedido/revisao capturado antes da retirada.
+  reset();
+  state.PagamentoAutorizacaoLote = [{ id:1,status:'AUTORIZADO',revisao_autorizacao:1,dossie_hash:'original' }];
+  state.PagamentoAutorizacaoItem = [{ id:1,lote_id:1,titulo_financeiro_id:1,status:'AUTORIZADO',snapshot_hash:'assinado',decidido_em:'2026-10-20',motivo_decisao:'Autorizado originalmente' }];
+  const retirada = load('pagamentoEnvioRetiradaService').criarServico({ db:models, env,
+    auth:stubs['./authorizationService'], recordEvent:load('pagamentoAutorizacaoEventosService').recordEvent,
+    assertSemRevisaoDp:load('rhPagamentoRevisaoPolicy').assertSemRevisaoDp,
+    assertEscopoCompartilhado:async()=>{}, assertTituloAccess:async()=>{} });
+  const atorRetirada = { ...req,user:{ ...user,grants:[...user.grants,'financeiro.autorizacoes_pagamento.retirar'] } };
+  const itensRetirada = [{titulo_id:1,origem:'AUTORIZACAO',referencia_id:1}];
+  const conferencia = await retirada.preview(atorRetirada,{itens:itensRetirada});
+  await retirada.confirmar(atorRetirada,{itens:itensRetirada,motivo:'Corrigir envio',referencia:conferencia.referencia,idempotency_key:crypto.randomUUID()});
+  assert.equal(state.PagamentoAutorizacaoItem[0].status,'RETIRADO');
+  assert.equal(state.PagamentoAutorizacaoItem[0].decidido_em,'2026-10-20');
+  assert.equal(state.PagamentoAutorizacaoItem[0].motivo_decisao,'Autorizado originalmente');
+  await assert.rejects(digital.enqueueAuthorizedItems(req,1,{itemIds:[1]}),{statusCode:409});
+  await assert.rejects(queue.enfileirarTitulosAutorizados(req,{titulo_ids:[1],idempotency_key:'revisao-antiga'},1,1),{statusCode:409});
+  assert.equal(state.PagamentoManualFilaItem.length,0);
+  const novoLote = await digital.createBatch(req,{titulo_ids:[1],idempotency_key:'novo-apos-retirada'});
+  assert.equal(state.PagamentoAutorizacaoItem[0].status,'RETIRADO');
+  assert(state.PagamentoAutorizacaoItem.some(i=>i.lote_id===novoLote.id&&i.status==='PENDENTE'),'Reenvio normal cria nova aprovacao, preservando o ciclo retirado');
   console.log('OK: analise/locks/escopo, decisao commitada com envio pendente, alerta nominal deduplicado/concorrente, push falho, ACL/PAUSED, reenvio individual/replay sem nova passkey e demais protecoes. Sem banco/rede.');
 })().catch((error) => { console.error(error); process.exitCode = 1; });
