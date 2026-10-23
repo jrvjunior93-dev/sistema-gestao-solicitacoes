@@ -3,13 +3,14 @@ import OverlayModal from '../ui/OverlayModal';
 import useRolagemModal from '../../hooks/useRolagemModal';
 
 // Consulta local: nao salva, nao consulta APIs e nao altera o rascunho da baixa.
-export default function DadosPagamentoFila({ texto, titulo, favorecido }) {
+export default function DadosPagamentoFila({ texto, titulo, favorecido, inline = false }) {
   const [aberto, setAberto] = useState(false);
   const [copia, setCopia] = useState('');
   const disparador = useRef(null);
   const guardarRolagem = useRolagemModal(aberto);
   const completo = String(texto || '');
   const longo = completo.length > 120 || completo.split('\n').length > 2;
+  const Texto = inline ? 'span' : 'div';
 
   function fechar() {
     setAberto(false);
@@ -28,7 +29,7 @@ export default function DadosPagamentoFila({ texto, titulo, favorecido }) {
 
   return (
     <>
-      <div className={`max-w-64 whitespace-pre-wrap break-all text-xs ${longo ? 'line-clamp-3' : ''}`}>{completo}</div>
+      <Texto className={`block max-w-64 whitespace-pre-wrap break-all text-xs ${longo ? 'line-clamp-3' : ''}`}>{completo}</Texto>
       {longo && <button type="button" className="mt-1 text-xs text-[var(--module-financeiro)] underline focus-visible:outline focus-visible:outline-2"
         aria-label={`Ver dados para pagamento de ${titulo}`} onClick={event => {
           guardarRolagem(event.currentTarget);

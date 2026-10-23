@@ -1,5 +1,37 @@
 # Ownership Ativo
 
+## Publicacao DEV: destinatarios da fila e do detalhe - 2026-10-23
+
+- Usuario autorizou commit/push direto na refactor/frontend e comandos EC2 DEV.
+  Agente unico, sem PR/delegacao; reserva do delta ja aprovado, novo
+  atualizar-dev-fila-destinatarios-20261023.sh, validarDeployFilaDestinatariosDev.js
+  e documentacao/handoff correspondente.
+- Sem alterar main/producao, executar EC2/banco real, migrations ou reinicios
+  pelo agente. outputs/ privado, fora do commit. Apenas scripts npm novos;
+  dependencias/lockfiles e motores financeiros permanecem iguais a5123de39.
+- Validacoes de publicacao repetidas: backend/ACL/regressoes, fila/detalhe
+  UI1366/390, build12,68s, documentacao605/19 e Bash/VM/negativas do roteiro.
+  Reserva encerrada e ownership liberado para commit/push autorizado.
+
+## Fila: credor, favorecido e instrucao da medicao - 2026-10-23
+
+- Agente unico desta conversa; implementacao/testes concluidos, reserva liberada.
+- Escopo autorizado: separar Credor/Favorecido em todas as origens, retirar
+  documento sob o nome e consultar a instrucao da medicao vinculada ao titulo.
+- Reservados: pagamentoManualFilaService, novo pagamentoFilaDestinatarioService,
+  FinanceiroFilaPagamentos, novo helper frontend de destinatarios, testes locais
+  backend/UI correspondentes e documentacao/handoff desta tarefa.
+- Somente leitura/projecao dos titulos ja autorizados. Nao alterar baixa do
+  TIT-009886, valores, permissoes, historico, banco real, main ou producao.
+- Sem migration, EC2, commit, push ou deploy nesta etapa; outputs/ preservado.
+- Escopo adicional autorizado: exibir favorecido/PIX/instrucoes no detalhe do
+  titulo. Reserva ampliada para TituloFinanceiroController, FinanceiroTituloDetalhe,
+  QA do detalhe/workspace e testes/documentacao da projecao compartilhada.
+- Componente DadosPagamentoFila e fixtures de cancelamento tambem ajustados.
+  Backend, seguranca/ACL, fila integral, detalhe/workspace, UI1366/390, build e
+  documentacao aprovados localmente. Handoff: docs/handoffs/2026-10-23-fila-credor-favorecido-pix.md.
+  Sem publicacao nesta etapa; aguardando autorizacao para commit/push DEV.
+
 ## Publicacao DEV do saldo da recarga - 2026-10-23
 
 - Usuario autorizou commit/push direto na refactor/frontend e comandos EC2 DEV,

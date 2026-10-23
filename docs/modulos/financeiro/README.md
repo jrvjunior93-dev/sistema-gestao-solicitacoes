@@ -1,5 +1,45 @@
 # Modulo FINANCEIRO
 
+## Fila: Credor e Favorecido separados - 2026-10-23
+
+- Credor identifica o parceiro comercial; Favorecido identifica o destinatario
+  informado no titulo, na instrucao especifica ou na solicitacao de origem.
+  Sem documento cadastral abaixo dos nomes. Ausencia nao e preenchida com o
+  credor: mostra "Favorecido nao informado". No DP em dinheiro, o recebedor e
+  o colaborador/responsavel registrado no titulo, nao uma conta bancaria.
+- Instrucao da negociacao/parte do titulo prevalece sobre cadastro bancario
+  e dados gerais da solicitacao. Destinatario diferente no titulo nao herda a
+  chave de outro favorecido da solicitacao. Documento nao vira PIX presumido.
+- Medicao escalar aprovada: consulta a medicao ligada a parcela daquele
+  titulo (ou sua origem medicao_pagamento_origem_id), nunca a ultima medicao
+  do contrato. Chave lida da medicao; credor contratual recuperado somente
+  para exibicao, pois a aprovacao legada substituia parceiro_id pelo recebedor.
+  Multiplos credores sao exibidos nominalmente sem escolher um por suposicao.
+- Vinculo ambiguo, forma divergente ou conta/favorecido com documentos
+  diferentes produz aviso de conferencia; nao substitui a chave por cadastro
+  atual. Isso nao autoriza, bloqueia ou registra uma baixa por si so.
+- Apenas projecoes de leitura apos ACL/escopo existentes. Sem migration,
+  backfill, alteracao de permissao, saldo, baixa ou historico. TIT-009886
+  permanece quitado; dados exibidos sao instrucoes previstas, nao prova do
+  destino bancario efetivamente usado na baixa historica.
+- O detalhe do titulo a pagar tambem mostra Credor, Favorecido, Forma prevista,
+  Chave PIX/PIX copia e cola e demais dados/instrucoes, usando o mesmo
+  formatador da fila. Dados longos abrem consulta/copia integral. O complemento
+  e executado somente no GET show autorizado, nunca na carga usada por baixa,
+  edicao ou criacao. As permissoes de movimentos/intencoes continuam separadas.
+  Titulos RECEBER mantem o bloco de cobranca externa existente.
+- QA local: npm run test:fila-destinatarios em backend e frontend. Inclui
+  consultas em lote, ORM MySQL interceptado, tela real desktop/mobile e
+  preferencias de colunas antigas sem perder ordem, selecao ou valores.
+  validarTituloDadosPagamento.js e validarTituloDetalheWorkspace.mjs
+  --dados-pagamento cobrem detalhe/ACL e consulta/copia sem baixa.
+  [Escopo, validacoes e proximo passo](../../handoffs/2026-10-23-fila-credor-favorecido-pix.md).
+- Publicacao direta DEV autorizada. Roteiro exclusivo
+  ops/deploy/atualizar-dev-fila-destinatarios-20261023.sh com SHA completo,
+  base5123de39/ff-only, preflight de identidade/schema/sessao e QAs antes de
+  reiniciar somente backend-dev8001. Sem migration/instalacao/flags/.env novos;
+  validarDeployFilaDestinatariosDev.js cobre guardas e negativas em memoria.
+
 ## Recarga: saldo e origem das prestacoes pendentes - 2026-10-23
 
 - Resumo mantem os valores calculados, com rotulos "Saldo antes dos gastos

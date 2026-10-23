@@ -74,7 +74,7 @@ function filaInclude() {
         'id', 'codigo', 'descricao', 'numero_documento', 'status', 'tipo',
         'valor_original', 'valor_saldo', 'valor_baixado', 'juros', 'multa', 'data_vencimento',
         'forma_pagamento_id', 'empresa_id', 'linha_digitavel', 'codigo_barras',
-        'banco_cobranca', 'observacoes', 'solicitacao_id', 'favorecido_pagamento_id',
+        'banco_cobranca', 'observacoes', 'solicitacao_id', 'favorecido_pagamento_id', 'payment_beneficiary_id',
         'cartao_id', 'fatura_cartao_id', 'origem_titulo', 'status_interno_pagar', 'compartilhamento_id',
         'medicao_pagamento', 'medicao_pagamento_origem_id', 'bloqueio_pagamento_proprietario', 'pagamento_negociacao',
         'parceiro_id', 'obra_id', 'data_emissao', 'updatedAt'
@@ -98,9 +98,10 @@ function filaInclude() {
           as: 'solicitacao',
           attributes: [
             'id', 'codigo', 'descricao', 'favorecido_id', 'favorecido_chave_pix',
-            'dados_pagamento', 'forma_pagamento_id'
+            'dados_pagamento', 'forma_pagamento_id', 'parceiro_id', 'contrato_id'
           ],
           include: [
+            { model: Parceiro, as: 'parceiro', attributes: ['id', 'nome'] },
             { model: Parceiro, as: 'favorecido', attributes: ['id', 'nome', 'cpf_cnpj'] },
             {
               model: FormaPagamentoFinanceira,
@@ -241,7 +242,7 @@ async function listarFilaPagamentos(req, filters = {}) {
           tipo: { [Op.in]: ['BOLETO', 'BOLETO_COMPRA', 'BOLETO_FRETE'] },
           deleted_at: null
         },
-        attributes: ['id', 'solicitacao_id', 'nome_original', 'tipo'],
+        attributes: ['id', 'solicitacao_id', 'nome_original', 'tipo', 'medicao_id'],
         order: [['id', 'ASC']],
         raw: true
       })
@@ -249,7 +250,7 @@ async function listarFilaPagamentos(req, filters = {}) {
   const boletosPorSolicitacao = boletos.reduce((acc, boleto) => {
     const id = Number(boleto.solicitacao_id);
     if (!acc.has(id)) acc.set(id, []);
-    acc.get(id).push({ id: Number(boleto.id), nome: boleto.nome_original, tipo: boleto.tipo });
+    acc.get(id).push({ id: Number(boleto.id), nome: boleto.nome_original, tipo: boleto.tipo, medicao_id: boleto.medicao_id || null });
     return acc;
   }, new Map());
   data.forEach((item) => {
@@ -258,6 +259,7 @@ async function listarFilaPagamentos(req, filters = {}) {
     solicitacao.boletos = boletosPorSolicitacao.get(Number(solicitacao.id)) || [];
   });
   await require('./instrucaoFinanceiraFavorecidoService').anexarInstrucoes(data.map(item => item.titulo).filter(Boolean));
+  await require('./pagamentoFilaDestinatarioService').anexarDestinatarios(data.map(item => item.titulo).filter(Boolean));
   if (filters.fila_ids) return { data, total, pagina, limite, total_paginas: paginas, resumo: {}, filtros: { empresas: [], credores: [] } };
   const counts = await PagamentoManualFilaItem.findAll({
     attributes: ['status', [sequelize.fn('COUNT', sequelize.col('PagamentoManualFilaItem.id')), 'total']],

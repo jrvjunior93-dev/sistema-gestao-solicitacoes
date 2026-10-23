@@ -48,13 +48,13 @@ export async function validarColunasFila(browser) {
     const menu = page.getByRole('menu'); await menu.waitFor(); return menu;
   };
   const aguardarGravacao = async page => {
-    await page.waitForFunction(() => JSON.parse(localStorage.getItem('financeiro-fila-pagamentos:colunas'))?.ordem?.length === 20);
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem('financeiro-fila-pagamentos:colunas'))?.ordem?.length === 21);
     // Debounce existente e mock de servidor. Nenhuma escrita em banco real.
     await page.waitForResponse(response => response.request().method() === 'PUT' && response.url().endsWith('/preferencias/colunas'));
   };
   try {
     const page = await abrir(71);
-    const original = await ordem(page); assert.equal(original.length, 20);
+    const original = await ordem(page); assert.equal(original.length, 21);
     assert.equal(original.indexOf('observacoes'),original.indexOf('titulo')+1);
     await page.getByLabel('Selecionar TIT-MASSA-1', { exact: true }).check();
     const juros = page.getByLabel('Juros de TIT-MASSA-1', { exact: true });
@@ -73,11 +73,22 @@ export async function validarColunasFila(browser) {
     assert.equal((await ordem(page))[0], 'local');
     // O painel compartilhado tambem aceita arrastar pela alca.
     const dado = menu2.locator('[data-coluna="dados"]');
+    // Manter origem E alvo dentro do recorte rolavel do menu. Com a nova
+    // coluna, centralizar somente a origem deixava o alvo fora do recorte.
+    await menu2.evaluate(el => {
+      el.scrollTop += el.querySelector('[data-coluna="credor"]').getBoundingClientRect().top
+        - el.getBoundingClientRect().top - 8;
+    });
     await dado.locator('.app-colunas-arrastar').hover();
     await page.mouse.down();
+    await page.waitForFunction(() => document.querySelector('[role="menu"] [data-coluna="dados"]')?.draggable === true);
     await page.mouse.move((await menu2.locator('[data-coluna="credor"]').boundingBox()).x + 35,
       (await menu2.locator('[data-coluna="credor"]').boundingBox()).y + 20, { steps: 8 });
     await page.mouse.up();
+    await page.waitForFunction(() => {
+      const ids = [...document.querySelectorAll('thead th')].map(el => el.dataset.coluna);
+      return ids.indexOf('dados') < ids.indexOf('credor');
+    }, undefined, { timeout: 5000 });
     assert((await ordem(page)).indexOf('dados') < (await ordem(page)).indexOf('credor'));
     assert(await page.getByLabel('Selecionar TIT-MASSA-1', { exact: true }).isChecked(), 'Reordenar preserva selecao');
     await menu2.getByLabel('Juros (R$)', { exact: true }).check();
@@ -94,13 +105,14 @@ export async function validarColunasFila(browser) {
     assert.deepEqual(await ordem(outroDispositivo), personalizada, 'Preferencia vem do servidor em navegador sem armazenamento local');
     const outroUsuario = await abrir(72);
     assert.deepEqual(await ordem(outroUsuario), original, 'Outro usuario nao recebe a configuracao');
-    const legado = ['local', ...original.filter(key => key !== 'local' && key !== 'desconto')];
+    const legado = ['local', ...original.filter(key => key !== 'local' && key !== 'desconto' && key !== 'favorecido')];
     banco.set(73, { [lista]: { colunas: { ordem: legado, visiveis: legado, ocultas: [] } } });
     const usuarioLegado = await abrir(73);
     await usuarioLegado.waitForFunction(() => document.querySelector('thead th')?.dataset.coluna === 'local');
     const migrada = await ordem(usuarioLegado);
     assert.equal(migrada.indexOf('desconto') + 1, migrada.indexOf('juros'), 'Coluna nova entra antes de Juros nas preferencias antigas');
-    assert.deepEqual(migrada.filter(key => key !== 'desconto'), legado, 'Ordem personalizada antiga permanece intacta');
+    assert.equal(migrada.indexOf('favorecido') + 1, migrada.indexOf('empresa_colaborador'), 'Favorecido novo aparece junto dos dados de destino');
+    assert.deepEqual(migrada.filter(key => key !== 'desconto' && key !== 'favorecido'), legado, 'Ordem personalizada antiga permanece intacta');
 
     // Campo necessario oculto precisa reaparecer sem bloquear a operacao.
     await page.getByRole('button', { name: 'Colunas', exact: true }).click();

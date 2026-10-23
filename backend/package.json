@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
+    "test:fila-destinatarios": "node scripts/validarFilaDestinatarios.js && node scripts/validarTituloDadosPagamento.js",
     "test:ofx-matches-exclusivos": "node scripts/validarOfxMatchesExclusivos.js",
     "test:receber-forma-prevista": "node scripts/validarFormaPrevistaContratoReceber.js",
     "test:pedido-reabertura": "node scripts/validarPedidoReabertura.js",

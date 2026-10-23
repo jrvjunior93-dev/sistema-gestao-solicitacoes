@@ -28,6 +28,7 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/services/pagament
     if(['./pagamentoFilaFiltrosDomain','./pagamentoFilaComprovanteDomain','./pagamentoFilaValoresDomain'].includes(id))return require('../src/services/'+id.slice(2));
     if(id==='./recebimentoDpConsultaService')return{anexarRecebimentosDp:async()=>{}};
     if(id==='./instrucaoFinanceiraFavorecidoService')return{anexarInstrucoes:async()=>{}};
+    if(id==='./pagamentoFilaDestinatarioService')return{anexarDestinatarios:async()=>{}};
     if(id==='./authorizationService')return{getFinanceiroObraScopeIds:async()=>null};
     if(id==='./tituloCompartilhadoLeitura')return{anexarParticipacoes:async()=>{}};
     return{};
