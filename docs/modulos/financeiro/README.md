@@ -1,5 +1,36 @@
 # Modulo FINANCEIRO
 
+## Recarga: saldo e origem das prestacoes pendentes - 2026-10-23
+
+- Resumo mantem os valores calculados, com rotulos "Saldo antes dos gastos
+  pendentes", "Gastos pendentes de validacao/correcao" e "Saldo disponivel
+  estimado". Nao e consulta a operadora nem saldo exclusivo daquela recarga.
+- As origens mostram codigo/link da solicitacao, situacao (aguardando validacao
+  ou correcao) e gasto declarado. A associacao e por prestacao/cartao, nunca por
+  igualdade entre o valor gasto e o valor de uma nova recarga.
+- Recarga ABERTO/PREVISAO sem baixa informa que ainda nao compoe o saldo;
+  PARCIAL informa que somente a parte paga compoe o saldo. Sem evidencia de
+  baixa no DTO nao presume pagamento. Cancelados/estornados nao recebem aviso
+  de pagamento pendente. Formulario da nova solicitacao nao confunde a ultima
+  recarga com o pedido ainda em preenchimento.
+- Projecao auxiliar de leitura nos endpoints de contexto existentes: uma
+  consulta para os cartoes da resposta e ACL normal de detalhe por solicitacao,
+  com cache local a requisicao. Origem negada/excluida/falha nao revela numero,
+  ID, status, valor individual ou link, nem amplia acesso GEO/obra/cartao.
+- Consulta limitada a101 candidatos e no maximo100 origens processadas. Falha,
+  limite ou diferenca entre o agregado e as origens gera aviso generico de
+  origens incompletas; o saldo autorizado permanece inalterado e nao e recalculado.
+- Preservados prestacao, ajuste GEO/extrato, revisao/idempotencia, pagamentos,
+  valores, permissoes e calculo historico. Nenhuma migration/backfill ou escrita.
+- QA: validarRecargaSaldoOrigens.js (ACL real/controller/motor de saldo em memoria)
+  e validarRecargaSaldoOrigensUI.mjs (tela/CSS reais e HTTP interceptado).
+  [Handoff e validacoes](../../handoffs/2026-10-23-recarga-saldo-origens.md).
+- Publicacao DEV autorizada. Roteiro proprio
+  ops/deploy/atualizar-dev-recarga-saldo-20261023.sh com SHA publicado; sem
+  migration/dependencias/flags novos, preflight de identidade/schema, ff-only,
+  testes e reinicio apenas backend-dev8001. Pendencia de banco interrompe;
+  validarDeployRecargaSaldoDev.js cobre as guardas sem EC2/banco real.
+
 ## Devolucao seletiva de cheques recebidos compostos - 2026-10-22
 
 Pacote DEV sobre28670b81, com publicacao em refactor/frontend autorizada;
@@ -806,7 +837,7 @@ migration aditiva DEV em [Contratos](../contratos/README.md#valor-medido-e-valor
 
 - Saldo calculado por cartao = baixas efetivas nao estornadas + ajustes auditados
   - despesas declaradas. Previsoes/pedidos ainda nao pagos nao creditam saldo.
-- A interface distingue saldo apos gastos validados, gastos enviados/rejeitados
+- A interface distingue saldo antes dos gastos pendentes, gastos enviados/rejeitados
   ainda a conferir e saldo disponivel estimado. Nao consulta a operadora.
 - Prestacao aceita gasto inferior a recarga e uso de sobra anterior. Rateios
   somam os gastos reais, nao o credito; motivo e documento obrigatorios para

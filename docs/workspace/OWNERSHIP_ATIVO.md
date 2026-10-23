@@ -1,5 +1,34 @@
 # Ownership Ativo
 
+## Publicacao DEV do saldo da recarga - 2026-10-23
+
+- Usuario autorizou commit/push direto na refactor/frontend e comandos EC2 DEV,
+  sem PR, main ou producao. Agente unico, sem delegacao.
+- Reserva temporaria: delta de rotulos/origens/aviso ja implementado, novo
+  atualizar-dev-recarga-saldo-20261023.sh, validarDeployRecargaSaldoDev.js,
+  README Financeiro e handoff. Sem migration/dependencias/flags/.env novos.
+- Agente nao executa EC2, banco real, DDL, reinicio ou operacao financeira.
+  outputs/ permanece privado e fora do commit.
+- Validacoes repetidas aprovadas: backend/ACL/regressoes, UI1366/390 e saldo
+  regressivo, build13,80s, guardas do roteiro DEV/negativas em VM, sessao/UUID,
+  Node/Bash/diff, navegacao e documentacao604/19. Sem SQL ou processo real.
+  Reserva encerrada, ownership liberado para commit/push autorizado.
+
+## Saldo de recarga - rotulos e origem das prestacoes - 2026-10-23
+
+- Agente unico, sem delegacao. Usuario autorizou implementar/testar na base
+  refactor/frontendc44b1add, sem publicar ou alterar producao.
+- Reserva temporaria: SaldoCartaoRecarga.jsx, RecargaCartaoController.js,
+  novo recargaCartaoSaldoLeituraService.js e testes backend/UI dedicados,
+  adaptacao da fixture de validarRecargasMultiplosCartoes.js, docs/handoff.
+- Rotulos, origem com ACL normal e aviso de recarga nao paga; nao alterar
+  formulas/saldos, pagamentos, prestacao/ajuste GEO, permissoes ou migrations.
+- Sem banco real/EC2/servicos externos, commit, push ou deploy. outputs/ privado.
+- Concluido: backend dedicado/ACL real, multicartoes/saldo/regularizacao,
+  medicao, acesso/anexos, UI1366/390 e regressoes GEO/prestacao, build13,44s,
+  navegacao, Node/diff e docs604/19 aprovados. Capturas inspecionadas.
+  Reserva encerrada, ownership liberado. Handoff2026-10-23-recarga-saldo-origens.md.
+
 ## Publicacao DEV da devolucao seletiva de cheques - 2026-10-22
 
 - Usuario autorizou commit/push na refactor/frontend e roteiro EC2 DEV.

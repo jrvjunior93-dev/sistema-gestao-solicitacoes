@@ -113,6 +113,14 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/services/solicit
   if (id === 'sequelize') return { Op };
   if (id === '../models') return { ...models, Contrato: { findOne: async () => null }, SolicitacaoPedidoRetorno: { update: async () => [0] } };
   if (id === './recargaCartaoService') return service;
+  // Esta fixture contem apenas titulos diretos de recarga. O status financeiro
+  // atual consulta tambem participacoes; nao simular um titulo compartilhado.
+  if (id === './tituloCompartilhadoLeitura') return { whereOrigem: where => {
+    assert(tabelas.TituloFinanceiro.every(t => !t.compartilhamento_id)); return where;
+  } };
+  if (id === './tituloCompartilhadoConsulta') return { porSolicitacao: async (_req, titulos) => {
+    assert(titulos.every(t => !t.compartilhamento_id)); return titulos;
+  } };
   if (id === './medicaoAtualContratoService') return { titulosQueAtualizamMedicaoAtual: async () => null, obterMedicaoAtual: async () => null };
   if (id === './setorCapabilityService') return { findSetorByCapability: async (cap) => ({ codigo: cap === 'eh_setor_financeiro' ? 'FINANCEIRO' : 'OBRA' }), resolveSetorPersistenciaValue: (setor) => setor.codigo };
   throw new Error(`Dependencia financeira inesperada: ${id}`);
@@ -267,18 +275,30 @@ async function validarContextoExcluido(user) {
   const base = JSON.parse(JSON.stringify(tabelas));
   const restaurar = () => Object.assign(tabelas, JSON.parse(JSON.stringify(base)));
   const acessos = [];
+  const retorno = {
+    assertPodeVisualizarSolicitacao: async (_, id) => {
+      acessos.push(Number(id));
+      const s = tabelas.Solicitacao.find(s => s.id === Number(id));
+      if (!s || s.cancelada) throw Object.assign(Error('Solicitacao nao encontrada.'), { statusCode: 404 });
+      return { solicitacao: s };
+    },
+    montarContextoInteracao: async () => ({ pode_interagir: true })
+  };
+  const leitura = { exports: {} };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/services/recargaCartaoSaldoLeituraService.js'), 'utf8'), {
+    module: leitura, require: id => {
+      if (id === 'sequelize') return { Op };
+      if (id === '../models') return models;
+      if (id === './solicitacaoRetornoService') return retorno;
+      throw Error(`Dependencia leitura nao simulada: ${id}`);
+    }
+  });
   const controllerModule = { exports: {} };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/controllers/RecargaCartaoController.js'), 'utf8'), {
     module: controllerModule, console: { error() {} }, require: id => {
       if (id === '../services/recargaCartaoService') return service;
-      if (id === '../services/solicitacaoRetornoService') return {
-        assertPodeVisualizarSolicitacao: async (_, id) => {
-          acessos.push(Number(id));
-          const s = tabelas.Solicitacao.find(s => s.id === Number(id));
-          if (!s || s.cancelada) throw Object.assign(Error('Solicitacao nao encontrada.'), { statusCode: 404 });
-        },
-        montarContextoInteracao: async () => ({ pode_interagir: true })
-      };
+      if (id === '../services/solicitacaoRetornoService') return retorno;
+      if (id === '../services/recargaCartaoSaldoLeituraService') return leitura.exports;
       throw Error(`Dependencia contexto nao simulada: ${id}`);
     }
   });
