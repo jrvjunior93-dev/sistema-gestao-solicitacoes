@@ -1,5 +1,34 @@
 # Ownership Ativo
 
+## Publicacao DEV: reprogramacao parcial do contrato - 2026-10-23
+
+- Usuario autorizou commit/push exclusivo refactor/frontend e comandos EC2 DEV.
+  Agente unico reserva delta local desta tarefa, novo roteiro/QA DEV e handoff.
+- Base d64137c7; main8982855e nao sera alterada. Sem EC2/DB reais, migrations,
+  .env/flags/dependencias ou reinicio pelo agente. Outputs privados excluidos.
+- Roteiro deve exigir DEV8001/UUID/schema/sessao, checkout limpo e fast-forward,
+  inventario de apenas dois runtimes, QAs antes do restart somente backend-dev.
+- Validacoes repetidas aprovadas:12 QAs backend, tres UI1366/390, build637/13,68s,
+  documentacao606/19, Bash -n/VM/negativas e diff/inventario. Reserva encerrada,
+  ownership liberado para commit/push DEV autorizado. Sem migration nova.
+
+## Reprogramacao parcial do saldo contratual - 2026-10-23
+
+- Agente unico; base origin/refactor/frontend d64137c7 em branch isolada
+  codex/contrato-reprogramacao-parcial-20261023. Sem producao/EC2/banco real,
+  commit ou push nesta etapa; outputs privados preservados.
+- Reserva: contratoSaldoReprogramacaoService, ReprogramarSaldoContrato,
+  suites backend/UI de saldo reprogramado, canonico Financeiro e handoff proprio.
+- Permitir novas previsoes ate o saldo livre, preservar sobra para outra
+  reprogramacao e digitar moeda sem reformatar a cada tecla. Manter ACL/locks,
+  historico/replay, limite24, medicoes/baixas/parcelas anteriores intactos.
+- Skill frontend-design limitada a interacao/validacao do formulario compacto,
+  sem reformulacao visual ou mudanca global dos formatadores monetarios.
+- Concluido localmente; reserva liberada. Parcial/total/sobra/replay/ACL/rollback,
+  regressoes contratos/medicao e UI1366/390 aprovadas; build637/17,49s, sem
+  migration. Handoff 2026-10-23-contrato-reprogramacao-parcial.md. Publicacao
+  DEV/commit/push dependem de solicitacao posterior; main permanece intocada.
+
 ## Publicacao DEV: destinatarios da fila e do detalhe - 2026-10-23
 
 - Usuario autorizou commit/push direto na refactor/frontend e comandos EC2 DEV.

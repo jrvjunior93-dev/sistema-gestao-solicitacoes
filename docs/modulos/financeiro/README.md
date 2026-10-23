@@ -1,5 +1,23 @@
 # Modulo FINANCEIRO
 
+## Reprogramacao parcial de saldo contratual - 2026-10-23
+
+- Novas parcelas de previsao podem somar ate o saldo contratual sem parcela
+  livre, nao necessariamente todo ele. A sobra permanece disponivel para
+  outra reprogramacao; parcelas ja reservadas nao sao contadas novamente.
+- Tela aceita digitacao direta, edicao no meio e colagem de valores; a moeda
+  e formatada somente ao sair do campo. Total/sobra aparecem em centavos,
+  excesso bloqueia confirmacao. Saldo/referencia sao reconsultados apos criar,
+  permitindo nova programacao na mesma tela sem recarregar a solicitacao.
+- Backend preserva ACL/obra, contratos ativos/fluxo novo, bloqueio GEO de
+  totalmente medido, limite24, lock transacional e replay persistente. Historico
+  registra valor efetivamente reprogramado e saldo livre restante; somente
+  novas previsoes sao criadas. Nenhuma alteracao de medicoes, baixas anteriores,
+  valor/aditivos do contrato ou motor de calculo; sem migration/backfill.
+- Validacoes locais e limites: [handoff](../../handoffs/2026-10-23-contrato-reprogramacao-parcial.md).
+- Publicacao DEV autorizada; roteiro exclusivo atualizar-dev-contrato-reprogramacao-20261023.sh
+  confere ambiente/schema/sessao e inventario, sem migration, preservando main.
+
 ## Fila: Credor e Favorecido separados - 2026-10-23
 
 - Credor identifica o parceiro comercial; Favorecido identifica o destinatario
