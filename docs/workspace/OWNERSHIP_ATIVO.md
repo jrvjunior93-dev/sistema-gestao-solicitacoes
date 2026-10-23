@@ -1,5 +1,16 @@
 # Ownership Ativo
 
+## Promocao MAIN: medicao, filtros e distribuicao - 2026-10-23
+
+- Usuario homologou DEV e autorizou migrar todas as pendencias para main.
+  Backup recente no Drive cifrado e timer ativo reconfirmados nesta conversa.
+- Agente unico. Bases MAIN4922ebad e DEVf598f25a; integrar seis commits por
+  merge, preservando exclusividades MAIN. outputs/ privados fora do Git.
+- Reserva: arquivos do merge homologado, novo aplicador/QA e roteiro PROD
+  exclusivo para migrations202610230001/002 e handoff desta promocao.
+- Sem EC2/SSH/banco/S3/operacao financeira real pelo agente. Preservar .env,
+  flags/12h/TLS/PM2/ACL e dados; nunca reiniciar DEV em deploy PROD.
+
 ## Promocao MAIN: reprogramacao parcial de contrato - 2026-10-23
 
 - Usuario homologou DEVfee28b6d e autorizou migrar este ajuste para main.
