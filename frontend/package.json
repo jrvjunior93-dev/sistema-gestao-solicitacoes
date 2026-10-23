@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test:medicao-rejeicao-favorecido": "node scripts/validarMedicaoRejeicaoFavorecidoUI.mjs",
+    "test:fila-filtros-arranjo": "node scripts/validarFiltrosOrdenaveis.mjs && node scripts/validarFilaInstrumentosUI.mjs --filtros-arranjo",
     "test:fila-filtros-pesquisa": "node scripts/validarFilaInstrumentosUI.mjs --filtros-pesquisa",
     "test:solicitacao-distribuicao-gerencial": "node scripts/validarDistribuicaoGerencialSalva.mjs && node scripts/validarSolicitacaoDistribuicaoGerencialUI.mjs",
     "test:fila-destinatarios": "node scripts/validarFilaDestinatarios.mjs && node scripts/validarFilaInstrumentosUI.mjs --destinatarios && node scripts/validarTituloDetalheWorkspace.mjs --dados-pagamento",

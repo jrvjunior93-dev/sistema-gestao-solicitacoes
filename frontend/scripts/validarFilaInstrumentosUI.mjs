@@ -18,6 +18,7 @@ import { validarDatasChequesFila } from './datasChequesFilaQA.mjs';
 import { validarImagensComprovantesFila } from './filaComprovantesImagensQA.mjs';
 import { validarDestinatariosFilaUI } from './filaDestinatariosQA.mjs';
 import { validarFiltrosPesquisaFilaUI } from './filaFiltrosPesquisaQA.mjs';
+import { validarArranjoFiltrosFila } from './filaFiltrosArranjoQA.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const stub = '\0qa-fila-instrumentos-';
 const forms = [
@@ -178,7 +179,10 @@ try {
     if (new URL(route.request().url()).origin === 'http://127.0.0.1:5308') return route.continue();
     unexpected.push(route.request().url()); return route.abort();
   });
-  if (process.argv.includes('--filtros-pesquisa')) {
+  if (process.argv.includes('--filtros-arranjo')) {
+    await validarArranjoFiltrosFila(browser, root);
+    assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
+  } else if (process.argv.includes('--filtros-pesquisa')) {
     await validarFiltrosPesquisaFilaUI(page, root);
     await validarFiltrosDpFila(page);
     assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);

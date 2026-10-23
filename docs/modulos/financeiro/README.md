@@ -26,6 +26,26 @@
   editor reutilizavel, busca de Pessoas, avisos e confirmacao do sistema.
   Migration/testes/limites no [handoff](../../handoffs/2026-10-23-medicao-rejeicao-favorecido.md).
 
+## Fila: campos vazios e arranjo pessoal dos filtros - 2026-10-23
+
+- Filtros opcionais continuam sem restricao quando vazios, mas exibem apenas
+  orientacoes como "Digite a origem...", sem Todos preenchido. Ao escolher
+  Todos ou limpar, o campo volta a ficar vazio. Selecionar texto ao focar/
+  clicar e opt-in desta fila, facilitando substituir uma escolha existente.
+- Organizar filtros usa o painel padrao: visibilidade, setas, arrasto e reset.
+  Preferencia de tipo filtros pelos endpoints existentes, chave propria com ID
+  do usuario para isolar tambem o espelho local em estacao compartilhada.
+  Nao persiste valores de consulta, pagamento, selecao ou rascunho financeiro.
+- Situacao mantem Pendentes como padrao; oculta-la quando nao padrao limpa
+  somente esse recorte, retornando a Pendentes. Busca geral sempre acessivel;
+  intervalo de vencimento e um grupo reposicionavel. Criterio de URL/workspace
+  revela automaticamente campo oculto, sem apagar a consulta recebida.
+- Esconder campo preenchido mostra aviso e limpa somente aquele criterio.
+  Reordenar/esconder vazio nao consulta novamente nem descarta selecao/drafts.
+  Painel bloqueado durante operacao financeira. Ordem no hook e opt-in;
+  demais telas preservam contrato anterior. Sem backend/migration/producao.
+- Testes e limites no [handoff](../../handoffs/2026-10-23-fila-filtros-arranjo.md).
+
 ## Filtros digitaveis da fila - 2026-10-23
 
 - Origem, empresa do titulo/colaborador, credor e recebimento DP passam a

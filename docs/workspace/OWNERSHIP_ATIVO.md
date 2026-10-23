@@ -1,5 +1,21 @@
 # Ownership Ativo
 
+## Publicacao DEV: placeholders e arranjo dos filtros - 2026-10-23
+
+- Usuario autorizou commit/push do complemento na refactor/frontend e roteiro
+  EC2 DEV. Agente unico, baseae9df9d3; main/producao fora do escopo.
+- Reserva temporaria: delta local documentado em fila-filtros-arranjo,
+  frontend/scripts/validarDeployFilaFiltrosArranjoDev.mjs, novo roteiro
+  atualizar-dev-fila-filtros-arranjo-20261023.sh e docs/handoff correspondentes.
+- Conferir testes UI/regressoes/build e publicar somente tres componentes,
+  testes/manifesto QA e documentacao. Sem backend runtime, migration, banco,
+  .env, instalacoes ou reinicio de processos. outputs/ fora do commit.
+- Concluido: UI1366/390, filtros/DP, regressao completa da fila650titulos/
+  13paginas/8status, hook legado/opt-in, preferencias por usuario, escopo/
+  paginacao backend, prova52faixas e build643/14,69s aprovados. Roteiro QA
+  validado contra index real12arquivos, sem backend/dependencias alterados.
+  Reserva encerrada e ownership liberado para commit/push autorizado.
+
 ## DEV: verificador MySQL e retomada sem migration - 2026-10-23
 
 - Agente unico; usuario autorizou corrigir/testar, commitar/push exclusivo
@@ -102,6 +118,24 @@
   QAs de servico/UI1366/390/pagina original, financeiro/ACL/historico/replay/
   rollback, seguranca399/80rotas, build643/12,28s, docs610/19 e diffcheck
   aprovados. Migration aditiva preparada, nao aplicada; nenhuma publicacao.
+
+## Fila: placeholders e arranjo pessoal dos filtros - 2026-10-23
+
+- Agente unico, base DEV45513bfd no checkout atual. Usuario pediu campos sem
+  Todos preenchido e configuracao de ordem/visibilidade. Sem publicacao ou
+  producao nesta etapa; outputs privados preservados.
+- Reserva: FiltrosFilaPagamentos, callback opt-in de selecionar texto no
+  ApropriacaoAutocomplete, opt-in de ordem/disabled no PainelFiltrosVisiveis,
+  QAs de filtros/arranjo/preferencias e docs/handoff. Reusar PreferenciasContext
+  e endpoints existentes; sem alterar backend, permissoes ou motor financeiro.
+- Esconder criterio preenchido segue contrato do painel: aviso, limpar apenas
+  aquele criterio e reconsultar. URL/workspace com criterio oculto o revela;
+  reordenar e esconder campo vazio nao mudam consulta/selecao/drafts.
+- Concluido localmente; reserva encerrada e ownership liberado. Unitario legado/
+  opt-in, UI arranjo/isolamento/consultivo1366/390, filtros, regressao completa
+  da fila/financeiro, concorrencia, preferencias backend e prova52faixas
+  aprovados. Build640/16,61s, docs609/19 e diffcheck aprovados. Handoff criado;
+  sem commit/push/deploy/banco real/migrations ou alteracao de producao.
 
 ## Publicacao DEV: filtros da fila e distribuicao gerencial - 2026-10-23
 

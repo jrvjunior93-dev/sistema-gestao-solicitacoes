@@ -39,6 +39,7 @@ export default function ApropriacaoAutocomplete({
   inputClassName = 'input w-full',
   onSearch,
   onClose,
+  selecionarTextoAoFocar = false,
   loading = false,
   loadingText = 'Consultando...',
   ariaLabel,
@@ -226,11 +227,15 @@ export default function ApropriacaoAutocomplete({
           style={mostrarConsultaCompleta ? { paddingRight: '2.75rem' } : undefined}
           value={query}
           onChange={handleInputChange}
-          onFocus={() => {
+          onFocus={event => {
+            if (selecionarTextoAoFocar) event.currentTarget.select();
             setOpen(true);
             onSearch?.(query);
           }}
           onKeyDown={handleKeyDown}
+          onClick={event => {
+            if (selecionarTextoAoFocar && query === selectedLabel) event.currentTarget.select();
+          }}
           onBlur={onClose ? fecharPesquisa : undefined}
           placeholder={disabled ? disabledPlaceholder : placeholder}
           disabled={disabled}
