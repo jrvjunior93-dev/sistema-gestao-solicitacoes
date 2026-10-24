@@ -1,5 +1,10 @@
 # Preparacao: NF-e nos pagamentos e Localizar pedidos em producao
 
+Atualizacao: usuario publicou b5e34d7b e executou o operador; backend/migration002
+conferidos, peers/Nodes/env/dumps preservados. Corte de storage segue separado em
+[README-corte-s3-fiscal-prod-20261024.md](README-corte-s3-fiscal-prod-20261024.md).
+Frontend novo permanece retido. As notas de preparacao abaixo registram a origem.
+
 Estado: candidato local sobre main `a860f94afc4de69499a169a8439a8e2297f507d5`,
 homologacao de origem `2920e1f1ff17b681a77bd02128e67aee4021a955`.
 Branch de preparacao: `codex/preparacao-nfe-pedidos-main-20261024`.

@@ -1,5 +1,16 @@
 # Ownership Ativo
 
+## Corte S3 fiscal PROD depois do backend - 2026-10-24
+
+- Prova recebida: backend b5e34d7b/migration002 prontos, Nodes/DEV/Experience/
+  daemon/env/dumps preservados. Backup e timer ja confirmados nesta implantacao.
+- Agente unico reserva operador configurar-fiscal-s3-prod-20261024, testes,
+  roteiro e handoff. Preparar/testar antes de comandos ao usuario; sem escrita
+  real no servidor/S3 por este agente, sem frontend ou vinculo cadastral ainda.
+- Mudar somente quatro chaves fiscais do PROD no .env, PM2 vivo e dois dumps.
+  Role dedicada; teste de objeto exige opcao explicita. Retorno deve suspender
+  storage fiscal: nao reativar o bucketDEV encontrado na configuracao antiga.
+
 ## Retomada S3 PROD: role criada pelo usuario - 2026-10-24
 
 - Usuario informou FluxyFiscalProd criada e politica HTTPS salva. Reservar

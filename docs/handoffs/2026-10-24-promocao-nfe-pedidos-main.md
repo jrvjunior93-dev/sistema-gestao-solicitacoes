@@ -84,6 +84,44 @@ Sem rede real nos QA funcionais (apenas servidores locais, SQLite e simuladores)
 
 ## Proximo passo exato
 
+### Prova do backend recebida e corte S3 preparado
+
+- Usuario publicou main b5e34d7b e retornou NFE_PEDIDOS_BACKEND_PROD_PRONTO:
+  migration002 pronta, Node PROD isolado24.22.1, DEV/Experience/daemon/env/dumps
+  preservados. Conferir phase=backend_pronto. Nenhum frontend liberado/storage
+  alterado nessa etapa. Backup/timer ja confirmados para esta implantacao.
+- Novo operador LOCAL configurar-fiscal-s3-prod-20261024.cjs e QA10 testes.
+  Muda somente4 campos fiscais em env/dumps/PM2 PROD, sem fontes/migration ou
+  botoes/regras financeiras. Para PROD antes de ultima contagem para evitar
+  captura concorrente no bucket antigo. Persiste somente entradaPROD; guards
+  de .env/dumps/peers/Node/startup/source/concorrencia e estados privados.
+- Novo retorno suspende storage fiscal, sem restaurar bucketDEV em PROD.
+  .env original e dois dumps ficam em backup privado, nao enviar seus conteudos.
+- diagnosticar real aprovado via SSH, sem arquivo/lock/DB/S3 escritos ou restart:
+  schema+role+bucket conferidos, referencias0, candidatos validos,
+  live_target_config=false, state_exists=false, estado protegido preservado.
+  Prova sanitizada outputs/preflight-corte-s3-prod-20261024.txt nao commitada.
+- Validador inicialmente exigia ausencia de dropins; a conferencia parou antes
+  de mutacoes. Verificado o operador historico de Node PM2: dropin autorizado
+  /etc/systemd/system/pm2-ubuntu.service.d/30-fluxy-node24.conf. Agora exige esse
+  caminho UNICO, root644, conteudo exato Node24/resurrect/kill/reload/Environment
+  PATH, unidade enabled/MainPID correto e nenhum comando/arquivo de env extra.
+  Nao mudou permissao, unidade ou dropin. Repetida leitura aprovada.
+- QA10 testes locais cobre alteracao4keys, isolamento de peers/dumps, privacidade,
+  idempotencia, falhas, stop/restart por RPC limitado, objeto IfNoneMatch/AES256/
+  versao/hash/URL HTTPS sem exibir URL/secret e sem fallback Get403->Put.
+  Infra real usada SOMENTE no diagnosticar, nenhum teste real de objeto ainda.
+- Proximo exato: enviar hash/comando preparar deste operador por stdin ao usuario;
+  nao precisa push/pull/redeploy. Depois de prova de candidatos privados, passar
+  aplicar com quatro flags+janela; conferir; teste privado separado sob flag
+  CONFIRM_FISCAL_S3_PROD_TEST_WRITE=SIM; resultado guarda objeto ficticio versionado,
+  nunca cria NF-e/cadastro/titulo. Depois vinculo cadastral fiscal1->empresa1
+  por API/interface e liberacao do frontend ec948e5b adaptado ao main atual.
+- Nao executar o retorno/conferir antigo do backend depois do corte de S3; os
+  snapshots antigos devem recusar a mudanca planejada de env/dumps. Novo operador
+  passa a ser a conferencia deste corte. Nenhuma dessas mutacoes aplicada pelo
+  agente nesta retomada; usuario executara os comandos por etapa.
+
 ### Retomada apos role criada
 
 - Usuario informou FluxyFiscalProd criada e HTTPS salvo; backup/Drive cifrado
