@@ -2,6 +2,13 @@
 
 ## Promocao seletiva dos anexos - 2026-10-24
 
+- Retomada documental/publicacao: reserva somente deste registro e handoff para
+  registrar a conferencia efetiva da EC2 antes de liberar o frontend cc791403.
+  Sem mudanca funcional, restart, migration ou nova execucao do runner PROD.
+- Conferencia produtiva somente leitura aprovada pelo operador; QA HTTP e
+  download desktop/mobile repetidos e aprovados, docs/diff validos. Reserva
+  documental encerrada para publicacao frontend autorizada. DEV intacto.
+
 - Agente unico; usuario homologou visualizacao/download no DEV e autorizou
   promover apenas esta correcao, com backend antes do frontend. Backup produtivo
   conferido no Drive cifrado e timer ativo confirmados nesta janela.

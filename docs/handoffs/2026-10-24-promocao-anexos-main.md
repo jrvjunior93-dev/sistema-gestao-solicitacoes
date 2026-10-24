@@ -85,3 +85,35 @@
   Nao promover retirada de envios, trocar Node ou executar migration junto.
 - Reserva encerrada apos commits locais; publicacao frontend continua pendente
   da evidencia do operador. Snapshot/bundle e QAs privados preservados.
+
+## Evidencia produtiva recebida antes da liberacao do frontend
+
+- Operador executou etapa455adc61: QAs backend passaram e somente
+  backend-solicitacoes foi reiniciado. O runner parou APOS restart no hash bruto
+  de pm2_env.env (AMBIENTE_PM2_PRODUCAO_MUDOU). Nao declarou pronto nem fez
+  rollback. Nao repetir o deploy para tentar obter essa prova.
+- Diagnostico posterior: HEAD main455adc61, sem alteracoes rastreadas; health
+  PROD8000 e DEV8001 HTTP200. Producao PID663476, /usr/bin/node v24.13.0;
+  DEV PID663039 e Node24.22.1 isolado preservados. Auditorias untracked do
+  operador permaneceram intactas, sem entrar no release.
+- Dump PM2 encontrado era de2026-10-13: diferencas contra esse dump NAO
+  identificam o delta deste restart. Nao atribuir a falha apenas a ordem de
+  chaves/metadados sem baseline valido. O hash anterior nao foi persistido;
+  causa exata permanece indeterminada, sem relaxar ou editar o runner publicado.
+- Operador executou conferencia complementar SOMENTE LEITURA, no SHA455adc61,
+  main limpa para rastreados e timer ativo. Ambiente efetivo de /proc do processo
+  produtivo foi usado em filho sem IPC, e helper canonico conferirProducao validou
+  configuracao/PM2/.env, UUID, TLS/MySQL, JSON, sessao e flags. Schema conferido
+  sem pendencias; nenhum DDL/restart. PIDs PROD/DEV permaneceram os mesmos.
+- Saida recebida: CONFIGURACAO_BANCO_TLS_SCHEMA_PRODUCAO_OK e
+  CONFERENCIA_SOMENTE_LEITURA_CONCLUIDA_SEM_REINICIOS. Essa evidencia valida o
+  estado atual do backend e a ordem backend-antes-frontend; nao e reproducao do
+  hash anterior. Frontend cc791403 autorizado a publicar agora, com este registro
+  documental, sem qualquer outro delta backend/migration/runtime.
+- Proximo passo: conferir main remota ainda455adc61, repetir QA HTTP/download,
+  publicar frontend + registro e verificar SHA remoto. Vercel PROD e homologacao
+  real de preview/download ficam pendentes ate o deploy do novo SHA.
+- Pre-publicacao: remoto main455adc61 reconferido; 9 cenarios HTTP e browser real
+  desktop/mobile de download passaram novamente. Docs630/19 e diff aprovados.
+  Registro apenas documental sobre frontend cc791403; nenhum delta backend/ops,
+  migration, lockfile ou runtime apos o backend ja implantado na EC2.
