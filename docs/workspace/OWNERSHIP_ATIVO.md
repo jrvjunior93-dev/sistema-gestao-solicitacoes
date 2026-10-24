@@ -1,5 +1,28 @@
 # Ownership Ativo
 
+## Carga historica NSDOCS PROD e retirada de consultas SEFAZ da UI - 2026-10-24
+
+- Retomada: usuario autorizou commit/push main e comandos PROD, backend antes
+  de frontend; backup/timer atuais confirmados. Reservar operador de deploy,
+  testes/roteiro/handoff e inventario para publicar backend exclusivo primeiro.
+  Frontend sera commitado localmente e retido ate prova EC2/schema/storage/chave.
+  Nao executar SSH com escrita, migration, IAM, restart ou carga real pelo agente.
+- Agente unico, branch codex/nsdocs-historico-prod-20261024, base main0b20cc4d.
+- Usuario autorizou preparar/testar carga manual de dados/XML, duplicidade e
+  historico, automatico desligado, sem bloqueios financeiros e DEV preservado.
+  Inclui retirar a consulta SEFAZ do frontend, preservando origem/historico legado.
+- Reservar CLI/servicos/QA/migration especifica de captura, roteiro de deploy
+  por etapas e telas fiscais/QA relacionados. Mapear permissoes/endpoints antes
+  de editar UI. Nenhuma chamada NSDOCS, gravacao AWS/RDS, deploy/restart ou push
+  autorizado nesta preparacao. Nao copiar credenciais ou IDempresa2 do DEV.
+- Fonte DEV2920e1f1 consultada por Git sem alterar checkout/branch/processos DEV.
+  Separar credencial PROD/role fiscal/UUID TLS, estado/lock/idempotencia e
+  guarda contra uso do bucketDEV. QA com mocks/fixtures e rede externa bloqueada.
+- Preparacao concluida:44 QA captura/guardas/plano,4 inventario, UI desktop/mobile,
+  datas/historico/XML3fusos, regressao vinculos/documentosPagamento/ACL e build.
+  Handoff docs/handoffs/2026-10-24-nsdocs-historico-prod.md; sem commit/push ou
+  aplicacao real. Reserva mantida para publicar por etapas quando solicitado.
+
 ## Liberacao frontend depois do storage PROD - 2026-10-24
 
 - Retomada: usuario retornou VINCULO_FISCAL_PROD_CONFERIDO, fiscal1/empresa1,
