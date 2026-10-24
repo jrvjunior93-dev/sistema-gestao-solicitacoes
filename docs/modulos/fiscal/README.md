@@ -39,6 +39,11 @@ de configuracao fiscal. Sem transporte HTTP, persistencia, agenda ou novos
 bloqueios de pedidos/titulos. Captura real e vinculos operacionais sao etapas futuras.
 Publicacao e QA exclusivamente DEV: [roteiro NSDOCS offline](../../../ops/deploy/README-nsdocs-v2-dev-20261024.md).
 
+Etapa seguinte preparada: [consulta administrativa manual NSDOCS no DEV](NSDOCS_V2_CONSULTA_MANUAL_DEV.md).
+Comando de backend separado da aplicacao, chave em arquivo privado fora do Git,
+cadastro/UUID/CNPJ conferidos e um GET limitado por execucao explicita.
+Conector automatico e permissoes web permanecem como estao; sem gravacao financeira.
+
 ## Mudanca segura
 
 Testar parser, processor, fixtures, duplicidade, certificado, criptografia, S3, locks, preflight, permissao, vinculos, divergencias e consumidores. Os documentos `fiscal_fase*` registram a construcao historica; este arquivo define o estado conceitual atual.

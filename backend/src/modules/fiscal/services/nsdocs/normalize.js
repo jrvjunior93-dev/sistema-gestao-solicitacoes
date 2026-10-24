@@ -64,7 +64,7 @@ function normalizePage(rows, request, total) {
     if (!row || typeof row !== 'object' || Array.isArray(row)) fail('NSDOCS_DOCUMENTO_INVALIDO');
     if (cnpj(row.empresa_cnpj) !== request.companyCnpj) fail('NSDOCS_EMPRESA_FORA_DO_ESCOPO');
     const providerId = identifier(row.id, 64);
-    if (!/^\d+$/.test(providerId)) fail('NSDOCS_ID_INVALIDO');
+    if (!/^[A-Za-z0-9_-]+$/.test(providerId)) fail('NSDOCS_ID_INVALIDO');
     const model = text(row.modelo, 30);
     if (model !== 'NF-e') {
       unsupported.push({ provider_id: providerId, model, reason: 'MODELO_NAO_IMPLEMENTADO' });

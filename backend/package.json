@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
+    "test:deploy-nsdocs-manual-dev": "node --test ../ops/deploy/atualizar-dev-nsdocs-manual-20261024.test.cjs",
+    "test:nsdocs-manual-dev": "node scripts/validarNsdocsManualDev.js",
     "test:nsdocs-v2": "node scripts/validarNsdocsV2.js",
     "test:deploy-nsdocs-dev": "node --test ../ops/deploy/atualizar-dev-nsdocs-v2-20261024.test.cjs",
     "test:download-anexo-medicao": "node scripts/validarDownloadAnexoMedicao.js && node scripts/validarRemocaoAnexosHistorico.js",
