@@ -57,3 +57,31 @@
 - Apos frontend: preview inline e download com nome correto, usuario sem acesso
   bloqueado, legado/uploads via API; S3 sem headers/cookies Fluxy e assinatura
   preservada. Sem necessidade de atualizar EC2 para o commit apenas frontend.
+
+## Publicacao backend e retencao do frontend
+
+- Etapa backend publicada em main455adc61508ff32b4e0463ee0227291471b86f1f.
+  Nenhum delta frontend/migration/lockfile nesse commit. Refactor permanece
+  d37d722e. Nao confundir publicacao Git com atualizacao efetiva da EC2.
+- Frontend integrado seletivamente do d37d722e, fontes/QA de download identicos
+  ao homologado DEV. Commit somente local, NAO fazer push antes da prova
+  BACKEND_DOWNLOAD_MEDICAO_PRODUCAO_PRONTO com SHA455adc61 e dev_preservado:true.
+- QA transporte9 cenarios, Chrome desktop/mobile com API/storage locais e build
+  aprovados. Regressao de rejeicao/favorecido passou. Build so avisos herdados de
+  Browserslist/chunks; catalogo gerado sem delta. Documentacao valida (630md/19
+  canonicos). Guards produtivos anteriores/UUID/TLS/schema passaram em fixtures.
+- Regressao medicao-recarga-envio original teve corrida de sincronizacao no
+  assert imediato do botao apos o toast. Reproduzida tambem ao servir os fontes
+  main78fbf277 anteriores via plugin Vite, SEM restaurar/editar fontes funcionais.
+  QA privado com as mesmas assercoes, aguardando a atualizacao do disabled,
+  passou no candidato; nao mudar dominio financeiro ou suite canonica nesta
+  promocao por uma condicao de tempo do teste. Script temporario e outputs fora
+  dos commits. Comparacao final com espera: candidato E baseline78fbf277 passaram,
+  confirmando mesma regra de bloqueio. Remocao/historico, navegacao e abas tambem
+  passaram no candidato. Nao afirmar que a suite original sem espera e estavel.
+- Proximo passo exato: operador executa runner backend PROD publicado, envia
+  prova e health. Conferir main ainda na etapa backend; publicar exclusivamente
+  commit frontend local e aguardar Vercel PROD nesse SHA, entao homologar anexos.
+  Nao promover retirada de envios, trocar Node ou executar migration junto.
+- Reserva encerrada apos commits locais; publicacao frontend continua pendente
+  da evidencia do operador. Snapshot/bundle e QAs privados preservados.

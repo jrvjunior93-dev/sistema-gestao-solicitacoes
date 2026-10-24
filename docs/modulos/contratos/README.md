@@ -1,5 +1,17 @@
 # Modulo CONTRATOS
 
+## Download de arquivo da medicao - 2026-10-24
+
+- O botao Baixar pede novo link autorizado/assinado com attachment e nome UTF8.
+  O arquivo S3 e entregue por navegacao, sem fetch ou dependencia do CORS do bucket.
+- Preview continua separado e inline. Sem mudanca de permissoes de consulta,
+  aprovacao, rejeicao, pagamentos ou historico. Uploads locais passam pela mesma
+  verificacao de acesso e mantem download autenticado no dominio da API.
+- Bloqueio sincrono de clique repetido, botao disabled durante preparo e mensagem
+  de erro sem URL/token cru. Detalhes em ../../seguranca/anexos.md.
+- Backend deve suportar download=1 ANTES de liberar o frontend novo: atualizar
+  backend DEV e depois liberar a versao Vercel DEV correspondente. Sem migration.
+
 ## Reenviar parcela de medicao rejeitada - 2026-10-23
 
 - Corrige o conflito do indice antigo `medicao_parcelas_unico`: a mesma

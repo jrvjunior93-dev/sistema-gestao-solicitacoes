@@ -12,6 +12,13 @@
   permissoes, flags, dados financeiros e scripts anteriores exclusivos da main.
 - Publicar backend sozinho; reter frontend local ate evidencia da EC2 PROD.
   Nenhuma execucao remota pelo agente; DEV e demais processos preservados.
+- QA temporario reservado: frontend/scripts/validarMedicaoRecargaEnvioBaseline20261024.mjs,
+  comparacao da regressao com fontes main anteriores via Vite; nao publicar o
+  arquivo temporario nem outputs/. Nenhum fonte funcional sera restaurado.
+- Etapa backend455adc61 publicada na main, inventario reconferido. Frontend
+  commitado apenas localmente e retido ate prova da EC2 PROD. Testes/QA/build,
+  docs e comparacao de sincronizacao candidato/baseline concluidos no handoff.
+  Reserva de edicao encerrada; DEV/Node/configuracoes remotas nao alterados.
 
 ## Promocao MAIN: medicao, filtros e distribuicao - 2026-10-23
 
