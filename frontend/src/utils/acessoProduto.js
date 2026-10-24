@@ -1498,6 +1498,12 @@ export function canViewFiscalDocuments(user) {
   return false;
 }
 
+export function canLinkFiscalDocuments(user) {
+  if (!hasEnabledModule(user, 'FISCAL')) return false;
+  if (isBusinessAdmin(user)) return true;
+  return hasConfiguredAreaPermissions(user) && hasPermissao(user, 'fiscal.document.link');
+}
+
 export function canViewFiscalLogs(user) {
   if (!hasEnabledModule(user, 'FISCAL')) return false;
   if (isBusinessAdmin(user)) return true;

@@ -26,6 +26,7 @@ import {
   getTituloFinanceiroById
 } from '../services/financeiro';
 import { useAuth } from '../contexts/AuthContext';
+import VinculosNfe from '../modules/fiscal/components/VinculosNfe';
 import { hasPermissao, canCancelTitulosFinanceiros } from '../utils/acessoProduto';
 import {podePermuta} from '../utils/permuta';
 import { formatCurrencyInput, normalizeCurrencyTyping, parseCurrencyInput } from '../utils/formatters';
@@ -1195,6 +1196,8 @@ export default function FinanceiroTituloDetalhe() {
             )}
           </BlocoConteudo>
         )}
+
+        <VinculosNfe tituloId={titulo.id} user={user}/>
 
         {podeVerMovimentosFinanceiros && (
         <BlocoConteudo titulo="Movimentos financeiros" variante="secundario">

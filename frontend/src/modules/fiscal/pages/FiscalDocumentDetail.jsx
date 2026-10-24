@@ -15,6 +15,7 @@ import {
   useConfirmacao
 } from '../../../components/padrao';
 import StatusBadge from '../../../components/StatusBadge';
+import VinculosNfe from '../components/VinculosNfe';
 import { formatarDataEmissaoFiscal } from '../utils/dataEmissaoFiscal';
 import {
   createFiscalDivergence,
@@ -34,8 +35,6 @@ import {
 const LINK_SEARCH_TYPES = [
   { value: 'solicitacao', label: 'Solicitação', field: 'solicitacao_id' },
   { value: 'solicitacao_compra', label: 'Solicitação de compra', field: 'solicitacao_compra_id' },
-  { value: 'pedido', label: 'Pedido', field: 'pedido_id' },
-  { value: 'pedido_item', label: 'Item do pedido', field: 'pedido_item_id' },
   { value: 'titulo', label: 'Título financeiro', field: 'financeiro_titulo_id' },
   { value: 'obra', label: 'Obra', field: 'obra_id' },
   { value: 'fornecedor', label: 'Fornecedor', field: 'fornecedor_id' },
@@ -515,7 +514,7 @@ export default function FiscalDocumentDetail() {
     );
   }
 
-  const links = documento.links || [];
+  const links = (documento.links || []).filter(link => !link.purchase_link_key);
   const divergences = documento.divergences || [];
   const events = documento.events || [];
   const statusDocumento = String(documento.document_status || '');
@@ -687,8 +686,10 @@ export default function FiscalDocumentDetail() {
         nunca divide espaço com apoio) e com o papel de cada coluna
         declarado. Nenhum dado saiu.
       */}
+      <VinculosNfe documento={documento}/>
+
       <BlocoConteudo
-        titulo="Vínculos"
+        titulo="Outros vínculos fiscais"
         descricao="Amarracao do documento com solicitação, pedido, título, obra e apropriação."
         acoes={(
           <button
@@ -756,7 +757,8 @@ export default function FiscalDocumentDetail() {
               <button
                 className="btn btn-outline btn-sm"
                 type="button"
-                disabled={updatingLinkId === link.id}
+                disabled={updatingLinkId === link.id || Boolean(link.pedido_id || link.pedido_item_id)}
+                title={link.pedido_id || link.pedido_item_id ? 'Conferir no painel NF-e e pedidos acima' : undefined}
                 onClick={() => confirmLink(link)}
               >
                 Confirmar

@@ -2,11 +2,12 @@ import useVisualizadorArquivo from '../../../hooks/useVisualizadorArquivo';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import DateInputBR from '../../../components/DateInputBR';
-import { BlocoConteudo, CampoForm, FormSecao } from '../../../components/padrao';
+import { BlocoConteudo, CampoForm, FormSecao, useConfirmacao } from '../../../components/padrao';
 import TitulosCompartilhadosModal from '../../../components/financeiro/TitulosCompartilhadosModal';
 import ParceiroBuscaRemota from '../../../components/solicitacoes/ParceiroBuscaRemota';
 import {
   adotarFinanceiroPedidoCompra,
+  atualizarStatusPedidoCompra,
   criarPrevisoesPedidoCompra,
   decidirReaberturaPedidoCompra,
   obterUrlAssinadaCompra,
@@ -16,6 +17,7 @@ import {
 } from '../../../services/compras';
 import {
   canAccessFinanceiro,
+  canAlterarStatusComprasPedidos,
   canAnexarDocumentoPedidoCompraFinanceiro,
   canDeleteSolicitacaoAnexo,
   canAprovarReaberturaPedidoCompraFinanceiro,
@@ -25,6 +27,7 @@ import {
 import { formaPagamentoEhBoleto, formaPagamentoEhPix, tokensFormaPagamento } from '../../../utils/formaPagamento';
 import { PIX_TEXTO_MAX } from '../../../utils/pix';
 import OverlayModal from '../../../components/ui/OverlayModal';
+import VinculosNfe from '../../fiscal/components/VinculosNfe';
 
 const STATUS_LABEL = {
   NAO_INICIADO: 'Não iniciado', AGUARDANDO_GEO: 'Legado aguardando revisão',
@@ -204,6 +207,7 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
   const [loteAberto, setLoteAberto] = useState(false);
   const processandoRef = useRef(false);
   const arquivoInputRef = useRef(null);
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [categoriaId, setCategoriaId] = useState('');
   const [descricao, setDescricao] = useState('');
   const [pagamento, setPagamento] = useState(() => criarConfigPagamento(totalPedido, credorPedido));
@@ -234,8 +238,9 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
   const previsoes = titulos.filter((item) => String(item.titulo?.status || '').toUpperCase() === 'PREVISAO');
   const titulosAtivos = titulos.filter((item) => !['CANCELADO', 'ESTORNADO'].includes(String(item.titulo?.status || '').toUpperCase()));
   const pedidoFechado = ['FECHADO_FORNECEDOR', 'ENCERRADO'].includes(String(pedido?.status || '').toUpperCase());
-  const podeCriarPrevisao = podePrever && !financeiro?.legado && titulosAtivos.length === 0 && pedidoFechado;
   const idsFreteTerceiro = new Set((pedido?.fretes || []).filter(f => f.tipo === 'TERCEIRO').map(f => Number(f.titulo_financeiro_id)));
+  const titulosCompraAtivos = titulosAtivos.filter(item => item.origem !== 'FRETE_TERCEIRO' && !idsFreteTerceiro.has(Number(item.titulo?.id)));
+  const podeCriarPrevisao = podePrever && !financeiro?.legado && titulosCompraAtivos.length === 0 && pedidoFechado;
   const podeCriarCompartilhado = podePrever && !financeiro?.legado && pedidoFechado
     && !titulosAtivos.some(item => item.origem !== 'FRETE_TERCEIRO' && !idsFreteTerceiro.has(Number(item.titulo?.id)));
   const podeReparcelarPrevisao = podePrever && !financeiro?.legado && pedidoFechado && previsoes.length > 0 && previsoes.length === titulosAtivos.length;
@@ -345,8 +350,20 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
     return executar('decisao', () => decidirReaberturaPedidoCompra(pedido.id, reabertura.id, { decisao, motivo: motivoDecisao.trim() }), decisao === 'APROVAR' ? 'Reabertura aprovada e pedido devolvido para edição.' : 'Reabertura rejeitada.');
   }
 
-  return (
-    <BlocoConteudo titulo="Gestão financeira do pedido" contagem={STATUS_LABEL[financeiro.status] || String(financeiro.status || '').replace(/_/g, ' ')} descricao="O pedido permanece com Compras. Compras cria os títulos; o GEO autoriza o envio pela tela de Contas a Pagar." variante="primario" cor="var(--module-financeiro)">
+  async function fecharParaTitular() {
+    const { ok } = await confirmar({ titulo: 'Fechar pedido com o fornecedor',
+      mensagem: `Conferiu valores e itens do pedido #${pedido.id}? O fechamento prepara a criacao dos titulos por Compras, sem registrar pagamento nem enviar para a fila.` });
+    if (!ok) return;
+    return executar('fechar', () => atualizarStatusPedidoCompra(pedido.id, { status: 'FECHADO_FORNECEDOR' }), 'Pedido fechado. Compras ja pode criar os titulos deste pedido.');
+  }
+
+  return (<>
+    <BlocoConteudo titulo="Gestão financeira do pedido" contagem={STATUS_LABEL[financeiro.status] || String(financeiro.status || '').replace(/_/g, ' ')} descricao="Compras cria e gerencia os títulos. O GEO faz o envio para autorização de pagamento ou para a fila, pela tela de Contas a Pagar." variante="primario" cor="var(--module-financeiro)">
+      {elementoConfirmacao}
+      {!pedidoFechado && pedido.status !== 'CANCELADO' && <div className="app-alert mb-3">
+        <p>Compras precisa concluir o fechamento com o fornecedor antes de criar os titulos deste pedido. Titulos de outros pedidos nao impedem esta etapa.</p>
+        {podePrever && canAlterarStatusComprasPedidos(user) ? <button type="button" className="btn btn-outline btn-sm mt-2" disabled={Boolean(processando)} onClick={fecharParaTitular}>Fechar com o fornecedor e preparar títulos</button> : <Link className="btn btn-outline btn-sm mt-2" to={`/pedidos-compra/${pedido.id}`}>Conferir fechamento do pedido</Link>}
+      </div>}
       {podeCriarCompartilhado && <button type="button" className="btn btn-outline btn-sm" disabled={Boolean(processando) || !pedido?.fornecedor?.parceiro_id} onClick={() => setLoteAberto(true)}>Gerar títulos compartilhados com outras solicitações / pedidos</button>}
       {loteAberto && <TitulosCompartilhadosModal solicitacaoId={pedido.solicitacao?.solicitacao_principal_id || pedido.solicitacao_principal_id}
         pedidoId={pedido.id} credorInicial={credorPedido} onClose={() => setLoteAberto(false)} onCreated={() => onAtualizar?.()} />}
@@ -410,5 +427,6 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
         </footer>
       </OverlayModal>}
     </BlocoConteudo>
-  );
+    <VinculosNfe pedidoId={pedido.id} user={user}/>
+  </>);
 }
