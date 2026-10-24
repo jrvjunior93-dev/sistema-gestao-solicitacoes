@@ -195,6 +195,8 @@ test('timeout absoluto mesmo sem resposta; nada de retentativa', async () => {
     require(name) { if (name === 'node:https') return fake.client;
       if (name === './policy') return policy;
       if (name === '../normalize') return require(`${root}/../normalize`);
+      if (name === 'node:zlib') return zlib;
+      if (name === './xml') return require(`${root}/xml`);
       throw Error('Dependencia inesperada'); } };
   vm.runInNewContext(fs.readFileSync(`${root}/transport.js`, 'utf8'), context);
   const promise = context.module.exports.requestDocuments(buildListRequest(input, CNPJ), KEY);
@@ -327,13 +329,25 @@ test('runtime SQL real em VM: identidade, TLS, cadastro ativo e rollback sem esc
   assert.equal(statements[0], 'START TRANSACTION READ ONLY');
   assert.equal(statements.at(-1), 'ROLLBACK'); assert.equal(closed, true);
   assert(statements.every(sql => /^(SELECT|SHOW SESSION STATUS|START TRANSACTION READ ONLY|ROLLBACK)/.test(sql)));
+  statements.length = 0; closed = false;
+  await context.module.exports.withDevWriteDatabase(async () => statements.push('CALLBACK_ESCRITA_FICTICIA'));
+  assert(statements.indexOf('CALLBACK_ESCRITA_FICTICIA') > statements.indexOf('ROLLBACK'));
+  assert(statements.some(sql => sql.includes('server_uuid'))); assert.equal(closed, true);
   badIdentity = true; statements.length = 0; closed = false;
   await assert.rejects(context.module.exports.loadDevCompany(7, CNPJ), fails('NSDOCS_BANCO_DEV_DIVERGENTE'));
   assert.equal(statements.some(sql => sql.includes('empresas_grupo')), false);
   assert.equal(closed, true); assert.equal(statements.at(-1), 'ROLLBACK');
+  statements.length = 0;
+  await assert.rejects(context.module.exports.withDevWriteDatabase(async () => statements.push('ESCRITA_PROIBIDA')),
+    fails('NSDOCS_BANCO_DEV_DIVERGENTE'));
+  assert(!statements.includes('ESCRITA_PROIBIDA'));
   badIdentity = false; emptyCipher = true; statements.length = 0; closed = false;
   await assert.rejects(context.module.exports.loadDevCompany(7, CNPJ), fails('NSDOCS_SESSAO_MYSQL_SEM_TLS'));
   assert.equal(statements.some(sql => sql.includes('empresas_grupo')), false);
   assert.equal(closed, true); assert.equal(statements.at(-1), 'ROLLBACK');
+  statements.length = 0;
+  await assert.rejects(context.module.exports.withDevWriteDatabase(async () => statements.push('ESCRITA_PROIBIDA')),
+    fails('NSDOCS_SESSAO_MYSQL_SEM_TLS'));
+  assert(!statements.includes('ESCRITA_PROIBIDA'));
 });
 test('nenhuma rede real acionada pela bateria ficticia', () => { assert.equal(realCalls, 0); });

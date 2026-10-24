@@ -12,7 +12,7 @@ function assertDevProcess() {
   validateFlags(process.env);
 }
 
-async function withDevDatabase(action) {
+async function withDevDatabase(action, { write = false } = {}) {
   check(process.platform === 'linux' && process.getuid() === 1000 && fs.realpathSync(process.cwd()) === DEV_BACKEND,
     'NSDOCS_COMANDO_EXCLUSIVO_UBUNTU_DEV');
   const result = cp.spawnSync('/usr/bin/git', ['--no-optional-locks', '-c', 'core.fsmonitor=false', 'branch', '--show-current'], {
@@ -30,11 +30,15 @@ async function withDevDatabase(action) {
     // mysql2 normaliza o objeto recebido; o preset validado permanece imutavel.
     ssl: { ...getRdsSsl() } });
   try {
+    // A identidade e o TLS sao conferidos em transacao somente leitura inclusive
+    // antes de liberar o canal dedicado de escrita manual.
     await db.query('START TRANSACTION READ ONLY');
     const [tls] = await db.query("SHOW SESSION STATUS LIKE 'Ssl_cipher'");
     check(typeof tls[0]?.Value === 'string' && tls[0].Value.length > 0, 'NSDOCS_SESSAO_MYSQL_SEM_TLS');
     const [[identity]] = await db.query('SELECT @@GLOBAL.server_uuid AS uuid, DATABASE() AS banco');
     check(identity.uuid === '60f043e9-4025-11f1-9a61-06d8a063012d' && identity.banco === 'gestao_solicitacoes', 'NSDOCS_BANCO_DEV_DIVERGENTE');
+    if (!write) return await action(db);
+    await db.rollback();
     return await action(db);
   } finally {
     try { await db.rollback(); } finally { await db.end(); }
@@ -59,4 +63,6 @@ async function listDevCompanies() {
     });
   });
 }
-module.exports = { loadDevCompany, listDevCompanies, assertDevProcess };
+module.exports = { loadDevCompany, listDevCompanies, assertDevProcess,
+  withDevReadDatabase: action => withDevDatabase(action),
+  withDevWriteDatabase: action => withDevDatabase(action, { write: true }) };

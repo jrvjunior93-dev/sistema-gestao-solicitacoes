@@ -6,6 +6,22 @@ const { requestDocuments } = require('./transport');
 const { normalizePage } = require('../normalize');
 const { assertDevProcess } = require('./runtime');
 
+function normalizeResponse(response, request, company) {
+  check(Array.isArray(response.rows), 'NSDOCS_LISTA_INVALIDA');
+  const rows = response.rows.map(row => {
+    check(row && typeof row === 'object', 'NSDOCS_DOCUMENTO_INVALIDO');
+    check(companyCnpj(row.empresa_cnpj) === company.cnpj, 'NSDOCS_EMPRESA_FORA_DO_ESCOPO');
+    const result = { ...row, empresa_cnpj: company.cnpj };
+    if (row.modelo === 'NF-e') {
+      result.emitente_cnpj = companyCnpj(row.emitente_cnpj);
+      result.destinatario_cnpj = companyCnpj(row.destinatario_cnpj);
+    }
+    return result;
+  });
+  const normalized = normalizePage(rows, request, response.total);
+  return { ...normalized, documents: normalized.documents.map(doc => ({ ...doc, source_mode: 'manual' })) };
+}
+
 async function queryManually({ input, company, confirmed = false, signal }, dependencies = {}) {
   (dependencies.guard || assertDevProcess)();
   check(confirmed === true, 'NSDOCS_CONFIRMACAO_REAL_OBRIGATORIA');
@@ -22,27 +38,15 @@ async function queryManually({ input, company, confirmed = false, signal }, depe
     secrets.appendHistory(event('NSDOCS_CONSULTA_INICIADA'));
     try {
       const response = await send(request, credentials.apiKey, signal);
-      check(Array.isArray(response.rows), 'NSDOCS_LISTA_INVALIDA');
-      const rows = response.rows.map(row => {
-        check(row && typeof row === 'object', 'NSDOCS_DOCUMENTO_INVALIDO');
-        // Suportar CNPJ com pontuacao do contrato v2, sem aceitar outra empresa.
-        check(companyCnpj(row.empresa_cnpj) === company.cnpj, 'NSDOCS_EMPRESA_FORA_DO_ESCOPO');
-        const result = { ...row, empresa_cnpj: company.cnpj };
-        if (row.modelo === 'NF-e') {
-          result.emitente_cnpj = companyCnpj(row.emitente_cnpj);
-          result.destinatario_cnpj = companyCnpj(row.destinatario_cnpj);
-        }
-        return result;
-      });
-      const normalized = normalizePage(rows, request, response.total);
+      const normalized = normalizeResponse(response, request, company);
       const result = {
         ...normalized, request_id: requestId, real_calls: true,
-        company_verified_in_response: rows.length > 0,
+        company_verified_in_response: response.rows.length > 0,
         company_id: company.id, company_cnpj: company.cnpj,
         documents: normalized.documents.map(doc => ({ ...doc, source_mode: 'manual' }))
       };
       assertNoSecret(result, credentials.apiKey);
-      secrets.appendHistory({ ...event('NSDOCS_CONSULTA_CONCLUIDA'), count: rows.length });
+      secrets.appendHistory({ ...event('NSDOCS_CONSULTA_CONCLUIDA'), count: response.rows.length });
       return result;
     } catch (error) {
       const code = errorCode(error);
@@ -51,4 +55,4 @@ async function queryManually({ input, company, confirmed = false, signal }, depe
     } finally { credentials.apiKey = ''; }
   });
 }
-module.exports = { queryManually };
+module.exports = { queryManually, normalizeResponse };

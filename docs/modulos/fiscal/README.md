@@ -44,6 +44,11 @@ Comando de backend separado da aplicacao, chave em arquivo privado fora do Git,
 cadastro/UUID/CNPJ conferidos e um GET limitado por execucao explicita.
 Conector automatico e permissoes web permanecem como estao; sem gravacao financeira.
 
+Preparacao seguinte: [captura manual persistente com XML no DEV](NSDOCS_V2_CAPTURA_MANUAL_DEV.md).
+CLI explicita, idempotencia por lote/chave fiscal, historico e XML privado imutavel.
+Requer migration estrutural e bucket fiscalDEV separado, ainda nao criados/aplicados
+nesta etapa. Sem ativar automatico, alterar producao ou criar bloqueios financeiros.
+
 ## Mudanca segura
 
 Testar parser, processor, fixtures, duplicidade, certificado, criptografia, S3, locks, preflight, permissao, vinculos, divergencias e consumidores. Os documentos `fiscal_fase*` registram a construcao historica; este arquivo define o estado conceitual atual.

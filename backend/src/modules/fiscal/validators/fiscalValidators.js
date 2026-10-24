@@ -13,7 +13,7 @@ const {
 } = require('../constants/fiscalPermissions');
 const { onlyDigits, isValidCnpj } = require('../../../utils/cpfCnpj');
 
-const FISCAL_DOCUMENT_SOURCES = ['sefaz_distribution', 'manual_upload', 'batch_import'];
+const FISCAL_DOCUMENT_SOURCES = ['sefaz_distribution', 'manual_upload', 'batch_import', 'nsdocs_v2_manual'];
 const FISCAL_MANIFESTATION_STATUSES = [
   'not_required',
   'pending',
