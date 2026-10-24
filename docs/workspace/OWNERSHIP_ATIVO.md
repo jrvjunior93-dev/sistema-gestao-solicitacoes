@@ -1,5 +1,17 @@
 # Ownership Ativo
 
+## Promocao retirada de envios e abas web - 2026-10-24
+
+- Agente unico, sem delegacao. Usuario autorizou pacote completo84b9aef4 para
+  main e roteiro EC2 PROD/migration003; backup cifrado/timer reconfirmados.
+- Base62456b21; checkout gerenciado separado dos roteiros locais Node anteriores.
+- Reserva: delta84b9aef4 completo, resolucoes documentais/package preservando
+  main, novo aplicador/runner/manifesto/QA PROD e handoff desta promocao.
+- Backend/migration primeiro; frontend retido ate prova da EC2. Preservar Nodes
+  isolados24.22.1, DEV, flags/sessao/TLS, .env e ambos os dumps de inicializacao.
+- Sem EC2, SSH, migration/banco real, operacao financeira ou restart pelo agente.
+  Sem npm install, PM2 save/update/--update-env ou mudanca de interpreter no roteiro.
+
 ## Promocao seletiva dos anexos - 2026-10-24
 
 - Retomada documental/publicacao: reserva somente deste registro e handoff para
