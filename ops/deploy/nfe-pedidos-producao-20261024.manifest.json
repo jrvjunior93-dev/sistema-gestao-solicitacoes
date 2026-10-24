@@ -1,0 +1,247 @@
+{
+  "schema": 1,
+  "status": "PREPARACAO_LOCAL_NAO_LIBERA_DEPLOY",
+  "base": "a860f94afc4de69499a169a8439a8e2297f507d5",
+  "source_dev": "2920e1f1ff17b681a77bd02128e67aee4021a955",
+  "migration": "202610240002_fiscal_vinculos_pedidos.js",
+  "backend": [
+    {
+      "path": "backend/migrations/202610240002_fiscal_vinculos_pedidos.js",
+      "sha256": "5a7570b9d43f16540eb07b0c015496405521cf566f9bda118e14a8bf07a59015"
+    },
+    {
+      "path": "backend/package-lock.json",
+      "sha256": "70d348d9ddcfca3c7694a9a388554957bcb9cadd8a76a8278d7f695148880d22"
+    },
+    {
+      "path": "backend/package.json",
+      "sha256": "280e8126ad2857b86fe100f2e4c99e3bfb6f7d00fdfd88386e78a02d2440db13"
+    },
+    {
+      "path": "backend/scripts/fiscalVinculosProdSchema.js",
+      "sha256": "4f009c6c5f9ca58fd2108b34846c6f6eb25498147dd517b52dc2b7544713d21e"
+    },
+    {
+      "path": "backend/scripts/fixtures/fiscalPagamentoFixture.cjs",
+      "sha256": "63a7d199aa8c7d367318be66eb5a4f0ff31a3e765cda99ef89e48693874f0809"
+    },
+    {
+      "path": "backend/scripts/fixtures/pedidoLocalizacaoFixture.cjs",
+      "sha256": "1be175a620c0e1c5dde3276694fa83ed37c3f45114ec522bc3c095df12f72d02"
+    },
+    {
+      "path": "backend/scripts/fixtures/vinculosNfeDbFixture.cjs",
+      "sha256": "a28e0d533dd35876ff62125220286b847376e17a8f7aa4af7da0aa47b070c4ec"
+    },
+    {
+      "path": "backend/scripts/validarFilaPagamentoSolicitacaoAcesso.js",
+      "sha256": "de4d2997ecfd8351848dac1793472836439a4d8c98ede6b9a0dd8480c184084c"
+    },
+    {
+      "path": "backend/scripts/validarFiscalPagamentoDocumentos.js",
+      "sha256": "cdce4cb32782a8b8b8917777d2ea393a90fe584bc92d968f12cdb4043f8a1cd3"
+    },
+    {
+      "path": "backend/scripts/validarFiscalS3RoleProd.js",
+      "sha256": "ec3f95f68e6e5c7b1e8d522e116f2775060cc147a54b667a2e01d8b061bca2c7"
+    },
+    {
+      "path": "backend/scripts/validarFiscalVinculosProdSchema.js",
+      "sha256": "360a2b1e6a852096a7218c31c499fb37aea271880b838e0eab3f790f0a245c8d"
+    },
+    {
+      "path": "backend/scripts/validarPedidoLocalizacao.js",
+      "sha256": "0aee4fb54f7d4296275e35ea3967f09c8542b620808defe6f714bc1607b311c6"
+    },
+    {
+      "path": "backend/scripts/validarVinculosNfePedidos.js",
+      "sha256": "e6089aa5ab9b45160f5d5e7c1188ffb3fd9d8a346d59e5ad3556ea44a530f573"
+    },
+    {
+      "path": "backend/src/constants/uiVisibilityRegistry.js",
+      "sha256": "585a58ffd7a714618cf97f97a5544a96d065e2f5ca38219f13ce03f84c48d353"
+    },
+    {
+      "path": "backend/src/controllers/FiscalPagamentoDocumentosController.js",
+      "sha256": "47b754a565e23f787f953745861929f45bfe1ef8d19554a1ba7766e85023f025"
+    },
+    {
+      "path": "backend/src/controllers/PedidoLocalizacaoController.js",
+      "sha256": "000b76b143b72cdaea2391620c16c38d2ee2e7cb0f55eb39c919a232cd6ffb77"
+    },
+    {
+      "path": "backend/src/modules/fiscal/controllers/FiscalPurchaseLinkController.js",
+      "sha256": "2f8a75d48a8ef664099ea42d78b68fe03b00e0e0b09f5d4c75d58a6c0ff1865f"
+    },
+    {
+      "path": "backend/src/modules/fiscal/models/FiscalDocumentLink.js",
+      "sha256": "86094706e9b78a492b0c8d0dfc949c47f95338a4391579a44cdd102ad5285a96"
+    },
+    {
+      "path": "backend/src/modules/fiscal/routes/index.js",
+      "sha256": "eb3c5673cbacda32abb359b342fb3a088a882e12c02fbb63ffd21aba771ad58e"
+    },
+    {
+      "path": "backend/src/modules/fiscal/services/fiscalDocumentService.js",
+      "sha256": "92986ae2ee719ac6933da0f61f7c5a318a08a85257a02125db3473a27105db0d"
+    },
+    {
+      "path": "backend/src/modules/fiscal/services/fiscalMatchingService.js",
+      "sha256": "7c82b0265815058593024bad50eefdde66e9494d29dc47429a8bc335091121c7"
+    },
+    {
+      "path": "backend/src/modules/fiscal/services/fiscalProdS3Policy.json",
+      "sha256": "02a7b21086d169df9d8d6d6a172fc47c26a0ca3c7d5d70728beb0f0954b241f6"
+    },
+    {
+      "path": "backend/src/modules/fiscal/services/fiscalProdS3Role.js",
+      "sha256": "d0f55dbb218e02572334f2689a776d052788df163aaadea048fd1e17014b99d5"
+    },
+    {
+      "path": "backend/src/modules/fiscal/services/fiscalPurchaseLinkDomain.js",
+      "sha256": "fbbbcbe4e20f24476183f9a6d553dc7daef9cef9cc0efc621021298ae0a00a38"
+    },
+    {
+      "path": "backend/src/modules/fiscal/services/fiscalPurchaseLinkService.js",
+      "sha256": "b0d7d679687a4adc0672203b5fdf08d031e0aaece75d67c03e5607998507e3de"
+    },
+    {
+      "path": "backend/src/modules/fiscal/services/fiscalS3Service.js",
+      "sha256": "6cd4ddeb7c4dbc3ae97b30a472c41c3418edb2adc730b0fedb55219535fd2dbd"
+    },
+    {
+      "path": "backend/src/routes.js",
+      "sha256": "769183db714d485db178d0045ab26a1cde7d5d51940f6fc540cbc8b931d770ff"
+    },
+    {
+      "path": "backend/src/services/fiscalPagamentoDocumentosService.js",
+      "sha256": "a24679b2b687401129e764cedb2be623e83bf21ed13b457a4eac9bd98c27889d"
+    },
+    {
+      "path": "backend/src/services/pagamentoAutorizacaoService.js",
+      "sha256": "1836de80d307372a26d075f47ca2f4d191b117e116f64587db1b21ccfbb8a350"
+    },
+    {
+      "path": "backend/src/services/pedidoCompraFinanceiroService.js",
+      "sha256": "4526c53b3d1b60f1075d587bf46a96f1e0834e2f1bfc64e784234872d717bae8"
+    },
+    {
+      "path": "backend/src/services/pedidoLocalizacaoQuery.js",
+      "sha256": "fa701ca8cc651b0e5636550ddec24257d052010a34bb4f6c0d900d7fc98295ab"
+    },
+    {
+      "path": "backend/src/services/pedidoLocalizacaoService.js",
+      "sha256": "c8fdaff2dc592aa8be9411002d5b3f6436e25f8698f2a144ef21b02b7edf2405"
+    },
+    {
+      "path": "backend/src/services/solicitacaoFilaPagamentoAcessoService.js",
+      "sha256": "16ee461fe4ddd514d8306454c32c949dad50bed8b14c605e566f3c87253b38bb"
+    }
+  ],
+  "frontend_retido_ate_prova_backend_storage": [
+    {
+      "path": "backend/src/generated/navegacaoFonteUnica.cjs",
+      "sha256": "641aa9a8549fcd1f823a31a5790336b0a3c59dd43f4c856e97cb2bca4fed6817"
+    },
+    {
+      "path": "frontend/package.json",
+      "sha256": "16c0ea8202b42a88ad6b820ed5a85791ad0a93d8c39e6e7868613541ce00e782"
+    },
+    {
+      "path": "frontend/scripts/validarArquivosSolicitacaoFila.mjs",
+      "sha256": "61741a5e344d9c1d59bb254818e2ab42686219247e0f501628c3688fc17f227e"
+    },
+    {
+      "path": "frontend/scripts/validarEmissaoFiscal.mjs",
+      "sha256": "6bae4435f13f92422f8dfae7f9c655e7ba41648b7ce75bdefb77111d71e72484"
+    },
+    {
+      "path": "frontend/scripts/validarFiscalPagamentoDocumentosUI.mjs",
+      "sha256": "e2c1ca63ce7d572711baef100b101332651a4625880908387b38d74395dabe64"
+    },
+    {
+      "path": "frontend/scripts/validarPedidoLocalizacaoUI.mjs",
+      "sha256": "2227f849301a746e9805b252fe8e80a159e2415122fec70919ca6f06f96782b3"
+    },
+    {
+      "path": "frontend/scripts/validarVinculosNfeUI.mjs",
+      "sha256": "068a3dc696359d03e6233d8405a7979c74501995e59d31229961f4d54c10bf65"
+    },
+    {
+      "path": "frontend/src/App.jsx",
+      "sha256": "e6285df35c731a38448f59925e5df4d9f5d02eaf4ad3c637bc379607409f92e8"
+    },
+    {
+      "path": "frontend/src/components/financeiro/ArquivosSolicitacaoFilaModal.jsx",
+      "sha256": "0a9373933f394ebd38db64a5d77751d7bb48426fcd0101641ff6600fe7ca3022"
+    },
+    {
+      "path": "frontend/src/components/financeiro/AutorizacaoTituloDetalhe.jsx",
+      "sha256": "49e113e58f086156aa9462b9b2f2981ef4af314193c89f28f7b7e46d4bf030cc"
+    },
+    {
+      "path": "frontend/src/components/financeiro/NotasFiscaisAutorizacao.jsx",
+      "sha256": "47c2f2aae64ac3b470727d7e1973a9d9da53f2f9869322a31613c67a1757cbdb"
+    },
+    {
+      "path": "frontend/src/modules/fiscal/components/VinculosNfe.jsx",
+      "sha256": "12c6bfe008d7536e6c6ac22f42a9ae448eee18722df7c34b545fc7d766da08db"
+    },
+    {
+      "path": "frontend/src/modules/fiscal/pages/FiscalDocumentDetail.jsx",
+      "sha256": "94cb0f779842a26e4519a56b079405c73939f8b4c7aef9e786dfc3468b95fa64"
+    },
+    {
+      "path": "frontend/src/modules/fiscal/pages/FiscalDocuments.jsx",
+      "sha256": "1ca8300e23cd39f286600bd4ed03970bb496516ba3ea0ea2a8382745797bd28f"
+    },
+    {
+      "path": "frontend/src/modules/fiscal/services/fiscalApi.js",
+      "sha256": "541584e72b7bcae4faf14a9b470c5e36487bf9aaad82e8b08a93046fdd7da5dc"
+    },
+    {
+      "path": "frontend/src/modules/fiscal/utils/dataEmissaoFiscal.js",
+      "sha256": "2ec9eca77aa17d815d86dba4b35904a5794f713ff9fa8508ea7d318d1af997f7"
+    },
+    {
+      "path": "frontend/src/modules/solicitacao-compra/components/PedidoCompraFinanceiro.jsx",
+      "sha256": "bd35780bf95011841f4fa7f27f8a671f9334a7dd41aef3a7570412e0cf76525a"
+    },
+    {
+      "path": "frontend/src/navigation/navigationConfig.jsx",
+      "sha256": "d68b1a4355ff5ae687c00e757a72fc6140467087ce66df2e83479d72d613b362"
+    },
+    {
+      "path": "frontend/src/pages/ComprasRelatorioLocalizarPedidos.jsx",
+      "sha256": "0e1e853d8356d0cef564a7e8059a5a9f7b310e8eeb2ceee0fb5bf07eb733e3cf"
+    },
+    {
+      "path": "frontend/src/pages/FinanceiroAutorizacoesPagamento.jsx",
+      "sha256": "e0c76739dd40cfbc75bec18301cdd5b686f5c0bcc611bb0322b4f47a2ae480fe"
+    },
+    {
+      "path": "frontend/src/pages/FinanceiroTituloDetalhe.jsx",
+      "sha256": "28f13dc6caf5d811de3ad2b28f263ab6b9cb29ceb4cb18f6397a34b550a8c66e"
+    },
+    {
+      "path": "frontend/src/pages/ModuloRelatorios.jsx",
+      "sha256": "4b2d23922b0b46fdf923a41796968fd4e5695e9a3f32d609bf594b95fc4307cb"
+    },
+    {
+      "path": "frontend/src/services/compras.js",
+      "sha256": "6dd3246e0b6073b6e1ddfa07e9594015a76f4ac79eeaeb75cfc3b6e03d91cdb3"
+    },
+    {
+      "path": "frontend/src/services/notasFiscaisPagamento.js",
+      "sha256": "81943ec2d14869a835de5740fca49bf6790993b607a0e62fc33428aec764c64b"
+    },
+    {
+      "path": "frontend/src/utils/acessoProduto.js",
+      "sha256": "63e1200cfa1e810d513f275f576c2dac19a90e9cc9c42cb0cc2de0999bb1c03c"
+    },
+    {
+      "path": "frontend/src/utils/pedidoLocalizacaoCsv.js",
+      "sha256": "264bef122cf8b9f55d0db98cf81dd6e363d804cd2e32de83bca062cbc5675e02"
+    }
+  ]
+}

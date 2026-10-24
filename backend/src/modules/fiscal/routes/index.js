@@ -21,6 +21,7 @@ const FiscalCertificateController = require('../controllers/FiscalCertificateCon
 const FiscalCompanyController = require('../controllers/FiscalCompanyController');
 const FiscalDivergenceController = require('../controllers/FiscalDivergenceController');
 const FiscalDocumentController = require('../controllers/FiscalDocumentController');
+const FiscalPurchaseLinkController = require('../controllers/FiscalPurchaseLinkController');
 const FiscalSyncLogController = require('../controllers/FiscalSyncLogController');
 const uploadFiscalFile = require('../config/uploadFiscalFile');
 const uploadFiscalXml = require('../config/uploadFiscalXml');
@@ -154,6 +155,10 @@ router.get('/accounting-batches/:id', allowFiscalDocuments, validateRequest({ pa
 
 router.get('/divergences', allowFiscalDocuments, validateRequest({ query: validateFiscalDivergenceQuery }), FiscalDivergenceController.index);
 
+router.get('/purchase-links/orders', allowFiscalDocuments, FiscalPurchaseLinkController.search);
+router.get('/purchase-links', allowFiscalDocuments, FiscalPurchaseLinkController.read);
+router.post('/documents/:id/purchase-links', allowFiscalDocumentLink, validateRequest({params:validateNumericIdParam('id','Documento fiscal')}), FiscalPurchaseLinkController.save);
+router.post('/documents/:id/purchase-links/:pedidoId/end', allowFiscalDocumentLink, validateRequest({params:validateNumericIdParam('id','Documento fiscal')}), FiscalPurchaseLinkController.remove);
 router.get('/documents', allowFiscalDocuments, validateRequest({ query: validateFiscalDocumentQuery }), FiscalDocumentController.index);
 router.get('/documents/link-options', allowFiscalDocumentLink, validateRequest({ query: validateFiscalLinkSearchQuery }), FiscalDocumentController.linkOptions);
 router.post('/documents/upload-xml', allowFiscalDocumentUpload, uploadFiscalXml.fields([

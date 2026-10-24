@@ -51,6 +51,7 @@ const sandbox = {
       TituloFinanceiro: {}
     };
     if (name === './authorizationService') return { canAccessFilaPagamentos: async () => permitted };
+    if (name === './fiscalPagamentoDocumentosService') return { queue: async () => ({ data: [] }) };
     if (name === 'sequelize') return { Op };
     throw new Error(`Dependencia nao simulada: ${name}`);
   }

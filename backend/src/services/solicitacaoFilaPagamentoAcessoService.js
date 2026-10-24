@@ -37,7 +37,19 @@ async function listarArquivosSolicitacaoPelaFila(user, solicitacaoId) {
     attributes: ['id', 'nome_original', 'caminho_arquivo', 'tipo', 'createdAt']
   });
 
+  let fiscal;
+  try { fiscal = await require('./fiscalPagamentoDocumentosService').queue({ user }, id); }
+  catch (error) {
+    // O acesso antigo a boletos nao e ampliado nem retirado por esta consulta.
+    // NF-e exige tambem o escopo financeiro completo do titulo.
+    if (error.statusCode !== 403) throw error;
+    fiscal = { data: [] };
+  }
   return [
+    ...fiscal.data.map(file => ({ id: `nfe-${file.documento_id}-${file.tipo}`,
+      nome_original: file.nome, tipo: file.tipo === 'pdf' ? 'NFE_DANFE' : 'NFE_XML',
+      fiscal_document_id: file.documento_id, arquivo_tipo: file.tipo, solicitacao_id: id,
+      pedido_ids: file.pedido_ids, createdAt: file.createdAt })),
     ...anexos.map((arquivo) => ({
       id: `anexo-${arquivo.id}`,
       nome_original: arquivo.nome_original,

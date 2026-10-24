@@ -169,7 +169,7 @@ async function buscarTitulosPedido(pedidoId, { transaction, incluirLegados = tru
       as: 'titulo',
       required: true,
       attributes: [
-        'id', 'codigo', 'status', 'descricao', 'valor_original', 'valor_saldo', 'valor_baixado', 'compartilhamento_id',
+        'id', 'codigo', 'tipo', 'status', 'descricao', 'valor_original', 'valor_saldo', 'valor_baixado', 'compartilhamento_id',
         'data_emissao', 'data_vencimento', 'forma_pagamento_id', 'categoria_financeira_id'
       ]
     }],
@@ -198,7 +198,7 @@ async function buscarTitulosPedido(pedidoId, { transaction, incluirLegados = tru
   const titulosLegados = await TituloFinanceiro.findAll({
     where: { id: { [Op.in]: idsLegados } },
     attributes: [
-      'id', 'codigo', 'status', 'descricao', 'valor_original', 'valor_saldo', 'valor_baixado',
+      'id', 'codigo', 'tipo', 'status', 'descricao', 'valor_original', 'valor_saldo', 'valor_baixado',
       'data_emissao', 'data_vencimento', 'forma_pagamento_id', 'categoria_financeira_id'
     ],
     transaction,
@@ -258,6 +258,7 @@ async function obterResumoFinanceiroPedido(pedido, { transaction, incluirDetalhe
     transaction
   });
   const resumo = {
+    pedido_id: Number(pedido.id),
     status,
     fluxo_versao: pedido.financeiro_fluxo_versao || null,
     legado: !pedido.financeiro_fluxo_versao,

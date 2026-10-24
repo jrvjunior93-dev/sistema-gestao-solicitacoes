@@ -283,6 +283,7 @@ async function ignorarDocumentoFiscal(req, id, { motivo = null } = {}) {
 }
 
 async function criarVinculoDocumentoFiscal(req, id, payload = {}) {
+  if(payload.pedido_id || payload.pedido_item_id) throw createHttpError('Use a conferencia de NF-e e pedidos para vincular compras e suas parcelas.',409);
   const document = await FiscalDfeDocument.findByPk(id);
 
   if (!document) {

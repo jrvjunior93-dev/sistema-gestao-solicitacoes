@@ -1,5 +1,24 @@
 # Ownership Ativo
 
+## Preparacao main: NF-e nos pagamentos e Localizar pedidos - 2026-10-24
+
+- Agente unico. Usuario homologou DEV2920e1f1 e pediu preparar promocao para
+  main/backend antes de frontend, Nodes isolados/DEV preservados e finalizar
+  S3 fiscal PROD. Sem autorizacao nesta etapa para aplicar AWS/env/schema/restart.
+- Checkout limpo reutilizado na base maina860f94a; branch local exclusiva.
+  Nao modificar branch remotaDEV nem trazer captura/CLI NSDOCS exclusivaDEV.
+- Reservar delta minimo de consultas, prerequisito vinculos manuais/schema002,
+  telas/QA, roteiro/diagnostico S3 PROD somente leitura e handoff.
+- Verificar identidade/configuracao/arquivos fiscais antigos antes de trocar
+  bucket/prefixo; nao presumir credencial PROD igual a DEV/admin-jose.
+- Preparar e testar antes da liberacao; confirmar backup cifrado/timer atual
+  antes de qualquer aplicacao. Nenhuma escrita real ou push main nesta fase.
+- Inventario SSH/AWS/RDS somente leitura concluido: PROD aponta bucketDEV,
+  prefixoDEV; alvoPROD privado/versionado/AES256, sem bucket policy; referencias
+  S3 fiscais0. Cadastro fiscal1 sem vinculo; empresa operacionalPROD1, nao DEV2.
+- Preparar tambem opt-in de role fiscalPROD/trust/policy/HTTPS e QA. Nao aplicar
+  IAM, .env, vinculo cadastral, schema, restart ou liberacao frontend nesta etapa.
+
 ## Promocao retirada de envios e abas web - 2026-10-24
 
 - Retomada de publicacao: reserva temporaria deste registro e do handoff para
