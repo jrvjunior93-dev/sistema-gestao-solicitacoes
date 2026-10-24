@@ -9,14 +9,19 @@ const NODE = '/home/ubuntu/fluxy-node24-dev/node-v24.22.1-linux-x64/bin/node';
 const PM2_NODE = '/opt/fluxy-node24-pm2/node-v24.22.1-linux-x64/bin/node';
 const PM2_CLI = '/usr/lib/node_modules/pm2/bin/pm2';
 const BASE = 'f2167ff72d803fc987d617543c0dfcd31527cc09';
+const PREVIOUS = 'f16f835181feac75a9a5a72fa829090e5491cb54';
+const CA_PATH = 'backend/src/modules/fiscal/services/nsdocs/manual/rds-ca-us-east-2.json';
+const CA_SHA256 = 'd46e1bdfda05c8e7644e50930806a19b139a222542bf0348082fb59ece2b5fa5';
 const CHANGESET = [
   'M\tbackend/package.json', 'M\tbackend/src/modules/fiscal/services/nsdocs/normalize.js', 'M\tdocs/modulos/fiscal/README.md',
   'A\tbackend/scripts/nsdocsDevManual.js', 'A\tbackend/scripts/validarNsdocsManualDev.js',
   ...['policy.js', 'privateStore.js', 'runtime.js', 'hiddenPrompt.js', 'transport.js', 'query.js']
     .map(file => `A\tbackend/src/modules/fiscal/services/nsdocs/manual/${file}`),
+  `A\t${CA_PATH}`, 'A\tbackend/src/modules/fiscal/services/nsdocs/manual/rdsTls.js',
   'A\tdocs/modulos/fiscal/NSDOCS_V2_CONSULTA_MANUAL_DEV.md',
   'A\tdocs/handoffs/2026-10-24-nsdocs-v2-consulta-manual-dev.md',
   'A\tdocs/handoffs/2026-10-24-publicacao-nsdocs-manual-dev.md',
+  'A\tdocs/handoffs/2026-10-24-nsdocs-manual-ca-isolada.md',
   'A\tops/deploy/README-nsdocs-manual-dev-20261024.md',
   'A\tops/deploy/atualizar-dev-nsdocs-manual-20261024.cjs',
   'A\tops/deploy/atualizar-dev-nsdocs-manual-20261024.test.cjs'
@@ -58,6 +63,21 @@ function validateFlags(env) {
     check(env[key] === undefined || env[key] === '' || env[key] === 'false', 'NSDOCS_AUTOMATICO_DEVE_CONTINUAR_DESLIGADO');
   }
 }
+function validateCaBundle(bundle, now = Date.now()) {
+  check(bundle?.region === 'us-east-2' && bundle.source === 'https://truststore.pki.rds.amazonaws.com/us-east-2/us-east-2-bundle.pem' &&
+    bundle.sha256 === CA_SHA256 && typeof bundle.pem === 'string' && !bundle.pem.includes('PRIVATE KEY') &&
+    hash(bundle.pem) === CA_SHA256, 'NSDOCS_CA_RDS_INVALIDA');
+  try {
+    const roots = bundle.pem.match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g);
+    check(roots?.length === 3 && Number.isFinite(now), 'NSDOCS_CA_RDS_INVALIDA');
+    for (const pem of roots) {
+      const certificate = new crypto.X509Certificate(pem);
+      check(certificate.ca && certificate.verify(certificate.publicKey) &&
+        certificate.subject.includes('Amazon RDS us-east-2 Root CA') &&
+        Date.parse(certificate.validFrom) <= now && Date.parse(certificate.validTo) > now, 'NSDOCS_CA_RDS_INVALIDA');
+    }
+  } catch { check(false, 'NSDOCS_CA_RDS_INVALIDA'); }
+}
 function list() {
   const pid = Number(fs.readFileSync('/home/ubuntu/.pm2/pm2.pid', 'utf8').trim());
   check(pid > 1 && fs.readlinkSync(`/proc/${pid}/exe`) === PM2_NODE, 'DAEMON_ISOLADO_INDISPONIVEL');
@@ -92,7 +112,7 @@ function effectiveEnv(p) {
   for (const key of ['NODE_CHANNEL_FD', 'NODE_CHANNEL_SERIALIZATION_MODE', 'NODE_UNIQUE_ID']) delete env[key];
   return env;
 }
-function preflight(env) {
+function preflight(env, bundle) {
   validateFlags(env);
   const code = `
     const fs = require('node:fs');
@@ -102,24 +122,27 @@ function preflight(env) {
     const { env, validateRequiredEnv } = require('./src/config/env'); validateRequiredEnv();
     if (env.deploymentEnvironment !== 'development' || Number(env.port) !== 8001 ||
       env.dbHost !== 'fluxy-staging.cn820k66sdx7.us-east-2.rds.amazonaws.com' || env.dbName !== 'gestao_solicitacoes' ||
-      !env.dbSslCaFile || process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0' ||
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0' ||
       /^(true|1|yes|on)$/i.test(String(process.env.ALLOW_SCHEMA_MIGRATIONS || '').trim())) process.exit(71);
     const diagnostic = require('./src/modules/fiscal/services/nsdocs/config').getDiagnostics();
     if (diagnostic.enabled || !diagnostic.configuration_valid || diagnostic.mode !== 'disabled') process.exit(72);
     const mysql = require('mysql2/promise');
+    const publicCa = JSON.parse(fs.readFileSync(0, 'utf8'));
     (async () => {
       const db = await mysql.createConnection({ host: env.dbHost, port: env.dbPort, user: env.dbUser,
         password: env.dbPassword, database: env.dbName, connectTimeout: 10000,
-        ssl: { ca: fs.readFileSync(env.dbSslCaFile), rejectUnauthorized: true, verifyIdentity: true } });
+        ssl: { ca: publicCa.pem, rejectUnauthorized: true, verifyIdentity: true } });
       try {
         await db.query('START TRANSACTION READ ONLY');
+        const [tls] = await db.query("SHOW SESSION STATUS LIKE 'Ssl_cipher'");
+        if (typeof tls[0]?.Value !== 'string' || !tls[0].Value) throw Error('SEM_TLS');
         const [[identity]] = await db.query('SELECT @@GLOBAL.server_uuid AS uuid, DATABASE() AS banco');
         if (identity.uuid !== '60f043e9-4025-11f1-9a61-06d8a063012d' || identity.banco !== 'gestao_solicitacoes') throw Error('DB_DEV');
       } finally { try { await db.rollback(); } finally { await db.end(); } }
     })().catch(() => { process.exitCode = 73; });
   `;
   // Nao imprimir dotenv, ambiente, credencial ou erro bruto do subprocesso.
-  run(NODE, ['-e', code], { cwd: BACKEND, env });
+  run(NODE, ['-e', code], { cwd: BACKEND, env, input: JSON.stringify(bundle), stdio: ['pipe', 'pipe', 'pipe'] });
 }
 function health(port) {
   return new Promise(resolve => {
@@ -148,10 +171,12 @@ async function main(version) {
   check(fs.realpathSync(process.cwd()) === ROOT && git(['rev-parse', '--show-toplevel']) === ROOT &&
     git(['branch', '--show-current']) === 'refactor/frontend', 'CHECKOUT_DEV_DIVERGENTE');
   check(!git(['status', '--porcelain', '--untracked-files=no']), 'DEV_TEM_ARQUIVOS_RASTREADOS_ALTERADOS');
-  check([BASE, version].includes(git(['rev-parse', 'HEAD'])), 'ETAPA_DEV_ANTERIOR_PENDENTE');
+  check([BASE, PREVIOUS, version].includes(git(['rev-parse', 'HEAD'])), 'ETAPA_DEV_ANTERIOR_PENDENTE');
   git(['merge-base', '--is-ancestor', version, 'origin/refactor/frontend']);
   validateInventory(git(['diff', '--name-status', BASE, version]).split(/\r?\n/).filter(Boolean));
   validatePackage(JSON.parse(git(['show', `${BASE}:backend/package.json`])), JSON.parse(git(['show', `${version}:backend/package.json`])));
+  const bundle = JSON.parse(git(['show', `${version}:${CA_PATH}`]));
+  validateCaBundle(bundle);
   const lock = path.resolve(ROOT, git(['rev-parse', '--git-path', 'nsdocs-manual-deploy.lock']));
   fs.mkdirSync(lock, { mode: 0o700 });
   try {
@@ -168,7 +193,7 @@ async function main(version) {
       check(start() === daemonStart && fs.readlinkSync(`/proc/${daemonPid}/exe`) === PM2_NODE, 'DAEMON_MUDOU');
       assertPreserved(initial, snapshotProcesses(list()));
     }
-    preflight(env);
+    preflight(env, bundle);
     check(await health(8000) && await health(8001), 'HEALTH_INICIAL_FALHOU');
     unchanged(); git(['merge', '--ff-only', version]);
     check(git(['rev-parse', 'HEAD']) === version, 'VERSAO_APLICADA_DIFERENTE');
@@ -176,18 +201,19 @@ async function main(version) {
       ['scripts/validarFilaEstornoPermissao.js'], ['--test', '../ops/deploy/atualizar-dev-nsdocs-manual-20261024.test.cjs']]) {
       run(NODE, args, { cwd: BACKEND }); console.log(`QA aprovado: ${args.at(-1)}`);
     }
-    preflight(env);
+    preflight(env, bundle);
     const companies = parseCompanies(run(NODE, ['scripts/nsdocsDevManual.js', '--listar-empresas'], { cwd: BACKEND, env }));
     unchanged(); check(await health(8000) && await health(8001), 'HEALTH_FINAL_FALHOU');
     console.log(JSON.stringify({ etapa: 'NSDOCS_MANUAL_DEV_PUBLICADO_SEM_REINICIOS', commit: version,
       conector_automatico_desligado: true, chave_nao_configurada_pelo_deploy: true, chamadas_nsdocs: 0,
+      tls_manual_com_ca_aws_validada: true,
       processos_nodes_ambientes_daemon_e_dumps_preservados: true }));
     console.log(JSON.stringify({ empresas_locais_dev: companies }));
     console.log('Sem restart, migration, npm install, chave, chamadas NSDOCS, frontend ou alteracao do PM2.');
   } finally { fs.rmdirSync(lock); }
 }
-module.exports = { ROOT, NODE, PM2_NODE, PM2_CLI, BASE, CHANGESET, cleanEnv, validateInventory,
-  validatePackage, validateFlags, assertPreserved, parseCompanies, main };
+module.exports = { ROOT, NODE, PM2_NODE, PM2_CLI, BASE, PREVIOUS, CA_PATH, CHANGESET, cleanEnv, validateInventory,
+  validatePackage, validateFlags, validateCaBundle, assertPreserved, parseCompanies, main };
 if (require.main === module || process.argv[1] === '-') main(process.argv[2]).catch(error => {
   if (/^[A-Z][A-Z0-9_]{0,100}$/.test(error.message || '')) console.error(error.message);
   console.error('ATUALIZACAO_MANUAL_DEV_INTERROMPIDA. Nao contorne protecoes; envie a saida sem segredos.');

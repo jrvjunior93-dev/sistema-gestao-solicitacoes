@@ -16,6 +16,8 @@ const { queryManually } = require(`${root}/query`);
 const cli = require('./nsdocsDevManual');
 const { buildListRequest } = require(`${root}/../contract`);
 const { readHiddenKey } = require(`${root}/hiddenPrompt`);
+const { getRdsSsl, CA_SHA256 } = require(`${root}/rdsTls`);
+const rdsCaBundle = require(`${root}/rds-ca-us-east-2.json`);
 const CNPJ = '11222333000181', OTHER = '11444777000161', KEY = 'CHAVE_FICTICIA_SEM_VALOR_20261024';
 const company = { id: 7, cnpj: CNPJ, name: 'Empresa ficticia DEV', ativo: true };
 const credentials = () => ({ version: 1, environment: 'development', companyId: 7, companyCnpj: CNPJ, apiKey: KEY });
@@ -35,7 +37,7 @@ test('politica impede main/producao, Node antigo, TLS inseguro, flags e limites'
       dbHost: 'fluxy-staging.cn820k66sdx7.us-east-2.rds.amazonaws.com', dbName: 'gestao_solicitacoes', dbSslCaFile: '/fake/ca' } };
   policy.validateRuntime(valid);
   for (const changes of [{ branch: 'main' }, { uid: 0 }, { cwd: '/producao/backend' }, { version: 'v24.13.0' },
-    { env: { ...valid.env, port: 8000 } }, { env: { ...valid.env, dbSslCaFile: '' } }]) {
+    { env: { ...valid.env, port: 8000 } }, { env: { ...valid.env, dbName: 'outro_banco' } }]) {
     assert.throws(() => policy.validateRuntime({ ...valid, ...changes }));
   }
   for (const env of [{ NODE_TLS_REJECT_UNAUTHORIZED: '0' }, { NSDOCS_V2_ENABLED: 'true' }, { NSDOCS_V2_FIXTURES_ENABLED: 'true' }]) {
@@ -45,6 +47,17 @@ test('politica impede main/producao, Node antigo, TLS inseguro, flags e limites'
     assert.throws(() => policy.validateQuery({ ...input, ...changes }, credentials()));
   }
   assert.throws(() => policy.companyCnpj('00000000000000'));
+});
+test('CA AWS publica pinada independente da CA global; rejeita adulteracao/expiracao sem downgrade', () => {
+  const ssl = getRdsSsl();
+  assert.equal(ssl.ca, rdsCaBundle.pem);
+  assert.equal(ssl.rejectUnauthorized, true); assert.equal(ssl.verifyIdentity, true);
+  assert.equal(rdsCaBundle.sha256, CA_SHA256);
+  for (const change of [{ region: 'us-east-1' }, { sha256: '0'.repeat(64) },
+    { pem: rdsCaBundle.pem + 'alterado' }, { pem: '-----BEGIN PRIVATE KEY-----' }]) {
+    assert.throws(() => getRdsSsl({ ...rdsCaBundle, ...change }), fails('NSDOCS_CA_RDS_INVALIDA'));
+  }
+  assert.throws(() => getRdsSsl(rdsCaBundle, Date.parse('2500-01-01T00:00:00Z')), fails('NSDOCS_CA_RDS_INVALIDA'));
 });
 
 function memoryFiles() {
@@ -278,29 +291,39 @@ test('prompt TTY nao ecoa chave nem mantem historico; recusa pipes', async () =>
 });
 
 test('runtime SQL real em VM: identidade, TLS, cadastro ativo e rollback sem escrita', async () => {
-  const statements = []; let closed = false, badIdentity = false;
+  const statements = []; let closed = false, badIdentity = false, emptyCipher = false;
   const env = { deploymentEnvironment: 'development', port: 8001, dbHost: 'fluxy-staging.cn820k66sdx7.us-east-2.rds.amazonaws.com',
-    dbName: 'gestao_solicitacoes', dbSslCaFile: '/ca', dbPort: 3306, dbUser: 'fake', dbPassword: 'fake' };
+    dbName: 'gestao_solicitacoes', dbSslCaFile: '', dbPort: 3306, dbUser: 'fake', dbPassword: 'fake' };
   const db = { query: async sql => { statements.push(sql); return sql.startsWith('SELECT')
-    ? [[{ uuid: badIdentity ? 'banco-errado' : '60f043e9-4025-11f1-9a61-06d8a063012d', banco: 'gestao_solicitacoes' }]] : []; },
+    ? [[{ uuid: badIdentity ? 'banco-errado' : '60f043e9-4025-11f1-9a61-06d8a063012d', banco: 'gestao_solicitacoes' }]]
+    : sql.startsWith('SHOW') ? [[{ Variable_name: 'Ssl_cipher', Value: emptyCipher ? '' : 'TLS_FICTICIO' }]] : []; },
     execute: async (sql, params) => { statements.push(sql); assert.equal(params[0], 7); return [[{ ...company, razao_social: company.name }]]; },
     rollback: async () => statements.push('ROLLBACK'), end: async () => { closed = true; } };
   const context = { module: { exports: {} }, process: { platform: 'linux', version: 'v24.22.1', getuid: () => 1000,
     cwd: () => policy.DEV_BACKEND, env: {} }, require(name) {
-      if (name === 'node:fs') return { realpathSync: value => value, readlinkSync: () => policy.DEV_NODE, readFileSync: () => Buffer.from('fake-ca') };
+      if (name === 'node:fs') return { realpathSync: value => value, readlinkSync: () => policy.DEV_NODE,
+        readFileSync: () => { throw Error('Nao ler CA global'); } };
       if (name === 'node:child_process') return { spawnSync: () => ({ status: 0, stdout: 'refactor/frontend' }) };
       if (name === './policy') return policy;
+      if (name === './rdsTls') return { getRdsSsl };
       if (name.endsWith('/config/env')) return { env, validateRequiredEnv() {} };
-      if (name === 'mysql2/promise') return { createConnection: async options => { assert.equal(options.ssl.rejectUnauthorized, true); return db; } };
+      if (name === 'mysql2/promise') return { createConnection: async options => {
+        assert.equal(options.ssl.rejectUnauthorized, true); assert.equal(options.ssl.verifyIdentity, true);
+        assert.equal(options.ssl.ca, rdsCaBundle.pem); return db;
+      } };
       throw Error('Dependencia nao isolada');
     } };
   vm.runInNewContext(fs.readFileSync(`${root}/runtime.js`, 'utf8'), context);
   assert.equal((await context.module.exports.loadDevCompany(7, CNPJ)).cnpj, CNPJ);
   assert.equal(statements[0], 'START TRANSACTION READ ONLY');
   assert.equal(statements.at(-1), 'ROLLBACK'); assert.equal(closed, true);
-  assert(statements.every(sql => /^(SELECT|START TRANSACTION READ ONLY|ROLLBACK)/.test(sql)));
+  assert(statements.every(sql => /^(SELECT|SHOW SESSION STATUS|START TRANSACTION READ ONLY|ROLLBACK)/.test(sql)));
   badIdentity = true; statements.length = 0; closed = false;
   await assert.rejects(context.module.exports.loadDevCompany(7, CNPJ), fails('NSDOCS_BANCO_DEV_DIVERGENTE'));
+  assert.equal(statements.some(sql => sql.includes('empresas_grupo')), false);
+  assert.equal(closed, true); assert.equal(statements.at(-1), 'ROLLBACK');
+  badIdentity = false; emptyCipher = true; statements.length = 0; closed = false;
+  await assert.rejects(context.module.exports.loadDevCompany(7, CNPJ), fails('NSDOCS_SESSAO_MYSQL_SEM_TLS'));
   assert.equal(statements.some(sql => sql.includes('empresas_grupo')), false);
   assert.equal(closed, true); assert.equal(statements.at(-1), 'ROLLBACK');
 });

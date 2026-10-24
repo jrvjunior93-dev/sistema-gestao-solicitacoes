@@ -27,9 +27,12 @@ le-lo. Nao imprimir, compartilhar ou copiar seu conteudo.
 Antes de pedir ou usar a chave:
 - exige Linux, uid1000, diretorio DEV exato, branch refactor/frontend e Node DEV
   isolado v24.22.1;
-- exige deployment development, porta8001, host RDS staging, banco esperado e CA
-  configurada para TLS com verificacao;
+- exige deployment development, porta8001, host RDS staging e banco esperado;
+- usa CA publica AWS RDS Ohio versionada para este comando, com hash fixo,
+  certificados raiz validos e TLS/identidade verificados; nao depende da CA global
+  do aplicativo nem altera `DB_SSL_CA_FILE`;
 - confere UUID real do MySQL DEV em transacao `START TRANSACTION READ ONLY`;
+- exige cipher TLS nao vazio na sessao MySQL antes de consultar cadastro;
 - consulta o cadastro ativo de empresas do grupo por ID, compara CNPJ valido e
   encerra com rollback/close. Nao cria cadastro nem corrige dados automaticamente.
 
@@ -138,6 +141,11 @@ eventos e auditoria/idempotencia persistente. Nenhum pedido/titulo/favorecido/PI
 saldo/baixa/historico de negocio e alterado; nao ha novos bloqueios financeiros.
 
 Contrato: [documentacao oficial NSDOCS v2](https://developer.nsdocs.com.br/).
+CA publica: [AWS RDS por regiao](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.SSL.html).
+O JSON `manual/rds-ca-us-east-2.json` contem somente os tres certificados raiz
+publicos de Ohio, com origem e SHA256; nenhum segredo. O helper `rdsTls.js` valida
+hash, regiao, validade e autoassinatura antes de construir ssl. Nao registra CA no
+SO/Node global e nao faz download na EC2. Uma CA adulterada/expirada interrompe.
 A origem HTTPS e o endpoint de listagem sao fixos no backend; Bearer somente no
 header dessa origem. Escopo real da chave sera homologado na execucao pelo usuario.
 

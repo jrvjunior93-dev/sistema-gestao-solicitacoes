@@ -3,6 +3,7 @@ const { test } = require('node:test'), assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { EventEmitter } = require('node:events');
 const op = require('./atualizar-dev-nsdocs-manual-20261024.cjs');
+const bundle = require('../../backend/src/modules/fiscal/services/nsdocs/manual/rds-ca-us-east-2.json');
 const VERSION = 'a'.repeat(40);
 function packages() {
   const before = { name: 'backend', scripts: { anterior: 'node anterior.js' }, dependencies: { mysql2: '3' } };
@@ -34,6 +35,11 @@ test('lista de empresas possui somente campos publicaveis esperados', () => {
     companies: [{ id: 1, name: 'Empresa ficticia', cnpj: '11222333000181', cnpj_valid: true, apiKey: 'NAO_RETORNAR' }] }));
   assert.equal(Object.hasOwn(output[0], 'apiKey'), false);
   assert.throws(() => op.parseCompanies('{"error":"NAO_RETORNAR"}'));
+});
+test('CA publica AWS pinada e valida; rejeita substituicao e expiracao', () => {
+  op.validateCaBundle(bundle);
+  assert.throws(() => op.validateCaBundle({ ...bundle, pem: bundle.pem + 'alterado' }));
+  assert.throws(() => op.validateCaBundle(bundle, Date.parse('2500-01-01T00:00:00Z')));
 });
 
 function harness({ head = op.BASE, preflightExit = 0, qaExit = 0, mutatePeer = false, enabled = false } = {}) {
@@ -67,7 +73,7 @@ function harness({ head = op.BASE, preflightExit = 0, qaExit = 0, mutatePeer = f
         case 'branch': stdout = 'refactor/frontend'; break;
         case 'rev-parse': stdout = args.includes('--show-toplevel') ? op.ROOT : args.includes('--git-path') ? '.git/manual.lock' : head; break;
         case 'diff': stdout = op.CHANGESET.join('\n'); break;
-        case 'show': stdout = JSON.stringify(args[1].startsWith(op.BASE) ? before : after); break;
+        case 'show': stdout = JSON.stringify(args[1].endsWith(op.CA_PATH) ? bundle : args[1].startsWith(op.BASE) ? before : after); break;
         case 'merge': head = args.at(-1); if (mutatePeer) apps[1].pid = 202; break;
       }
     } else if (bin === op.PM2_NODE) {
@@ -77,6 +83,7 @@ function harness({ head = op.BASE, preflightExit = 0, qaExit = 0, mutatePeer = f
     else if (args[0] === '-e') {
       assert.equal(options.env.NODE_CHANNEL_FD, undefined);
       assert.match(args[1], /START TRANSACTION READ ONLY/); assert.match(args[1], /rollback/);
+      assert.equal(JSON.parse(options.input).sha256, bundle.sha256);
       assert.doesNotMatch(args[1], /Authorization|credentials\.json/);
       status = preflightExit;
     } else if (args.includes('--listar-empresas')) {
@@ -111,6 +118,33 @@ test('orquestracao real simulada: atualiza arquivos, QA e leitura local, sem res
   const proof = JSON.parse(h.logs.find(line => typeof line === 'string' && line.startsWith('{')));
   assert.equal(proof.etapa, 'NSDOCS_MANUAL_DEV_PUBLICADO_SEM_REINICIOS');
   assert.equal(proof.chamadas_nsdocs, 0); assert.equal(proof.conector_automatico_desligado, true);
+});
+test('retoma tambem do pacote manual anterior sem reinicio', async () => {
+  const h = harness({ head: op.PREVIOUS }); await h.main();
+  assert.equal(h.head, VERSION);
+});
+test('preflight real em VM aceita CA global ausente e exige TLS, UUID e rollback', async () => {
+  const h = harness(); await h.main();
+  const call = h.calls.find(call => call.args[0] === '-e'), queries = [];
+  let closed = false;
+  const context = { process: { env: {}, exit: code => { throw Error('EXIT_' + code); }, exitCode: 0 },
+    require(name) {
+      if (name === 'node:fs') return { readFileSync: file => file === 0 ? call.options.input : 'SEM_SEGREDOS' };
+      if (name === 'dotenv') return { parse: () => ({}) };
+      if (name === './src/config/env') return { env: { deploymentEnvironment: 'development', port: 8001,
+        dbHost: 'fluxy-staging.cn820k66sdx7.us-east-2.rds.amazonaws.com', dbName: 'gestao_solicitacoes', dbSslCaFile: '' }, validateRequiredEnv() {} };
+      if (name.includes('/nsdocs/config')) return { getDiagnostics: () => ({ enabled: false, configuration_valid: true, mode: 'disabled' }) };
+      if (name === 'mysql2/promise') return { createConnection: async options => {
+        assert.equal(options.ssl.ca, bundle.pem); assert.equal(options.ssl.rejectUnauthorized, true); assert.equal(options.ssl.verifyIdentity, true);
+        return { query: async sql => { queries.push(sql); return sql.startsWith('SHOW') ? [[{ Value: 'TLS_FICTICIO' }]] :
+          sql.startsWith('SELECT') ? [[{ uuid: '60f043e9-4025-11f1-9a61-06d8a063012d', banco: 'gestao_solicitacoes' }]] : []; },
+          rollback: async () => queries.push('ROLLBACK'), end: async () => { closed = true; } };
+      } };
+      throw Error('Dependencia nao isolada');
+    } };
+  await vm.runInNewContext(call.args[1], context);
+  assert.equal(context.process.exitCode, 0); assert.equal(closed, true); assert.equal(queries.at(-1), 'ROLLBACK');
+  assert(queries.some(sql => sql.includes('Ssl_cipher')));
 });
 test('etapa anterior, flags ou preflight recusados antes do fast-forward', async () => {
   for (const settings of [{ head: 'b'.repeat(40) }, { preflightExit: 73 }, { enabled: true }]) {

@@ -2,6 +2,7 @@
 const fs = require('node:fs');
 const cp = require('node:child_process');
 const { DEV_BACKEND, DEV_NODE, check, companyCnpj, validateRuntime, validateFlags, verifyCompany } = require('./policy');
+const { getRdsSsl } = require('./rdsTls');
 
 function assertDevProcess() {
   check(process.platform === 'linux' && process.getuid() === 1000 && fs.realpathSync(process.cwd()) === DEV_BACKEND &&
@@ -26,9 +27,11 @@ async function withDevDatabase(action) {
   const mysql = require('mysql2/promise');
   const db = await mysql.createConnection({ host: env.dbHost, port: env.dbPort, user: env.dbUser,
     password: env.dbPassword, database: env.dbName, connectTimeout: 10000,
-    ssl: { ca: fs.readFileSync(env.dbSslCaFile), rejectUnauthorized: true, verifyIdentity: true } });
+    ssl: getRdsSsl() });
   try {
     await db.query('START TRANSACTION READ ONLY');
+    const [tls] = await db.query("SHOW SESSION STATUS LIKE 'Ssl_cipher'");
+    check(typeof tls[0]?.Value === 'string' && tls[0].Value.length > 0, 'NSDOCS_SESSAO_MYSQL_SEM_TLS');
     const [[identity]] = await db.query('SELECT @@GLOBAL.server_uuid AS uuid, DATABASE() AS banco');
     check(identity.uuid === '60f043e9-4025-11f1-9a61-06d8a063012d' && identity.banco === 'gestao_solicitacoes', 'NSDOCS_BANCO_DEV_DIVERGENTE');
     return await action(db);

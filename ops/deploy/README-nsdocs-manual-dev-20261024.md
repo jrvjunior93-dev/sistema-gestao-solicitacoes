@@ -27,12 +27,15 @@ fornecido no chat. Nao executar um git pull generico antes do operador.
 )
 ```
 
-Exige HEAD no f2167ff72d803fc987d617543c0dfcd31527cc09 ou no alvo, inventario
+Exige HEAD no f2167ff72d803fc987d617543c0dfcd31527cc09, no f16f8351 anterior ou no alvo, inventario
 exato deste pacote e package sem dependencias alteradas. Etapa anterior pendente
 interrompe antes do fast-forward. Confere tres processos/Nodes isolados/daemon
 existentes, hashes de .env/dumps/runtimes/unidade e flags NSDOCS desligadas.
 Antes da atualizacao confere TLS/configuracao/UUID do MySQL DEV em transacao
-READ ONLY. Nenhuma migration e aplicada. Apos fast-forward roda QA e lista ate100
+READ ONLY. Usa o bundle publico AWS Ohio do commit alvo, validado por hash e
+X509 antes do fast-forward, passado somente ao subprocesso de consulta. Confere
+cipher da sessao MySQL nao vazio; nao depende do DB_SSL_CA_FILE global, nao altera
+.env ou conexao do aplicativo. Nenhuma migration e aplicada. Apos fast-forward roda QA e lista ate100
 empresas ativas locais, novamente com transacao READ ONLY e rollback.
 
 Esperado: `NSDOCS_MANUAL_DEV_PUBLICADO_SEM_REINICIOS`, conector automatico false,
@@ -94,7 +97,15 @@ comprova a empresa e nao habilita o conector automatico.
 
 ## Testes locais da publicacao
 
-35 testes:18 manuais,11 da base e6 deste operador com fronteiras ficticias.
+39 testes:19 manuais,11 da base e9 deste operador com fronteiras ficticias.
 Regressao de permissoes financeiras e sintaxe tambem conferidas. Testes do operador
 simulam Git/SO/PM2/DB/HTTP; nao atualizam uma EC2 real. Nenhuma execucao remota
 foi realizada pelo agente. Usuario executara o roteiro e enviara a saida sem chave.
+
+## Retomada do erro71 de24/10
+
+Diagnostico do usuario confirmou somente ca_configurada=false. Nao instalar CA
+global nem editar .env/PM2 para contornar. A versao corrigida carrega os certificados
+publicos AWS em memoria apenas para o comando manual e confere TLS real na sessao.
+O resultado inclui tls_manual_com_ca_aws_validada=true. Essa conferencia nao atesta
+o TLS da conexao do backend ja em execucao; esse ambiente nao e alterado aqui.

@@ -23,7 +23,7 @@ function validateRuntime({ platform, uid, cwd, branch, env, executable, version 
     executable === DEV_NODE && version === 'v24.22.1', 'NSDOCS_COMANDO_EXCLUSIVO_UBUNTU_DEV');
   check(env.deploymentEnvironment === 'development' && Number(env.port) === 8001 &&
     env.dbHost === 'fluxy-staging.cn820k66sdx7.us-east-2.rds.amazonaws.com' &&
-    env.dbName === 'gestao_solicitacoes' && Boolean(env.dbSslCaFile), 'NSDOCS_AMBIENTE_DEV_DIVERGENTE');
+    env.dbName === 'gestao_solicitacoes', 'NSDOCS_AMBIENTE_DEV_DIVERGENTE');
 }
 function validateFlags(env) {
   for (const key of ['NSDOCS_V2_ENABLED', 'NSDOCS_V2_FIXTURES_ENABLED']) {
