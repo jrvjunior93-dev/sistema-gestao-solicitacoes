@@ -16,6 +16,7 @@ const {
   canViewFiscalSync
 } = require('../../../services/authorizationService');
 const FiscalDashboardController = require('../controllers/FiscalDashboardController');
+const FiscalNsdocsController = require('../controllers/FiscalNsdocsController');
 const FiscalAccountingBatchController = require('../controllers/FiscalAccountingBatchController');
 const FiscalCertificateController = require('../controllers/FiscalCertificateController');
 const FiscalCompanyController = require('../controllers/FiscalCompanyController');
@@ -136,6 +137,7 @@ router.get('/health', allowFiscal, FiscalDashboardController.health);
 router.get('/dashboard', allowFiscal, FiscalDashboardController.dashboard);
 router.get('/reports/operational', allowFiscalDocuments, validateRequest({ query: validateFiscalOperationalReportQuery }), FiscalDashboardController.operationalReport);
 router.get('/diagnostics', allowFiscalConfig, FiscalDashboardController.diagnostics);
+router.get('/diagnostics/nsdocs', allowFiscalConfig, FiscalNsdocsController.diagnostics);
 router.post('/diagnostics/storage-probe', allowFiscalConfig, FiscalDashboardController.storageProbe);
 
 router.get('/companies', allowFiscalConfig, validateRequest({ query: validateFiscalCompanyQuery }), FiscalCompanyController.index);
