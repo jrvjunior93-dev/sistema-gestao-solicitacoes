@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:fetch-credenciais": "node scripts/validarFetchCredenciais.mjs",
+    "test:download-medicao": "node scripts/validarFetchCredenciais.mjs && node scripts/validarDownloadMedicaoUI.mjs",
     "test:retirada-envios": "node scripts/validarRetiradaAutorizacaoUI.mjs && node scripts/validarFilaInstrumentosUI.mjs --retirada",
     "test:medicao-rejeicao-favorecido": "node scripts/validarMedicaoRejeicaoFavorecidoUI.mjs",
     "test:fila-filtros-arranjo": "node scripts/validarFiltrosOrdenaveis.mjs && node scripts/validarFilaInstrumentosUI.mjs --filtros-arranjo",

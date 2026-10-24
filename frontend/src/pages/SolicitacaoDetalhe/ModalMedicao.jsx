@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import OverlayModal from '../../components/ui/OverlayModal';
 import DateInputBR from '../../components/DateInputBR';
-import { API_URL, authHeaders, fileUrl } from '../../services/api';
+import { obterLinkAnexoMedicao, baixarAnexoMedicao } from '../../services/anexosMedicao';
 import { aprovarMedicaoContrato, atualizarMedicaoContrato } from '../../services/contratos';
 import { uploadArquivos } from '../../services/uploads';
 import { HiArrowDownTray, HiEye, HiPaperClip } from 'react-icons/hi2';
@@ -73,12 +73,6 @@ const rotuloTipoAnexo = (tipo) => {
   return rotulos[chave] || chave.replaceAll('_', ' ').toLowerCase() || 'Arquivo';
 };
 
-function normalizarUrlArquivo(url) {
-  const valor = String(url || '');
-  if (!valor.startsWith('http')) return valor;
-  return valor.replace(/%(?![0-9A-Fa-f]{2})/g, '%25');
-}
-
 export default function ModalMedicao({
   medicao,
   historicos = [],
@@ -119,6 +113,7 @@ export default function ModalMedicao({
   const aprovacaoPendenteRef = useRef(false);
   const [abrindoAnexoId, setAbrindoAnexoId] = useState(null);
   const [baixandoAnexoId, setBaixandoAnexoId] = useState(null);
+  const downloadsPendentesRef = useRef(new Set());
   const [previewAnexo, setPreviewAnexo] = useState(null);
   const [anexosAdicionados, setAnexosAdicionados] = useState([]);
   const [enviandoAnexos, setEnviandoAnexos] = useState(false);
@@ -294,27 +289,11 @@ export default function ModalMedicao({
     }
   }
 
-  async function resolverUrlAnexo(anexo) {
-    const caminho = String(anexo.caminho_arquivo || '');
-    if (!caminho) throw new Error('Arquivo sem endereco para abertura.');
-    if (!caminho.startsWith('http')) return fileUrl(caminho);
-
-    const params = new URLSearchParams({ url: normalizarUrlArquivo(caminho) });
-    const resposta = await fetch(`${API_URL}/anexos/presign?${params.toString()}`, {
-      headers: authHeaders()
-    });
-    const dados = await resposta.json().catch(() => null);
-    if (!resposta.ok || !dados?.url) {
-      throw new Error(dados?.error || 'Nao foi possivel gerar o link seguro do arquivo.');
-    }
-    return dados.url;
-  }
-
   async function abrirAnexo(anexo) {
     limpar();
     setAbrindoAnexoId(anexo.id);
     try {
-      const url = await resolverUrlAnexo(anexo);
+      const url = await obterLinkAnexoMedicao(anexo);
       const nome = anexo.nome_original || 'Arquivo da medicao';
       setPreviewAnexo({ nome, caminho: nome, url, downloadUrl: url });
     } catch (e) {
@@ -325,23 +304,19 @@ export default function ModalMedicao({
   }
 
   async function baixarAnexo(anexo) {
+    if (downloadsPendentesRef.current.size > 0) return;
+    const pendentes = downloadsPendentesRef.current;
+    pendentes.add(anexo.id);
     limpar();
     setBaixandoAnexoId(anexo.id);
     try {
-      const url = await resolverUrlAnexo(anexo);
-      const resposta = await fetch(url);
-      if (!resposta.ok) throw new Error('Nao foi possivel carregar o arquivo para download.');
-      const blobUrl = window.URL.createObjectURL(await resposta.blob());
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = anexo.nome_original || 'arquivo-medicao';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(blobUrl);
+      await baixarAnexoMedicao(anexo);
     } catch (e) {
-      avisar.erro(e.message || 'Nao foi possivel baixar o arquivo.');
+      avisar.erro(e instanceof TypeError
+        ? 'Nao foi possivel iniciar o download. Verifique a conexao e tente novamente.'
+        : e.message || 'Nao foi possivel baixar o arquivo.');
     } finally {
+      pendentes.delete(anexo.id);
       setBaixandoAnexoId(null);
     }
   }
@@ -503,7 +478,8 @@ export default function ModalMedicao({
                           className="btn btn-outline btn-sm !px-2"
                           title="Baixar arquivo"
                           aria-label={`Baixar ${anexo.nome_original || 'arquivo'}`}
-                          disabled={baixandoAnexoId === anexo.id}
+                          disabled={baixandoAnexoId !== null}
+                          aria-busy={baixandoAnexoId === anexo.id}
                           onClick={() => baixarAnexo(anexo)}
                         >
                           <HiArrowDownTray className="h-4 w-4" aria-hidden="true" />

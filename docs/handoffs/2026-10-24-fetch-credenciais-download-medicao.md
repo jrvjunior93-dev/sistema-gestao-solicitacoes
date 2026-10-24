@@ -5,8 +5,10 @@
 - Usuario autorizou implementar/testar em refactor/frontend, preservando
   permissoes e links assinados. Agente unico, sem delegacao. Base84b9aef4,
   checkout de trabalho codex/retirada-envios-dev-20261023 que acompanha a refactor.
-- Sem commit/push, promocao main, Vercel, SSH/EC2, AWS, dados reais ou migrations.
-  Roteiros Node24 de tarefa anterior e outputs/ privados foram preservados.
+- Implementacao inicial sem publicacao; depois usuario autorizou commit/push
+  DEV em duas etapas, conforme registro abaixo. Sem promocao main, configuracao
+  Vercel, SSH/EC2, AWS, dados reais ou migrations pelo agente. Roteiros Node24
+  de tarefa anterior e outputs/ privados foram preservados.
 
 ## Alteracoes
 
@@ -28,8 +30,8 @@
   locais. Nao relaxar CORS, bucket ou ACL para corrigir este fluxo.
 - Deploy requer backend atualizado ANTES da liberacao do frontend com download=1;
   backend antigo recusaria a nova query. Sem migration ou update de dependencias.
-- Persistir apenas este delta quando usuario autorizar publicacao na refactor,
-  mantendo Node24/diagnostico de operacao anterior e outputs/ fora do commit.
+- Publicar apenas este delta na refactor, mantendo Node24/diagnostico de
+  operacao anterior e outputs/ fora dos commits. Frontend aguarda evidencia DEV.
 
 ## Validacao concluida
 
@@ -51,8 +53,8 @@
 - node --check e git diff --check aprovados. test:docs continua falhando SOMENTE
   pela metrica preexistente399/401 em docs/seguranca/autenticacao_autorizacao.md,
   confirmado sem diff nesse arquivo. Nao corrigido fora do escopo.
-- Ownership encerrado e liberado. Arquivos locais nao commitados; ambiente
-  remoto permanece sem esta correcao ate publicacao/homologacao autorizadas.
+- Ownership de implementacao encerrado. Publicacao parcial e ponto de retomada
+  registrados abaixo; homologacao real ainda depende do operador.
 
 ## Publicacao autorizada em duas etapas
 
@@ -82,3 +84,21 @@
   9 cenarios de transporte, Chrome desktop/mobile, build e 5 testes das guardas
   do deploy aprovados. O manifesto do commit backend sera conferido contra o
   index antes do commit e contra o delta real apos o commit. Sem operacao EC2.
+
+## Ponto de retomada: backend publicado, frontend retido
+
+- EtapaA publicada em origin/refactor/frontend:
+  ed7df6de22800fc8a974ddf8e6218413ead495cf. Inventario real conferido com manifesto;
+  nenhum arquivo frontend, migration ou lockfile incluido. Origin/main conferida
+  intacta em 78fbf27749ca41f3ab01a25a968d05306c3bbb47.
+- EtapaB contem somente frontend, testes e documentacao correspondente; commit
+  local preparado para continuidade. NAO fazer push antes da evidencia do usuario
+  com BACKEND_DOWNLOAD_MEDICAO_PRONTO e commit exato da etapaA. O backend remoto
+  publicado no Git nao significa que a EC2 ja foi atualizada.
+- Proximo passo exato: usuario executa o runner stageA na EC2 DEV e envia a saida.
+  Conferir health/Node24.22.1/producao_preservada; entao conferir remoto ainda na
+  etapaA e publicar apenas a etapaB na mesma refactor/frontend. Aguardar frontend
+  DEV e testar preview/download/permissoes na medicao, inclusive clique repetido.
+- Sem necessidade de migration, npm install, troca de runtime ou pm2 save.
+  Nao promover main ou reiniciar producao. Reserva de edicao liberada ao concluir
+  os commits; publicacao frontend deliberadamente pendente da prova da EC2.

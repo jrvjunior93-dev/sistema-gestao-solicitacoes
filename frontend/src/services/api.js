@@ -1,3 +1,5 @@
+import { isTrustedApiTarget } from '../utils/requestTarget';
+
 function normalizeApiUrl(value) {
   const raw = String(value || '/api').trim().replace(/\/+$/g, '');
   if (!raw) return '/api';
@@ -84,6 +86,11 @@ function getKnownCsrfToken() {
   return currentCsrfToken || getCookieValue(CSRF_COOKIE_NAME);
 }
 
+export function isApiRequest(input) {
+  if (typeof window === 'undefined') return false;
+  return isTrustedApiTarget(input, API_URL, window.location.href);
+}
+
 export function installFetchSecurityDefaults() {
   if (typeof window === 'undefined' || window.__fluxyFetchSecurityInstalled) {
     return;
@@ -95,6 +102,15 @@ export function installFetchSecurityDefaults() {
     const baseHeaders = input instanceof Request ? input.headers : undefined;
     const headers = new Headers(init.headers || baseHeaders || {});
     const method = init.method || (input instanceof Request ? input.method : 'GET');
+
+    if (!isApiRequest(input)) {
+      // Links assinados e destinos externos nao recebem credenciais Fluxy,
+      // mesmo se o chamador tiver passado authHeaders() por engano.
+      for (const name of ['Authorization', 'Proxy-Authorization', CSRF_HEADER_NAME, 'X-Audit-Session-Id', 'Cookie']) {
+        headers.delete(name);
+      }
+      return nativeFetch(input, { ...init, credentials: 'omit', headers });
+    }
 
     if (currentAuthToken && !headers.has('Authorization')) {
       headers.set('Authorization', `Bearer ${currentAuthToken}`);
@@ -114,7 +130,10 @@ export function installFetchSecurityDefaults() {
 
     const response = await nativeFetch(input, {
       ...init,
-      credentials: init.credentials || 'include',
+      credentials: init.credentials ?? (input instanceof Request ? input.credentials : 'include'),
+      // Evita que headers CSRF/auditoria acompanhem redirecionamentos a terceiros.
+      // A API usa JSON/links assinados, nao redirects para entregar anexos.
+      redirect: (init.redirect ?? (input instanceof Request ? input.redirect : null)) === 'manual' ? 'manual' : 'error',
       headers
     });
 
