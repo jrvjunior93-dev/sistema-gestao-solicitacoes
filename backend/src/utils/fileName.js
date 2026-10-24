@@ -20,7 +20,17 @@ function sanitizeFileNameForStorage(originalName) {
     .trim();
 }
 
+function attachmentContentDisposition(originalName) {
+  const safeName = Buffer.from(sanitizeFileNameForStorage(originalName).slice(0, 200), 'utf8')
+    .toString('utf8') || 'arquivo';
+  const asciiName = safeName.replace(/[^\x20-\x7e]|["\\]/g, '_');
+  const utf8Name = encodeURIComponent(safeName).replace(/[!'()*]/g,
+    char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `attachment; filename="${asciiName}"; filename*=UTF-8''${utf8Name}`;
+}
+
 module.exports = {
   normalizeOriginalName,
-  sanitizeFileNameForStorage
+  sanitizeFileNameForStorage,
+  attachmentContentDisposition
 };

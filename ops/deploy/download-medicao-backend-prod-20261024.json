@@ -1,0 +1,19 @@
+{
+  "base": "78fbf27749ca41f3ab01a25a968d05306c3bbb47",
+  "homologado": "ed7df6de22800fc8a974ddf8e6218413ead495cf",
+  "arquivos": [
+    "M\tbackend/package.json",
+    "A\tbackend/scripts/validarDownloadAnexoMedicao.js",
+    "M\tbackend/src/controllers/AnexoController.js",
+    "M\tbackend/src/services/fileAccessService.js",
+    "M\tbackend/src/services/s3.js",
+    "M\tbackend/src/utils/fileName.js",
+    "M\tbackend/src/validators/securityValidators.js",
+    "A\tdocs/handoffs/2026-10-24-promocao-anexos-main.md",
+    "M\tdocs/seguranca/anexos.md",
+    "M\tdocs/workspace/OWNERSHIP_ATIVO.md",
+    "A\tops/deploy/atualizar-prod-download-medicao-backend-20261024.cjs",
+    "A\tops/deploy/atualizar-prod-download-medicao-backend-20261024.test.cjs",
+    "A\tops/deploy/download-medicao-backend-prod-20261024.json"
+  ]
+}

@@ -3,7 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { S3Client, PutObjectCommand, GetObjectCommand, CopyObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
-const { sanitizeFileNameForStorage } = require('../utils/fileName');
+const { sanitizeFileNameForStorage, attachmentContentDisposition } = require('../utils/fileName');
 
 const INLINE_RISKY_EXTENSIONS = new Set([
   '.htm',
@@ -298,10 +298,10 @@ async function getPresignedUrl(urlOrKey, expiresIn = 300, options = {}) {
   const command = new GetObjectCommand({
     Bucket: storageTarget.bucket || process.env.AWS_S3_BUCKET,
     Key: key,
-    ...(riskyInlineTarget
+    ...(riskyInlineTarget || options.download === true
       ? {
-          ResponseContentDisposition: `attachment; filename="${sanitizeFileNameForStorage(path.basename(key))}"`,
-          ResponseContentType: 'application/octet-stream'
+          ResponseContentDisposition: attachmentContentDisposition(options.downloadName || path.basename(key)),
+          ...(riskyInlineTarget ? { ResponseContentType: 'application/octet-stream' } : {})
         }
       : {})
   });

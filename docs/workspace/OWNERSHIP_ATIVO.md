@@ -1,5 +1,18 @@
 # Ownership Ativo
 
+## Promocao seletiva dos anexos - 2026-10-24
+
+- Agente unico; usuario homologou visualizacao/download no DEV e autorizou
+  promover apenas esta correcao, com backend antes do frontend. Backup produtivo
+  conferido no Drive cifrado e timer ativo confirmados nesta janela.
+- Base main78fbf277; fontes ed7df6de/d37d722e. Reserva: cinco fontes backend,
+  QA download/package/docs de anexos; sete arquivos frontend/QA/package e docs;
+  runner/manifesto/teste PROD, handoff desta promocao e este registro.
+- Sem incorporar retirada de envios/003 ou modificar Node, dependencias,
+  permissoes, flags, dados financeiros e scripts anteriores exclusivos da main.
+- Publicar backend sozinho; reter frontend local ate evidencia da EC2 PROD.
+  Nenhuma execucao remota pelo agente; DEV e demais processos preservados.
+
 ## Promocao MAIN: medicao, filtros e distribuicao - 2026-10-23
 
 - Usuario homologou DEV e autorizou migrar todas as pendencias para main.

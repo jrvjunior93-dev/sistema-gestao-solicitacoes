@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
+    "test:download-anexo-medicao": "node scripts/validarDownloadAnexoMedicao.js && node scripts/validarRemocaoAnexosHistorico.js",
     "test:medicao-reenvio": "node scripts/validarMedicaoVinculoSchema.js && node scripts/validarMedicaoRejeicaoFavorecido.js",
     "test:medicao-rejeicao-favorecido": "node scripts/validarMedicaoRejeicaoFavorecido.js",
     "test:fila-filtros-pesquisa": "node scripts/validarFilaFiltrosPesquisa.js && node scripts/validarFilaFiltrosDp.js && node scripts/validarFilaPaginacao.js",

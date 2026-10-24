@@ -318,6 +318,7 @@ class AnexoController {
     try {
       const { url, key, historico_id: historicoId } = req.query;
       const alvo = url || key;
+      const download = req.query.download === true || req.query.download === '1';
 
       if (!alvo && !historicoId) {
         return res.status(400).json({ error: 'url obrigatoria' });
@@ -344,7 +345,9 @@ class AnexoController {
           return res.status(404).json({ error: 'Arquivo do historico nao encontrado' });
         }
 
-        const signedUrl = await getPresignedUrl(caminhoHistorico, 300, { strict: true });
+        const signedUrl = await getPresignedUrl(caminhoHistorico, 300, {
+          strict: true, ...(download ? { download: true } : {})
+        });
         return res.json({ url: signedUrl });
       }
 
@@ -368,7 +371,10 @@ class AnexoController {
       }
 
       const caminhoRegistrado = getRegisteredFilePath(arquivoRegistrado) || alvo;
-      const signedUrl = await getPresignedUrl(caminhoRegistrado, 300, { strict: true });
+      const signedUrl = await getPresignedUrl(caminhoRegistrado, 300, {
+        strict: true,
+        ...(download ? { download: true, downloadName: arquivoRegistrado.record?.nome_original } : {})
+      });
       return res.json({ url: signedUrl });
     } catch (error) {
       if (error?.code === 'FILE_PRESIGN_INVALID_TARGET') {
