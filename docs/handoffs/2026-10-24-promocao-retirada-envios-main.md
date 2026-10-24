@@ -85,3 +85,22 @@ Outputs/dist/node_modules e roteiros Node anteriores ficam fora dos commits.
 - Proximo: operador atualiza EC2 com o SHA backend acima, migration003 e restart
   somente PROD. Receber a saida de sucesso, health/Nodes e DEV preservados; entao
   publicar o frontend local. Sem nova autorizacao de dados financeiros reais.
+
+## Prova EC2 recebida: liberacao frontend
+
+Operador enviou BACKEND_RETIRADA_ENVIOS_PRODUCAO_PRONTO do SHA backend3f3c5e8f,
+migration202610230003_pagamento_envios_retiradas.js e QAs aprovados em producao.
+PROD PID666002 no executavel isolado24.22.1; DEV PID663039 preservado, Nodes e
+persistencia preservados:true. Frontend ainda nao publicado na prova.
+Evidencia satisfaz etapa backend-antes-frontend. Nenhuma execucao remota repetida.
+Revalidar testes locais/inventario e publicar386af2ce mais este registro na main;
+nao reiniciar backend/DEV nem aplicar003 novamente. Aguardar Vercel e homologar
+abas/retirada com consultas/preview sem criar baixas ou pagamentos de teste reais.
+
+Conferencia final repetida e aprovada: retirada de aprovacao/fila1366/390,
+PWA/web/abas/voltar/reload, download de medicao desktop/mobile/ACL/API/S3 sem
+credenciais;13 fontes/QA frontend identicos ao84b9aef4, package apenas novo QA,
+nenhum delta backend/ops em386af2ce. Docs632/19 e diff aprovados. Reserva liberada
+para publicar386af2ce com este registro. Nao executar novamente o runner PROD:
+backend/schema/Node ja foram confirmados; proximo passo operacional e somente
+aguardar Vercel e homologar a interface. Nenhuma escrita remota financeira feita.

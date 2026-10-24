@@ -2,6 +2,14 @@
 
 ## Promocao retirada de envios e abas web - 2026-10-24
 
+- Retomada de publicacao: reserva temporaria deste registro e do handoff para
+  documentar prova EC2 recebida e liberar o frontend386af2ce ja homologado.
+  Sem novo deploy/restart/schema, Node, flags ou alteracao funcional pelo agente.
+- Prova EC2 backend3f3c5e8f/003 recebida: PROD666002/Node24.22.1 isolado,
+  DEV663039 e persistencia preservados. UI retirada, PWA/web/abas e anexos
+  repetidos/aprovados; docs632/19 e inventario frontend conferidos. Reserva
+  documental encerrada e ownership liberado para publicar frontend386af2ce.
+
 - Agente unico, sem delegacao. Usuario autorizou pacote completo84b9aef4 para
   main e roteiro EC2 PROD/migration003; backup cifrado/timer reconfirmados.
 - Base62456b21; checkout gerenciado separado dos roteiros locais Node anteriores.
