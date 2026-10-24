@@ -9,6 +9,30 @@ Regras:
 Observacao:
 - anexos antigos podem estar em `/uploads`
 
+## Download de anexo da medicao
+
+O botao solicita /anexos/presign com download=1. O parametro opcional aceita
+somente 0/1; ausencia e download=0 preservam preview inline, exceto extensoes
+de risco que ja eram forcadas como attachment. A ACL/registro e a exclusao logica
+sao revalidadas ANTES de assinar, sem liberar qualquer caminho arbitrario.
+
+O GetObject assinado inclui ResponseContentDisposition attachment, com nome
+original do registro (ASCII seguro + filename* UTF8), sem aceitar nome de arquivo
+arbitrario na query. TTL permanece 300s; nenhum objeto/permissao/CORS do bucket e
+alterado. O frontend nao modifica a query assinada e inicia o download por link
+sem referrer: o navegador recebe o arquivo sem fetch/Blob/CORS do S3.
+
+Uploads locais tambem passam pelo presign/ACL; a resposta /uploads e baixada por
+fetch autenticado somente na API, com Blob liberado depois de iniciar o download.
+Cada clique valido pede um link novo; enquanto aguarda, guarda sincrona e estado
+disabled impedem duplicacao. Erros401/403/404 ou endereco invalido nao abrem o
+storage. Downloads externos nao recebem headers/tokens/cookies do Fluxy.
+
+O teste backend npm run test:download-anexo-medicao usa codigo real com modelos e
+SDK simulados, sem banco/AWS. Frontend npm run test:download-medicao testa o
+componente real em Chrome desktop/mobile, arquivo/nome, storage SEM CORS,
+negativas, clique duplo e /uploads com servidores locais.
+
 ## Remocao de anexos de solicitacoes
 
 A remocao do historico exige a permissao existente, acesso a solicitacao e

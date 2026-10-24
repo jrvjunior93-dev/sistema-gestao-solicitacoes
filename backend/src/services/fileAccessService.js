@@ -751,7 +751,7 @@ async function resolveRegisteredFileResource(alvo) {
 
   const anexo = await findOneFileRecord(Anexo, {
     where: { caminho_arquivo: whereIn, deleted_at: null },
-    attributes: ['id', 'solicitacao_id', 'caminho_arquivo']
+    attributes: ['id', 'solicitacao_id', 'caminho_arquivo', 'nome_original']
   });
   if (anexo) return { kind: 'SOLICITACAO_ANEXO', record: anexo };
 

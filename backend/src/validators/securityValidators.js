@@ -118,7 +118,11 @@ function validateResetPasswordBody(body = {}) {
 }
 
 function validatePresignQuery(query = {}) {
-  ensureAllowedKeys(query, ['url', 'key', 'historico_id'], 'Consulta de arquivo');
+  ensureAllowedKeys(query, ['url', 'key', 'historico_id', 'download'], 'Consulta de arquivo');
+
+  if (query.download !== undefined && !['0', '1'].includes(query.download)) {
+    throw new ValidationError('Download invalido. Informe 0 ou 1.');
+  }
 
   if (query.url && query.key) {
     throw new ValidationError('Informe url ou key, nunca ambos.');
@@ -147,7 +151,8 @@ function validatePresignQuery(query = {}) {
     ...query,
     url: query.url ? alvo : undefined,
     key: query.key ? alvo : undefined,
-    historico_id: historicoId
+    historico_id: historicoId,
+    ...(query.download === undefined ? {} : { download: query.download === '1' })
   };
 }
 
