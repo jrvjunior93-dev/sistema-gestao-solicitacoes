@@ -15,6 +15,7 @@ import {
   useConfirmacao
 } from '../../../components/padrao';
 import StatusBadge from '../../../components/StatusBadge';
+import { formatarDataEmissaoFiscal } from '../utils/dataEmissaoFiscal';
 import {
   createFiscalDivergence,
   generateFiscalDocumentDanfe,
@@ -120,15 +121,8 @@ const DIVERGENCE_FORM_VAZIO = {
   zero vazio e o campo aparece com um traço como se fosse conteúdo. O
   travessão é decisão de EXIBIÇÃO do ladrilho, não de formatação do dado.
   Nas tabelas, onde o traço é mesmo o que se quer ver, ele entra no ponto de
-  uso (`formatDate(x) || '-'`).
+  uso (`formatDateTime(x) || '-'`).
 */
-function formatDate(value) {
-  if (!value) return null;
-  const data = new Date(value);
-  if (Number.isNaN(data.getTime())) return null;
-  return data.toLocaleDateString('pt-BR');
-}
-
 function formatDateTime(value) {
   if (!value) return null;
   const data = new Date(value);
@@ -605,7 +599,7 @@ export default function FiscalDocumentDetail() {
             { label: 'Fornecedor', valor: documento.issuer_name || documento.issuer_cnpj, span: 2 },
             { label: 'CNPJ fornecedor', valor: documento.issuer_cnpj },
             { label: 'Destinatário', valor: documento.recipient_name || documento.recipient_cnpj },
-            { label: 'Emissão', valor: formatDate(documento.emission_date) },
+            { label: 'Emissão', valor: formatarDataEmissaoFiscal(documento) },
             { label: 'Valor total', valor: formatMoney(documento.total_value) },
             { label: 'Série', valor: documento.series },
             { label: 'Número', valor: documento.document_number },
