@@ -11,6 +11,8 @@ import AutorizacaoTituloDetalhe from './AutorizacaoTituloDetalhe';
 import TituloExcluidoAviso from './TituloExcluidoAviso';
 import useAutorizacaoHistorico from '../../hooks/useAutorizacaoHistorico';
 import BotaoReenvioAutorizacao from './BotaoReenvioAutorizacao';
+import RetirarEnvios from './RetirarEnvios';
+import { envioDoPainel, podeRetirarEnvio } from '../../utils/retiradaEnvio';
 
 const moeda = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const INICIAL = { data_tipo: 'VENCIMENTO', vencimento_inicio: '', vencimento_fim: '', obra: '', situacao: 'AGUARDANDO' };
@@ -24,7 +26,7 @@ function Paginacao({ pagina, dados, alterar, disabled, nome, children }) {
     <button type="button" className="btn btn-outline btn-sm" disabled={disabled || !dados.mais} onClick={() => alterar(pagina + 1)}>Próxima</button>
   </nav>;
 }
-export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrirDocumento, revisao = 0 }) {
+export default function AutorizacoesPorObra({ caps, userId, user, busy, setBusy, abrirDocumento, revisao = 0 }) {
   const slot = `autorizacoes:obras:${userId}`;
   const workspaceAtivo = useWorkspaceActive();
   const [filtro, setFiltro] = useWorkspaceState(slot + ':filtro', INICIAL);
@@ -47,9 +49,13 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
   const parametros = { filtro, obra, paginaObras, paginaTitulos };
   const chave = JSON.stringify(parametros), contexto = useRef({ parametros, chave }); contexto.current = { parametros, chave };
   const selecionados = Object.values(selecao);
-  const totalSelecionado = selecionados.reduce((s, i) => s + Math.round(valorSelecionado(i) * 100), 0) / 100;
+  const totalSelecionado = selecionados.reduce((s, i) => s + Math.round((podeSelecionarAutorizacao(i) ? valorSelecionado(i) : Number(i.titulo?.valor_saldo || 0)) * 100), 0) / 100;
   const indisponivel = busy || preparando || carregando || Boolean(erro) || chaveCarregada !== chave;
-  const elegiveis = titulos.data.filter(podeSelecionarAutorizacao);
+  const podeRetirar = item => { const envio = envioDoPainel(item); return envio && podeRetirarEnvio(user, envio.origem); };
+  const selecionavel = item => (!caps.paused && caps.can_decide && podeSelecionarAutorizacao(item)) || podeRetirar(item);
+  const envios = selecionados.length && selecionados.every(podeRetirar) ? selecionados.map(envioDoPainel) : [];
+  const podeRetirarAlgum = podeRetirarEnvio(user, 'FILA') || podeRetirarEnvio(user, 'AUTORIZACAO');
+  const elegiveis = titulos.data.filter(selecionavel);
   const todosDaPagina = elegiveis.length > 0 && elegiveis.every(i => selecao[String(i.titulo_financeiro_id)]?.id === i.id);
   useWorkspaceWork(selecionados.length > 0 || Boolean(motivo), busy || preparando, slot);
   useEffect(() => {
@@ -73,7 +79,7 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
         if (!vivo.current || atual.chave !== contexto.current.chave) return true;
         // Lista, totais e pagina mudam juntos. Falha nunca mistura dados de obras.
         setObras(obrasResposta); setTitulos(titulosResposta); setChaveCarregada(atual.chave); setErro('');
-        setSelecao(current => reconciliarSelecao(current, titulosResposta.data));
+        setSelecao(current => reconciliarSelecao(current, titulosResposta.data, selecionavel));
         return true;
       } catch (e) {
         if (vivo.current && atual.chave === contexto.current.chave) setErro(e.message || 'Não foi possível atualizar. Tente novamente.');
@@ -238,16 +244,18 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
       <section className="pa-obras-titulos" aria-label="Títulos da obra" aria-busy={carregando}>
         {!obra ? <p className="pa-empty">Selecione uma obra para conferir os títulos e decidir.</p> : <>
           <header className="pa-obras-cabecalho"><button type="button" className="btn btn-outline btn-sm pa-voltar-obras" disabled={busy || preparando} onClick={voltar}>Voltar às obras</button><strong>{obra.nome}</strong>
-            {caps.can_decide && <div className="pa-obras-total-selecao"><strong aria-live="polite">{selecionados.length} selecionado(s) · {moeda(totalSelecionado)}</strong><small>Seleção de todas as obras e páginas; saldo dos títulos já na fila.</small><button type="button" className="btn btn-outline btn-sm" disabled={busy || preparando || !selecionados.length} onClick={() => mudarSelecao({})}>Limpar seleção de todas as páginas</button></div>}
+            {(caps.can_decide || podeRetirarAlgum) && <div className="pa-obras-total-selecao"><strong aria-live="polite">{selecionados.length} selecionado(s) · {moeda(totalSelecionado)}</strong><small>Seleção de todas as obras e páginas; saldo dos títulos já na fila.</small><button type="button" className="btn btn-outline btn-sm" disabled={busy || preparando || !selecionados.length} onClick={() => mudarSelecao({})}>Limpar seleção de todas as páginas</button></div>}
           </header>
-          <div className="pa-obras-selecao"><label><input type="checkbox" checked={todosDaPagina} disabled={indisponivel || !caps.can_decide || !elegiveis.length || caps.paused}
-            onChange={e => mudarSelecao(current => selecionarPagina(current, titulos.data, e.target.checked))} /> Selecionar os disponíveis desta página</label><small>Pendentes podem ser autorizados ou rejeitados. Na fila, somente rejeição do saldo restante.</small></div>
+          <div className="pa-obras-selecao"><label><input type="checkbox" checked={todosDaPagina} disabled={indisponivel || !elegiveis.length}
+            onChange={e => mudarSelecao(current => selecionarPagina(current, titulos.data, e.target.checked, selecionavel))} /> Selecionar os disponíveis desta página</label><small>A retirada encerra só o envio. Aprovação, rejeição e pagamento mantêm suas permissões.</small>
+            {podeRetirarAlgum && <RetirarEnvios key={userId} itens={envios} disabled={indisponivel} onOcupado={setBusy}
+              onRetirado={() => { mudarSelecao({}); setTentativaManual(n => n + 1); }} />}</div>
           {titulos.data.map(item => {
             const s = item.snapshot_json || {}, permitido = podeSelecionarAutorizacao(item);
             return <article key={item.id} className="pa-obra-titulo">
               <div className="pa-obra-titulo__principal"><div><input type="checkbox" aria-label={`Selecionar ${s.codigo || item.titulo_financeiro_id}`}
-                checked={selecao[String(item.titulo_financeiro_id)]?.id === item.id} disabled={indisponivel || !caps.can_decide || caps.paused || !permitido}
-                onChange={e => mudarSelecao(current => selecionarPagina(current, [item], e.target.checked))} /><button type="button" className="pa-titulo-abrir" aria-label={`Abrir detalhes de ${s.codigo || item.titulo_financeiro_id}`} disabled={busy || preparando || carregando}
+                checked={selecao[String(item.titulo_financeiro_id)]?.id === item.id} disabled={indisponivel || !selecionavel(item)}
+                onChange={e => mudarSelecao(current => selecionarPagina(current, [item], e.target.checked, selecionavel))} /><button type="button" className="pa-titulo-abrir" aria-label={`Abrir detalhes de ${s.codigo || item.titulo_financeiro_id}`} disabled={busy || preparando || carregando}
                   onClick={() => abrirDetalhe({ item, filtro: { ...filtro, obra_id: String(obra.id) } })}>{s.solicitacao?.codigo || s.codigo || `Título #${item.titulo_financeiro_id}`} <span aria-hidden="true">›</span></button></div>
                 <span className={`pa-status pa-status--${item.situacao_financeira?.toLowerCase()}`}>{rotuloSituacao(item.situacao_financeira)}</span></div>
               <TituloExcluidoAviso exclusao={item.exclusao_titulo} />
@@ -272,7 +280,7 @@ export default function AutorizacoesPorObra({ caps, userId, busy, setBusy, abrir
           })}
           {!carregando && !erro && !titulos.data.length && <p className="pa-empty">Nenhum título nesta obra com os filtros aplicados.</p>}
           <Paginacao nome="títulos" pagina={paginaTitulos} dados={titulos.paginacao} alterar={setPaginaTitulos} disabled={indisponivel}>
-            {caps.can_decide && <><button type="button" className="btn btn-outline btn-sm" disabled={indisponivel || !selecionados.length || caps.paused || !caps.passkey_count} onClick={() => { setRevisaoDecisao(null); setPedindoMotivo(true); }}>Rejeitar</button>
+            {caps.can_decide && <><button type="button" className="btn btn-outline btn-sm" disabled={indisponivel || !selecionados.length || !selecionados.every(podeSelecionarAutorizacao) || caps.paused || !caps.passkey_count} onClick={() => { setRevisaoDecisao(null); setPedindoMotivo(true); }}>Rejeitar</button>
               <button type="button" className="btn btn-primary btn-sm" disabled={indisponivel || !selecionados.length || !selecionados.every(podeAutorizar) || caps.paused || !caps.passkey_count} onClick={() => conferir('AUTORIZAR')}>Autorizar</button></>}
           </Paginacao>
         </>}

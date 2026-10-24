@@ -51,6 +51,8 @@ import OverlayModal from '../components/ui/OverlayModal';
 import ArquivosSolicitacaoFilaModal from '../components/financeiro/ArquivosSolicitacaoFilaModal';
 import DadosPagamentoFila from '../components/financeiro/DadosPagamentoFila';
 import FiltrosFilaPagamentos, { CAMPOS_FILTROS_FILA } from '../components/financeiro/FiltrosFilaPagamentos';
+import RetirarEnvios from '../components/financeiro/RetirarEnvios';
+import { envioDaFila, podeRetirarEnvio } from '../utils/retiradaEnvio';
 import { beneficiaryData } from '../utils/filaPagamentoDestinatarios.mjs';
 import BaixaMassaFilaModal from '../components/financeiro/BaixaMassaFilaModal';
 import BaixaCompostaModal from '../components/financeiro/BaixaCompostaModal';
@@ -670,6 +672,7 @@ export default function FinanceiroFilaPagamentos() {
   useWorkspaceWork(Boolean(Object.keys(edicoesFila).length || selected.length), Boolean(actionKey));
 
   const canSettle = canBaixarFilaPagamentos(user);
+  const canWithdraw = podeRetirarEnvio(user, 'FILA');
   const canCompose = canSettle && canAccessFinanceiro(user) && hasPermissao(user, 'financeiro.baixas_compostas.criar') && hasPermissao(user, 'financeiro.baixas_compostas.confirmar');
   const canOpenTitle = hasPermissao(user, 'financeiro.titulos.visualizar');
   const canReport = canReportarFilaPagamentos(user);
@@ -741,7 +744,8 @@ export default function FinanceiroFilaPagamentos() {
       setSelected((current) => current.filter(id => {
         const row = nextRows.find(r => Number(r.id) === Number(id))
           || (!anterioresMesmaPagina.has(Number(id)) ? linhasConhecidasRef.current[id] : null);
-        return row && !row.somente_consulta && ((row.status === 'PENDENTE' && !row.movimento_financeiro_id) || row.status === 'DIVERGENTE' || row.pendente_comprovante);
+        return row && !row.somente_consulta && ((row.status === 'PENDENTE' && !row.movimento_financeiro_id) || row.status === 'DIVERGENTE' || row.pendente_comprovante
+          || (canWithdraw && envioDaFila(row)));
       }));
       setDrafts((current) => {
         const next = { ...current };
@@ -803,8 +807,8 @@ export default function FinanceiroFilaPagamentos() {
     } finally {
       if (consultaFila.isCurrent(token)) setLoading(false);
     }
-  }, [status, appliedSearch, filtros, pagina, numerada, chaveJanela, avisar, canSettle, user?.id]);
-  const identidadeConsulta = JSON.stringify([chaveJanela, canSettle, pagina]);
+  }, [status, appliedSearch, filtros, pagina, numerada, chaveJanela, avisar, canSettle, canWithdraw, user?.id]);
+  const identidadeConsulta = JSON.stringify([chaveJanela, canSettle, canWithdraw, pagina]);
   const load = useConsultaSerial(loadConsulta, identidadeConsulta);
 
   useEffect(() => { consultaFila.begin(); load(); }, [load, identidadeConsulta]);
@@ -1203,9 +1207,11 @@ export default function FinanceiroFilaPagamentos() {
   const divergentRows = useMemo(() => linhasOperacao.filter((row) => row.status === 'DIVERGENTE'), [linhasOperacao]);
   const receiptRows = useMemo(() => linhasOperacao.filter(row => !row.somente_consulta && Number(row.id) > 0
     && ((row.status === 'PENDENTE' && !row.movimento_financeiro_id) || row.pendente_comprovante)), [linhasOperacao]);
-  const selectableAll = status === 'DIVERGENTE' && canResolve
+  const selectableFinanceiro = status === 'DIVERGENTE' && canResolve
     ? divergentRows
     : (['PENDENTE', 'PENDENTE_COMPROVANTE', 'TODOS'].includes(status) && canSettle ? receiptRows : []);
+  const selectableAll = [...new Map([...selectableFinanceiro, ...(canWithdraw ? linhasOperacao.filter(envioDaFila) : [])]
+    .map(row => [Number(row.id), row])).values()];
   const selectableRows = selectableAll.filter(row => rows.some(r => Number(r.id) === Number(row.id)));
   const selectedRows = useMemo(
     () => selectableAll.filter((row) => selected.includes(Number(row.id))),
@@ -1219,6 +1225,7 @@ export default function FinanceiroFilaPagamentos() {
   const approvingDivergences = status === 'DIVERGENTE';
   const selectedPayments = selectedRows.filter(row => pendingRows.some(r => Number(r.id) === Number(row.id)));
   const selectedReceipts = selectedRows.filter(row => receiptRows.some(r => Number(r.id) === Number(row.id)));
+  const enviosRetirada = selectedRows.length && selectedRows.every(envioDaFila) ? selectedRows.map(envioDaFila) : [];
   const hasReceiptSelection = canSettle && ['PENDENTE', 'PENDENTE_COMPROVANTE', 'TODOS'].includes(status);
   const hasBulkAction = status === 'DIVERGENTE' ? canResolve : (['PENDENTE', 'TODOS'].includes(status) && canSettle);
   const showReasonColumn = ['DIVERGENTE', 'PENDENTE', 'NAO_PAGO', 'EM_EDICAO', 'TODOS', 'RESOLVIDO'].includes(status);
@@ -1321,7 +1328,7 @@ export default function FinanceiroFilaPagamentos() {
           search={search} onSearch={setSearch} onApply={applyFilters} busy={busy} />
         {numerada && <PaginacaoConsulta pagina={paginacao?.pagina || pagina} paginas={paginacao?.total_paginas || 1}
           total={paginacao?.total ?? rows.length} ocupado={loading || busy} aoMudar={setPagina} />}
-        {(hasBulkAction || hasReceiptSelection) && <div className="mb-2 flex flex-wrap items-center gap-3 text-sm">
+        {(hasBulkAction || hasReceiptSelection || canWithdraw) && <div className="mb-2 flex flex-wrap items-center gap-3 text-sm">
           <label className="flex items-center gap-2">
             <input type="checkbox" aria-label={rotuloSelecao}
               ref={(elemento) => { if (elemento) elemento.indeterminate = selecionadosPagina > 0 && selecionadosPagina < selectableRows.length; }}
@@ -1333,6 +1340,8 @@ export default function FinanceiroFilaPagamentos() {
           <span className="text-[var(--c-muted)]" role="status">{selectedRows.length} selecionado(s) · {currency(selectedRows.reduce((total, row) => total + Number(drafts[row.id]?.valor_pago || 0), 0))}</span>
           {selectedRows.length > 0 && <><span className="text-[var(--c-muted)]">{selecionadosPagina} {numerada ? 'nesta página' : 'carregados'} · Baixa: até 200 por operação; comprovante: até 100.</span>
             <button type="button" className="btn btn-outline btn-sm" disabled={loading || busy} onClick={() => setSelected([])}>Limpar seleção</button></>}
+          {canWithdraw && <RetirarEnvios key={user?.id} itens={enviosRetirada} disabled={loading || busy || !filaAutorizada}
+            onOcupado={valor => setActionKey(valor ? 'RETIRADA' : '')} onRetirado={() => { setSelected([]); load(); }} />}
         </div>}
         <div className="min-w-0 rounded-xl border border-[var(--c-border)]">
           <ResizableTable

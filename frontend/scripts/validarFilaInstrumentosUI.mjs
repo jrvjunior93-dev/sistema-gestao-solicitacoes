@@ -19,6 +19,7 @@ import { validarImagensComprovantesFila } from './filaComprovantesImagensQA.mjs'
 import { validarDestinatariosFilaUI } from './filaDestinatariosQA.mjs';
 import { validarFiltrosPesquisaFilaUI } from './filaFiltrosPesquisaQA.mjs';
 import { validarArranjoFiltrosFila } from './filaFiltrosArranjoQA.mjs';
+import { validarRetiradaFila } from './retiradaEnviosQA.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const stub = '\0qa-fila-instrumentos-';
 const forms = [
@@ -41,7 +42,7 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
   },
   load(id) {
     if (id === stub + 'tema') return `export const useTheme=()=>({tema:{}});`;
-    if (id === stub + 'auth') return `const qaQuery=new URLSearchParams(location.search);if(!qaQuery.has('persistir-modo')){if(qaQuery.has('rolagem'))localStorage.removeItem('financeiro-fila-pagamentos:modo-lista');else localStorage.setItem('financeiro-fila-pagamentos:modo-lista',JSON.stringify({numerada:true}));}export const useAuth=()=>({user:{id:Number(new URLSearchParams(location.search).get('usuario')||1)},authReady:true,isAuthenticated:true});`;
+    if (id === stub + 'auth') return `const qaQuery=new URLSearchParams(location.search);if(!qaQuery.has('persistir-modo')){if(qaQuery.has('rolagem'))localStorage.removeItem('financeiro-fila-pagamentos:modo-lista');else localStorage.setItem('financeiro-fila-pagamentos:modo-lista',JSON.stringify({numerada:true}));}export const useAuth=()=>({user:{id:Number(new URLSearchParams(location.search).get('usuario')||1),areas_permissoes:qaQuery.has('retirada')&&!qaQuery.has('sem-retirar')?['financeiro.fila_pagamentos.retirar']:[]},authReady:true,isAuthenticated:true});`;
     if (id === stub + 'permissoes') return `const noResolve=new URLSearchParams(location.search).has('sem-resolver');export const canAccessFinanceiro=()=>true,canBaixarFilaPagamentos=()=>!window.__readOnly,hasPermissao=(_,key)=>!(key==='financeiro.titulos.estornar'&&(window.__noReverse||window.__readOnly)),canImportarComprovantesFilaPagamentos=()=>new URLSearchParams(location.search).has('importar')&&!window.__readOnly,canReportarFilaPagamentos=()=>true,canResolverFilaPagamentos=()=>!window.__readOnly&&!noResolve;`;
     if (id === stub + 'padrao') return `export{default as Pagina}from'/src/components/padrao/Pagina.jsx';export{default as BlocoConteudo}from'/src/components/padrao/BlocoConteudo.jsx';export{default as PageHeader}from'/src/components/padrao/PageHeader.jsx';const avisar={erro:console.error,sucesso:()=>{},alerta:message=>window.__alerts.push(message)};const confirmar=async()=>({ok:true,texto:'Correção QA'});export const Avisos=()=>null;export const useAvisos=()=>({avisos:[],fechar:()=>{},limpar:()=>{},avisar});export const useConfirmacao=()=>({confirmar});`;
     if (id === stub + 'api') return `
@@ -64,6 +65,13 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
         const paid=window.__paid,receipt=window.__receipt,saldo=window.__saldo||200;
         const row={id:1,status:paid?'BAIXADO':'PENDENTE',movimento_financeiro_id:paid?10:null,valor_informado:paid?200:null,valor_previsto:saldo,juros:window.__juros||0,multa:window.__multa||0,conta_bancaria_id:5,data_baixa:paid?'2026-10-08':null,pendente_comprovante:paid&&!receipt,comprovante_hash:receipt||!window.__receiptScenario?'qa':null,comprovante_url:receipt||!window.__receiptScenario?'qa':null,titulo:{id:1,codigo:'TIT-QA',status:paid?'QUITADO':'ABERTO',valor_saldo:paid?0:saldo,forma_pagamento_id:1,solicitacao_id:100,solicitacao:{id:100,codigo:'SOL-QA'}}};
         if(window.__uploadedName)row.comprovante_nome=window.__uploadedName;
+        if(new URLSearchParams(location.search).has('retirada')) {
+          const data=[1,2].map(id=>({...row,id,titulo_financeiro_id:id,status:window.__retirados?.includes(id)?'RESOLVIDO':id===2?'DIVERGENTE':new URLSearchParams(location.search).has('nao-pago')?'NAO_PAGO':'PENDENTE',
+            movimento_financeiro_id:id===2?88:null,pendente_comprovante:false,
+            titulo:{...row.titulo,id,codigo:'TIT-RET-'+id,status:id===2?'PARCIAL':'ABERTO',valor_baixado:id===2?40:0,valor_saldo:id===2?60:200}}))
+            .filter(r=>!status||status==='TODOS'||r.status===status);
+          return {data,resumo:{PENDENTE:1,DIVERGENTE:1},paginacao:{pagina:1,total:data.length,total_paginas:1,mais:false}};
+        }
         if(pesquisaScenario){
           const item={...row,id:520,titulo:{...row.titulo,id:520,codigo:'TIT-00520',data_vencimento:'2026-10-23',obra_id:3,
             obra:{id:3,codigo:'3',nome:'Obra São João'},solicitacao_id:10,solicitacao:{id:10,codigo:'SOL-0010'},
@@ -179,7 +187,10 @@ try {
     if (new URL(route.request().url()).origin === 'http://127.0.0.1:5308') return route.continue();
     unexpected.push(route.request().url()); return route.abort();
   });
-  if (process.argv.includes('--filtros-arranjo')) {
+  if (process.argv.includes('--retirada')) {
+    await validarRetiradaFila(page, root);
+    assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
+  } else if (process.argv.includes('--filtros-arranjo')) {
     await validarArranjoFiltrosFila(browser, root);
     assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
   } else if (process.argv.includes('--filtros-pesquisa')) {

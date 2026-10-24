@@ -1,4 +1,5 @@
 export const SITUACOES_AUTORIZACAO = [
+  ['RETIRADO', 'Envios retirados'],
   ['AGUARDANDO', 'Aguardando aprovação'], ['QUITADO', 'Quitados'],
   ['PARCIALMENTE_PAGO', 'Parcialmente pago'], ['NAO_PAGO', 'Não pago'], ['NA_FILA', 'Na fila'], ['DIVERGENTE', 'Divergentes'],
   ['REJEITADO', 'Rejeitados'], ['INVALIDADO', 'Invalidados'], ['CANCELADO', 'Cancelados'],
@@ -7,6 +8,7 @@ export const SITUACOES_AUTORIZACAO = [
   ['PENDENTE_FINANCEIRO', 'Pendente no financeiro'], ['INDISPONIVEL', 'Indisponíveis'], ['EXCLUIDO', 'Títulos excluídos — histórico']
 ];
 export const rotuloSituacao = value => ({ AGUARDANDO: 'Aguardando aprovação', QUITADO: 'Quitado',
+  RETIRADO: 'Envio retirado',
   PARCIALMENTE_PAGO: 'Parcialmente pago', NAO_PAGO: 'Não pago', NA_FILA: 'Na fila', DIVERGENTE: 'Divergente', CONCLUIDO: 'Na fila',
   PENDENTE: 'Aguardando aprovação', ENFILEIRADO: 'Na fila', AUTORIZADO: 'Autorizado — aguardando envio',
   FILA_DIRETA: 'Envio direto à fila',
@@ -42,21 +44,21 @@ export const podeSelecionarAutorizacao = item => podeAutorizar(item) || podeReje
 export const podeDecidirItem = (item, decisao) => decisao === 'AUTORIZAR' ? podeAutorizar(item) : podeSelecionarAutorizacao(item);
 export const valorSelecionado = item => podeRejeitarFila(item) ? Number(item.titulo.valor_saldo) : Number(item.valor_snapshot);
 export const assinaturaDecisao = item => `${item.id}:${item.snapshot_hash}:${item.versao_painel || ''}:${item.valor_snapshot}:${item.status}:${item.titulo?.status}:${item.titulo?.valor_saldo}:${item.titulo?.valor_baixado}`;
-export function selecionarPagina(atual, itens, adicionar) {
+export function selecionarPagina(atual, itens, adicionar, podeSelecionar = podeSelecionarAutorizacao) {
   const next = { ...atual };
-  for (const item of itens.filter(podeSelecionarAutorizacao)) {
+  for (const item of itens.filter(podeSelecionar)) {
     const key = String(item.titulo_financeiro_id);
     if (adicionar) next[key] = item;
     else delete next[key];
   }
   return next;
 }
-export function reconciliarSelecao(atual, itens) {
+export function reconciliarSelecao(atual, itens, podeSelecionar = podeSelecionarAutorizacao) {
   const next = { ...atual };
   for (const item of itens) {
     const key = String(item.titulo_financeiro_id);
     if (!next[key]) continue;
-    if (Number(next[key].id) !== Number(item.id) || !podeSelecionarAutorizacao(item)) delete next[key];
+    if (Number(next[key].id) !== Number(item.id) || !podeSelecionar(item)) delete next[key];
     else next[key] = item;
   }
   return next;

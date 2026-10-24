@@ -185,9 +185,10 @@ try {
     }
     await qa.page.getByRole('button', { name: 'Por lote / histórico', exact: true }).click();
     await qa.page.locator('.pa-list').waitFor();
-    assert.equal(await qa.page.locator('.fx-topbar').count(), 0);
+    assert.equal(await qa.page.locator('.fx-topbar').count(), options.installed === false ? 1 : 0, 'Web mantem cabecalho; instalado permanece compacto');
+    assert.equal(await qa.page.locator('[data-qa-tabs]').count(), options.installed === false ? 1 : 0, 'Web mantem as abas internas');
     assert.equal(await qa.page.locator('.pa-toolbar').count(), 0);
-    assert.equal(await qa.page.locator('.pa-pwa-shell').count(), 1);
+    assert.equal(await qa.page.locator('.pa-pwa-shell').count(), options.installed === false ? 0 : 1);
     if (options.user) assert.equal(await qa.page.getByRole('button', { name: /^Autorizar/ }).count(), 0, 'Visao comum nao concede decisao por perfil');
     assert.deepEqual(qa.errors, []); assert.deepEqual(qa.unexpected, []); await qa.page.close();
   }
@@ -243,5 +244,18 @@ try {
     }
     assert.deepEqual(qa.errors, []); assert.deepEqual(qa.unexpected, []); await p.close();
   }
+  const web = await scenario({ installed: false, realBrowser: true });
+  await web.page.setViewportSize({ width: 1366, height: 900 });
+  for (const etapa of ['entrada', 'reload', 'retorno']) {
+    if (etapa === 'reload') await web.page.reload();
+    if (etapa === 'retorno') { await web.page.goBack(); await web.page.getByText('Perfil QA', { exact: true }).waitFor(); await web.page.goForward(); }
+    await web.page.locator('.pa-obra').waitFor();
+    assert.equal(await web.page.locator('.fx-topbar').count(), 1, etapa);
+    assert.equal(await web.page.locator('[data-qa-tabs]').count(), 1, etapa);
+    assert.equal(await web.page.locator('.pa-pwa-shell').count(), 0, etapa);
+    assert.equal(await web.page.locator('.pa-pagina').count(), 1, 'Uma unica pagina logica ' + etapa);
+  }
+  await web.page.screenshot({ path: path.join(output, 'web-abas-preservadas.png'), fullPage: false });
+  assert.deepEqual(web.errors, []); assert.deepEqual(web.unexpected, []); await web.page.close();
   console.log('OK: PWA Android/iOS/navegador, ACL e shell preservados; BrowserRouter com Layout/workspace reais e callback nativo: detalhe -> titulos -> obras, saida/avanco/reload, selecao mantida, sem decisao. APIs simuladas.');
 } finally { await browser?.close(); await server.close(); }

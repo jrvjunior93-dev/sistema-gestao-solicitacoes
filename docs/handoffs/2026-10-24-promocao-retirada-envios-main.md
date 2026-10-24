@@ -74,3 +74,14 @@ Commitar frontend separadamente apenas local; depois do operador executar EC2 e
 enviar BACKEND_RETIRADA_ENVIOS_PRODUCAO_PRONTO, publicar esse commit na main.
 Nao liberar pelo simples sucesso do push. Nunca promover frontend antes da prova.
 Outputs/dist/node_modules e roteiros Node anteriores ficam fora dos commits.
+
+## Publicacao backend confirmada e frontend retido
+
+- Main recebeu3f3c5e8fe7eb848f2feb22ea27c5daba5d184afd por push fast-forward;
+  somente28 arquivos backend/operacao/docs, zero delta frontend nessa etapa.
+- Frontend completo14 arquivos,13 fontes/QA iguais byte a byte ao84b9aef4 e
+  package apenas comando QA, preparado em commit local posterior. Nao enviar
+  HEAD para main enquanto nao houver prova EC2. Scripts/anexos main preservados.
+- Proximo: operador atualiza EC2 com o SHA backend acima, migration003 e restart
+  somente PROD. Receber a saida de sucesso, health/Nodes e DEV preservados; entao
+  publicar o frontend local. Sem nova autorizacao de dados financeiros reais.
