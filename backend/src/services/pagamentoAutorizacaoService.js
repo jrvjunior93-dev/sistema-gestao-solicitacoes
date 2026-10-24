@@ -767,6 +767,8 @@ module.exports = {
   rejectDirectQueue,
   PERMISSIONS,
   capabilitiesForUser,
+  // Leitura contextual de NF-e reutiliza a politica nominal do dossie.
+  assertCanRead,
   createBatch,
   listBatches,
   listBatchesPage,

@@ -1,5 +1,31 @@
 # Modulo COMPRAS
 
+## Localizar pedidos - 2026-10-24
+
+Implementacao local ainda nao publicada, baseada em refactor/frontend100620bf.
+Compras > Relatorios > Localizar pedidos permite combinar busca geral, descricao
+da solicitacao, codigo SOL/SC/Sienge, numero PC/ID/externo, fornecedor/CNPJ,
+descricao/observacao de item ativo, valores minimo/maximo da aquisicao, obra,
+status e periodo de criacao. Consulta explicita pelo botao Consultar.
+
+GET `/compras/relatorios/localizar-pedidos` exige as permissoes existentes de
+relatorios e pedidos. Aplica intersecao do filtro de obra com o escopo atual,
+e a regra existente de comprador/solicitante quando o usuario nao possui
+consulta global. A mesma restricao vale para total, valores e itens.
+Uma linha por pedido, resumo do recorte completo, paginas de25/50/100,
+links ao pedido/solicitacao e CSV somente da pagina carregada. Status vazio
+inclui todos, inclusive cancelados; pesquisa de itens ignora os removidos.
+Total da aquisicao e valor ao fornecedor ficam em colunas separadas.
+
+Somente leitura: sem migration, chamada NSDOCS, emissao de documento,
+geracao/baixa/envio de titulo ou mudanca de permissao. Abertura do pedido
+mantem as acoes e validacoes da tela original.
+
+QA: `npm run test:pedido-localizacao` em backend e frontend. SQL/controller
+com SQLite ficticio e tela/HTTP reais locais; rede externa bloqueada.
+Handoff e pendencia da NF-e no dossie do proprietario:
+[conferencia e relatorio](../../handoffs/2026-10-24-localizacao-pedidos-autorizacao-nfe.md).
+
 ## Credor obrigatorio na nova Compra Direta - 2026-10-22
 
 Correcao local DEV sobre refactor/frontend41219c3a. A nova tela consulta

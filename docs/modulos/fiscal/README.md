@@ -1,5 +1,19 @@
 # Modulo FISCAL
 
+## Consulta contextual em pagamentos - 2026-10-24
+
+NF-e vinculadas manualmente/confirmadas podem ser consultadas no dossie de
+autorizacao e nos arquivos da solicitacao na fila. Acesso limitado ao contexto
+financeiro autenticado, obra e empresa destinataria; nao adiciona permissao
+geral Fiscal. Mesmo documento em varios pedidos/solicitacoes e deduplicado por
+arquivo. XML/DANFE permanecem no storage fiscal original, sem novas capturas,
+manifestacoes, downloads NSDOCS ou geracao automatica de DANFE.
+
+Consulta atual separada da assinatura do envio. Sem alterar vinculos, XML,
+historico fiscal, titulos ou baixas. Abertura registra evento de seguranca
+contextual sem URL assinada/chave S3 nos metadados. Mais detalhes no
+[handoff](../../handoffs/2026-10-24-nfe-dossie-arquivos-fila.md).
+
 ## Papel
 
 Fiscal administra entrada e armazenamento de documentos fiscais, certificados, sincronizacao DFe, importacao manual, divergencias, matching, validacao, vinculos e exportacao contabil controlada.

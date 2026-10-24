@@ -4,6 +4,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+const { attachmentContentDisposition } = require('../../../utils/fileName');
 
 const ALLOWED_FISCAL_MIME_TYPES = new Set([
   'application/xml',
@@ -303,7 +304,7 @@ async function saveRawSefazResponse(options = {}) {
   });
 }
 
-async function getFiscalObjectSignedUrl(key, expiresIn = null) {
+async function getFiscalObjectSignedUrl(key, expiresIn = null, options = {}) {
   assertFiscalS3Configured();
   const config = getFiscalS3Config();
   const client = createFiscalS3Client();
@@ -317,7 +318,9 @@ async function getFiscalObjectSignedUrl(key, expiresIn = null) {
 
   const command = new GetObjectCommand({
     Bucket: config.bucket,
-    Key: key
+    Key: key,
+    ...(options.attachment ? { ResponseContentDisposition: attachmentContentDisposition(options.filename || 'documento.xml') } : {}),
+    ...(options.contentType ? { ResponseContentType: options.contentType } : {})
   });
 
   return getSignedUrl(client, command, { expiresIn: Math.min(Math.max(safeExpires, 60), 900) });

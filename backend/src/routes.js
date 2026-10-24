@@ -3,6 +3,8 @@
 const crypto = require('crypto');
 const express = require('express');
 const router = express.Router();
+const PedidoLocalizacaoController = require('./controllers/PedidoLocalizacaoController');
+const FiscalPagamentoDocumentosController = require('./controllers/FiscalPagamentoDocumentosController');
 
 const permit = require('./middlewares/permissions');
 const csrfProtection = require('./middlewares/csrf');
@@ -2249,6 +2251,7 @@ router.get('/financeiro/fila-pagamentos/sugestoes', allowFilaPagamentosRead, val
 router.get('/financeiro/fila-pagamentos/contas', allowFilaPagamentosRead, PagamentoManualFilaController.contas);
 router.get('/financeiro/fila-pagamentos/instrumentos', allowFilaPagamentosBaixa, PagamentoManualFilaController.instrumentos);
 router.get('/financeiro/fila-pagamentos/solicitacoes/:id/arquivos', allowFilaPagamentosRead, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), PagamentoManualFilaController.arquivosSolicitacao);
+router.get('/financeiro/fila-pagamentos/solicitacoes/:id/notas-fiscais', allowFilaPagamentosRead, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), FiscalPagamentoDocumentosController.queue);
 router.get('/financeiro/fila-pagamentos/:id/comprovante', validateRequest({ params: validateNumericIdParam('id', 'Item da fila') }), PagamentoManualFilaController.comprovante);
 router.get('/financeiro/fila-pagamentos/:id/comprovantes/:comprovanteId', PagamentoManualFilaController.comprovanteAdicional);
 router.post('/financeiro/fila-pagamentos/:id/comprovante', allowFilaPagamentosBaixa, uploadRateLimit, uploadComprovantesPagamento.manual.single('file'), validateRequest({ params: validateNumericIdParam('id', 'Item da fila') }), PagamentoManualFilaController.anexarComprovante);
@@ -2275,6 +2278,7 @@ router.post('/financeiro/autorizacoes-pagamento/painel/fila-direta/autenticacao/
 router.post('/financeiro/autorizacoes-pagamento/painel/fila-direta/rejeitar', criticalRateLimit, PagamentoAutorizacaoController.rejectDirectQueue);
 router.post('/financeiro/autorizacoes-pagamento', criticalRateLimit, PagamentoAutorizacaoController.create);
 router.get('/financeiro/autorizacoes-pagamento/documentos/:id', validateRequest({ params: validateNumericIdParam('id', 'Documento') }), PagamentoAutorizacaoController.document);
+router.get('/financeiro/autorizacoes-pagamento/notas-fiscais', FiscalPagamentoDocumentosController.owner);
 router.post('/financeiro/autorizacoes-pagamento/passkeys/registro/opcoes', criticalRateLimit, PagamentoAutorizacaoController.registrationOptions);
 router.post('/financeiro/autorizacoes-pagamento/passkeys/registro/verificar', criticalRateLimit, PagamentoAutorizacaoController.verifyRegistration);
 router.get('/financeiro/autorizacoes-pagamento/passkeys', PagamentoAutorizacaoController.passkeys);
@@ -2594,6 +2598,7 @@ router.get('/compras/relatorios/auditoria-itens-pedido', allowComprasRelatoriosR
 router.get('/compras/relatorios/categorias-insumos', allowComprasRelatoriosRead, validateRequest({ query: validateCompraRelatorioCategoriasInsumosQuery }), scopeCompraListAccess, RelatorioComprasController.categoriasInsumos);
 router.get('/compras/relatorios/compras-diretas', allowComprasRelatoriosRead, validateRequest({ query: validateCompraRelatorioComprasDiretasQuery }), scopeCompraListAccess, RelatorioComprasController.comprasDiretas);
 router.get('/compras/relatorios/compras-fornecedor', allowComprasRelatoriosRead, validateRequest({ query: validateCompraRelatorioComprasFornecedorQuery }), scopeCompraListAccess, RelatorioComprasController.comprasPorFornecedor);
+router.get('/compras/relatorios/localizar-pedidos', allowComprasRelatoriosRead, allowComprasPedidosRead, scopeCompraListAccess, PedidoLocalizacaoController.index);
 router.get('/compras/relatorios/demanda-pedidos', allowComprasRelatoriosRead, validateRequest({ query: validateCompraRelatorioDemandaPedidosQuery }), scopeCompraListAccess, RelatorioComprasController.demandaPedidos);
 router.get('/compras/relatorios/evolucao', allowComprasRelatoriosRead, validateRequest({ query: validateCompraRelatorioEvolucaoQuery }), scopeCompraListAccess, RelatorioComprasController.evolucaoCompras);
 router.get('/compras/relatorios/pendencias-cotacoes', allowComprasRelatoriosRead, validateRequest({ query: validateCompraRelatorioPendenciasCotacoesQuery }), scopeCompraListAccess, RelatorioComprasController.pendenciasCotacoes);

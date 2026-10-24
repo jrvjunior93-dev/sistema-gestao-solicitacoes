@@ -1,5 +1,24 @@
 # Modulo FINANCEIRO
 
+## Consulta de NF-e no dossie e arquivos da fila - 2026-10-24
+
+Implementacao local, ainda nao publicada. Detalhe Por obra e historico Por lote
+oferecem `Consultar NF-e vinculadas`, com DANFE/PDF existente e XML. A consulta
+mostra os vinculos atuais, explicitamente separada dos documentos assinados do
+envio. Nao atualiza hashes, decisoes, revisoes, passkeys ou lotes retroativamente.
+Nao exige NF-e para enviar/autorizar/pagar e nao gera DANFE automaticamente.
+
+NF-e aparece tambem em Arquivos da solicitacao na Fila de Pagamentos, junto dos
+boletos. E uma referencia fiscal contextual, sem duplicar Anexo ou objeto S3.
+Nao inclui comprovantes ou anexos comuns nessa lista. Abrir/baixar reconsulta
+vinculo ativo, contexto e obra; assinatura de180s, XML como attachment/octet-stream.
+Consulta nao concede acesso ao modulo Fiscal; usa a politica nominal existente
+do dossie ou acesso a fila, mais escopo financeiro completo do titulo.
+
+QA: `npm run test:fiscal-pagamentos-documentos` em backend e frontend.
+Detalhes, limites e proximo passo:
+[handoff](../../handoffs/2026-10-24-nfe-dossie-arquivos-fila.md).
+
 ## Autorizacao individual e coletiva no PWA - 2026-10-24
 
 - Na visao Por obra, `Autorizar selecionados (N)` abrange a selecao de todas

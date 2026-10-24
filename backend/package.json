@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
+    "test:fiscal-pagamentos-documentos": "node --test scripts/validarFiscalPagamentoDocumentos.js && node scripts/validarFilaPagamentoSolicitacaoAcesso.js",
+    "test:pedido-localizacao": "node --test scripts/validarPedidoLocalizacao.js",
     "test:deploy-fiscal-vinculos-dev": "node --test scripts/validarFiscalVinculosDevSchema.js ../ops/deploy/atualizar-dev-fiscal-vinculos-20261024.test.cjs",
     "test:fiscal-vinculos-pedidos": "node --test scripts/validarVinculosNfePedidos.js && node scripts/validarTitulosPorPedido.js && node scripts/validarPedidoBoletoOpcional.js && node scripts/validarSobreposicaoTitulos.js",
     "test:nsdocs-captura-dev": "node --test scripts/validarNsdocsCapturaDev.js scripts/validarNsdocsSetupDev.js",

@@ -26,6 +26,7 @@ const UI_VISIBILITY_COMPONENTS = [
         components: [
           { key: 'relatorios.compras.auditoria', label: 'Auditoria de compras', type: 'card' },
           { key: 'relatorios.compras.demanda_pedidos', label: 'Demanda e pedidos', type: 'card' },
+          { key: 'relatorios.compras.localizar_pedidos', label: 'Localizar pedidos', type: 'card' },
           { key: 'relatorios.compras.evolucao', label: 'Evolucao mensal', type: 'card' },
           { key: 'relatorios.compras.compras_fornecedor', label: 'Compras por fornecedor', type: 'card' },
           { key: 'relatorios.compras.categorias_insumos', label: 'Categorias e insumos', type: 'card' },
