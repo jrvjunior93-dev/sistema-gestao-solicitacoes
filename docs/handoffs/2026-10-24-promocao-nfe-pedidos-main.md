@@ -84,6 +84,21 @@ Sem rede real nos QA funcionais (apenas servidores locais, SQLite e simuladores)
 
 ## Proximo passo exato
 
+### Vinculo PROD confirmado; liberacao do frontend
+
+- Usuario retornou VINCULO_FISCAL_PROD_CONFERIDO: fiscal_company_id1/company_id1,
+  CNPJ27123008000100, ja_estava_vinculado false, configuracao fiscal preservada
+  e external_nsdocs_calls0. Condicao de retencao do frontend atendida.
+- Candidato funcional local5ccdfa8a6dd85ebca4331e3b1faa0e3cea5ef415 testado;
+  main remota ainda b5e34d7b e DEV2920e1f1. Atualizacao desta retomada somente
+  documental; QA funcional anterior permanece valido, repetir manifesto/snippet.
+- Publicar SHA exato com push normal fast-forward, sem force. Conferir resposta
+  Git e depois artefatos Vercel de csc.jrfluxy.com.br. Nenhum pull, migration,
+  restart, mudanca de Node/PM2/env/dumps ou chamada NSDOCS na EC2 nesta etapa.
+- Proximo apos publicacao: usuario homologa NF-e no pedido/titulo/dossie/fila,
+  XML/DANFE e Localizar pedidos. Se Vercel nao atualizar, inspecionar implantacao,
+  sem declarar frontend publicado apenas por ter concluido o push.
+
 ### Storage concluido pelo usuario; vinculo cadastral e frontend pendentes
 
 - Prova recebida FISCAL_S3_PROD_OBJETO_TESTADO e FISCAL_S3_PROD_CONFERIDO:

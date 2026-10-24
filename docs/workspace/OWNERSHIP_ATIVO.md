@@ -2,6 +2,11 @@
 
 ## Liberacao frontend depois do storage PROD - 2026-10-24
 
+- Retomada: usuario retornou VINCULO_FISCAL_PROD_CONFERIDO, fiscal1/empresa1,
+  CNPJ27123008000100, configuracao preservada e nenhuma chamada NSDOCS.
+  Reservar registro de liberacao/docs; candidato funcional5ccdfa8a inalterado.
+  Remotos conferidos mainb5e34d7b e DEV2920e1f1; publicar etapa frontend e
+  conferir artefatos servidos, sem comando de escrita/reinicio na EC2.
 - Prova usuario: S3 ativo/persistido, Put/Get/versionamento/hash/URL assinada
   aprovados, peers/Nodes/env/dumps preservados. Frontend ainda retido.
 - Agente unico: preparar snippet/QA do vinculo fiscal1->empresa operacional1

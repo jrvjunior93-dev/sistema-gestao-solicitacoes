@@ -7,6 +7,10 @@ Nao repetir migrations, testes de gravacao ou reinicios para esta etapa.
 
 ## Vinculo cadastral pendente
 
+Atualizacao: usuario executou o snippet e retornou VINCULO_FISCAL_PROD_CONFERIDO,
+fiscal_company_id1/company_id1, CNPJ27123008000100, configuracao preservada e
+external_nsdocs_calls0. Nao repetir o PATCH; instrucoes abaixo ficam como registro.
+
 O cadastro fiscal PROD1 deve apontar para a empresa operacional PROD1, ambos
 com CNPJ27123008000100. O id2 usado no DEV nao deve ser copiado para producao.
 A tela atual de empresas fiscais nao oferece o campo de vinculo operacional.
@@ -39,6 +43,10 @@ build e manifesto. Snippet testado localmente com API simulada, sem escrita real
 Depois da prova do vinculo, conferir main remota sem divergencia e publicar o
 SHA exato da etapa frontend. Conferir a implantacao Vercel antes de homologar.
 Nao e necessario novo pull/restart na EC2 para servir esta interface.
+
+Prova cadastral recebida; candidato funcional5ccdfa8a liberado para publicacao
+apos conferencia de que a main remota permanece b5e34d7b. Push normal, sem force;
+nao incluir outputs locais nem alterar a branch refactor/frontend.
 
 Homologacao: NF-e vinculada no pedido/titulo, consulta no dossie e arquivos da
 fila, XML/DANFE quando disponivel, restricao por usuario/obra, historico e baixas
