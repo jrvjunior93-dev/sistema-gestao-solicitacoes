@@ -43,7 +43,7 @@ export default function AutorizacoesPorObra({ caps, userId, user, busy, setBusy,
   const [tentativaManual, setTentativaManual] = useState(0);
   const [detalheOcupado, setDetalheOcupado] = useState(false);
   const [pedindoMotivo, setPedindoMotivo] = useState(false);
-  const motivoRef = useRef(null), formularioFiltros = useRef(null);
+  const motivoRef = useRef(null), formularioFiltros = useRef(null), conferenciaRef = useRef(null);
   const { obra, detalhe, abrirObra, abrirDetalhe, voltar } = useAutorizacaoHistorico(slot, busy || preparando || detalheOcupado);
   const vivo = useRef(true), voo = useRef(null), travado = useRef(false);
   const parametros = { filtro, obra, paginaObras, paginaTitulos };
@@ -121,6 +121,13 @@ export default function AutorizacoesPorObra({ caps, userId, user, busy, setBusy,
     return () => clearTimeout(timer);
   }, [rascunho, filtro, busy, preparando]);
   useEffect(() => { if (pedindoMotivo) motivoRef.current?.focus(); }, [pedindoMotivo]);
+  useEffect(() => {
+    if (!revisaoDecisao) return;
+    // A conferencia fica fora da rolagem dos titulos. Levar o usuario a ela
+    // nao confirma a decisao nem inicia a biometria.
+    conferenciaRef.current?.focus({ preventScroll: true });
+    conferenciaRef.current?.scrollIntoView({ block: 'start' });
+  }, [revisaoDecisao]);
   function mudarSelecao(update) { setRevisaoDecisao(null); setSelecao(update); setAviso(''); }
   async function conferir(decisao) {
     if (travado.current || indisponivel || !selecionados.length) return;
@@ -243,9 +250,9 @@ export default function AutorizacoesPorObra({ caps, userId, user, busy, setBusy,
       </aside>
       <section className="pa-obras-titulos" aria-label="Títulos da obra" aria-busy={carregando}>
         {!obra ? <p className="pa-empty">Selecione uma obra para conferir os títulos e decidir.</p> : <>
-          <header className="pa-obras-cabecalho"><button type="button" className="btn btn-outline btn-sm pa-voltar-obras" disabled={busy || preparando} onClick={voltar}>Voltar às obras</button><strong>{obra.nome}</strong>
-            {(caps.can_decide || podeRetirarAlgum) && <div className="pa-obras-total-selecao"><strong aria-live="polite">{selecionados.length} selecionado(s) · {moeda(totalSelecionado)}</strong><small>Seleção de todas as obras e páginas; saldo dos títulos já na fila.</small><button type="button" className="btn btn-outline btn-sm" disabled={busy || preparando || !selecionados.length} onClick={() => mudarSelecao({})}>Limpar seleção de todas as páginas</button></div>}
-          </header>
+          <header className="pa-obras-cabecalho"><button type="button" className="btn btn-outline btn-sm pa-voltar-obras" disabled={busy || preparando} onClick={voltar}>Voltar às obras</button><strong>{obra.nome}</strong></header>
+          <div className="pa-obras-itens">
+          {(caps.can_decide || podeRetirarAlgum) && <div className="pa-obras-total-selecao"><strong aria-live="polite">{selecionados.length} selecionado(s) · {moeda(totalSelecionado)}</strong><small>Seleção de todas as obras e páginas; saldo dos títulos já na fila.</small><button type="button" className="btn btn-outline btn-sm" disabled={busy || preparando || !selecionados.length} onClick={() => mudarSelecao({})}>Limpar seleção de todas as páginas</button></div>}
           <div className="pa-obras-selecao"><label><input type="checkbox" checked={todosDaPagina} disabled={indisponivel || !elegiveis.length}
             onChange={e => mudarSelecao(current => selecionarPagina(current, titulos.data, e.target.checked, selecionavel))} /> Selecionar os disponíveis desta página</label><small>A retirada encerra só o envio. Aprovação, rejeição e pagamento mantêm suas permissões.</small>
             {podeRetirarAlgum && <RetirarEnvios key={userId} itens={envios} disabled={indisponivel} onOcupado={setBusy}
@@ -279,10 +286,14 @@ export default function AutorizacoesPorObra({ caps, userId, user, busy, setBusy,
             </article>;
           })}
           {!carregando && !erro && !titulos.data.length && <p className="pa-empty">Nenhum título nesta obra com os filtros aplicados.</p>}
-          <Paginacao nome="títulos" pagina={paginaTitulos} dados={titulos.paginacao} alterar={setPaginaTitulos} disabled={indisponivel}>
-            {caps.can_decide && <><button type="button" className="btn btn-outline btn-sm" disabled={indisponivel || !selecionados.length || !selecionados.every(podeSelecionarAutorizacao) || caps.paused || !caps.passkey_count} onClick={() => { setRevisaoDecisao(null); setPedindoMotivo(true); }}>Rejeitar</button>
-              <button type="button" className="btn btn-primary btn-sm" disabled={indisponivel || !selecionados.length || !selecionados.every(podeAutorizar) || caps.paused || !caps.passkey_count} onClick={() => conferir('AUTORIZAR')}>Autorizar</button></>}
-          </Paginacao>
+          </div>
+          <footer className="pa-obras-rodape">
+            {caps.can_decide && <div className="pa-obras-acoes-selecao" role="group" aria-label="Ações dos títulos selecionados">
+              <button type="button" className="btn btn-outline btn-sm" disabled={indisponivel || !selecionados.length || !selecionados.every(podeSelecionarAutorizacao) || caps.paused || !caps.passkey_count} onClick={() => { setRevisaoDecisao(null); setPedindoMotivo(true); }}>Rejeitar</button>
+              <button type="button" className="btn btn-primary btn-sm" disabled={indisponivel || !selecionados.length || !selecionados.every(podeAutorizar) || caps.paused || !caps.passkey_count} onClick={() => conferir('AUTORIZAR')}>Autorizar selecionados ({selecionados.length})</button>
+            </div>}
+            <Paginacao nome="títulos" pagina={paginaTitulos} dados={titulos.paginacao} alterar={setPaginaTitulos} disabled={indisponivel} />
+          </footer>
         </>}
       </section>
     </div>
@@ -290,15 +301,16 @@ export default function AutorizacoesPorObra({ caps, userId, user, busy, setBusy,
       {!obra && selecionados.length > 0 && <p>{selecionados.length} selecionado(s) · {moeda(totalSelecionado)} entre obras e páginas. Abra uma obra para decidir ou limpar a seleção.</p>}
       {pedindoMotivo && <form className="pa-obras-conferencia" onSubmit={e => { e.preventDefault(); conferir('REJEITAR'); }}><label>Motivo para rejeição<textarea ref={motivoRef} value={motivo} maxLength={500} required disabled={busy || preparando} onChange={e => setMotivo(e.target.value)} /></label><p>O saldo restante dos títulos já na fila será bloqueado até nova autorização. Valores pagos e histórico serão preservados.</p><div className="pa-obras-acoes"><button type="button" className="btn btn-outline btn-sm" disabled={busy || preparando} onClick={() => setPedindoMotivo(false)}>Cancelar rejeição</button><button type="submit" className="btn btn-primary btn-sm" disabled={indisponivel || !motivo.trim() || !selecionados.length}>Conferir rejeição</button></div></form>}
       {!caps.passkey_count && <small>Cadastre uma passkey nas opções para confirmar decisões.</small>}
-      {revisaoDecisao && <section className="pa-obras-conferencia" aria-label="Conferência da decisão">
+      {revisaoDecisao && <section ref={conferenciaRef} tabIndex={-1} className="pa-obras-conferencia" aria-label="Conferência da decisão">
         <strong>Conferir {revisaoDecisao.decisao === 'AUTORIZAR' ? 'autorização' : 'rejeição'} de {revisaoDecisao.itens.length} título(s)</strong>
+        <p>Total selecionado: <strong>{moeda(revisaoDecisao.itens.reduce((total, item) => total + Math.round(valorSelecionado(item) * 100), 0) / 100)}</strong></p>
         <p>{revisaoDecisao.decisao === 'AUTORIZAR'
           ? 'Uma única confirmação por passkey autoriza e envia todos os títulos selecionados para a fila, mesmo de lotes diferentes. Os demais permanecem como estão.'
           : `Somente os títulos selecionados serão decididos. Serão solicitadas ${revisaoDecisao.grupos.length} confirmações por passkey, separadas por lote e tipo de decisão. Se interromper, as decisões já confirmadas não serão desfeitas.`}</p>
         <ul>{revisaoDecisao.itens.map(i => <li key={i.id}>{i.snapshot_json?.codigo || `Título #${i.titulo_financeiro_id}`} · {i.obras_nomes} · {moeda(valorSelecionado(i))}</li>)}</ul>
         {revisaoDecisao.decisao === 'REJEITAR' && <p>Motivo: {revisaoDecisao.motivo}</p>}
         <div className="pa-obras-acoes"><button type="button" className="btn btn-outline btn-sm" disabled={busy} onClick={() => setRevisaoDecisao(null)}>Voltar à seleção</button>
-          <button type="button" className="btn btn-primary btn-sm" disabled={busy || caps.paused} onClick={confirmar}>Confirmar {revisaoDecisao.decisao === 'AUTORIZAR' ? 'autorização' : 'rejeição'} com passkey</button></div>
+          <button type="button" className="btn btn-primary btn-sm" disabled={busy || caps.paused} onClick={confirmar}>Confirmar {revisaoDecisao.decisao === 'AUTORIZAR' ? `autorização com passkey (${revisaoDecisao.itens.length})` : 'rejeição com passkey'}</button></div>
       </section>}
     </section>}
     {aviso && <p role="status">{aviso}</p>}

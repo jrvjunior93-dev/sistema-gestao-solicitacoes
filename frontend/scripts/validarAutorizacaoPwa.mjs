@@ -16,6 +16,7 @@ const plugin = {
   name: 'qa-autorizacao-pwa', enforce: 'pre',
   resolveId(source, importer) {
     if (source.endsWith('/contexts/AuthContext')) return stub + 'auth';
+    if (source.endsWith('/utils/webauthn')) return stub + 'webauthn';
     if (importer?.endsWith('/FinanceiroAutorizacoesPagamento.jsx')) {
       if (source === '../components/padrao') return stub + 'padrao';
       if (source === '../utils/webauthn') return stub + 'webauthn';
@@ -36,7 +37,7 @@ const plugin = {
     if (id === stub + 'native') return `export const isNativeApp=()=>false;export const registerNativeBackButtonHandler=handlers=>{window.__qaNativeBack=handlers;return()=>{if(window.__qaNativeBack===handlers)delete window.__qaNativeBack}};`;
     if (id === stub + 'auth') return `import React from 'react';export const AuthContext=React.createContext(null);export const useAuth=()=>({user:window.__qaUser,refreshSession:async()=>{},logout:()=>{window.__qaLogout=(window.__qaLogout||0)+1}});`;
     if (id === stub + 'padrao') return `import React from 'react';export {default as Pagina} from '/src/components/padrao/Pagina.jsx';export {default as PageHeader} from '/src/components/padrao/PageHeader.jsx';export const Avisos=()=>null;export const useAvisos=()=>({avisos:[],fechar:()=>{},avisar:{erro:console.error,sucesso:()=>{}}});`;
-    if (id === stub + 'webauthn') return `export const suportaPasskeys=()=>true,registrarPasskey=async()=>({id:'qa'}),autenticarComPasskey=async()=>({id:'qa'});`;
+    if (id === stub + 'webauthn') return `export const suportaPasskeys=()=>true,registrarPasskey=async()=>({id:'qa'}),autenticarComPasskey=async()=>{window.__qaPasskeys=(window.__qaPasskeys||0)+1;return{id:'qa'}};`;
     if (id === stub + 'atalhos') return `export const AtalhosProvider=({children})=>children;`;
     if (id === stub + 'guard') return `import React from 'react';export default function Guard({children}){return React.createElement('div',{'data-qa-guard':true},children)}`;
     if (id === stub + 'instalacao') return `export const getInstalacaoPublica=async()=>({product_name:'Fluxy'});`;
@@ -70,8 +71,8 @@ try {
   browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH } : {}) });
   const output = path.resolve(root, '../outputs/autorizacao-pwa-20261008');
   await mkdir(output, { recursive: true });
-  async function scenario({ installed = true, ios = false, user = owner, entry = '', realBrowser = false, excluido = false } = {}) {
-    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  async function scenario({ installed = true, ios = false, user = owner, entry = '', realBrowser = false, excluido = false, multiplos = false } = {}) {
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: multiplos, isMobile: multiplos });
     const errors = [], unexpected = []; page.on('pageerror', e => errors.push(e.message));
     await page.addInitScript(({ user, installed, ios }) => {
       window.__qaUser = user;
@@ -87,6 +88,11 @@ try {
       Object.assign(lots[0].itens[0],{situacao_financeira:'EXCLUIDO',titulo:null,
         exclusao_titulo:{em:'2026-10-14T18:00:22Z',responsavel:{id:1,nome:'Operador QA'},motivo:'Exclusao conferida'}});
     }
+    const itens = Array.from({length: multiplos ? 12 : 1}, (_, n) => ({ id: n+1, lote_id: n+1, titulo_financeiro_id: n+1,
+      status: 'PENDENTE', situacao_financeira: 'AGUARDANDO', snapshot_hash: `qa-${n}`, valor_snapshot: 100,
+      vencimento_atual: '2026-10-17', lote: { status: 'AGUARDANDO' },
+      titulo: { status: 'ABERTO', valor_saldo: 100, valor_baixado: 0 }, snapshot_json: { codigo: `TIT-${n+1}`, solicitacao: { codigo: `SOL-${n+1}` } } }));
+    const decisoes = [];
     await page.route('**/*', route => {
       const url = new URL(route.request().url()), json = data => route.fulfill({ contentType: 'application/json', body: JSON.stringify(data) });
       if (route.request().isNavigationRequest() && url.origin === 'http://127.0.0.1:5311') return route.continue();
@@ -95,7 +101,22 @@ try {
         return json({ data: lots.slice((pagina - 1) * limite, pagina * limite), paginacao: { pagina, total: lots.length, mais: pagina * limite < lots.length } });
       }
       if (url.pathname.endsWith('/autorizacoes-pagamento/painel/obras')) return json({ data: [{ obra_id: 1, obra_nome: 'Obra QA', quantidade_titulos: 5, valor_total: 500 }], resumo: { quantidade_titulos: 5, valor_total: 500 }, paginacao: { total: 1, mais: false } });
-      if (url.pathname.endsWith('/autorizacoes-pagamento/painel/titulos')) return json({ data: realBrowser ? [{ id: 1, lote_id: 1, titulo_financeiro_id: 1, status: 'PENDENTE', situacao_financeira: 'AGUARDANDO', snapshot_hash: 'qa', valor_snapshot: 100, vencimento_atual: '2026-10-17', lote: { status: 'AGUARDANDO' }, titulo: { status: 'ABERTO', valor_saldo: 100, valor_baixado: 0 }, snapshot_json: { codigo: 'TIT-1', solicitacao: { codigo: 'SOL-1' } } }] : [], paginacao: { total: realBrowser ? 1 : 0, mais: false } });
+      if (url.pathname.endsWith('/autorizacoes-pagamento/painel/titulos')) {
+        let data = realBrowser ? itens : [];
+        if (url.searchParams.get('item_ids')) data = data.filter(i => url.searchParams.get('item_ids').split(',').map(Number).includes(i.id));
+        else data = data.filter(i => i.status === 'PENDENTE');
+        return json({ data, paginacao: { total: data.length, mais: false } });
+      }
+      if (multiplos && url.pathname.endsWith('/painel/selecao/autenticacao/opcoes')) return json({ selecao_id:'qa-selecao',publicKey:{challenge:'qa'} });
+      if (multiplos && (url.pathname.endsWith('/painel/selecao/autorizar') || /\/\d+\/decidir$/.test(url.pathname))) {
+        const payload = route.request().postDataJSON();
+        const ids = payload.item_ids || payload.decisoes.map(d => d.item_id);
+        decisoes.push({ coletiva: Boolean(payload.item_ids), ids });
+        const data = itens.filter(i => ids.includes(i.id));
+        for (const i of data) Object.assign(i, { status:'ENFILEIRADO',situacao_financeira:'NA_FILA',fila_item_id:i.id });
+        return json({ itens:data,envio_pendente:false });
+      }
+      if (multiplos && /\/\d+\/autenticacao\/opcoes$/.test(url.pathname)) return json({challenge:'qa'});
       if (url.pathname.endsWith('/autorizacoes-pagamento/passkeys')) return json({ data: [{ id: 1, nome_dispositivo: 'Celular QA' }] });
       if (url.pathname.endsWith('/autorizacoes-pagamento/autorizadores')) return json({ data: [] });
       if (url.pathname.endsWith('/usuarios')) return json([]);
@@ -105,7 +126,63 @@ try {
       unexpected.push(url.pathname); return route.abort();
     });
     await page.goto(`http://127.0.0.1:5311/qa-pwa${realBrowser ? '?browser=1' : entry ? '?entry=' + entry : ''}`);
-    return { page, errors, unexpected };
+    return { page, errors, unexpected, decisoes, itens };
+  }
+  // PWA instalado + Layout reais: acao coletiva visivel sem rolar ate o fim,
+  // conferencia focada e autorizacao individual nao absorve a selecao da lista.
+  for (const {width,height=844,ios=false} of [{width:320,height:568},{width:390},{width:390,ios:true},{width:768},{width:1366}]) {
+    const qa = await scenario({realBrowser:true,multiplos:true,ios}); const p = qa.page;
+    await p.setViewportSize({width,height});
+    await p.locator('.pa-obra').click();
+    // No layout de duas colunas os filtros permanecem acima do painel.
+    // Posicionar o painel na pagina nao percorre os artigos da obra.
+    if(width>760) await p.locator('.pa-obras-titulos').scrollIntoViewIfNeeded();
+    await p.getByLabel('Selecionar TIT-1',{exact:true}).check();
+    await p.getByLabel('Selecionar TIT-2',{exact:true}).check();
+    const autorizar = p.getByRole('button',{name:'Autorizar selecionados (2)',exact:true});
+    const acaoAcessivel = async () => autorizar.evaluate(el => {
+      const r=el.getBoundingClientRect(), hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
+      return r.top>=0 && r.bottom<=innerHeight && (hit===el || el.contains(hit));
+    });
+    assert(await autorizar.isEnabled());
+    assert(await acaoAcessivel(),'Acao em lote visivel apos marcar dois, sem rolar os artigos '+width);
+    await p.locator('.pa-obras-itens').evaluate(el=>{el.scrollTop=el.scrollHeight;});
+    assert(await acaoAcessivel(),'Acao em lote visivel no fim da lista '+width);
+    await p.screenshot({path:path.join(output,`pwa-selecao-acessivel-${width}${ios?'-ios':''}.png`),fullPage:false});
+    await autorizar.click();
+    const conferencia=p.getByRole('region',{name:'Conferência da decisão'});
+    await conferencia.waitFor();
+    assert(await conferencia.evaluate(el=>el===document.activeElement),'Foco na conferencia, nao na biometria');
+    assert((await conferencia.innerText()).includes('200,00'));
+    assert.equal(await conferencia.locator('li').count(),2);
+    assert.equal(await p.evaluate(()=>window.__qaPasskeys||0),0);
+    assert.equal(qa.decisoes.length,0,'Preparar selecao nao grava autorizacao');
+    assert(await conferencia.getByRole('button',{name:'Confirmar autorização com passkey (2)',exact:true}).evaluate(el=>{
+      const r=el.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;
+    }),'Confirmacao em lote fica no viewport apos abrir conferencia '+width);
+    await p.screenshot({path:path.join(output,`pwa-conferencia-coletiva-${width}.png`),fullPage:false});
+    await conferencia.getByRole('button',{name:'Voltar à seleção',exact:true}).click();
+    await p.getByRole('button',{name:'Abrir detalhes de TIT-3',exact:true}).click();
+    const detalhe=p.getByRole('dialog',{name:'Detalhes do título para autorização'});
+    await detalhe.getByRole('button',{name:'Autorizar somente este título',exact:true}).click();
+    await detalhe.getByRole('region',{name:'Conferência deste título'}).waitFor();
+    assert((await detalhe.innerText()).includes('Aprovar somente TIT-3?'));
+    await p.screenshot({path:path.join(output,`pwa-autorizacao-individual-${width}.png`),fullPage:false});
+    await detalhe.getByRole('button',{name:'Confirmar somente este título com passkey',exact:true}).click();
+    await detalhe.getByText('Somente este título foi aprovado. Os demais não foram decididos.').waitFor();
+    assert.deepEqual(qa.decisoes,[{coletiva:false,ids:[3]}]);
+    await detalhe.getByRole('button',{name:'Voltar à lista',exact:true}).click();
+    await p.getByLabel('Selecionar TIT-1',{exact:true}).waitFor();
+    assert(await p.getByLabel('Selecionar TIT-1',{exact:true}).isChecked());
+    assert(await p.getByLabel('Selecionar TIT-2',{exact:true}).isChecked());
+    await autorizar.click();
+    await conferencia.getByRole('button',{name:'Confirmar autorização com passkey (2)',exact:true}).evaluate(el=>{el.click();el.click();});
+    await p.getByRole('status').getByText(/2 título\(s\) confirmado\(s\) e enviado\(s\)/).waitFor();
+    assert.deepEqual(qa.decisoes,[{coletiva:false,ids:[3]},{coletiva:true,ids:[1,2]}]);
+    assert.equal(await p.evaluate(()=>window.__qaPasskeys),2,'Uma passkey individual + uma coletiva');
+    assert(qa.itens.slice(3).every(i=>i.status==='PENDENTE'),'Nao selecionados intactos');
+    assert(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Sem overflow '+width);
+    assert.deepEqual(qa.errors,[]);assert.deepEqual(qa.unexpected,[]);await p.close();
   }
   const { page, errors, unexpected } = await scenario();
   await page.waitForFunction(() => window.__qaInitialRoute);
@@ -257,5 +334,5 @@ try {
   }
   await web.page.screenshot({ path: path.join(output, 'web-abas-preservadas.png'), fullPage: false });
   assert.deepEqual(web.errors, []); assert.deepEqual(web.unexpected, []); await web.page.close();
-  console.log('OK: PWA Android/iOS/navegador, ACL e shell preservados; BrowserRouter com Layout/workspace reais e callback nativo: detalhe -> titulos -> obras, saida/avanco/reload, selecao mantida, sem decisao. APIs simuladas.');
+  console.log('OK: PWA Android/iOS/navegador e toque320x568/390/768/1366: acao coletiva fora da rolagem, conferencia focada com total/quantidade, individual separado da selecao, uma passkey/POST coletivo e duplo clique protegido. ACL/shell/abas, BrowserRouter/workspace e voltar nativo preservados. APIs/biometria simuladas.');
 } finally { await browser?.close(); await server.close(); }

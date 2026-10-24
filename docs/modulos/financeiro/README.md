@@ -1,5 +1,22 @@
 # Modulo FINANCEIRO
 
+## Autorizacao individual e coletiva no PWA - 2026-10-24
+
+- Na visao Por obra, `Autorizar selecionados (N)` abrange a selecao de todas
+  as obras/paginas, nao somente o titulo aberto. A acao coletiva e a paginacao
+  ficam fora da rolagem dos artigos, inclusive no PWA instalado.
+- Conferir abre a revisao com foco visivel, quantidade, total e lista dos
+  titulos. So o clique explicito de confirmacao solicita a passkey unica
+  e envia a selecao ao endpoint coletivo existente. Duplo clique, cancelamento,
+  revalidacao dos dados e falha transacional mantem as protecoes anteriores.
+- No detalhe, `Autorizar somente este titulo` e sua confirmacao sao individuais.
+  A selecao externa nao e incorporada nem descartada; apenas o titulo decidido
+  sai da selecao. Para decidir os marcados, retornar a lista.
+- Sem novas permissoes, endpoints, regras financeiras ou migration. Permanecem
+  autorizador nominal, ACL/escopo, pausa, passkey e bloqueios por situacao.
+- QA offline com UI real/biometria simulada; homologacao no aparelho real do
+  proprietario e publicacao DEV dependem de etapa posterior autorizada.
+
 ## Favorecido editavel na medicao e no titulo - 2026-10-23
 
 - Detalhe e pagina de edicao do titulo oferecem Editar favorecido, separado
