@@ -42,7 +42,7 @@ test('CA publica AWS pinada e valida; rejeita substituicao e expiracao', () => {
   assert.throws(() => op.validateCaBundle(bundle, Date.parse('2500-01-01T00:00:00Z')));
 });
 
-function harness({ head = op.BASE, preflightExit = 0, qaExit = 0, mutatePeer = false, enabled = false } = {}) {
+function harness({ head = op.BASE, preflightExit = 0, qaExit = 0, listExit = 0, mutatePeer = false, enabled = false } = {}) {
   const { before, after } = packages();
   const calls = [], logs = [], reads = [];
   let locked = false;
@@ -88,6 +88,7 @@ function harness({ head = op.BASE, preflightExit = 0, qaExit = 0, mutatePeer = f
       status = preflightExit;
     } else if (args.includes('--listar-empresas')) {
       assert.equal(args.length, 2);
+      status = listExit;
       stdout = JSON.stringify({ outcome: 'NSDOCS_EMPRESAS_LOCAIS_DEV', external_calls: 0,
         companies: [{ id: 7, name: 'Empresa ficticia', cnpj: '11222333000181', cnpj_valid: true }] });
     } else status = qaExit;
@@ -120,8 +121,16 @@ test('orquestracao real simulada: atualiza arquivos, QA e leitura local, sem res
   assert.equal(proof.chamadas_nsdocs, 0); assert.equal(proof.conector_automatico_desligado, true);
 });
 test('retoma tambem do pacote manual anterior sem reinicio', async () => {
-  const h = harness({ head: op.PREVIOUS }); await h.main();
-  assert.equal(h.head, VERSION);
+  for (const head of [op.PREVIOUS, op.CA_PREVIOUS]) {
+    const h = harness({ head }); await h.main(); assert.equal(h.head, VERSION);
+  }
+});
+test('falha na listagem indica a etapa e nao imprime ambiente ou stderr bruto', async () => {
+  const h = harness({ head: op.CA_PREVIOUS, listExit: 1 });
+  await assert.rejects(h.main(), error => error.message === 'LISTAGEM_EMPRESAS_DEV_FALHOU_SEM_EXIBIR_DADOS');
+  assert(h.logs.includes('TLS_UUID_DEV_CONFERIDOS_EM_LEITURA'));
+  assert(!h.logs.some(value => String(value).includes('NSDOCS_MANUAL_DEV_PUBLICADO_SEM_REINICIOS')));
+  assert.equal(h.locked, false);
 });
 test('preflight real em VM aceita CA global ausente e exige TLS, UUID e rollback', async () => {
   const h = harness(); await h.main();

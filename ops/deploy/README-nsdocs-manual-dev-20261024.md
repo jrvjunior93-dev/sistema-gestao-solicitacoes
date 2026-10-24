@@ -27,7 +27,7 @@ fornecido no chat. Nao executar um git pull generico antes do operador.
 )
 ```
 
-Exige HEAD no f2167ff72d803fc987d617543c0dfcd31527cc09, no f16f8351 anterior ou no alvo, inventario
+Exige HEAD no f2167ff72d803fc987d617543c0dfcd31527cc09, f16f8351,356af018 ou alvo, inventario
 exato deste pacote e package sem dependencias alteradas. Etapa anterior pendente
 interrompe antes do fast-forward. Confere tres processos/Nodes isolados/daemon
 existentes, hashes de .env/dumps/runtimes/unidade e flags NSDOCS desligadas.
@@ -97,7 +97,7 @@ comprova a empresa e nao habilita o conector automatico.
 
 ## Testes locais da publicacao
 
-39 testes:19 manuais,11 da base e9 deste operador com fronteiras ficticias.
+40 testes:19 manuais,11 da base e10 deste operador com fronteiras ficticias.
 Regressao de permissoes financeiras e sintaxe tambem conferidas. Testes do operador
 simulam Git/SO/PM2/DB/HTTP; nao atualizam uma EC2 real. Nenhuma execucao remota
 foi realizada pelo agente. Usuario executara o roteiro e enviara a saida sem chave.
@@ -109,3 +109,11 @@ global nem editar .env/PM2 para contornar. A versao corrigida carrega os certifi
 publicos AWS em memoria apenas para o comando manual e confere TLS real na sessao.
 O resultado inclui tls_manual_com_ca_aws_validada=true. Essa conferencia nao atesta
 o TLS da conexao do backend ja em execucao; esse ambiente nao e alterado aqui.
+
+## Retomada de falha Node1 apos QA
+
+O preset SSL validado e imutavel, mas mysql2 normaliza o objeto recebido.
+Runtime agora passa uma copia ao driver, sem perder CA/rejectUnauthorized/
+verifyIdentity. QA usa o construtor de configuracao real do mysql2 instalado,
+sem socket. Operador aceita356af018 e indica TLS_UUID_DEV_CONFERIDOS_EM_LEITURA
+antes da listagem. Falha de listagem possui codigo proprio sem stdout/stderr bruto.

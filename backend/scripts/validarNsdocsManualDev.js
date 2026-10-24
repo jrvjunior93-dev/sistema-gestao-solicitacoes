@@ -6,6 +6,10 @@ const fs = require('node:fs'), path = require('node:path'), vm = require('node:v
 const { EventEmitter } = require('node:events');
 const { PassThrough } = require('node:stream');
 const zlib = require('node:zlib');
+const { createRequire } = require('node:module');
+const backendRequire = createRequire(path.resolve(__dirname, '../package.json'));
+// Somente construtor de configuracao do driver instalado: nao abre socket.
+const MysqlConnectionConfig = require(path.join(path.dirname(backendRequire.resolve('mysql2')), 'lib/connection_config.js'));
 let realCalls = 0;
 require('node:https').request = () => { realCalls++; throw Error('REDE_REAL_PROIBIDA'); };
 global.fetch = () => { realCalls++; throw Error('REDE_REAL_PROIBIDA'); };
@@ -309,7 +313,12 @@ test('runtime SQL real em VM: identidade, TLS, cadastro ativo e rollback sem esc
       if (name.endsWith('/config/env')) return { env, validateRequiredEnv() {} };
       if (name === 'mysql2/promise') return { createConnection: async options => {
         assert.equal(options.ssl.rejectUnauthorized, true); assert.equal(options.ssl.verifyIdentity, true);
-        assert.equal(options.ssl.ca, rdsCaBundle.pem); return db;
+        assert.equal(options.ssl.ca, rdsCaBundle.pem);
+        const actualDriverConfig = new MysqlConnectionConfig(options);
+        assert.equal(actualDriverConfig.ssl.rejectUnauthorized, true);
+        assert.equal(actualDriverConfig.ssl.verifyIdentity, true);
+        assert.equal(Object.isFrozen(getRdsSsl()), true);
+        return db;
       } };
       throw Error('Dependencia nao isolada');
     } };

@@ -10,6 +10,7 @@ const PM2_NODE = '/opt/fluxy-node24-pm2/node-v24.22.1-linux-x64/bin/node';
 const PM2_CLI = '/usr/lib/node_modules/pm2/bin/pm2';
 const BASE = 'f2167ff72d803fc987d617543c0dfcd31527cc09';
 const PREVIOUS = 'f16f835181feac75a9a5a72fa829090e5491cb54';
+const CA_PREVIOUS = '356af018f708f8ec89bba75706597682b43dabf6';
 const CA_PATH = 'backend/src/modules/fiscal/services/nsdocs/manual/rds-ca-us-east-2.json';
 const CA_SHA256 = 'd46e1bdfda05c8e7644e50930806a19b139a222542bf0348082fb59ece2b5fa5';
 const CHANGESET = [
@@ -22,6 +23,7 @@ const CHANGESET = [
   'A\tdocs/handoffs/2026-10-24-nsdocs-v2-consulta-manual-dev.md',
   'A\tdocs/handoffs/2026-10-24-publicacao-nsdocs-manual-dev.md',
   'A\tdocs/handoffs/2026-10-24-nsdocs-manual-ca-isolada.md',
+  'A\tdocs/handoffs/2026-10-24-nsdocs-mysql2-config-retomada.md',
   'A\tops/deploy/README-nsdocs-manual-dev-20261024.md',
   'A\tops/deploy/atualizar-dev-nsdocs-manual-20261024.cjs',
   'A\tops/deploy/atualizar-dev-nsdocs-manual-20261024.test.cjs'
@@ -171,7 +173,7 @@ async function main(version) {
   check(fs.realpathSync(process.cwd()) === ROOT && git(['rev-parse', '--show-toplevel']) === ROOT &&
     git(['branch', '--show-current']) === 'refactor/frontend', 'CHECKOUT_DEV_DIVERGENTE');
   check(!git(['status', '--porcelain', '--untracked-files=no']), 'DEV_TEM_ARQUIVOS_RASTREADOS_ALTERADOS');
-  check([BASE, PREVIOUS, version].includes(git(['rev-parse', 'HEAD'])), 'ETAPA_DEV_ANTERIOR_PENDENTE');
+  check([BASE, PREVIOUS, CA_PREVIOUS, version].includes(git(['rev-parse', 'HEAD'])), 'ETAPA_DEV_ANTERIOR_PENDENTE');
   git(['merge-base', '--is-ancestor', version, 'origin/refactor/frontend']);
   validateInventory(git(['diff', '--name-status', BASE, version]).split(/\r?\n/).filter(Boolean));
   validatePackage(JSON.parse(git(['show', `${BASE}:backend/package.json`])), JSON.parse(git(['show', `${version}:backend/package.json`])));
@@ -202,7 +204,11 @@ async function main(version) {
       run(NODE, args, { cwd: BACKEND }); console.log(`QA aprovado: ${args.at(-1)}`);
     }
     preflight(env, bundle);
-    const companies = parseCompanies(run(NODE, ['scripts/nsdocsDevManual.js', '--listar-empresas'], { cwd: BACKEND, env }));
+    console.log('TLS_UUID_DEV_CONFERIDOS_EM_LEITURA');
+    let companies;
+    try {
+      companies = parseCompanies(run(NODE, ['scripts/nsdocsDevManual.js', '--listar-empresas'], { cwd: BACKEND, env }));
+    } catch { check(false, 'LISTAGEM_EMPRESAS_DEV_FALHOU_SEM_EXIBIR_DADOS'); }
     unchanged(); check(await health(8000) && await health(8001), 'HEALTH_FINAL_FALHOU');
     console.log(JSON.stringify({ etapa: 'NSDOCS_MANUAL_DEV_PUBLICADO_SEM_REINICIOS', commit: version,
       conector_automatico_desligado: true, chave_nao_configurada_pelo_deploy: true, chamadas_nsdocs: 0,
@@ -212,7 +218,7 @@ async function main(version) {
     console.log('Sem restart, migration, npm install, chave, chamadas NSDOCS, frontend ou alteracao do PM2.');
   } finally { fs.rmdirSync(lock); }
 }
-module.exports = { ROOT, NODE, PM2_NODE, PM2_CLI, BASE, PREVIOUS, CA_PATH, CHANGESET, cleanEnv, validateInventory,
+module.exports = { ROOT, NODE, PM2_NODE, PM2_CLI, BASE, PREVIOUS, CA_PREVIOUS, CA_PATH, CHANGESET, cleanEnv, validateInventory,
   validatePackage, validateFlags, validateCaBundle, assertPreserved, parseCompanies, main };
 if (require.main === module || process.argv[1] === '-') main(process.argv[2]).catch(error => {
   if (/^[A-Z][A-Z0-9_]{0,100}$/.test(error.message || '')) console.error(error.message);

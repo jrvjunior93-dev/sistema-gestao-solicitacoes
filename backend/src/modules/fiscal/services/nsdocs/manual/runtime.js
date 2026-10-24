@@ -27,7 +27,8 @@ async function withDevDatabase(action) {
   const mysql = require('mysql2/promise');
   const db = await mysql.createConnection({ host: env.dbHost, port: env.dbPort, user: env.dbUser,
     password: env.dbPassword, database: env.dbName, connectTimeout: 10000,
-    ssl: getRdsSsl() });
+    // mysql2 normaliza o objeto recebido; o preset validado permanece imutavel.
+    ssl: { ...getRdsSsl() } });
   try {
     await db.query('START TRANSACTION READ ONLY');
     const [tls] = await db.query("SHOW SESSION STATUS LIKE 'Ssl_cipher'");
