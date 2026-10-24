@@ -3,6 +3,8 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
   {
     id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
     fiscal_dfe_document_id: { type: DataTypes.INTEGER, allowNull: false },
+    purchase_link_key: { type: DataTypes.STRING(100), allowNull: true },
+    allocated_value: { type: DataTypes.DECIMAL(14, 2), allowNull: true },
     solicitacao_id: { type: DataTypes.INTEGER, allowNull: true },
     solicitacao_compra_id: { type: DataTypes.INTEGER, allowNull: true },
     pedido_id: { type: DataTypes.INTEGER, allowNull: true },

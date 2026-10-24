@@ -51,4 +51,10 @@ nesta etapa. Sem ativar automatico, alterar producao ou criar bloqueios financei
 
 ## Mudanca segura
 
+Vinculos operacionais NF-e/pedidos/titulos preparados para o piloto DEV:
+[contrato, permissoes e homologacao local](NFE_VINCULOS_PEDIDOS_TITULOS_DEV.md).
+Suporta a mesma nota em pedidos de varias solicitacoes, sem bloquear financeiro
+ou ativar sincronizacao NSDOCS. Migration aditiva ainda nao aplicada; liberar
+backend/schema DEV antes do frontend, em etapa de publicacao autorizada.
+
 Testar parser, processor, fixtures, duplicidade, certificado, criptografia, S3, locks, preflight, permissao, vinculos, divergencias e consumidores. Os documentos `fiscal_fase*` registram a construcao historica; este arquivo define o estado conceitual atual.

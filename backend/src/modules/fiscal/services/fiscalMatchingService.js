@@ -298,6 +298,8 @@ async function atualizarSugestaoVinculoFiscal(req, documentId, linkId, payload =
   }
 
   const status = payload.status;
+  if(link.purchase_link_key) throw createHttpError('Use a conferencia de pedidos para revisar ou encerrar este vinculo.',409);
+  if(status==='confirmed'&&(link.pedido_id||link.pedido_item_id)) throw createHttpError('Confirme pedidos e parcelas no painel NF-e e pedidos, preservando escopo e historico.',409);
   if (!['confirmed', 'rejected'].includes(status)) {
     throw createHttpError('Status do vinculo fiscal invalido.', 400);
   }

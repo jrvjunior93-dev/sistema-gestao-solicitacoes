@@ -169,7 +169,7 @@ async function buscarTitulosPedido(pedidoId, { transaction, incluirLegados = tru
       as: 'titulo',
       required: true,
       attributes: [
-        'id', 'codigo', 'status', 'descricao', 'valor_original', 'valor_saldo', 'valor_baixado', 'compartilhamento_id',
+        'id', 'codigo', 'tipo', 'status', 'descricao', 'valor_original', 'valor_saldo', 'valor_baixado', 'compartilhamento_id',
         'data_emissao', 'data_vencimento', 'forma_pagamento_id', 'categoria_financeira_id'
       ]
     }],
@@ -198,7 +198,7 @@ async function buscarTitulosPedido(pedidoId, { transaction, incluirLegados = tru
   const titulosLegados = await TituloFinanceiro.findAll({
     where: { id: { [Op.in]: idsLegados } },
     attributes: [
-      'id', 'codigo', 'status', 'descricao', 'valor_original', 'valor_saldo', 'valor_baixado',
+      'id', 'codigo', 'tipo', 'status', 'descricao', 'valor_original', 'valor_saldo', 'valor_baixado',
       'data_emissao', 'data_vencimento', 'forma_pagamento_id', 'categoria_financeira_id'
     ],
     transaction,
@@ -258,6 +258,7 @@ async function obterResumoFinanceiroPedido(pedido, { transaction, incluirDetalhe
     transaction
   });
   const resumo = {
+    pedido_id: Number(pedido.id),
     status,
     fluxo_versao: pedido.financeiro_fluxo_versao || null,
     legado: !pedido.financeiro_fluxo_versao,
@@ -715,7 +716,7 @@ async function criarPrevisoesPedido({ req, pedidoId, payload, idempotencyKey, tr
 
   await require('./tituloSobreposicaoService').assertSemAvulsosCompra(pedido.solicitacao.solicitacao_principal_id, transaction);
   const existentes = await buscarTitulosPedido(pedido.id, { transaction, incluirLegados: true });
-  if (existentes.some((item) => !STATUS_TITULO_ENCERRADO.has(normalize(item.titulo?.status)))) {
+  if (existentes.some((item) => item.origem !== 'FRETE_TERCEIRO' && !STATUS_TITULO_ENCERRADO.has(normalize(item.titulo?.status)))) {
     throw httpError(409, 'Este pedido ja possui titulo financeiro ativo.', 'PEDIDO_JA_POSSUI_TITULO');
   }
 
