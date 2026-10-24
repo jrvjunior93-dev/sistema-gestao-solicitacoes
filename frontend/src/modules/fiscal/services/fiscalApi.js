@@ -114,6 +114,27 @@ export async function getFiscalDocument(id) {
   return parseJson(response, 'Erro ao buscar documento fiscal');
 }
 
+export async function getFiscalPurchaseOrders(params = {}) {
+  const response = await fetch(buildUrl('/fiscal/purchase-links/orders', params), { headers: authHeaders() });
+  return parseJson(response, 'Erro ao conferir pedidos para a NF-e');
+}
+export async function getFiscalPurchaseLinks(params = {}) {
+  const response = await fetch(buildUrl('/fiscal/purchase-links', params), { headers: authHeaders() });
+  return parseJson(response, 'Erro ao consultar vinculos fiscais');
+}
+export async function saveFiscalPurchaseLinks(id, body, key) {
+  const response = await fetch(`${API_URL}/fiscal/documents/${id}/purchase-links`, {
+    method:'POST', headers:authHeaders({'Content-Type':'application/json','Idempotency-Key':key}), body:JSON.stringify(body)
+  });
+  return parseJson(response, 'Erro ao vincular NF-e aos pedidos');
+}
+export async function endFiscalPurchaseLink(id, pedidoId, body, key) {
+  const response = await fetch(`${API_URL}/fiscal/documents/${id}/purchase-links/${pedidoId}/end`, {
+    method:'POST', headers:authHeaders({'Content-Type':'application/json','Idempotency-Key':key}), body:JSON.stringify(body)
+  });
+  return parseJson(response, 'Erro ao encerrar vinculo fiscal');
+}
+
 export async function getFiscalDocumentFileUrl(id, type) {
   const normalizedType = type === 'pdf' ? 'pdf' : 'xml';
   const response = await fetch(`${API_URL}/fiscal/documents/${id}/${normalizedType}-url`, {

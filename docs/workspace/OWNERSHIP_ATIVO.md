@@ -1,5 +1,15 @@
 # Ownership Ativo
 
+## Liberacao frontend depois do storage PROD - 2026-10-24
+
+- Prova usuario: S3 ativo/persistido, Put/Get/versionamento/hash/URL assinada
+  aprovados, peers/Nodes/env/dumps preservados. Frontend ainda retido.
+- Agente unico: preparar snippet/QA do vinculo fiscal1->empresa operacional1
+  via API autenticada com CNPJ conferido e somente empresa_id; sem SQL/backfill.
+- Branch codex/nfe-frontend-liberacao-20261024. Reaplicar somente o inventario
+  frontend ec948e5b sobre backend atual e metadados de storage; QA/build e
+  roteiro/handoff. Nao publicar frontend antes de confirmar o vinculo cadastral.
+
 ## Corte S3 fiscal PROD depois do backend - 2026-10-24
 
 - Prova recebida: backend b5e34d7b/migration002 prontos, Nodes/DEV/Experience/

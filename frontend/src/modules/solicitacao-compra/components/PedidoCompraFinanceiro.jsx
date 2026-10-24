@@ -25,6 +25,7 @@ import {
 import { formaPagamentoEhBoleto, formaPagamentoEhPix, tokensFormaPagamento } from '../../../utils/formaPagamento';
 import { PIX_TEXTO_MAX } from '../../../utils/pix';
 import OverlayModal from '../../../components/ui/OverlayModal';
+import VinculosNfe from '../../fiscal/components/VinculosNfe';
 
 const STATUS_LABEL = {
   NAO_INICIADO: 'Não iniciado', AGUARDANDO_GEO: 'Legado aguardando revisão',
@@ -346,6 +347,7 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
   }
 
   return (
+    <><VinculosNfe pedidoId={pedido.id} user={user} />
     <BlocoConteudo titulo="Gestão financeira do pedido" contagem={STATUS_LABEL[financeiro.status] || String(financeiro.status || '').replace(/_/g, ' ')} descricao="O pedido permanece com Compras. Compras cria os títulos; o GEO autoriza o envio pela tela de Contas a Pagar." variante="primario" cor="var(--module-financeiro)">
       {podeCriarCompartilhado && <button type="button" className="btn btn-outline btn-sm" disabled={Boolean(processando) || !pedido?.fornecedor?.parceiro_id} onClick={() => setLoteAberto(true)}>Gerar títulos compartilhados com outras solicitações / pedidos</button>}
       {loteAberto && <TitulosCompartilhadosModal solicitacaoId={pedido.solicitacao?.solicitacao_principal_id || pedido.solicitacao_principal_id}
@@ -409,6 +411,6 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
           </button>
         </footer>
       </OverlayModal>}
-    </BlocoConteudo>
+    </BlocoConteudo></>
   );
 }

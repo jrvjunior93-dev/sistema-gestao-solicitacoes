@@ -4,6 +4,7 @@ import PreviewAnexoModal from '../../pages/SolicitacaoDetalhe/PreviewAnexoModal'
 import { getArquivosSolicitacaoFila } from '../../services/financeiro';
 import { getLinkSeguroAnexoSolicitacao } from '../../services/solicitacoes';
 import { ehBoletoSolicitacao, rotuloBoletoSolicitacao } from '../../utils/boletosSolicitacao';
+import {abrirNotaSolicitacaoFila,ehNotaFiscalFila} from '../../services/notasFiscaisPagamento';
 
 function dataArquivo(value) {
   if (!value) return 'Data não informada';
@@ -33,7 +34,7 @@ export default function ArquivosSolicitacaoFilaModal({ solicitacao, onFechar }) 
     getArquivosSolicitacaoFila(solicitacao.id)
       .then((dados) => {
         if (ativo) setArquivos(Array.isArray(dados)
-          ? dados.filter(ehBoletoSolicitacao) : []);
+          ? dados.filter(arquivo=>ehBoletoSolicitacao(arquivo)||ehNotaFiscalFila(arquivo)) : []);
       })
       .catch((error) => {
         if (ativo) setErro(error?.message || 'Não foi possível carregar os arquivos.');
@@ -59,7 +60,8 @@ export default function ArquivosSolicitacaoFilaModal({ solicitacao, onFechar }) 
     setAbrindoId(arquivo.id);
     setErro('');
     try {
-      const url = await getLinkSeguroAnexoSolicitacao(arquivo.caminho_arquivo);
+      const fiscal = ehNotaFiscalFila(arquivo);
+      const url = fiscal ? (await abrirNotaSolicitacaoFila(solicitacao.id,arquivo)).url : await getLinkSeguroAnexoSolicitacao(arquivo.caminho_arquivo);
       if (aberturaRef.current !== abertura) return;
       const nome = arquivo.nome_original || arquivo.caminho_arquivo || `Arquivo #${arquivo.id}`;
       if (!baixar && /\.(pdf|jpg|jpeg|png|gif|webp)(\?|$)/i.test(nome)) {
@@ -90,7 +92,7 @@ export default function ArquivosSolicitacaoFilaModal({ solicitacao, onFechar }) 
       <div data-modal="cabecalho" className="flex items-start justify-between gap-3 border-b border-[var(--c-border)] px-4 py-3">
         <div className="min-w-0">
           <h2 className="text-base font-semibold text-[var(--c-text)]">Arquivos da solicitação {solicitacao.codigo || `#${solicitacao.id}`}</h2>
-          <p className="text-xs text-[var(--c-muted)]">Boletos da solicitação e dos pedidos de compra, incluindo fretes. Confira o documento e a parcela antes de pagar.</p>
+          <p className="text-xs text-[var(--c-muted)]">Boletos da solicitação e dos pedidos, incluindo fretes, e NF-e vinculadas. Confira o documento e a parcela antes de pagar.</p>
         </div>
         <button type="button" className="btn btn-outline btn-sm shrink-0" onClick={onFechar}>Fechar</button>
       </div>
@@ -104,7 +106,7 @@ export default function ArquivosSolicitacaoFilaModal({ solicitacao, onFechar }) 
         ) : null}
         {carregando ? <p className="py-6 text-sm text-[var(--c-muted)]">Carregando arquivos...</p> : null}
         {!carregando && !erro && arquivos.length === 0 ? (
-          <p className="py-6 text-sm text-[var(--c-muted)]">Nenhum boleto anexado à solicitação ou aos seus pedidos de compra.</p>
+          <p className="py-6 text-sm text-[var(--c-muted)]">Nenhum boleto ou NF-e disponível para esta solicitação.</p>
         ) : null}
         {!carregando && arquivos.length > 0 ? (
           <ul className="divide-y divide-[var(--c-border)] border-y border-[var(--c-border)]">
@@ -112,12 +114,12 @@ export default function ArquivosSolicitacaoFilaModal({ solicitacao, onFechar }) 
               <li key={arquivo.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5">
                 <div className="min-w-0 flex-1">
                   <div className="break-words text-sm font-medium text-[var(--c-text)]">{arquivo.nome_original || `Arquivo #${arquivo.id}`}</div>
-                  <div className="text-xs text-[var(--c-muted)]">{rotuloBoletoSolicitacao(arquivo)} · {dataArquivo(arquivo.createdAt)}</div>
+                  <div className="text-xs text-[var(--c-muted)]">{ehNotaFiscalFila(arquivo)?'NF-e vinculada · '+(arquivo.arquivo_tipo==='pdf'?'DANFE':'XML'):rotuloBoletoSolicitacao(arquivo)} · {dataArquivo(arquivo.createdAt)}</div>
                 </div>
                 <div className="flex shrink-0 gap-1">
-                  <button type="button" className="btn btn-outline btn-sm" aria-label={`Visualizar ${arquivo.nome_original || `Arquivo #${arquivo.id}`}`} onClick={(event) => abrirArquivo(arquivo, false, event.currentTarget)} disabled={abrindoId !== null}>
+                  {arquivo.tipo!=='NFE_XML'&&<button type="button" className="btn btn-outline btn-sm" aria-label={`Visualizar ${arquivo.nome_original || `Arquivo #${arquivo.id}`}`} onClick={(event) => abrirArquivo(arquivo, false, event.currentTarget)} disabled={abrindoId !== null}>
                     {abrindoId === arquivo.id ? 'Abrindo...' : 'Visualizar'}
-                  </button>
+                  </button>}
                   <button type="button" className="btn btn-outline btn-sm" aria-label={`Baixar ${arquivo.nome_original || `Arquivo #${arquivo.id}`}`} onClick={() => abrirArquivo(arquivo, true)} disabled={abrindoId !== null}>
                     Baixar
                   </button>

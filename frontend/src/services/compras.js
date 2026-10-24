@@ -567,6 +567,14 @@ export async function listarPedidosCompra(params = {}, { signal } = {}) {
   return handleJsonResponse(response, 'Erro ao buscar pedidos de compra');
 }
 
+export async function localizarPedidosCompra(params = {}, { signal } = {}) {
+  const query = buildQueryString(params);
+  const response = await fetch(API_URL + '/compras/relatorios/localizar-pedidos' + (query ? '?' + query : ''), {
+    headers: authHeaders(), signal, cache: 'no-store'
+  });
+  return handleJsonResponse(response, 'Erro ao consultar pedidos de compra');
+}
+
 export async function obterPedidoCompra(id) {
   const response = await fetch(`${API_URL}/compras/pedidos/${id}`, {
     cache: 'no-store',

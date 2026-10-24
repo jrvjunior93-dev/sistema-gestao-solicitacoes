@@ -15,6 +15,7 @@ import {
   useFiltrosVisiveis
 } from '../../../components/padrao';
 import StatusBadge from '../../../components/StatusBadge';
+import { formatarDataEmissaoFiscal } from '../utils/dataEmissaoFiscal';
 import {
   generateFiscalDocumentDanfe,
   getFiscalCompanies,
@@ -539,7 +540,7 @@ export default function FiscalDocuments() {
               id: 'emissao',
               titulo: 'Emissão',
               tipo: 'data',
-              render: (item) => (item.emission_date ? new Date(item.emission_date).toLocaleDateString('pt-BR') : '-')
+              render: (item) => formatarDataEmissaoFiscal(item) || '-'
             },
             {
               id: 'fornecedor',

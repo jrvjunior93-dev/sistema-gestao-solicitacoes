@@ -84,6 +84,37 @@ Sem rede real nos QA funcionais (apenas servidores locais, SQLite e simuladores)
 
 ## Proximo passo exato
 
+### Storage concluido pelo usuario; vinculo cadastral e frontend pendentes
+
+- Prova recebida FISCAL_S3_PROD_OBJETO_TESTADO e FISCAL_S3_PROD_CONFERIDO:
+  phase ativo/target_config/persistence true, Put1/Get/versao/URL assinada/hash
+  aprovados, referencias0, database_writes0, external_nsdocs_calls0 e peers/Nodes/
+  env/dumps preservados. SHA256 do texto ficticio:
+  4ab58af6fc9614b665c97aa7d8a55d689d4eb6a0ed17a049315ddc81cb404f82.
+  Objeto mantido privado para auditoria, frontend_liberado=false.
+- Nova branch local codex/nfe-frontend-liberacao-20261024 parte dos metadados
+  0d98a6dc; API de producao continua b5e34d7b, DEV2920e1f1 intocado.
+- Frontend ec948e5b copiado exatamente pelos26 hashes do manifesto. Nenhum
+  backend funcional novo; catalogo gerado acompanha frontend conforme plano.
+- Tela FiscalCompanies atual nao tem campo empresa_id. Preparado snippet
+  ops/deploy/vincular-empresa-fiscal-prod-20261024.browser.js: SOMENTE Console do
+  navegador autenticado em https://csc.jrfluxy.com.br, nunca CMD/SSH/Node.
+  Wrapper de sessao obrigatorio, GET fiscal/companies e empresas-grupo protegido,
+  CNPJ/empresa ativa/id1 conferidos, PATCH apenas empresa_id1, releitura e campos
+  fiscais preservados. Sem copiar tokens, SQL, backfill ou API NSDOCS. Idempotente
+  e lock por janela; outro vinculo, empresa errada, DEV ou403 interrompem.
+- QA do snippet3 cenarios aprovados: sucesso/replay, negativas/origem/ACL/CNPJ,
+  concorrencia e alteracao de outro campo. Nenhuma chamada real/mutacao executada
+  pelo agente. Usuario precisa retornar VINCULO_FISCAL_PROD_CONFERIDO antes do push
+  do frontend. IDs sao1/1 no PROD, nunca id2 usado no DEV.
+- QA nesta retomada: emissao fiscal, vinculos UI, fiscal-pagamentos-documentos,
+  pedido-localizacao e build frontend aprovados; manifesto+snippet6 testes
+  aprovados e git diff --check limpo. Catalogo gerado conserva hash do inventario.
+  Avisos usuais de caniuse/chunk no build, sem instalacao ou atualizacao.
+- Proximo: enviar snippet ao usuario com instrucoes F12/Console, fora do CMD.
+  Depois da prova do vinculo, publicar somente a etapa frontend e verificar a
+  implantacao Vercel/fluxo com usuario; nenhum novo pull/restart na EC2 necessario.
+
 ### Prova do backend recebida e corte S3 preparado
 
 - Usuario publicou main b5e34d7b e retornou NFE_PEDIDOS_BACKEND_PROD_PRONTO:
