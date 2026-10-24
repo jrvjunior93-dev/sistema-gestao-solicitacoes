@@ -84,6 +84,34 @@ Sem rede real nos QA funcionais (apenas servidores locais, SQLite e simuladores)
 
 ## Proximo passo exato
 
+### Retomada apos role criada
+
+- Usuario informou FluxyFiscalProd criada e HTTPS salvo; backup/Drive cifrado
+  conferido e timer ativo confirmados para esta implantacao nesta retomada.
+- Branch ativa backend somente: codex/nfe-backend-operacao-20261024, a partir de
+  bd3d1606. Frontend ec948e5b permanece na branch anterior, sem publicacao.
+- Conferencia real --conferir-role aprovada: sessao exata e List prod/ aprovados,
+  HTTPS reconhecido, privado/versionado/AES256. Sem Put/GetObject ou gravacao.
+  Evidencia sanitizada outputs/conferencia-role-fiscal-prod-20261024.txt.
+- HEAD EC2 PROD3f3c5e8fe7eb848f2feb22ea27c5daba5d184afd, tracked limpo. Fonte
+  AWS ainda admin-jose; configuracao fiscal ainda bucketDEV/prefixoDEV. Nao mudou.
+- Novo operador atualizar-prod-nfe-pedidos-20261024.cjs prepara/aplica/conferir/voltar
+  SOMENTE codigo+schema+restart PROD. Retorno restaura fontes, mantem HEAD e
+  ledger/schema; se migration nao registrada, guarda arquivo fora do runtime.
+  Estado privado em .git, nenhum reset/clean/down/update-env/save/instalacao.
+- QA do operador usa FS/processos/PM2/HTTP simulados e passa preparacao sem
+  checkout/restart, backup ausente, QA/DDL falhos, rollback antes/depois do ledger,
+  replay sem restart duplicado e recusa de peer alterado/hash/escopo/frontend.
+  Nao executar mutacoes na EC2 nesta retomada. Nenhum push feito ainda.
+- Proximo: publicar SOMENTE o SHA backend dessa branch e passar comandos de
+  preparar/snapshot ao usuario; aplicar somente apos conferencia da preparacao,
+  com confirmacoes ja obtidas. Depois tratar corte S3/.env/dumps e vinculo
+  fiscal1->empresa1 separadamente, testar objeto privado e so liberar frontend
+  apos prova completa. Testes anteriores de UI nao precisam ser repetidos para
+  estes ajustes de operador, pois o fonte funcional permanece nos mesmos hashes.
+
+### Plano consolidado
+
 1. Revisar JSONs/roteiro S3 no README. Criar role FluxyFiscalProd com trust do
    principal PROD confirmado, politica fiscal prod/*; aplicar Deny HTTP ao bucket
    sem sobrescrever politica surgida depois do inventario. Nao anexar a EC2.

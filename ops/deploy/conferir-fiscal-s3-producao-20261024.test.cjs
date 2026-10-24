@@ -31,7 +31,7 @@ function fixture({ refs = 0, denied = null, uuid = true, tls = true, insecure = 
   }, async beginTransaction() { calls.push('readonly-transaction'); }, async rollback() { calls.push('rollback'); }, async end() { calls.push('end'); } };
   class Handler {}
   const commands = ['GetCallerIdentityCommand','GetBucketLocationCommand','GetPublicAccessBlockCommand','GetBucketPolicyStatusCommand',
-    'GetBucketOwnershipControlsCommand','GetBucketVersioningCommand','GetBucketEncryptionCommand','GetBucketPolicyCommand'];
+    'GetBucketOwnershipControlsCommand','GetBucketVersioningCommand','GetBucketEncryptionCommand','GetBucketPolicyCommand','ListObjectsV2Command'];
   const api = Object.fromEntries(commands.map(name => [name, class { constructor(input) { this.name = name; this.input = input; } }]));
   class Client {
     constructor(config) { assert.equal(config.maxAttempts, 1); assert.equal(config.region, REGION); }
@@ -39,6 +39,9 @@ function fixture({ refs = 0, denied = null, uuid = true, tls = true, insecure = 
       assert(commands.includes(command.name)); calls.push(command.name);
       if (denied === command.name) { const e = Error('NAO_EXIBIR_SEGREDO'); e.name = 'AccessDenied'; throw e; }
       if (command.name === 'GetCallerIdentityCommand') return { Account: ACCOUNT, Arn: `arn:aws:iam::${ACCOUNT}:user/qa-fiscal` };
+      if(command.name==='ListObjectsV2Command'){
+        assert.deepEqual(command.input,{Bucket:TARGET,ExpectedBucketOwner:ACCOUNT,Prefix:'prod/',MaxKeys:1});return{};
+      }
       assert.deepEqual(command.input, { Bucket: TARGET, ExpectedBucketOwner: ACCOUNT });
       return {
         GetBucketLocationCommand: { LocationConstraint: REGION },
@@ -56,6 +59,8 @@ function fixture({ refs = 0, denied = null, uuid = true, tls = true, insecure = 
   const deps = { initial, read: f => f.endsWith('.env') ? 'QA_ENV' : 'QA_CA', parse: () => ({}), isFile: () => true,
     mysql: { async createConnection(config) { assert(config.ssl.verifyIdentity && config.ssl.rejectUnauthorized); assert.equal(config.multipleStatements, false); return connection; } },
     s3: { ...api, S3Client: Client }, identity: () => new Client({maxAttempts:1,region:REGION}).send(new api.GetCallerIdentityCommand({})), Handler };
+  deps.assumeReadRole=async()=>{calls.push('AssumeRole');return{AssumedRoleUser:{Arn:`arn:aws:sts::${ACCOUNT}:assumed-role/FluxyFiscalProd/fluxy-fiscal-prod`},
+    Credentials:{AccessKeyId:'TEMP_QA',SecretAccessKey:'TEMP_SECRET_QA',SessionToken:'TOKEN_QA',Expiration:new Date(Date.now()+900000)}};};
   return { deps, calls, sql };
 }
 test('inventario consulta apenas identidade/seguranca AWS e SQL de leitura; nao imprime segredo nem libera deploy', async () => {
@@ -93,4 +98,13 @@ test('conflitos exibem apenas nomes; erro de identidade nao libera consultas S3'
   const a = fixture({ denied: 'GetCallerIdentityCommand' }), result = await probe(options, a.deps);
   assert(result.pendencias.includes('IDENTIDADE_AWS_NAO_CONFERIDA'));
   assert.equal(a.calls.filter(c => c.endsWith('Command')).length, 1);
+});
+test('conferencia opt-in da role somente lista prod/ e nao grava/baixa objetos nem exibe sessao',async()=>{
+  const f=fixture(),r=await probe({...options,verifyRole:true},f.deps);
+  assert(r.role.assumida&&r.role.listagem_prefixo_testada);assert.equal(r.role.gravacao_testada,false);
+  assert(!JSON.stringify(r).includes('TEMP_SECRET_QA'));assert(!JSON.stringify(r).includes('TOKEN_QA'));
+  assert(!f.calls.some(c=>/PutObject|GetObjectCommand|Delete/.test(c)));
+  const g=fixture();g.deps.assumeReadRole=async()=>{throw Error('NAO_EXIBIR_CHAVE');};
+  const failure=await probe({...options,verifyRole:true},g.deps);
+  assert(failure.pendencias.includes('ROLE_FISCAL_PROD_NAO_CONFERIDA'));assert(!failure.role.assumida);
 });

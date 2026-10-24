@@ -1,5 +1,14 @@
 # Ownership Ativo
 
+## Retomada S3 PROD: role criada pelo usuario - 2026-10-24
+
+- Usuario informou FluxyFiscalProd criada e politica HTTPS salva. Reservar
+  inventario/QA, operador de aplicacao/retorno e handoff desta promocao.
+- Branch backend exclusiva codex/nfe-backend-operacao-20261024 parte de bd3d1606.
+  Frontend ec948e5b preservado na branch anterior, retido ate prova de backend.
+- Conferir role/HTTPS somente em leitura por SSH; preparar e testar aplicacao
+  antes de pedir confirmacao final. Sem push/deploy/env/schema/restart nesta fase.
+
 ## Preparacao main: NF-e nos pagamentos e Localizar pedidos - 2026-10-24
 
 - Agente unico. Usuario homologou DEV2920e1f1 e pediu preparar promocao para

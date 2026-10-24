@@ -55,6 +55,19 @@ troca de Node global, reinicio do daemon, DEV ou Experience nesta promocao.
 
 ## S3 fiscal PROD: primeiro inventario, depois configuracao
 
+### Retomada: role e HTTPS confirmados
+
+Usuario informou role criada/HTTPS salvo e confirmou backup recente conferido no
+Drive cifrado e timer ativo para esta implantacao. Nova conferencia SSH somente
+leitura com `--conferir-role`: AssumeRole exato aprovado, GetBucketLocation e
+ListObjectsV2 limitados a prod/ aprovados; sessao de auditoria permite somente
+essas leituras, sem Put/GetObject. Politica HTTPS reconhecida, bucket nao publico,
+BlockPublicAccess integral, BucketOwnerEnforced, versionamento e AES256 mantidos.
+Sem alteracao de arquivos/DB/processos/dumps no servidor. Configuracao efetiva
+ainda aponta fluxy-fiscal-dev. Zero referencias fiscais S3 nas colunas auditadas.
+Teste de gravacao/leitura de objeto da nova role e corte de configuracao ainda
+nao realizados. Nao confundir listagem aprovada com teste Get/Put concluido.
+
 ### Resultado real em24/10/2026 (leitura por SSH)
 
 - `.env`/ambiente inicial sem divergencias nos campos verificados; PROD ainda
@@ -174,6 +187,44 @@ nao haja origem estatica compativel com o cliente atual. Banco por TLS/CA e UUID
 PROD, transacao de leitura com rollback. Nenhum script da app e carregado.
 
 ## Migration e retorno
+
+### Operador da etapa de backend
+
+`ops/deploy/atualizar-prod-nfe-pedidos-20261024.cjs` possui quatro comandos:
+
+- `preparar SHA_COMPLETO_BACKEND`: exige origin/main no SHA informado, delta
+  sem frontend/raiz, hashes dos33 arquivos de backend, unica migration002,
+  apenas a declaracao direta do SDK ja transitivo, codigo limpo, Node/daemon
+  absolutos e tres processos conferidos. Aceita HEAD PROD3f3c5e8f ou basea860f94a.
+  Confere versao instalada do SDK3.996.12; nao instala nada. Guarda snapshot privado
+  de fontes/ambiente em .git/fluxy-nfe-prod-20261024 (diretorio700/estado600).
+  Nao avanca checkout, aplica schema ou reinicia. Enviar a saida antes de aplicar.
+- `aplicar`: exige snapshot intacto e as quatro confirmacoes ja descritas;
+  timer ativo, remoto/checkout exatos, ff-only, QA, schema/UUID/TLS e somente002,
+  depois reinicia APENAS backend-solicitacoes pelo Node do daemon e CLI absolutos,
+  sem --update-env. Confere cinco healths estaveis, ambiente e politica do processo,
+  DEV/Experience/daemon/Nodes/env/dumps. Imprime NFE_PEDIDOS_BACKEND_PROD_PRONTO.
+- `conferir`: nao reinicia; verifica a fase, HEAD/fontes quando pronto e estado
+  protegido. Nao libera frontend nem declara storage configurado.
+- `voltar`: retorno exclusivo do codigo desta etapa, ANTES do corte do storage.
+  Exige as confirmacoes PROD_BACKUP/PROD_BACKUP_TIMER/PROD_MAINTENANCE e timer.
+  Restaura somente as fontes anteriores capturadas, recusa arquivos editados por
+  terceiros, mantem HEAD e deixa tracked alterado esperado. Reinicia so PROD.
+  Nao faz reset/clean/revert generico, down, exclusao de dados/ledger ou troca de
+  env/storage. Se002 nao foi registrada, guarda o arquivo pendente fora do runtime
+  em .git para o codigo antigo iniciar, sem apagar DDL parcial. Se foi registrada,
+  mantem migration e schema. Novos arquivos restantes ficam versionados/inertes.
+  Depois do retorno, enviar a saida para reconciliar Git; nao rodar pull/reset.
+
+Os comandos podem ser enviados por stdin via SSH com o Node PROD isolado,
+partindo do diretorio raiz /home/ubuntu/sistema-gestao-solicitacoes-main. A resposta
+de liberacao deve fornecer o SHA exato e o SHA256 do operador; nao usar HEAD ou
+tip de refactor/frontend. O aplicar recebe confirmacoes apenas no ambiente do
+operador/filho de schema; nenhuma confirmacao entra na app PM2.
+
+Nao reutilizar o retorno de codigo depois de mudar .env/storage; a verificacao
+de ambiente recusa essa mudanca. O corte S3 requer seu proprio snapshot/retorno
+e teste privado autorizado. O frontend continua retido apos esta etapa.
 
 `backend/scripts/fiscalVinculosProdSchema.js` esta preparado para `--conferir`
 e `--aplicar`, sem runner generico ou dependencia NSDOCS. O aplicar exige as

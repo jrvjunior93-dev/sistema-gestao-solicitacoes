@@ -63,6 +63,19 @@ async function probe(options, deps) {
     return { read: f => fs.readFileSync(f, 'utf8'), isFile: f => fs.statSync(f).isFile(),
       parse: req('dotenv').parse, initial: process.env, mysql: req('mysql2/promise'),
       s3: req('@aws-sdk/client-s3'), Handler,
+      async assumeReadRole(credentials) {
+        const {STSClient,AssumeRoleCommand}=req('@aws-sdk/nested-clients/sts');
+        const client=new STSClient({credentials,region:'us-east-2',endpoint:'https://sts.us-east-2.amazonaws.com',maxAttempts:1,
+          requestHandler:new Handler({connectionTimeout:5000,requestTimeout:10000})});
+        const policy={Version:'2012-10-17',Statement:[
+          {Effect:'Allow',Action:'s3:GetBucketLocation',Resource:'arn:aws:s3:::fluxy-fiscal-prod'},
+          {Effect:'Allow',Action:'s3:ListBucket',Resource:'arn:aws:s3:::fluxy-fiscal-prod',Condition:{StringLike:{'s3:prefix':['prod/','prod/*']}}}
+        ]};
+        try {
+          return await client.send(new AssumeRoleCommand({RoleArn:'arn:aws:iam::992500432025:role/FluxyFiscalProd',
+            RoleSessionName:'fluxy-fiscal-prod',DurationSeconds:900,Policy:JSON.stringify(policy)}),{abortSignal:AbortSignal.timeout(15000)});
+        } finally {client.destroy();}
+      },
       async identity(credentials) {
         // nested-clients/sts instalado nao inclui GetCallerIdentityCommand.
         // Assinar somente a Query fixa oficial; sem novas dependencias/retries.
@@ -192,6 +205,22 @@ async function probe(options, deps) {
       catch (err) { out.bucket[name] = { lido: false, erro: safeCode(err) }; out.pendencias.push('BUCKET_' + name.toUpperCase() + '_NAO_CONFERIDO'); }
     }
   } finally { client.destroy(); }
+  if(options.verifyRole){
+    out.role={assumida:false,listagem_prefixo_testada:false,gravacao_testada:false,leitura_objeto_testada:false};
+    let roleClient;
+    try{
+      const r=await d.assumeReadRole(credentials),c=r.Credentials;
+      need(r.AssumedRoleUser?.Arn==='arn:aws:sts::992500432025:assumed-role/FluxyFiscalProd/fluxy-fiscal-prod'
+        &&c?.AccessKeyId&&c.SecretAccessKey&&c.SessionToken&&c.Expiration instanceof Date&&c.Expiration.getTime()-Date.now()>300000,'ROLE_IDENTIDADE_INVALIDA');
+      roleClient=new d.s3.S3Client({...config,endpoint:'https://s3.us-east-2.amazonaws.com',
+        credentials:{accessKeyId:c.AccessKeyId,secretAccessKey:c.SecretAccessKey,sessionToken:c.SessionToken}});
+      out.role.assumida=true;
+      await roleClient.send(new d.s3.GetBucketLocationCommand(input));
+      await roleClient.send(new d.s3.ListObjectsV2Command({...input,Prefix:'prod/',MaxKeys:1}));
+      out.role.listagem_prefixo_testada=true;
+    }catch(err){out.role.erro=safeCode(err);out.pendencias.push('ROLE_FISCAL_PROD_NAO_CONFERIDA');}
+    finally{roleClient?.destroy();}
+  }
   const b = out.bucket;
   if (!b.regiao?.confere || !b.acesso_publico?.bloqueio_integral || b.politica_publica?.publica !== false
     || !b.propriedade?.acls_desabilitadas || !b.versionamento?.ativo
@@ -205,6 +234,7 @@ async function probe(options, deps) {
   return out;
 }
 async function main() {
+  check(process.argv.slice(2).length===0||process.argv.slice(2).length===1&&process.argv[2]==='--conferir-role','ARGUMENTO_INVALIDO');
   check(process.platform === 'linux' && process.arch === 'x64' && process.getuid() === 1000
     && process.version === 'v24.22.1' && fs.realpathSync(process.execPath) === NODE
     && fs.realpathSync(process.cwd()) === BACKEND, 'EXIGE_USUARIO_UBUNTU_NODE_CWD_PROD');
@@ -213,7 +243,7 @@ async function main() {
   const env = environment(prod.pid);
   check(!env.NODE_OPTIONS && env.NODE_TLS_REJECT_UNAUTHORIZED !== '0', 'AMBIENTE_NODE_NAO_CONFERIDO');
   for (const k of ['NODE_CHANNEL_FD','NODE_CHANNEL_SERIALIZATION_MODE','NODE_UNIQUE_ID']) delete env[k];
-  const options = { backend: BACKEND, bucket: TARGET, region: REGION, account: ACCOUNT };
+  const options = { backend: BACKEND, bucket: TARGET, region: REGION, account: ACCOUNT,verifyRole:process.argv[2]==='--conferir-role' };
   const code = `(${probe.toString()})(${JSON.stringify(options)}).then(r=>console.log('FISCAL_RESULT:'+JSON.stringify(r))).catch(()=>{console.error('CONFERENCIA_PRIVADA_FALHOU_SEM_EXIBIR_SEGREDOS');process.exitCode=1;});`;
   let result, error;
   try {
