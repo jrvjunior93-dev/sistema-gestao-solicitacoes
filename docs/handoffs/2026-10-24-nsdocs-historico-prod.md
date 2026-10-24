@@ -60,6 +60,31 @@ Agente unico, branch codex/nsdocs-historico-prod-20261024, base0b20cc4d.
 
 ## Estado e proximo passo
 
+### Backend, schema, chave e preflight PROD conferidos; piloto pendente
+
+- Usuario retornou NSDOCS_CREDENCIAL_PROD_GUARDADA/CONFERIDA, empresa1/CNPJ27123,
+  pending[]/appliedtrue, automaticoOFF e external_nsdocs_calls0. Retornou tambem
+  NSDOCS_CAPTURA_PROD_PREFLIGHT_OK, sem persistencia e sem NSDOCS.
+- Conferencia SSH do agente SOMENTE leitura com aplicador: phasebackend_pronto,
+  HEAD/backend0b1909293720731d99990bb3b55a96433b6cfd15, frontend_liberadofalse,
+  storage_alteradofalse, processos_nodes_dumps_preservadostrue. Nenhum restart,
+  configuracao, chamada API externa ou gravacao de documento nesta retomada.
+- Frontend candidato996c9e691c2da67009bf70c04629061dc1770db0 ja commitado e testado,
+  ainda local/retido. Mainremota0b190929 e DEV2920e1f1 conferidos iguais ao esperado.
+- Preparar comando de piloto para o usuario: uma pagina/ate1NF-e emitida em
+  2026-10-16, statusPendente, deslocamento0; mesma data da NF-e homologada no DEV,
+  sem assumir qual nota vira primeiro na ordenacao do provedor.
+- ID fixo exclusivo deste piloto:bfabb75c-71e6-4eea-94b8-8d74d114cc7d. Gerado
+  localmente; ainda nao usado na NSDOCS/banco. Nao trocar ID/filtros na retomada.
+  Primeiro comando faz ate2GETsNSDOCS e persiste NF-e/XML/historico se houverNF-e;
+  historico nao chama provedor e replay concluido deve mostrar replayedtrue/0calls.
+- Receber resultado com documents1/xmls1 e replaytrue antes de liberar UI. Se
+  vier0documentos ou unsupported, diagnosticar sem anunciar captura homologada
+  nem disparar Importado automaticamente. Nao iniciar plano historico inteiro.
+- Proximo apos piloto: push frontend sobre mainbackend exato, conferir Vercel e
+  artefatos/health; homologar lista/detalhe/XML/historico. Periodo historico real
+  ainda precisa ser definido pelo usuario antes de salvar/executar plano.
+
 ### Publicacao backend concluida; aguardando execucao pelo usuario
 
 - Push main confirmado:0b1909293720731d99990bb3b55a96433b6cfd15, apenas29 arquivos

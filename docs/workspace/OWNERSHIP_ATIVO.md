@@ -2,6 +2,12 @@
 
 ## Carga historica NSDOCS PROD e retirada de consultas SEFAZ da UI - 2026-10-24
 
+- Retomada apos provas: chavePROD guardada/conferida, pending0/appliedtrue e
+  preflightOK/0NSDOCS/automaticoOFF. Reservar apenas recibos/handoff do piloto.
+  SSH conferir executado em leitura: backend_pronto0b190929, peers/Nodes/dumps
+  preservados, frontend_liberadofalse. Nenhuma captura/gravacao real pelo agente.
+  Piloto por usuario com IDfixo bfabb75c-71e6-4eea-94b8-8d74d114cc7d, emissao
+  2026-10-16/Pendente/limit1/offset0; repetir mesmo ID para provar replay.
 - Retomada: usuario autorizou commit/push main e comandos PROD, backend antes
   de frontend; backup/timer atuais confirmados. Reservar operador de deploy,
   testes/roteiro/handoff e inventario para publicar backend exclusivo primeiro.
