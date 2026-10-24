@@ -34,7 +34,7 @@ O codigo ainda reconhece perfis especializados em fluxos especificos, como `FINA
 
 2. Perfil e permissao de area
    - registro central em `backend/src/constants/moduloPermissoes.js`;
-   - estado atualizado em 2026-10-23: 19 grupos, 111 areas e 399 permissoes;
+   - estado atualizado em 2026-10-24: 19 grupos, 111 areas e 401 permissoes;
    - formato `modulo.area.acao`, por exemplo `financeiro.titulos.criar`;
    - configuracao `PERMISSOES_AREAS_USUARIOS` contem permissoes por usuario, bloqueios por usuario e padroes por setor/perfil;
    - a permissao efetiva e a uniao de padrao do setor/perfil, sessao e concessao individual, menos os bloqueios;

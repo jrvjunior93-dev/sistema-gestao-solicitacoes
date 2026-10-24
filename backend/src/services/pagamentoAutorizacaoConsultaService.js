@@ -3,7 +3,7 @@ const { QueryTypes, Op } = require('sequelize');
 const { SITUACAO_SQL, exclusaoDoTitulo } = require('./pagamentoAutorizacaoSituacao');
 const { obterRemetentes } = require('./pagamentoFilaRemetenteService');
 const STATUS = ['AGUARDANDO', 'QUITADO', 'PARCIALMENTE_PAGO', 'NAO_PAGO', 'NA_FILA', 'DIVERGENTE', 'REJEITADO',
-  'INVALIDADO', 'CANCELADO', 'ESTORNADO', 'RENEGOCIADO', 'PREVISAO', 'AUTORIZADO', 'PENDENTE_FINANCEIRO', 'INDISPONIVEL', 'EXCLUIDO'];
+  'INVALIDADO', 'CANCELADO', 'ESTORNADO', 'RENEGOCIADO', 'PREVISAO', 'AUTORIZADO', 'PENDENTE_FINANCEIRO', 'INDISPONIVEL', 'EXCLUIDO', 'RETIRADO'];
 const erro = message => { throw Object.assign(new Error(message), { statusCode: 400 }); };
 function filtros(query = {}) {
   const scalar = key => { if (query[key] != null && typeof query[key] !== 'string') erro('Filtro invalido: ' + key); return String(query[key] || '').trim(); };
@@ -95,6 +95,7 @@ function consulta(query) {
       ${f.dataTipo === 'EMISSAO' ? 'COALESCE(t.data_emissao,h.data_emissao)' : f.dataTipo === 'PAGAMENTO' ? 'p.ultima_baixa_periodo' : 'COALESCE(t.data_vencimento,a.vencimento_snapshot,h.data_vencimento)'} data_referencia,
       ${f.dataTipo === 'PAGAMENTO' ? 'COALESCE(p.pago_no_periodo,0)' : 'COALESCE(a.valor_snapshot,f.valor_previsto)'} valor_consulta,
       f.id fila_id, f.status fila_status, f.motivo fila_motivo,
+      (JSON_EXTRACT(f.instrumento_pagamento_json,'$.retirada_envio') IS NOT NULL) fila_retirada,
       f.selecionado_por enviado_por_id, f.selecionado_em enviado_em
     FROM universo u
     LEFT JOIN pagamento_autorizacao_itens a ON a.id=u.autorizacao_id
@@ -189,7 +190,7 @@ async function listarTitulos(query = {}, db = require('../models')) {
       }
       if (!title || !fila) continue;
       mapa.set(Number(r.id), { id: Number(r.id), item_id: null, origem_painel: 'FILA_DIRETA', fila_id: Number(fila.id),
-        titulo_financeiro_id: Number(title.id), lote_id: null, lote: null, status: title.bloqueio_pagamento_proprietario ? 'REJEITADO' : 'FILA_DIRETA',
+        titulo_financeiro_id: Number(title.id), lote_id: null, lote: null, status: r.fila_retirada ? 'RETIRADO' : title.bloqueio_pagamento_proprietario ? 'REJEITADO' : 'FILA_DIRETA',
         valor_snapshot: Number(fila.valor_previsto), snapshot_hash: null, snapshot_json: dadosDoTitulo(title),
         versao_painel: versaoFilaDireta(title, fila), documentos: [],
         motivo_decisao: title.bloqueio_pagamento_proprietario?.motivo || null,
@@ -216,7 +217,7 @@ async function listarTitulos(query = {}, db = require('../models')) {
     const item = mapa.get(Number(r.id)); if (!item) return [];
     const remetente = envio(r);
     const exclusao = exclusaoDoTitulo(r, autores);
-    const fila_atual = r.fila_id ? { id: Number(r.fila_id), status: r.fila_status, motivo: r.fila_motivo } : null;
+    const fila_atual = r.fila_id ? { id: Number(r.fila_id), status: r.fila_status, motivo: r.fila_motivo, envio_retirado: Boolean(r.fila_retirada) } : null;
     const partes = Array.isArray(r.participacoes_no_recorte) ? r.participacoes_no_recorte : JSON.parse(r.participacoes_no_recorte || '[]');
     return [{ ...item, origem_painel: item.origem_painel || 'AUTORIZACAO', fila_atual,
       ...(exclusao ? { exclusao_titulo: exclusao, titulo: null } : {}),

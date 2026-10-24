@@ -7,10 +7,16 @@
 - Base62456b21; checkout gerenciado separado dos roteiros locais Node anteriores.
 - Reserva: delta84b9aef4 completo, resolucoes documentais/package preservando
   main, novo aplicador/runner/manifesto/QA PROD e handoff desta promocao.
+- Reserva adicional documental: docs/seguranca/autenticacao_autorizacao.md,
+  apenas atualizar contagem401 correspondente as duas permissoes do pacote.
 - Backend/migration primeiro; frontend retido ate prova da EC2. Preservar Nodes
   isolados24.22.1, DEV, flags/sessao/TLS, .env e ambos os dumps de inicializacao.
 - Sem EC2, SSH, migration/banco real, operacao financeira ou restart pelo agente.
   Sem npm install, PM2 save/update/--update-env ou mudanca de interpreter no roteiro.
+- Integracao/QA concluidos; reserva de edicao encerrada para publicacao backend,
+  frontend pronto retido.16 testes PROD, retirada/HTTP/CTE/guards DEV, UI1366/390,
+  PWA/web/abas reais, anexos/ACL e build648/23s aprovados. Docs632/19, inventario28,
+  diff/sintaxe e snapshot Git/bundle main anterior conferidos. DEV remoto intacto.
 
 ## Promocao seletiva dos anexos - 2026-10-24
 
@@ -281,6 +287,42 @@
   Produto e dependencias conferidos contra2e146629; reserva encerrada,
   ownership liberado para commit/push main autorizados. Roteiro e limites em
   docs/handoffs/2026-10-18-promocao-main-pwa-historico.md.
+## Publicacao DEV: retirada de envios e abas web - 2026-10-23
+
+- Usuario autorizou commit/push exclusivo refactor/frontend e roteiro para
+  atualizar EC2 DEV/aplicar somente migration003/testar. Sem promocao main,
+  acesso a producao, execucao remota ou migrations locais/reais neste turno.
+- Agente unico, base f598f25a. Reserva: delta da implementacao anterior,
+  novo runner aplicarMigrationRetiradaEnviosDev.js, QA de deploy, manifesto
+  e roteiro ops/deploy/atualizar-dev-retirada-envios-20261023.sh, handoff.
+- Conferir remoto, inventario completo, testes isolados, schema-only/DDL,
+  restricao de ambiente/UUID/PM2, retomada idempotente e restart so backend-dev.
+  Nao publicar outputs/, dist/, .env ou outros arquivos fora deste escopo.
+- Reconferidos: backend/HTTP/UI1366/390 da retirada, PWA/web/abas, build646,
+  permissoes401/80rotas, QA do runner/deploy e inventario real do index35
+  arquivos. Shell bash-n e diff-check aprovados; sem dependencias alteradas.
+  Reserva de preparacao encerrada; publicacao autorizada somente DEV.
+
+## DEV: retirada de envios e abas web de autorizacao - 2026-10-23
+
+- Usuario autorizou implementar/testar na base refactor/frontend f598f25a;
+  agente unico, sem publicacao, EC2/banco real ou alteracao de main/producao.
+- Reserva: novo dominio/servico/controller/QA de retirada, rotas/permissoes,
+  modelos/migration somente se necessarios para idempotencia/auditoria,
+  projecoes de historico/estado, componente compartilhado de retirada nas
+  paginas de autorizacao e fila, utilitario PWA/Layout e testes UI/backend.
+- Preservar baixas/comprovantes/saldo, escopo, permissoes e eventos antigos.
+  Retirar nao rejeita, cancela titulo ou estorna. Revalidar sob locks e impedir
+  confirmacao concorrente/desatualizada; nenhum bypass de passkey/autorizacao.
+- Skill frontend-design limitada ao padrao corporativo atual e interacoes/
+  responsividade; manter cabecalho/abas na web e modo instalado do PWA.
+- Implementacao/verificacao local concluidas: testes de retirada backend/HTTP/
+  UI1366/390, regressao integral da fila650/13paginas/8status, autorizacao
+  entreobras/lotes, PWA/web/abas, permissoes401 e build646 aprovados.
+  Layout global permanece121pendencias da base, zero novas no comparativo.
+- Handoff: docs/handoffs/2026-10-23-retirada-envios-aprovacao-fila.md.
+  Migration003 nao aplicada, sem commit/push/deploy/banco real. Reserva de
+  implementacao encerrada; revisar este delta nao commitado antes de publicar.
 
 ## Publicacao DEV: placeholders e arranjo dos filtros - 2026-10-23
 

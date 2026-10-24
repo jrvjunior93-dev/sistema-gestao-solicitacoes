@@ -16,6 +16,8 @@ function situacaoItem(item) {
   if (['CANCELADO', 'ESTORNADO', 'PREVISAO', 'RENEGOCIADO'].includes(t.status)) return t.status;
   if (t.renegociado_por_id) return 'RENEGOCIADO';
   if (t.status === 'QUITADO') return 'QUITADO';
+  if ((item.status === 'RETIRADO' && !['PENDENTE', 'EM_EDICAO', 'NAO_PAGO', 'DIVERGENTE'].includes(fila?.status))
+    || (fila?.envio_retirado && !['PENDENTE', 'AUTORIZADO'].includes(item.status))) return 'RETIRADO';
   if (t.status === 'PARCIAL' || Number(t.valor_baixado || 0) > 0) return 'PARCIALMENTE_PAGO';
   if (t.bloqueio_pagamento_proprietario || item.bloqueado_proprietario) return 'REJEITADO';
   // expira_em e metadado legado: nao criar prazo/bloqueio novo nesta projecao.
@@ -58,7 +60,8 @@ async function projetarLotesAtuais(lotes, sequelize) {
   if (ids.length) {
     // Um SELECT por pagina/detalhe, incluindo ciclos de retorno posteriores ao
     // fila_item_id original. Sem N+1 e sem alterar vinculo ou assinatura.
-    const filas = await sequelize.query(`SELECT f.id,f.titulo_financeiro_id,f.status,f.motivo
+    const filas = await sequelize.query(`SELECT f.id,f.titulo_financeiro_id,f.status,f.motivo,
+      (JSON_EXTRACT(f.instrumento_pagamento_json,'$.retirada_envio') IS NOT NULL) envio_retirado
       FROM pagamentos_manuais_fila f JOIN (
         SELECT MAX(f2.id) id FROM pagamentos_manuais_fila f2
         JOIN pagamento_autorizacao_itens a ON a.titulo_financeiro_id=f2.titulo_financeiro_id
@@ -93,6 +96,8 @@ const SITUACAO_SQL = `CASE
   WHEN titulo_status IN ('CANCELADO','ESTORNADO','PREVISAO','RENEGOCIADO') THEN titulo_status
   WHEN renegociado_por_id IS NOT NULL THEN 'RENEGOCIADO'
   WHEN titulo_status = 'QUITADO' THEN 'QUITADO'
+  WHEN (status_decisao = 'RETIRADO' AND (fila_status IS NULL OR fila_status NOT IN ('PENDENTE','EM_EDICAO','NAO_PAGO','DIVERGENTE')))
+    OR (fila_retirada = 1 AND (status_decisao IS NULL OR status_decisao NOT IN ('PENDENTE','AUTORIZADO'))) THEN 'RETIRADO'
   WHEN titulo_status = 'PARCIAL' OR valor_baixado > 0 THEN 'PARCIALMENTE_PAGO'
   WHEN bloqueado_proprietario = 1 THEN 'REJEITADO'
   WHEN fila_status = 'NAO_PAGO' THEN 'NAO_PAGO'
