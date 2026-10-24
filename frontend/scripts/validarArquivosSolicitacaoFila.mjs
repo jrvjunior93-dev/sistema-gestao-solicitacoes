@@ -104,7 +104,7 @@ try {
   await page.waitForFunction(() => (window.abertos || []).length === 1);
   assert.equal(await page.evaluate(() => window.abertos[0].download), 'nota.pdf');
   await page.goto(`${base}/fixture?empty=1`);
-  await page.getByRole('dialog', { name: 'Arquivos da solicitação SOL-43' }).getByText('Nenhum boleto anexado à solicitação ou aos seus pedidos de compra.').waitFor();
+  await page.getByRole('dialog', { name: 'Arquivos da solicitação SOL-43' }).getByText('Nenhum boleto ou NF-e disponível para esta solicitação.').waitFor();
   assert.equal(await page.getByRole('button', {name:/Visualizar/}).count(), 0);
   assert.deepEqual(errors, []);
   console.log('OK: modal somente boletos (PDF/imagem), exclui comprovantes/anexos comuns mesmo em resposta antiga, presign sob demanda, preview/download e vazio.');

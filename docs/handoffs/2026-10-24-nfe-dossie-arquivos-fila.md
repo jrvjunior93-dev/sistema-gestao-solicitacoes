@@ -3,7 +3,7 @@
 Publicacao autorizada posteriormente junto com Localizar pedidos, em duas
 etapas: backend primeiro, frontend retido ate conferencia da EC2 DEV.
 Roteiro: ops/deploy/README-nfe-pagamentos-pedidos-dev-20261024.md.
-Operador autocontido e QA:6 testes de manifesto/dependencias, preservacao de
+Operador autocontido e QA:7 testes de manifesto/dependencias, preservacao de
 Nodes/ambientes/processos/dumps, ordem schema somente leitura/restart, retomada
 sem restart duplicado e negativas. Nenhuma migration/instalacao nova.
 

@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:fiscal-pagamentos-documentos": "node scripts/validarFiscalPagamentoDocumentosUI.mjs && node scripts/validarArquivosSolicitacaoFila.mjs",
+    "test:pedido-localizacao": "node scripts/validarPedidoLocalizacaoUI.mjs",
     "test:fiscal-vinculos-pedidos": "node scripts/validarVinculosNfeUI.mjs",
     "test:fiscal-emissao": "node scripts/validarEmissaoFiscal.mjs",
     "test:fetch-credenciais": "node scripts/validarFetchCredenciais.mjs",

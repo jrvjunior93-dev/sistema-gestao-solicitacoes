@@ -155,6 +155,7 @@ const ResponsaveisObra = lazy(() => import('./pages/ResponsaveisObra'));
   const ComprasRelatorioComprasDiretas = lazy(() => import('./pages/ComprasRelatorioComprasDiretas'));
   const ComprasRelatorioComprasFornecedor = lazy(() => import('./pages/ComprasRelatorioComprasFornecedor'));
   const ComprasRelatorioDemandaPedidos = lazy(() => import('./pages/ComprasRelatorioDemandaPedidos'));
+  const ComprasRelatorioLocalizarPedidos = lazy(() => import('./pages/ComprasRelatorioLocalizarPedidos'));
   const ComprasRelatorioEvolucao = lazy(() => import('./pages/ComprasRelatorioEvolucao'));
   const ComprasRelatorioPendenciasCotacoes = lazy(() => import('./pages/ComprasRelatorioPendenciasCotacoes'));
   const ComprasRelatorioPrecosInsumos = lazy(() => import('./pages/ComprasRelatorioPrecosInsumos'));
@@ -1192,6 +1193,7 @@ export default function App() {
         <Route path="compras/relatorios/compras-diretas" element={<ModuloComprasRoute><ComprasRelatoriosRoute><ComprasRelatorioComprasDiretas /></ComprasRelatoriosRoute></ModuloComprasRoute>} />
         <Route path="compras/relatorios/compras-fornecedor" element={<ModuloComprasRoute><ComprasRelatoriosRoute><ComprasRelatorioComprasFornecedor /></ComprasRelatoriosRoute></ModuloComprasRoute>} />
         <Route path="compras/relatorios/demanda-pedidos" element={<ModuloComprasRoute><ComprasRelatoriosRoute><ComprasRelatorioDemandaPedidos /></ComprasRelatoriosRoute></ModuloComprasRoute>} />
+        <Route path="compras/relatorios/localizar-pedidos" element={<ModuloComprasRoute><ComprasRelatoriosRoute><ComprasPedidosRoute><ComprasRelatorioLocalizarPedidos /></ComprasPedidosRoute></ComprasRelatoriosRoute></ModuloComprasRoute>} />
         <Route path="compras/relatorios/evolucao" element={<ModuloComprasRoute><ComprasRelatoriosRoute><ComprasRelatorioEvolucao /></ComprasRelatoriosRoute></ModuloComprasRoute>} />
         <Route path="compras/relatorios/pendencias-cotacoes" element={<ModuloComprasRoute><ComprasRelatoriosRoute><ComprasRelatorioPendenciasCotacoes /></ComprasRelatoriosRoute></ModuloComprasRoute>} />
         <Route path="compras/relatorios/precos-insumos" element={<ModuloComprasRoute><ComprasRelatoriosRoute><ComprasRelatorioPrecosInsumos /></ComprasRelatoriosRoute></ModuloComprasRoute>} />

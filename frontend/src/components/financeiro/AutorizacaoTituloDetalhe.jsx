@@ -9,6 +9,7 @@ import { autenticarComPasskey } from '../../utils/webauthn';
 import { passkeyInterrompida, mensagemPasskeyInterrompida } from '../../utils/passkeyInterrompida';
 import { podeSelecionarAutorizacao, podeDecidirItem, podeAutorizar, podeRejeitarFila, valorSelecionado, assinaturaDecisao, rotuloSituacao } from '../../utils/autorizacaoPagamentoSituacao';
 import { dataISOParaBR } from '../DateInputBR';
+import NotasFiscaisAutorizacao from './NotasFiscaisAutorizacao';
 
 const moeda = value => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const mesmaVersao = (a, b) => assinaturaDecisao(a) === assinaturaDecisao(b);
@@ -167,6 +168,7 @@ export default function AutorizacaoTituloDetalhe({ inicial, filtro, caps, setBus
         {(Number(s.juros) > 0 || Number(s.multa) > 0) && <p>Juros: {moeda(s.juros)} · Multa: {moeda(s.multa)} · Total enviado para autorização: {moeda(s.valor_total ?? item.valor_snapshot)}</p>}
         {s.participacoes?.length > 0 && <section><h3>Participações do título compartilhado</h3><p>A decisão abrange o título inteiro, não apenas esta obra.</p>{s.participacoes.map((p, i) => <p key={i}>{p.obra_nome || `Obra #${p.obra_id}`} · {p.empresa_nome || `Empresa #${p.empresa_id}`} · {moeda(p.valor)}</p>)}</section>}
         <section><h3>Documentos enviados para autorização</h3><div className="pa-obra-documentos">{(item.documentos || []).map(doc => <button type="button" className="btn btn-outline btn-sm" key={doc.id} disabled={operando} onClick={() => abrirDocumento(doc)}>{doc.nome}</button>)}</div>{!item.documentos?.length && <p>Nenhum documento enviado para autorização.</p>}</section>
+        {!item.exclusao_titulo && <NotasFiscaisAutorizacao key={item.id} item={item}/>}
         {(item.motivo_decisao || item.fila_atual?.motivo) && <section><h3>Decisão / última tentativa</h3><p>{item.motivo_decisao || item.fila_atual.motivo}</p><p>{rotuloSituacao(item.status)}</p></section>}
         {!caps.can_decide && <p>Seu acesso permite consultar os títulos, mas não aprovar ou rejeitar.</p>}
         {caps.paused && <p>Novas decisões pausadas.</p>}

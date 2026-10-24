@@ -4,6 +4,7 @@ import { useWorkspaceState, useWorkspaceWork } from '../navigation/WorkspaceCont
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { HiOutlineBell, HiOutlineCheckCircle, HiOutlineDocumentText, HiOutlineFingerPrint, HiOutlineLockClosed, HiOutlineXCircle } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
+import NotasFiscaisAutorizacao from '../components/financeiro/NotasFiscaisAutorizacao';
 import { Avisos, Pagina, useAvisos } from '../components/padrao';
 import { getUsuarios } from '../services/usuarios';
 import {
@@ -395,7 +396,8 @@ export default function FinanceiroAutorizacoesPagamento() {
                       {snapshot.compartilhamento_id && <details><summary>Lote #{snapshot.compartilhamento_id} · participações</summary>
                         {(snapshot.participacoes || []).map((p, i) => <small key={i}>Solicitação #{p.solicitacao_id}{p.pedido_compra_id ? ` · PC-${String(p.pedido_compra_id).padStart(5, '0')}` : ''}<br />{p.obra_nome || `Obra #${p.obra_id}`} · {p.empresa_nome || `Empresa #${p.empresa_id}`} · {money(p.valor)}</small>)}
                       </details>}</td><td>{snapshot.data_vencimento || '-'}</td><td className="num pa-value-column">{money(item.valor_snapshot)}</td>
-                    <td><div className="pa-documents">{(item.documentos || []).map((doc) => <button type="button" key={doc.id} onClick={() => openDocument(doc)} title={doc.nome}><HiOutlineDocumentText /><span>{doc.nome}</span></button>)}</div></td>
+                    <td><div className="pa-documents">{(item.documentos || []).map((doc) => <button type="button" key={doc.id} onClick={() => openDocument(doc)} title={doc.nome}><HiOutlineDocumentText /><span>{doc.nome}</span></button>)}</div>
+                      {!tituloExcluido(item) && <NotasFiscaisAutorizacao key={item.id} item={item}/>}</td>
                     <td><Status value={item.situacao_financeira || item.status} />{item.fila_item_id && <small>Fila #{item.fila_item_id}</small>}
                       <TituloExcluidoAviso exclusao={item.exclusao_titulo} />
                       {item.situacao_financeira && ['REJEITADO', 'INVALIDADO', 'CANCELADO'].includes(item.status) && <small>Decisão registrada: {rotuloSituacao(item.status)}</small>}
