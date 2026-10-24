@@ -58,7 +58,8 @@ const OPCOES_TIPO = [
 
 const OPCOES_ORIGEM = [
   ['manual_upload', 'Upload manual'],
-  ['sefaz_distribution', 'SEFAZ'],
+  ['sefaz_distribution', 'SEFAZ (legado)'],
+  ['nsdocs_v2_manual', 'NSDOCS'],
   ['batch_import', 'Importacao em lote']
 ];
 

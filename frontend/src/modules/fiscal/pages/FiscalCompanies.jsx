@@ -286,18 +286,8 @@ export default function FiscalCompanies() {
           </FormSecao>
 
           <FormSecao legenda="Monitoramento" colunas={2}>
-            <CampoForm label="Ambiente SEFAZ">
-              {/* Select de FORMULÁRIO (entrada de dado do registro) —
-                  legítimo pela própria R12; o que ela proíbe é select de
-                  recorte de lista. */}
-              <select
-                className="input w-full"
-                value={form.ambiente_sefaz}
-                onChange={(e) => updateField('ambiente_sefaz', e.target.value)}
-              >
-                <option value="homologacao">Homologação</option>
-                <option value="producao">Produção</option>
-              </select>
+            <CampoForm label="Ambiente legado">
+              <input className="input w-full" readOnly value={form.ambiente_sefaz === 'producao' ? 'Produção' : 'Homologação'} />
             </CampoForm>
 
             <div className="form-group">
@@ -355,7 +345,7 @@ export default function FiscalCompanies() {
         titulo="Empresas cadastradas"
         variante="primario"
         cor="var(--module-fiscal)"
-        descricao="Base para captura de DFe, certificados e sincronização com a SEFAZ."
+        descricao="Empresas vinculadas ao acervo fiscal. Captura de NF-e pela NSDOCS."
       >
         <TabelaPadrao
           colunas={[

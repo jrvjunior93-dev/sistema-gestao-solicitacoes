@@ -7,6 +7,9 @@
   testes/roteiro/handoff e inventario para publicar backend exclusivo primeiro.
   Frontend sera commitado localmente e retido ate prova EC2/schema/storage/chave.
   Nao executar SSH com escrita, migration, IAM, restart ou carga real pelo agente.
+- Backend publicado main0b1909293720731d99990bb3b55a96433b6cfd15. Nova branch local
+  codex/nsdocs-historico-frontend-20261024 para commit retido dos11 arquivosUI;
+  aguardar prova EC2/schema/chave/preflight. Handoff atualizado com hash/comandos.
 - Agente unico, branch codex/nsdocs-historico-prod-20261024, base main0b20cc4d.
 - Usuario autorizou preparar/testar carga manual de dados/XML, duplicidade e
   historico, automatico desligado, sem bloqueios financeiros e DEV preservado.

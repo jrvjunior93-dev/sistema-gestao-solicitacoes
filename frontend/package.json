@@ -79,7 +79,8 @@
     "cancelamento": "node scripts/varreduraCancelamento.mjs",
     "test:fiscal-pagamentos-documentos": "node scripts/validarFiscalPagamentoDocumentosUI.mjs && node scripts/validarArquivosSolicitacaoFila.mjs",
     "test:pedido-localizacao": "node scripts/validarPedidoLocalizacaoUI.mjs",
-    "test:fiscal-emissao": "node scripts/validarEmissaoFiscal.mjs"
+    "test:fiscal-emissao": "node scripts/validarEmissaoFiscal.mjs",
+    "test:fiscal-nsdocs-sem-sefaz": "node scripts/validarFiscalNsdocsSemSefaz.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.0",

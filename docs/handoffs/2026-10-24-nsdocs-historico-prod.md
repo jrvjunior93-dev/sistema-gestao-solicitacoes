@@ -60,6 +60,27 @@ Agente unico, branch codex/nsdocs-historico-prod-20261024, base0b20cc4d.
 
 ## Estado e proximo passo
 
+### Publicacao backend concluida; aguardando execucao pelo usuario
+
+- Push main confirmado:0b1909293720731d99990bb3b55a96433b6cfd15, apenas29 arquivos
+  backend+8 metadados, sem frontend/catalogo no commit. Hashes do proprio objeto
+  Git conferidos pelo validador real do aplicador antes do push. Sem force.
+- SHA256 aplicador:daa72208c4f001e3330454c4f1dccfae532d757c733c981a3fe89e344cc4f577.
+- Branch backend codex/nsdocs-historico-prod-20261024 fica no SHA publicado.
+  Nova branch codex/nsdocs-historico-frontend-20261024 reserva commit separado
+  dos11 arquivos frontend/catalogo, com fonte/build/UI ja aprovados. Nao publicar
+  essa etapa antes da prova backend/schema/chave/preflight fornecida pelo usuario.
+- Aplicador5QA + inventario4 aprovados; modoBackendOnly8pass/1skip (skip da UI
+  retida esperado na EC2). O QA completo da UI/inventario foi aprovado localmente.
+- Usuario executara preparar com SHAexato, depois aplicar+conferir, quatroflags
+  e janela. Migra exclusivamente003 e reinicia somentePROD/Nodeisolado24.22.1.
+  Nao aciona NSDOCS/S3/IAM/chave. Agente nao executou nenhuma mutacao na EC2.
+- IAM: politica adicional de quatro leituras no bucketPROD, na roleFluxyFiscalProd,
+  sem substituir as politicas/trust atuais. Nova chaveNSDOCS exclusivaPROD/CNPJ27
+  configurada viaSSHinterativo/promptoculto, seguida conferir/preflight(0NSDOCS).
+- Proximo: receber saidas sanitizadas antes de liberar frontend/piloto e carga.
+  DEV2920e1f1 preservado; nenhum push nessa branch ou reinicio de seus processos.
+
 Retomada: usuario autorizou commit/push main e comandos de atualizacao/migration/
 chave, backend antes de frontend, DEV preservado. Backup recente cifrado/timer
 confirmados explicitamente para esta implantacao. Remotos conferidos main0b20cc4d
