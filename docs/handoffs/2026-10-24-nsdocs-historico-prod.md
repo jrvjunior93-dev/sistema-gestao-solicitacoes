@@ -60,6 +60,25 @@ Agente unico, branch codex/nsdocs-historico-prod-20261024, base0b20cc4d.
 
 ## Estado e proximo passo
 
+### Piloto PROD aprovado; liberacao frontend e periodo historico
+
+- Prova usuario bfabb75c-71e6-4eea-94b8-8d74d114cc7d: empresa1/CNPJ27123,
+  documents1/xmls1, unsupported0, persistedtrue, window_completetrue, duas chamadas
+  NSDOCS; historico completed/sem erro/cinco eventos; replaytrue/0chamadas.
+  AutomaticoOFF. Validacao XML segue identidade apenas, assinatura nao validada.
+- Condicao de retencao do frontend atendida. Mainremota ainda0b190929, DEV2920e1f1;
+  publicar996c9e69 + recibos documentais7837d640 e desta retomada por ff normal.
+  Conferir statuses GitHub/Vercel e artefatos fiscais no dominioPROD/health.
+  Nenhum novo pull/migration/restart/env/dumps/Node ou chamada NSDOCS necessarios
+  para publicar a interface. Nao executar o plano real pelo agente.
+- Usuario informou periodo de emissao01/01/2026 a23/10/2026 inclusive. Planejamento
+  puro local e comandos de --planejar --salvar e --executar-plano manuais; ambos
+  status Pendente/Importado, paginas5docs, IDduravel para retomar sem recriar plano.
+- Depois de frontend no ar: usuario testa documentos/detalhes/XML/historico e
+  ausencia de acoesSEFAZ. Criar plano uma vez, guardar plan_id; conferir primeiro
+  lote historico com max-lotes1 e consultar progresso. Nao anunciar carga inteira
+  concluida com base em piloto ou lote unico. Sem novos bloqueios financeiros.
+
 ### Backend, schema, chave e preflight PROD conferidos; piloto pendente
 
 - Usuario retornou NSDOCS_CREDENCIAL_PROD_GUARDADA/CONFERIDA, empresa1/CNPJ27123,

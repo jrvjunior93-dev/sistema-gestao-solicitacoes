@@ -2,6 +2,11 @@
 
 ## Carga historica NSDOCS PROD e retirada de consultas SEFAZ da UI - 2026-10-24
 
+- Piloto PROD aprovado pelo usuario: bfabb75c-71e6-4eea-94b8-8d74d114cc7d,
+  documents1/xmls1/persistedtrue, cinco eventos, replaytrue/0NSDOCS. AutomaticoOFF.
+  Reservar recibos/publicacao frontend996c9e69 e conferencia Vercel/artefatos.
+  Usuario definiu periodo emissao01/01/2026..23/10/2026 para plano manual.
+  Nao executar carga real pelo agente; preparar comandos de plano/retomada.
 - Retomada apos provas: chavePROD guardada/conferida, pending0/appliedtrue e
   preflightOK/0NSDOCS/automaticoOFF. Reservar apenas recibos/handoff do piloto.
   SSH conferir executado em leitura: backend_pronto0b190929, peers/Nodes/dumps
