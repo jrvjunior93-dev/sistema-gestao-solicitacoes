@@ -14,8 +14,12 @@ function normalizeResponse(response, request, company) {
     }
     return result;
   });
-  const normalized = normalizePage(rows, request, response.total);
-  return { ...normalized, documents: normalized.documents.map(doc => ({ ...doc, source_mode: 'manual' })) };
+  const normalized = normalizePage(rows, request, response.total, { countMode: 'page' });
+  // Ordenacao por data nao e unica. Capturas legadas cheias precisam de
+  // descoberta/subdivisao; nao prosseguir por offset como prova de cobertura.
+  const uncertain = normalized.next_offset !== null || request.offset > 0;
+  return { ...normalized, ...(uncertain ? { next_offset: null, partition_required: true, window_complete: false } : {}),
+    documents: normalized.documents.map(doc => ({ ...doc, source_mode: 'manual' })) };
 }
 
 module.exports={normalizeResponse};

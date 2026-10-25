@@ -55,10 +55,12 @@ function identifier(value, max) {
   return text(value, max);
 }
 
-function normalizePage(rows, request, total) {
+function normalizePage(rows, request, total, { countMode = 'global' } = {}) {
   if (!Array.isArray(rows) || rows.length > request.limit) fail('NSDOCS_LISTA_INVALIDA');
-  if (!Number.isSafeInteger(total) || total < 0 || total < request.offset + rows.length) fail('NSDOCS_TOTAL_INVALIDO');
-  if (!rows.length && total > request.offset) fail('NSDOCS_PAGINA_INCONSISTENTE');
+  if (!['global', 'page'].includes(countMode)) fail('NSDOCS_TOTAL_INVALIDO');
+  const pageCount = countMode === 'page';
+  if (!Number.isSafeInteger(total) || total < 0 || total < (pageCount ? rows.length : request.offset + rows.length)) fail('NSDOCS_TOTAL_INVALIDO');
+  if (!rows.length && total > (pageCount ? 0 : request.offset)) fail('NSDOCS_PAGINA_INCONSISTENTE');
   const documents = [], unsupported = [], keys = new Map(), ids = new Set();
   let duplicates = 0;
   for (const row of rows) {
@@ -103,7 +105,9 @@ function normalizePage(rows, request, total) {
     }
   }
   const consumed = request.offset + rows.length;
-  const more = consumed < total;
+  // O provedor real devolve X-Total-Registros como tamanho da pagina. Uma
+  // pagina cheia nunca comprova fim. Total global maior tambem pede continuacao.
+  const more = pageCount ? rows.length === request.limit || total > rows.length : consumed < total;
   // Nunca anunciar janela concluida no limite de 2000; exige particionar datas.
   const partitionRequired = consumed >= 2000 || (more && rows.length < request.limit);
   return {

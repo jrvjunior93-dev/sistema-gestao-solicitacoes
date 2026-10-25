@@ -1,5 +1,52 @@
 # Ownership Ativo
 
+## Publicacao DEV e promocao por etapas - 2026-10-25
+
+- Usuario autorizou commit/push refactor/frontend, depois promocao main e
+  comandos EC2. Nao executar deploy/carga pelo agente; preparar backend antes
+  de publicar frontend main. Preservar DEV EC2, Experience, daemon, env e Nodes.
+- Reservar novo aplicador/inventario/QA/roteiro de release, metadados e pacote
+  do complemento/lista. Refactor atual2920e1f1 ainda nao contem nsdocsHistorical;
+  transportar somente pre-requisitos administrativos isolados e preservar o
+  conector DEV/segredos/caminhos existentes. Main base3fc61f14.
+- Checkout DEV auxiliar dentro de outputs/ deste mesmo repositorio; nenhum
+  outro projeto/repositorio ou agente. Nao incluir outputs/ no commit.
+
+## Implementacao local do complemento e lista fiscal - 2026-10-25
+
+- Implementado/testado localmente: 87 testes backend, navegador/3fusos/mobile,
+  build e auditorias de permissoes aprovados. Sem commit/push/deploy/carga real.
+  Handoff: docs/handoffs/2026-10-25-nsdocs-complemento-lista-fiscal.md.
+- Usuario autorizou implementacao/testes locais, sem alterar PROD ou DEV.
+- Branch codex/nsdocs-complemento-paginacao-20261025; agente unico.
+- Reservar normalizacao NSDOCS/manual/query, novo CLI e modulos complement/*,
+  repository/capture (reuso XML), QA backend, FiscalDocuments/fiscalApi, hook
+  paginado fiscal e componentes compartilhados de navegacao (rotulo opcional),
+  QA UI e documentacao/handoff. Sem endpoints novos, permissoes ou financeiro.
+- Enumerar metadados por janelas limitadas, subdividir janelas cheias e guardar
+  snapshot privado antes de capturar XMLs em lotes5. Nunca depender de offsets
+  com ordem nao unica nem do header como total integral. Preservar plano antigo.
+- Lista usa GET /fiscal/documents existente, por pagina/rolagem sob demanda.
+  Empresas uma vez; arquivos/links assinados e acoes existentes preservados.
+- Sem chamada NSDOCS/AWS/RDS real, SSH, migration, reinicio, push/deploy ou
+  alteracao de ambientes remotos durante esta implementacao.
+
+## Divergencia de volume NSDOCS PROD - 2026-10-25
+
+- Usuario executou sonda offset5: cinco linhas, total5, quatro IDs novos e um
+  repetido. Falha de encerramento na pagina0 confirmada. Causa da sobreposicao
+  ainda nao isolada; nao assumir ordem unica por data ou completude por offset.
+- Agente unico: reservar sonda de paginacao, QA e handoff desta analise.
+- Plano 8e0a4179 terminou 20 lotes, 46 NF-e distintas e 4 modelos fora do
+  escopo (3 CT-e e 1 MDF-e). Referencias XML no banco conferidas; objetos S3
+  nao foram relidos. Nenhuma captura ativa ou lock na conferencia.
+- Auditoria somente leitura: dez paginas Pendente com limit=5, offset=0,
+  raw_count=5 e total=5; dez Importado vazias. Nenhuma pagina adicional.
+  Nao equiparar complete do plano a cobertura integral do acervo do provedor.
+- Preparar UM GET diagnostico offset=5 da primeira janela, sem XML/DB/S3 writes
+  ou alteracao do plano. Execucao real exige confirmacao propria; preservar
+  credencial, registros, IDs e historico. Sem deploy ou mudanca em PROD/DEV.
+
 ## Falha de descompactacao NSDOCS historico PROD - 2026-10-24
 
 - Sonda do usuario confirmouHTTP200/applicationJSON/semContentEncoding/2bytes,

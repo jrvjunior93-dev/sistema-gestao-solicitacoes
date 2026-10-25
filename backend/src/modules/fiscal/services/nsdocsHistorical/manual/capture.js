@@ -107,4 +107,4 @@ async function captureManually(options, dependencies = {}) {
     });
   });
 }
-module.exports = { UUID, preflightCapture, captureManually };
+module.exports = { UUID, preflightCapture, captureManually, withCaptureResources };

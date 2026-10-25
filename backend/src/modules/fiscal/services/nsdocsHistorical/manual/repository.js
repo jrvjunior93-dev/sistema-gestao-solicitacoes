@@ -48,6 +48,24 @@ function createRepository(db) {
   }
   return {
     fiscalCompany,
+    async sourceKeys(ids,company){
+      check(Array.isArray(ids)&&ids.length>0&&ids.length<=20000,'NSDOCS_COMPLEMENTO_ORIGEM_INVALIDA');
+      const [count]=await exec(`SELECT COUNT(*) AS total FROM fiscal_nsdocs_captures WHERE empresa_id=? AND company_cnpj=? AND state='completed' AND id IN (${ids.map(()=>'?').join(',')})`,[company.id,company.cnpj,...ids]);
+      check(Number(count.total)===ids.length,'NSDOCS_COMPLEMENTO_ORIGEM_INCOMPLETA');
+      const rows=await exec(`SELECT o.access_key FROM fiscal_nsdocs_observations o JOIN fiscal_nsdocs_captures c ON c.id=o.capture_id WHERE c.empresa_id=? AND c.company_cnpj=? AND c.id IN (${ids.map(()=>'?').join(',')})`,[company.id,company.cnpj,...ids]);
+      return [...new Set(rows.map(r=>r.access_key))].sort();
+    },
+    async reusableXml(doc,company,fiscalCompanyId){
+      const rows=await exec('SELECT o.snapshot_json,o.xml_bucket,o.xml_key,o.xml_hash,d.fiscal_company_id,d.document_type FROM fiscal_nsdocs_observations o JOIN fiscal_nsdocs_captures c ON c.id=o.capture_id JOIN fiscal_dfe_documents d ON d.id=o.fiscal_dfe_document_id WHERE o.access_key=? AND c.empresa_id=? AND c.company_cnpj=? ORDER BY o.id LIMIT 1',[doc.access_key,company.id,company.cnpj]);
+      if(!rows.length)return null;
+      const row=rows[0],snapshot=json(row.snapshot_json);
+      check(Number(row.fiscal_company_id)===fiscalCompanyId&&row.document_type==='nfe','NSDOCS_NOTA_EXISTENTE_OUTRA_EMPRESA');
+      const fields=['access_key','company_cnpj','issuer_cnpj','recipient_cnpj','number','issued_on','total_cents'];
+      check(snapshot.xml_validation==='identity_checked_signature_unverified'&&fields.every(f=>snapshot[f]===doc[f]),'NSDOCS_COMPLEMENTO_IDENTIDADE_CONFLITANTE');
+      check(row.xml_bucket==='fluxy-fiscal-prod'&&typeof row.xml_key==='string'&&row.xml_key.startsWith(`prod/nsdocs/${company.cnpj}/nfe/`)
+       &&/^[0-9a-f]{64}$/.test(row.xml_hash),'NSDOCS_COMPLEMENTO_XML_EXISTENTE_INVALIDO');
+      return {bucket:row.xml_bucket,key:row.xml_key,hash:row.xml_hash};
+    },
     async history(id, company) {
       const [row] = await exec('SELECT id, state, error_code, result_json, createdAt, updatedAt FROM fiscal_nsdocs_captures WHERE id = ? AND empresa_id = ? AND company_cnpj = ?', [id, company.id, company.cnpj]);
       check(row, 'NSDOCS_CAPTURA_NAO_ENCONTRADA');
