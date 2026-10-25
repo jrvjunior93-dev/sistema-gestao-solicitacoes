@@ -14,8 +14,8 @@ const cli=require('./nsdocsProdComplement');
 const fail=code=>error=>error.code===code;
 function provider(f,rows){f.deps.request=async request=>{
  f.calls.list++;const url=new URL(request.url);
- assert.equal(url.origin,'https://api.nsdocs.com.br');assert.equal(url.pathname,'/v2/documentos');assert.equal(url.searchParams.get('quantidade'),'100');assert.equal(url.searchParams.get('deslocamento'),'0');
- const filtered=rows.filter(r=>r.status===request.status&&providerDate(r.data_emissao)>=request.startDate&&providerDate(r.data_emissao)<=request.endDate).slice(0,100);
+ assert.equal(url.origin,'https://api.nsdocs.com.br');assert.equal(url.pathname,'/v2/documentos');assert.equal(url.searchParams.get('quantidade'),'100');assert.equal(url.searchParams.get('deslocamento'),'0');assert.equal(url.searchParams.get('modelo'),'NF-e');
+ const filtered=rows.filter(r=>r.modelo==='NF-e'&&r.status===request.status&&providerDate(r.data_emissao)>=request.startDate&&providerDate(r.data_emissao)<=request.endDate).slice(0,100);
  return {rows:structuredClone(filtered),total:filtered.length};
 };}
 async function enumerate(f,rows){provider(f,rows);let s;for(let i=0;i<50;i++){

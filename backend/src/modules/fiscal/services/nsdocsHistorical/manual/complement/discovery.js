@@ -12,10 +12,14 @@ async function discover({planId,company,maxQueries=1,signal},d={}){
   while(calls<maxQueries){
    check(!signal?.aborted,'NSDOCS_CONSULTA_CANCELADA');
    check(!plan.windows.some(w=>w.state==='needs_review'),'NSDOCS_COMPLEMENTO_REVISAO_NECESSARIA');
-   const window=plan.windows.find(w=>w.state==='pending');if(!window)break;
+   const window=core.nextPending(plan);if(!window)break;
    if(calls)await wait(signal);
-   const descriptor=buildListRequest({companyCnpj:company.cnpj,status:window.status,startDate:window.start,endDate:window.end,
+   const base=buildListRequest({companyCnpj:company.cnpj,status:window.status,startDate:window.start,endDate:window.end,
     dateField:plan.date_field,limit:100,offset:0},company.cnpj);
+   // Filtro interno deste complemento. Nao amplia a entrada das capturas
+   // legadas nem altera os hashes de idempotencia das outras CLIs.
+   const url=new URL(base.url);url.searchParams.set('modelo','NF-e');
+   const descriptor=Object.freeze({...base,url:url.href});
    await secrets.withLock(async()=>{
     secrets.checkCooldown(Date.now());let credentials,started=false;
     const journal=outcome=>secrets.appendHistory({at:Date.now(),requestId:window.id,companyId:company.id,outcome});
@@ -23,8 +27,10 @@ async function discover({planId,company,maxQueries=1,signal},d={}){
      credentials=secrets.loadCredentials();verifyCompany(company,credentials.companyId,credentials.companyCnpj);
      journal('NSDOCS_COMPLEMENTO_DESCOBERTA_INICIADA');started=true;calls++;
      const response=await request(descriptor,credentials.apiKey,undefined,signal);assertNoSecret(response,credentials.apiKey);
+     // Se o provedor ignorar/mudar o filtro, nao salvar uma cobertura presumida.
+     check(Array.isArray(response.rows)&&response.rows.every(row=>row?.modelo==='NF-e'),'NSDOCS_FILTRO_MODELO_NAO_RESPEITADO');
      const page=normalizeResponse(response,descriptor,company);
-     window.raw_count=page.raw_count;window.reported_total=page.total;
+     window.raw_count=page.raw_count;window.reported_total=page.total;window.query_model='NF-e';
      if(!page.window_complete){
       const children=core.split(window,d.uuid);
       check(plan.windows.length+children.length<=core.MAX_WINDOWS,'NSDOCS_COMPLEMENTO_LIMITE_JANELAS');

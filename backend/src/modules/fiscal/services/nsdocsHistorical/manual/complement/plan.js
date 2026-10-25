@@ -23,6 +23,14 @@ function split(window,uuid=randomUUID){
  return [{id:uuid(),start:window.start,end:date(middle),status:window.status,state:'pending',parent:window.id},
   {id:uuid(),start:date(middle+day),end:window.end,status:window.status,state:'pending',parent:window.id}];
 }
+function nextPending(plan){
+ // O intervalo menor tende a fechar antes. Empates mantem a ordem original;
+ // nao altera nem reconsulta janelas prontas, IDs ou dados ja enumerados.
+ let best;
+ for(const w of plan.windows)if(w.state==='pending'&&(!best||
+  Date.parse(w.end)-Date.parse(w.start)<Date.parse(best.end)-Date.parse(best.start)))best=w;
+ return best;
+}
 function manifest(plan){
  const docs=new Map();
  for(const w of plan.windows.filter(w=>w.state==='enumerated'))for(const d of w.documents){
@@ -55,9 +63,11 @@ function validate(plan,company){
    &&['Pendente','Importado'].includes(w.status)&&w.start>=plan.start_date&&w.end<=plan.end_date&&w.start<=w.end,'NSDOCS_COMPLEMENTO_JANELA_INVALIDA');ids.add(w.id);
   isoDate(w.start);isoDate(w.end);
   check(Date.parse(w.end)-Date.parse(w.start)<=30*86400000,'NSDOCS_COMPLEMENTO_JANELA_INVALIDA');
+  check(w.query_model===undefined||w.query_model==='NF-e','NSDOCS_COMPLEMENTO_MODELO_INVALIDO');
   if(w.state==='enumerated'){
    check(Array.isArray(w.documents)&&Array.isArray(w.unsupported)&&Number.isInteger(w.raw_count)&&w.raw_count>=0&&w.raw_count<100&&w.next_offset===null
     &&w.raw_count===w.documents.length+w.unsupported.length+Number(w.duplicates||0),'NSDOCS_COMPLEMENTO_ENUMERACAO_INVALIDA');
+   check(w.query_model===undefined||w.unsupported.length===0,'NSDOCS_COMPLEMENTO_MODELO_INVALIDO');
    for(const d of w.documents)check(/^\d{44}$/.test(d.access_key)&&d.company_cnpj===company.cnpj&&d.model==='nfe'
     &&Number.isSafeInteger(d.total_cents)&&d.total_cents>=0&&d[plan.date_field==='data_emissao'?'issued_on':'received_on']>=w.start
     &&d[plan.date_field==='data_emissao'?'issued_on':'received_on']<=w.end,'NSDOCS_COMPLEMENTO_DOCUMENTO_INVALIDO');
@@ -96,4 +106,4 @@ function summary(plan){
   xml_downloads:completed.reduce((n,b)=>n+Number(b.result?.xml_downloads||0),0),reused_xmls:completed.reduce((n,b)=>n+Number(b.result?.reused_xmls||0),0),
   complete:Boolean(plan.manifest_hash)&&!review&&!missing&&completed.length===plan.batches.length,application_connector_enabled:false};
 }
-module.exports={create,split,manifest,freeze,validate,summary,hash,digest,identity,MAX_WINDOWS};
+module.exports={create,split,nextPending,manifest,freeze,validate,summary,hash,digest,identity,MAX_WINDOWS};

@@ -1,0 +1,27 @@
+{
+  "base": "f8d32ac12d9a2619391af7e3cdf599711ef93a47",
+  "no_restart": true,
+  "no_schema": true,
+  "files": [
+    {
+      "path": "backend/src/modules/fiscal/services/nsdocsHistorical/manual/complement/discovery.js",
+      "old_sha256": "e17b51f74fead00a338db1bca48d3b40958b4707d5dec752ea00eba47e79d1a7",
+      "sha256": "f3605723eaff02d5cbc55bdddcc75a1683a8fb5f5426639c9f3ad069e2b730ce"
+    },
+    {
+      "path": "backend/src/modules/fiscal/services/nsdocsHistorical/manual/complement/plan.js",
+      "old_sha256": "51023e53ee78ab92366fc836d512412c9e71d64b3f51dacc7a00f8a2026bbfe0",
+      "sha256": "1e808ef296672bb0b6168cf55d4b491aefd2492b37ab947dba7fccc8963c09c2"
+    }
+  ],
+  "qa": [
+    {
+      "path": "backend/scripts/validarNsdocsDescobertaOtimizada.js",
+      "sha256": "47d86ac922b0fef8cab85160f899d278bfe798c76e4cd8ed266610e141da91b8"
+    },
+    {
+      "path": "backend/scripts/validarNsdocsComplemento.js",
+      "sha256": "562b534fb4c3c19a143296c56e78b392390d58ba5ae5333bc7428233c96a530c"
+    }
+  ]
+}

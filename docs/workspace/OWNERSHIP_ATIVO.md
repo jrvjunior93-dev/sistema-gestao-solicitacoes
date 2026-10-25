@@ -6468,3 +6468,19 @@ e ownership liberado para publicacao dev. outputs/ permanece fora do commit.
 ## Emitente CPF na captura NSDOCS - 2026-10-25
 - Agente desta conversa: reserva nsdocsHistorical/contract.js, normalize.js, manual/query.js e manual/xml.js; backend/scripts/validarNsdocsEmitenteCpf.js; novo operador/manifesto/teste cpf-prod-20261025 e handoff. CPF estritamente validado so no emitente; empresa e destinatario mantem CNPJ, XML exige tag e chave concordantes. Preservar46notas, snapshots, plano, DEV e Nodes. Sem deploy/carga real pelo agente.
 - CPF implementado e QA concluido:105main,152DEV,20operador/sonda; reserva liberada no commit. Sonda identificouCPFvalido do emitente sem divulgar valor. Sem deploy, carga real ou alteracao de DEV pelo agente.
+
+## Retomada background apos emitente CPF - 2026-10-25
+- Agente desta conversa: reserva ops/deploy/iniciar-descoberta-nsdocs-cpf-prod-20261025.sh e docs/handoffs/2026-10-25-nsdocs-descoberta-background.md. Apenas novo lancador local com HEADf8d32ac1, sem alterar versao anterior, flags/locks/Nodes ou limite10GETs. Nenhuma execucao real pelo agente.
+
+## Agilizar descoberta NSDOCS - validacao de filtro NF-e - 2026-10-25
+- Agente desta conversa: reserva ops/deploy/sondar-nsdocs-modelo-complemento-prod-20261025.cjs, respectivo .test.cjs e docs/handoffs/2026-10-25-nsdocs-descoberta-otimizacao.md. Validar filtro de modelo em uma janela ja enumerada, comparando chaves e identidade sem imprimir dados; nenhum campo/intervalo de seguranca ou runtime alterado antes de evidencia real. Preservar150metadados,46canonicas/XMLs, plano e automaticoOFF.
+
+## Filtro NF-e nao confirmado e planejamento incremental - 2026-10-25
+- Agente desta conversa: reserva nova sonda comparada modelo-prod, respectivos testes, handoff de otimizacao e docs/fiscal/PLANO_NSDOCS_INCREMENTAL_PARALELO_20261025.md. Condicao do usuario nao satisfeita (modelo=nfe retornou0vs70); sem otimizar runtime ou ativar automatico. Preparar comparacao semfiltro/NF-e e planejar compatibilidade entre historico/novas notas sem mutacao real.
+
+## Otimizacao confirmada de descoberta NF-e - 2026-10-25
+- Agente desta conversa: reserva nsdocsHistorical/contract.js, manual/complement/plan.js e discovery.js, novo validarNsdocsDescobertaOtimizada.js e mock de validarNsdocsComplemento.js, handoff correspondente. Filtro literalNF-e confirmado pelo usuario70/70 e identidade sem divergencias. Alterar apenas consultas pendentes/prioridade de intervalos;150metadados/46canonicas/XMLs preservados. Sem commit/push, EC2, DEV ou ativacao automatica nesta implementacao/teste.
+- Implementacao local concluida: runtime apenas discovery.js/plan.js, contrato global intacto;120testes (15novos) aprovados. DEV nao editado, sem commit/push/EC2/API real; handoff de otimizacao atualizado para retomada segura. Reserva liberada nesta etapa.
+
+## Publicacao main da descoberta otimizada - 2026-10-25
+- Usuario autorizou commit/push somente main e comandos EC2/retomada, preservando DEV. Agente desta conversa reserva operador/testes/manifesto/launcher/README otimizacao-prod e handoff. Backups privados e guardas de progresso/automaticoOFF; sem aplicar na EC2 ou executar NSDOCS pelo agente. Nenhum arquivo do checkout DEV sera editado.
