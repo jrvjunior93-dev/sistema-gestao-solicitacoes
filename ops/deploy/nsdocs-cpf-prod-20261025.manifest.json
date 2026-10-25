@@ -1,0 +1,33 @@
+{
+  "base": "3f5506fca2d9a3c794cc62c0d3b14866dc45beb2",
+  "no_restart": true,
+  "no_schema": true,
+  "files": [
+    {
+      "path": "backend/src/modules/fiscal/services/nsdocsHistorical/contract.js",
+      "old_sha256": "087755884fb0e362569f8a6fa0b70a986d6e589b2c7c94eb4ad72e1b0b3436da",
+      "sha256": "676298c108fbce01c4c672a2462d49ac78f7172fbbe838e7ed38f431d791690d"
+    },
+    {
+      "path": "backend/src/modules/fiscal/services/nsdocsHistorical/normalize.js",
+      "old_sha256": "a8dc19c370d211e74f69295346ac6cac83cacd9426d12a3ef2b9bff0922fed09",
+      "sha256": "2e6161a48ea4c4b5c7857275daf382d73c376ffb8dab646d0d40e8856ba4f9dc"
+    },
+    {
+      "path": "backend/src/modules/fiscal/services/nsdocsHistorical/manual/query.js",
+      "old_sha256": "518a04365d5030081a3d321df5cce8eb7ed6b3acee157284e7d4ec1182089083",
+      "sha256": "abe734e62bbc863cff4eff9172b7a07e8620b47cd6a752bf031432c5dde6a967"
+    },
+    {
+      "path": "backend/src/modules/fiscal/services/nsdocsHistorical/manual/xml.js",
+      "old_sha256": "37d7271b6cc340c9385ab9ff03d03166b820ecce494c5c8d3ca2d107f79aef12",
+      "sha256": "3afbdb99b60efd61424f5fe30c2901cff639c8d25f77452c9bc1e485e419dda2"
+    }
+  ],
+  "qa": [
+    {
+      "path": "backend/scripts/validarNsdocsEmitenteCpf.js",
+      "sha256": "9e2c80aa60c68c2365a960a2e96ab4d10dcb7fa1f108f172b1d6a17dbe331ec1"
+    }
+  ]
+}

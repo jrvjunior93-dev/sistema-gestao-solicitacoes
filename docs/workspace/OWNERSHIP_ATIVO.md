@@ -6458,3 +6458,13 @@ e ownership liberado para publicacao dev. outputs/ permanece fora do commit.
 ## Correcao de nome ausente na listagem NSDOCS - 2026-10-25
 - Agente desta conversa: reserva normalize.js em nsdocsHistorical, backend/scripts/validarNsdocsDestinatarioNome.js, novo operador/manifesto/testes nsdocs-nome-prod-20261025 e handoff associado. Aceitar somente string vazia de destinatario_nome na listagem; CNPJ/chave/datas/valores/XML continuam obrigatorios. Preparar/testar pacote sem migration ou reinicio, preservar plano c456781c e 46 notas. Sem operacoes reais pelo agente.
 - Implementacao e QA concluidos; reserva liberada no commit. 91 testes main, 138 DEV, 17 operador/sonda e auditoria de permissoes aprovados. Implantacao/carga real somente pelo usuario; nenhum ambiente executado pelo agente.
+
+## Rodada de descoberta NSDOCS independente do SSH - 2026-10-25
+- Agente desta conversa: reserva ops/deploy/iniciar-descoberta-nsdocs-prod-20261025.sh e docs/handoffs/2026-10-25-nsdocs-descoberta-background.md. Lancador local para execucao manual de ate10GETs, mesmo complemento, log privado e nohup. Sem modificar aplicacao, contratos, planos existentes, PM2, ambientes ou dados. Validacao local de sintaxe/guardas; nenhuma chamada real pelo agente.
+
+## Sonda de identidade CNPJ no complemento NSDOCS - 2026-10-25
+- Agente desta conversa: reserva ops/deploy/sondar-nsdocs-cnpj-complemento-prod-20261025.cjs, respectivo .test.cjs e docs/handoffs/2026-10-25-nsdocs-cnpj-complemento.md. Um GET confirmado da janela pendente, somente formato/tipo/DV dos campos fixos, sem valores, XML, alteracao de plano, banco ou processos. Nao modificar validacao de empresa/identidade antes de evidencia.
+
+## Emitente CPF na captura NSDOCS - 2026-10-25
+- Agente desta conversa: reserva nsdocsHistorical/contract.js, normalize.js, manual/query.js e manual/xml.js; backend/scripts/validarNsdocsEmitenteCpf.js; novo operador/manifesto/teste cpf-prod-20261025 e handoff. CPF estritamente validado so no emitente; empresa e destinatario mantem CNPJ, XML exige tag e chave concordantes. Preservar46notas, snapshots, plano, DEV e Nodes. Sem deploy/carga real pelo agente.
+- CPF implementado e QA concluido:105main,152DEV,20operador/sonda; reserva liberada no commit. Sonda identificouCPFvalido do emitente sem divulgar valor. Sem deploy, carga real ou alteracao de DEV pelo agente.
