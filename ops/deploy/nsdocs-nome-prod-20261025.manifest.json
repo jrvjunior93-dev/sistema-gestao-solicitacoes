@@ -1,0 +1,18 @@
+{
+  "base": "953b6a3a967fb42cfbc91d1553f4adcc0fc5e0da",
+  "no_restart": true,
+  "no_schema": true,
+  "files": [
+    {
+      "path": "backend/src/modules/fiscal/services/nsdocsHistorical/normalize.js",
+      "old_sha256": "7eba91201d2bf6b3d49c74ace3c04193307f74c90096730cd47c466734516416",
+      "sha256": "a8dc19c370d211e74f69295346ac6cac83cacd9426d12a3ef2b9bff0922fed09"
+    }
+  ],
+  "qa": [
+    {
+      "path": "backend/scripts/validarNsdocsDestinatarioNome.js",
+      "sha256": "140c03cc7b89813ebb92421d12a821bbfbe519af1e8fc083d1654ff2dc73ca60"
+    }
+  ]
+}

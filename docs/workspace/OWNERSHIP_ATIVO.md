@@ -6451,3 +6451,10 @@ e ownership liberado para publicacao dev. outputs/ permanece fora do commit.
   commit/push em refactor/frontend. Sem main, EC2, banco real ou migrations.
 - Validacoes de publicacao repetidas com sucesso. Reserva encerrada e ownership
   liberado para publicar somente este delta; outputs/ excluido do commit.
+
+## Diagnostico de campo NSDOCS complemento - 2026-10-25
+- Agente desta conversa, sem delegacao: reserva ops/deploy/sondar-nsdocs-campos-complemento-prod-20261025.cjs, respectivo .test.cjs e docs/handoffs/2026-10-25-nsdocs-campo-complemento.md. Somente sonda de um GET explicitamente confirmado, tipos/motivos sem valores, QA ficticio. Sem alteracao de normalizador, ambiente, plano, schema, dados ou processos. Nenhuma chamada real executada pelo agente.
+
+## Correcao de nome ausente na listagem NSDOCS - 2026-10-25
+- Agente desta conversa: reserva normalize.js em nsdocsHistorical, backend/scripts/validarNsdocsDestinatarioNome.js, novo operador/manifesto/testes nsdocs-nome-prod-20261025 e handoff associado. Aceitar somente string vazia de destinatario_nome na listagem; CNPJ/chave/datas/valores/XML continuam obrigatorios. Preparar/testar pacote sem migration ou reinicio, preservar plano c456781c e 46 notas. Sem operacoes reais pelo agente.
+- Implementacao e QA concluidos; reserva liberada no commit. 91 testes main, 138 DEV, 17 operador/sonda e auditoria de permissoes aprovados. Implantacao/carga real somente pelo usuario; nenhum ambiente executado pelo agente.
