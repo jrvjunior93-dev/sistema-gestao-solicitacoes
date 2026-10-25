@@ -1,6 +1,7 @@
 'use strict';
 
 const { BASE_URL, fail } = require('./config');
+const { isValidCpf } = require('../../../../utils/cpfCnpj');
 
 const FIELDS = [
   'id', 'empresa_cnpj', 'emitente_nome', 'emitente_cnpj', 'destinatario_nome',
@@ -10,6 +11,11 @@ const FIELDS = [
 
 function cnpj(value) {
   if (typeof value !== 'string' || !/^\d{14}$/.test(value)) fail('NSDOCS_CNPJ_INVALIDO');
+  return value;
+}
+
+function cpf(value) {
+  if (typeof value !== 'string' || !/^\d{11}$/.test(value) || !isValidCpf(value)) fail('NSDOCS_CPF_INVALIDO');
   return value;
 }
 
@@ -60,4 +66,4 @@ function buildListRequest(options, allowedCompanyCnpj) {
   });
 }
 
-module.exports = { FIELDS, cnpj, isoDate, providerDate, buildListRequest };
+module.exports = { FIELDS, cnpj, cpf, isoDate, providerDate, buildListRequest };

@@ -3,7 +3,7 @@
 const { gunzipSync, inflateSync } = require('node:zlib');
 const { TextDecoder, isDeepStrictEqual } = require('node:util');
 const { fail } = require('./config');
-const { cnpj, providerDate } = require('./contract');
+const { cnpj, cpf, providerDate } = require('./contract');
 
 const MAX_BODY_BYTES = 1024 * 1024;
 
@@ -74,7 +74,9 @@ function normalizePage(rows, request, total, { countMode = 'global' } = {}) {
       continue;
     }
     if (typeof row.chave_acesso !== 'string' || !/^\d{44}$/.test(row.chave_acesso)) fail('NSDOCS_CHAVE_INVALIDA');
-    const issuerCnpj = cnpj(row.emitente_cnpj), recipientCnpj = cnpj(row.destinatario_cnpj);
+    const issuerIsCpf = typeof row.emitente_cnpj === 'string' && /^\d{11}$/.test(row.emitente_cnpj);
+    const issuerCnpj = issuerIsCpf ? cpf(row.emitente_cnpj) : cnpj(row.emitente_cnpj);
+    const recipientCnpj = cnpj(row.destinatario_cnpj);
     if (![issuerCnpj, recipientCnpj].includes(request.companyCnpj)) fail('NSDOCS_PARTICIPANTE_DIVERGENTE');
     const receivedDate = providerDate(row.data_recebimento);
     const issuedDate = providerDate(row.data_emissao);
@@ -86,6 +88,9 @@ function normalizePage(rows, request, total, { countMode = 'global' } = {}) {
       company_cnpj: request.companyCnpj, model: 'nfe', access_key: row.chave_acesso,
       identity: `nsdocs:v2:${request.companyCnpj}:nfe:${row.chave_acesso}`,
       issuer_cnpj: issuerCnpj, issuer_name: text(row.emitente_nome),
+      // Campo legado de documento do emitente tambem usado pelo parser fiscal.
+      // Nao preencher CPF com zeros aqui nem altera-lo para um CNPJ ficticio.
+      ...(issuerIsCpf ? { issuer_document_type: 'CPF' } : {}),
       // A listagem real pode omitir o nome mesmo com CNPJ valido. Preservar a
       // ausencia sem inventar razao social; identidade e XML seguem conferidos.
       recipient_cnpj: recipientCnpj, recipient_name: row.destinatario_nome === '' ? '' : text(row.destinatario_nome),

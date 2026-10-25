@@ -3,6 +3,7 @@ const { SaxesParser } = require('saxes');
 const { TextDecoder } = require('node:util');
 const { createHash } = require('node:crypto');
 const { check, assertNoSecret } = require('./policy');
+const { cpf } = require('../contract');
 const MAX_XML_BYTES = 2 * 1024 * 1024;
 const NS = 'http://www.portalfiscal.inf.br/nfe';
 const sha256 = value => createHash('sha256').update(value).digest('hex');
@@ -45,7 +46,7 @@ function validateNfeXml(buffer, doc, secret) {
     const path = stack.map(n => n.local).join('/').replace(/^nfeProc\//, '');
     const node = stack.pop();
     if (secret) assertNoSecret(node.text, secret);
-    if (/^NFe\/infNFe\/(emit\/CNPJ|dest\/CNPJ|ide\/(mod|nNF|dhEmi|dEmi)|total\/ICMSTot\/vNF)$/.test(path)
+    if (/^NFe\/infNFe\/(emit\/(CNPJ|CPF)|dest\/(CNPJ|CPF)|ide\/(mod|nNF|dhEmi|dEmi)|total\/ICMSTot\/vNF)$/.test(path)
       || path === 'protNFe/infProt/chNFe') {
       check(node.uri === NS && stack.every(parent => parent.uri === NS) && !values.has(path), 'NSDOCS_XML_CAMPO_AMBIGUO');
       values.set(path, node.text.trim());
@@ -57,7 +58,15 @@ function validateNfeXml(buffer, doc, secret) {
   const amount = value('total/ICMSTot/vNF');
   const date = value('ide/dhEmi') || value('ide/dEmi');
   check(nfeCount === 1 && infoCount === 1 && value('ide/mod') === '55', 'NSDOCS_XML_MODELO_INVALIDO');
-  check(value('emit/CNPJ') === doc.issuer_cnpj && value('dest/CNPJ') === doc.recipient_cnpj &&
+  const issuerIsCpf = typeof doc.issuer_cnpj === 'string' && /^\d{11}$/.test(doc.issuer_cnpj);
+  check(!doc.issuer_document_type || doc.issuer_document_type === 'CPF' && issuerIsCpf, 'NSDOCS_XML_EMITENTE_TIPO_DIVERGENTE');
+  const issuerDocument = issuerIsCpf ? cpf(doc.issuer_cnpj) : doc.issuer_cnpj;
+  check(!issuerIsCpf || doc.issuer_document_type === 'CPF', 'NSDOCS_XML_EMITENTE_TIPO_DIVERGENTE');
+  const issuerTag = issuerIsCpf ? 'emit/CPF' : 'emit/CNPJ';
+  const otherTag = issuerIsCpf ? 'emit/CNPJ' : 'emit/CPF';
+  check(value(issuerTag) === issuerDocument && !values.has(`NFe/infNFe/${otherTag}`) &&
+    /^\d{14}$/.test(doc.company_cnpj || '') && /^\d{14}$/.test(doc.recipient_cnpj || '') &&
+    value('dest/CNPJ') === doc.recipient_cnpj && !values.has('NFe/infNFe/dest/CPF') &&
     [doc.issuer_cnpj, doc.recipient_cnpj].includes(doc.company_cnpj), 'NSDOCS_XML_EMPRESA_DIVERGENTE');
   check(/^\d{1,12}\.\d{2}$/.test(amount || '') && Number(amount.replace('.', '')) === doc.total_cents &&
     Number(value('ide/nNF')) === Number(doc.number) && date?.slice(0, 10) === doc.issued_on,
@@ -69,7 +78,9 @@ function validateNfeXml(buffer, doc, secret) {
   let sum = 0, weight = 2;
   for (let i = 42; i >= 0; i--) { sum += Number(key[i]) * weight; weight = weight === 9 ? 2 : weight + 1; }
   const digit = sum % 11 < 2 ? 0 : 11 - sum % 11;
-  check(/^\d{44}$/.test(key) && Number(key[43]) === digit && key.slice(6, 20) === doc.issuer_cnpj &&
+  // MOC7,2.2.6.1: CPF ocupa14posicoes so na chave, com zeros a esquerda.
+  const issuerKey = issuerIsCpf ? issuerDocument.padStart(14, '0') : issuerDocument;
+  check(/^\d{44}$/.test(key) && Number(key[43]) === digit && key.slice(6, 20) === issuerKey &&
     key.slice(2, 6) === doc.issued_on.slice(2, 7).replace('-', '') &&
     key.slice(20, 22) === '55' && Number(key.slice(25, 34)) === Number(doc.number), 'NSDOCS_XML_CHAVE_INVALIDA');
   return { hash: sha256(buffer), validation: 'identity_checked_signature_unverified' };
