@@ -1,5 +1,21 @@
 # Ownership Ativo
 
+## Falha de descompactacao NSDOCS historico PROD - 2026-10-24
+
+- Sonda do usuario confirmouHTTP200/applicationJSON/semContentEncoding/2bytes,
+  sem assinaturaGzip, listaJSONvazia/total0, no mesmo loteImportadoJan/fa3a4741.
+  Causa confirmada; reservar aplicador semrestart, QA/inventario/docs e publicacao
+  main da correcao CLI. Usuario aplicara comandos; agente nao captura/aplica EC2.
+- Agente unico, branch codex/nsdocs-resposta-compactacao-prod-20261024 sobre
+  recibos locais cdeb90c5/mainb1683b6d. Plano8e0a4179-506a-4670-88a2-d9079728e263
+  interrompido por NSDOCS_RESPOSTA_COMPACTADA_INVALIDA em tentativa10lotes.
+- Reservar diagnostico sanitizado somenteleitura, normalizador/transporte
+  exclusivoNSDOCSHistorical, QA e roteiro/handoff. Reproduzir fragilidade de
+  defaultgzip na ausencia de header antes de atribuir causa real ao provedor.
+- Preservar plano/IDs/paginas/observacoes/XML/historico/limites/flags/permissoes.
+  Sem repetir captura, escrita DB/S3, restart, alteracao DEV ou chamadas reais
+  NSDOCS pelo agente; eventual consulta externa diagnostica tera flag propria.
+
 ## Carga historica NSDOCS PROD e retirada de consultas SEFAZ da UI - 2026-10-24
 
 - Reservar somente recibos desta retomada: planoPROD criado pelo usuario

@@ -11,8 +11,9 @@ function decodeListBody(body, encoding) {
   if (!Buffer.isBuffer(body) || body.length > MAX_BODY_BYTES) fail('NSDOCS_RESPOSTA_LIMITE');
   let decoded;
   try {
-    // Contrato v2: sem Content-Encoding, o corpo de sucesso ainda pode ser gzip.
-    const selected = encoding || 'gzip';
+    // Sem header pode vir JSON simples (inclusive []), ou gzip legado. Nunca
+    // tentar JSON como fallback quando gzip foi declarado ou tem sua assinatura.
+    const selected = encoding || (body[0] === 0x1f && body[1] === 0x8b ? 'gzip' : 'identity');
     if (selected === 'gzip') decoded = gunzipSync(body, { maxOutputLength: MAX_BODY_BYTES });
     else if (selected === 'deflate') decoded = inflateSync(body, { maxOutputLength: MAX_BODY_BYTES });
     else if (selected === 'identity') decoded = body;
