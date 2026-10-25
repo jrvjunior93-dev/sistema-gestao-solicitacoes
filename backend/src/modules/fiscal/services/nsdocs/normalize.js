@@ -11,8 +11,9 @@ function decodeListBody(body, encoding) {
   if (!Buffer.isBuffer(body) || body.length > MAX_BODY_BYTES) fail('NSDOCS_RESPOSTA_LIMITE');
   let decoded;
   try {
-    // Contrato v2: sem Content-Encoding, o corpo de sucesso ainda pode ser gzip.
-    const selected = encoding || 'gzip';
+    // Sem header pode vir JSON simples (inclusive []), ou gzip legado. Nunca
+    // tentar JSON como fallback quando gzip foi declarado ou tem sua assinatura.
+    const selected = encoding || (body[0] === 0x1f && body[1] === 0x8b ? 'gzip' : 'identity');
     if (selected === 'gzip') decoded = gunzipSync(body, { maxOutputLength: MAX_BODY_BYTES });
     else if (selected === 'deflate') decoded = inflateSync(body, { maxOutputLength: MAX_BODY_BYTES });
     else if (selected === 'identity') decoded = body;
@@ -54,10 +55,12 @@ function identifier(value, max) {
   return text(value, max);
 }
 
-function normalizePage(rows, request, total) {
+function normalizePage(rows, request, total, { countMode = 'global' } = {}) {
   if (!Array.isArray(rows) || rows.length > request.limit) fail('NSDOCS_LISTA_INVALIDA');
-  if (!Number.isSafeInteger(total) || total < 0 || total < request.offset + rows.length) fail('NSDOCS_TOTAL_INVALIDO');
-  if (!rows.length && total > request.offset) fail('NSDOCS_PAGINA_INCONSISTENTE');
+  if (!['global', 'page'].includes(countMode)) fail('NSDOCS_TOTAL_INVALIDO');
+  const pageCount = countMode === 'page';
+  if (!Number.isSafeInteger(total) || total < 0 || total < (pageCount ? rows.length : request.offset + rows.length)) fail('NSDOCS_TOTAL_INVALIDO');
+  if (!rows.length && total > (pageCount ? 0 : request.offset)) fail('NSDOCS_PAGINA_INCONSISTENTE');
   const documents = [], unsupported = [], keys = new Map(), ids = new Set();
   let duplicates = 0;
   for (const row of rows) {
@@ -74,7 +77,9 @@ function normalizePage(rows, request, total) {
     const issuerCnpj = cnpj(row.emitente_cnpj), recipientCnpj = cnpj(row.destinatario_cnpj);
     if (![issuerCnpj, recipientCnpj].includes(request.companyCnpj)) fail('NSDOCS_PARTICIPANTE_DIVERGENTE');
     const receivedDate = providerDate(row.data_recebimento);
-    if (receivedDate < request.startDate || receivedDate > request.endDate) fail('NSDOCS_DATA_FORA_DO_PERIODO');
+    const issuedDate = providerDate(row.data_emissao);
+    const selectedDate = request.dateField === 'data_emissao' ? issuedDate : receivedDate;
+    if (selectedDate < request.startDate || selectedDate > request.endDate) fail('NSDOCS_DATA_FORA_DO_PERIODO');
     if (row.status !== request.status) fail('NSDOCS_STATUS_DIVERGENTE');
     const document = {
       provider: 'nsdocs', api_version: 'v2', provider_id: providerId,
@@ -82,7 +87,7 @@ function normalizePage(rows, request, total) {
       identity: `nsdocs:v2:${request.companyCnpj}:nfe:${row.chave_acesso}`,
       issuer_cnpj: issuerCnpj, issuer_name: text(row.emitente_nome),
       recipient_cnpj: recipientCnpj, recipient_name: text(row.destinatario_nome),
-      number: identifier(row.numero, 30), issued_on: providerDate(row.data_emissao),
+      number: identifier(row.numero, 30), issued_on: issuedDate,
       received_on: receivedDate, total_cents: moneyCents(row.valor),
       fiscal_status: text(row.situacao, 80), provider_usage_status: row.status,
       validation_state: 'unverified_metadata', source_mode: 'fixture'
@@ -100,7 +105,9 @@ function normalizePage(rows, request, total) {
     }
   }
   const consumed = request.offset + rows.length;
-  const more = consumed < total;
+  // O provedor real devolve X-Total-Registros como tamanho da pagina. Uma
+  // pagina cheia nunca comprova fim. Total global maior tambem pede continuacao.
+  const more = pageCount ? rows.length === request.limit || total > rows.length : consumed < total;
   // Nunca anunciar janela concluida no limite de 2000; exige particionar datas.
   const partitionRequired = consumed >= 2000 || (more && rows.length < request.limit);
   return {

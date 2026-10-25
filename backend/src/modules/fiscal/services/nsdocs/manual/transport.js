@@ -18,7 +18,8 @@ function requestXml(doc, apiKey, client = https, signal) {
   apiKey, client, signal, true);
 }
 function decodeXml(body, encoding) {
-  const selected = encoding || 'gzip';
+  check(Buffer.isBuffer(body) && body.length <= MAX_XML_BYTES, 'NSDOCS_XML_LIMITE');
+  const selected = encoding || (body[0] === 0x1f && body[1] === 0x8b ? 'gzip' : 'identity');
   if (selected === 'identity') return body;
   try {
     if (selected === 'gzip') return gunzipSync(body, { maxOutputLength: MAX_XML_BYTES });

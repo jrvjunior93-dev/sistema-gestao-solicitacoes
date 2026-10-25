@@ -83,6 +83,7 @@ const vite = await createServer({ root, configFile: false, logLevel: 'error', en
   plugins: [{ name: 'qa-emissao-local', enforce: 'pre',
     resolveId(id, importer) {
       if (id === '/qa-emissao.jsx') return '\0qa-emissao-entry.jsx';
+      if (id === '../services/fiscalApi' && importer?.replaceAll('\\','/').includes('/modules/fiscal/hooks/')) return '\0qa-emissao-api.js';
       if (!importer?.replaceAll('\\','/').includes('/modules/fiscal/pages/')) return;
       if (id === '../../../components/padrao') return '\0qa-emissao-padrao.jsx';
       if (id === '../services/fiscalApi') return '\0qa-emissao-api.js';

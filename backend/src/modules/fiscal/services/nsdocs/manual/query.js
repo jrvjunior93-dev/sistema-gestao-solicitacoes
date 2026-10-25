@@ -18,7 +18,8 @@ function normalizeResponse(response, request, company) {
     }
     return result;
   });
-  const normalized = normalizePage(rows, request, response.total);
+  const normalized = normalizePage(rows, request, response.total, { countMode: 'page' });
+  if (normalized.next_offset !== null || request.offset > 0) Object.assign(normalized, { next_offset: null, partition_required: true, window_complete: false });
   return { ...normalized, documents: normalized.documents.map(doc => ({ ...doc, source_mode: 'manual' })) };
 }
 

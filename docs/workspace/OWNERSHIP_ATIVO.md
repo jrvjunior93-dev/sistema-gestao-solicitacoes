@@ -1,5 +1,18 @@
 # Ownership Ativo
 
+## Complemento NSDOCS e lista fiscal - publicacao 2026-10-25
+
+- Agente unico, checkout auxiliar local desta mesma tarefa/repositorio.
+- Usuario autorizou push refactor/frontend e promocao main por etapas.
+- Reservar nsdocsHistorical e seus pre-requisitos administrativos/QA; guardas
+  de producao exclusivas, sem invocar esses CLIs no DEV. Preservar nsdocs DEV
+  runtime/credencial/IAM; adaptar apenas parser/paginacao/transporte.
+- Lista fiscal: GET existente,50 por pagina ou scroll, mesmos filtros/ACL/XML.
+- Nenhuma EC2/migration real/servico/segredo alterado nesta publicacao Git.
+- A migration202610240003 ja existe em main e acompanha os testes do historico;
+  nao executar migrations gerais no DEV por causa deste pacote.
+
+
 ## Publicacao DEV: retirada de envios e abas web - 2026-10-23
 
 - Usuario autorizou commit/push exclusivo refactor/frontend e roteiro para

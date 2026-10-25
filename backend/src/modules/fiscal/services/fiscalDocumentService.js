@@ -76,6 +76,9 @@ async function listarDocumentosFiscais(query = {}) {
 
   const result = await FiscalDfeDocument.findAndCountAll({
     where: buildDocumentWhere(query),
+    // A lista entrega identificacao e disponibilidade dos arquivos. O XML
+    // parseado e o resumo completo continuam apenas no endpoint de detalhe.
+    attributes: { exclude: ['parsed_xml_json', 'raw_summary_json'] },
     include: [
       { model: FiscalCompany, as: 'company', attributes: ['id', 'razao_social', 'cnpj', 'uf'], required: false }
     ],

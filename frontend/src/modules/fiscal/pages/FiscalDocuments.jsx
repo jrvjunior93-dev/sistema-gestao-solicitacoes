@@ -16,11 +16,13 @@ import {
 } from '../../../components/padrao';
 import StatusBadge from '../../../components/StatusBadge';
 import { formatarDataEmissaoFiscal } from '../utils/dataEmissaoFiscal';
+import useDocumentosPaginados from '../hooks/useDocumentosPaginados';
+import PaginacaoConsulta from '../../../components/padrao/PaginacaoConsulta';
+import NavegacaoRolagemConsulta, { AlternadorPaginacaoConsulta } from '../../../components/padrao/NavegacaoRolagemConsulta';
 import {
   generateFiscalDocumentDanfe,
   getFiscalCompanies,
   getFiscalDocumentFileUrl,
-  getFiscalDocuments,
   uploadFiscalXml
 } from '../services/fiscalApi';
 
@@ -58,7 +60,8 @@ const OPCOES_TIPO = [
 
 const OPCOES_ORIGEM = [
   ['manual_upload', 'Upload manual'],
-  ['sefaz_distribution', 'SEFAZ'],
+  ['sefaz_distribution', 'SEFAZ (legado)'],
+  ['nsdocs_v2_manual', 'NSDOCS'],
   ['batch_import', 'Importacao em lote']
 ];
 
@@ -135,7 +138,8 @@ const FILTROS_DA_TELA = [
 
 export default function FiscalDocuments() {
   const { abrirPreview, modalPreview } = useVisualizadorArquivo();
-  const [documents, setDocuments] = useState([]);
+  const consulta = useDocumentosPaginados();
+  const { documents, loading, load } = consulta;
   const [companies, setCompanies] = useState([]);
   const [filters, setFilters] = useState(FILTROS_VAZIOS);
   /*
@@ -171,7 +175,6 @@ export default function FiscalDocuments() {
   });
   const [uploadCompanyId, setUploadCompanyId] = useState('');
   const [uploadFiles, setUploadFiles] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [openingFile, setOpeningFile] = useState('');
   const [generatingDanfe, setGeneratingDanfe] = useState('');
@@ -183,26 +186,16 @@ export default function FiscalDocuments() {
   */
   const { avisos, avisar, fechar } = useAvisos();
 
-  const load = async (filtrosAtuais = filters) => {
-    setLoading(true);
-    try {
-      const [documentsResult, companiesResult] = await Promise.all([
-        getFiscalDocuments(filtrosAtuais),
-        getFiscalCompanies({ ativo: true })
-      ]);
-      setDocuments(documentsResult?.data || []);
-      const nextCompanies = companiesResult?.data || [];
-      setCompanies(nextCompanies);
-      setUploadCompanyId((current) => current || String(nextCompanies[0]?.id || ''));
-    } catch (err) {
-      avisar.erro(err.message || 'Erro ao buscar documentos fiscais');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
     load(FILTROS_VAZIOS);
+    let active = true;
+    getFiscalCompanies({ ativo: true }).then(result => {
+      if (!active) return;
+      const nextCompanies = result?.data || [];
+      setCompanies(nextCompanies);
+      setUploadCompanyId(current => current || String(nextCompanies[0]?.id || ''));
+    }).catch(err => { if (active) avisar.erro(err.message || 'Erro ao buscar empresas fiscais'); });
+    return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -343,7 +336,7 @@ export default function FiscalDocuments() {
       */}
       <PageHeader
         titulo="Documentos fiscais"
-        contagem={loading ? null : `${documents.length} documento(s)`}
+        contagem={loading ? null : `${consulta.total} documento(s)`}
         descricao="Caixa de documentos DFe com importação manual de XMLs individuais ou ZIP exportado por outro sistema."
       />
 
@@ -477,6 +470,7 @@ export default function FiscalDocuments() {
         titulo="Caixa de documentos"
         variante="primario"
         cor="var(--module-fiscal)"
+        acoes={<AlternadorPaginacaoConsulta numerada={consulta.numerada} ocupado={loading || uploading || Boolean(generatingDanfe)} aoAlternar={consulta.toggle} />}
       >
         <BarraFiltros
           busca={visibilidadeFiltros.ehVisivel('q') ? {
@@ -534,6 +528,8 @@ export default function FiscalDocuments() {
           </button>
         </div>
 
+        {consulta.error && <div role="alert" className="py-2 text-[var(--sem-danger)]">{consulta.error} <button type="button" className="btn btn-outline btn-sm" disabled={loading} onClick={consulta.retry}>Tentar carregar novamente</button></div>}
+        {consulta.numerada && <PaginacaoConsulta pagina={consulta.page} paginas={consulta.pages} total={consulta.total} ocupado={loading} aoMudar={consulta.go} />}
         <TabelaPadrao
           colunas={[
             {
@@ -589,6 +585,7 @@ export default function FiscalDocuments() {
             }
           ]}
           itens={documents}
+          paginaLocal={0}
           carregando={loading}
           vazio="Nenhum documento fiscal encontrado."
           storageKey="tabela:documentos-fiscais"
@@ -649,6 +646,9 @@ export default function FiscalDocuments() {
             </>
           )}
         />
+        {!consulta.numerada && <NavegacaoRolagemConsulta pagina={consulta.page} paginas={consulta.pages}
+          quantidade={documents.length} total={consulta.total} carregando={loading} erro={Boolean(consulta.error)}
+          aoCarregar={consulta.next} aoRepetir={consulta.retry} rotulo="documentos" />}
       </BlocoConteudo>
       {modalPreview}
     </Pagina>

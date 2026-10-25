@@ -100,9 +100,9 @@ export async function validateFiscalCertificate(id) {
   return parseJson(response, 'Erro ao validar certificado fiscal');
 }
 
-export async function getFiscalDocuments(params = {}) {
+export async function getFiscalDocuments(params = {}, { signal } = {}) {
   const response = await fetch(buildUrl('/fiscal/documents', params), {
-    headers: authHeaders()
+    headers: authHeaders(), signal
   });
   return parseJson(response, 'Erro ao buscar documentos fiscais');
 }

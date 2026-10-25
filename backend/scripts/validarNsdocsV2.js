@@ -103,13 +103,13 @@ test('compressao gzip, deflate e sem header; limites, JSON e UTF-8 invalidos', (
   const body = Buffer.from(JSON.stringify(fixtureDocuments()));
   for (const [encoding, data] of [
     ['gzip', zlib.gzipSync(body)], ['deflate', zlib.deflateSync(body)],
-    [undefined, zlib.gzipSync(body)], ['identity', body]
+    [undefined, zlib.gzipSync(body)], [undefined, body], ['identity', body]
   ]) assert.deepEqual(decodeListBody(data, encoding), fixtureDocuments());
   for (const [data, encoding] of [
     [Buffer.alloc(MAX_BODY_BYTES + 1), 'identity'],
     [zlib.gzipSync(Buffer.alloc(MAX_BODY_BYTES + 1)), 'gzip'],
     [Buffer.from('['), 'identity'], [Buffer.from('{"erro":"SENTINELA"}'), 'identity'],
-    [Buffer.from([0xff]), 'identity'], [body, 'br'], [body, undefined],
+    [Buffer.from([0xff]), 'identity'], [body, 'br'], [body, 'gzip'],
     [Buffer.from(JSON.stringify(Array(101).fill({}))), 'identity']
   ]) assert.throws(() => decodeListBody(data, encoding), error => error.message.startsWith('NSDOCS_') && !error.message.includes('SENTINELA'));
 });
@@ -218,7 +218,7 @@ test('rota real de diagnostico preserva autenticacao, ACL fiscal e auditoria de 
     '../config/uploadFiscalFile': { single: () => noop }, '../config/uploadFiscalXml': { fields: () => noop }
   };
   for (const name of ['FiscalDashboardController', 'FiscalAccountingBatchController', 'FiscalCertificateController',
-    'FiscalCompanyController', 'FiscalDivergenceController', 'FiscalDocumentController', 'FiscalSyncLogController']) {
+    'FiscalCompanyController', 'FiscalDivergenceController', 'FiscalDocumentController', 'FiscalPurchaseLinkController', 'FiscalSyncLogController']) {
     dependencies[`../controllers/${name}`] = dummyController;
   }
   isolated('modules/fiscal/routes/index.js', dependencies);
