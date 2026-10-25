@@ -11,7 +11,7 @@ export function AlternadorPaginacaoConsulta({ numerada, ocupado, aoAlternar }) {
   </button>;
 }
 
-export default function NavegacaoRolagemConsulta({ pagina, paginas, quantidade, total, carregando, bloqueado, erro, aoCarregar, aoRepetir }) {
+export default function NavegacaoRolagemConsulta({ pagina, paginas, quantidade, total, carregando, bloqueado, erro, aoCarregar, aoRepetir, rotulo = 'pagamentos' }) {
   const sentinela = useRef(null), pedido = useRef(false);
   const temMais = pagina < paginas;
   useEffect(() => { if (!carregando) pedido.current = false; }, [carregando, pagina, erro]);
@@ -27,7 +27,7 @@ export default function NavegacaoRolagemConsulta({ pagina, paginas, quantidade, 
     return () => observer.disconnect();
   }, [temMais, carregando, bloqueado, erro, pagina, aoCarregar]);
   return <div className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm" aria-label="Navegação por rolagem">
-    <span role="status">{carregando ? 'Carregando pagamentos…' : erro ? 'Não foi possível carregar os pagamentos.'
+    <span role="status">{carregando ? `Carregando ${rotulo}…` : erro ? `Não foi possível carregar os ${rotulo}.`
       : temMais ? `${quantidade} de ${total} registro(s) carregados` : `Fim da lista · ${total} registro(s)`}</span>
     <div ref={sentinela} data-rolagem-sentinela aria-hidden="true" className="h-px w-full" />
     {(temMais || erro) && <button type="button" className="btn btn-outline btn-sm"
@@ -35,6 +35,6 @@ export default function NavegacaoRolagemConsulta({ pagina, paginas, quantidade, 
         if (pedido.current) return;
         pedido.current = true;
         if (erro) aoRepetir(); else aoCarregar();
-      }}>{erro ? 'Tentar carregar novamente' : 'Carregar mais pagamentos'}</button>}
+      }}>{erro ? 'Tentar carregar novamente' : `Carregar mais ${rotulo}`}</button>}
   </div>;
 }

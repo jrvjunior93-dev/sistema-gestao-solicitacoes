@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:fiscal-documentos-paginacao": "node scripts/validarDocumentosFiscaisPaginacao.mjs && node scripts/validarEmissaoFiscal.mjs",
     "test:fetch-credenciais": "node scripts/validarFetchCredenciais.mjs",
     "test:download-medicao": "node scripts/validarFetchCredenciais.mjs && node scripts/validarDownloadMedicaoUI.mjs",
     "test:retirada-envios": "node scripts/validarRetiradaAutorizacaoUI.mjs && node scripts/validarFilaInstrumentosUI.mjs --retirada",

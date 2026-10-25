@@ -42,3 +42,15 @@ primeiro com apenas backend/metadados; frontend local aguarda evidencia EC2.
 93 testes na main (87 fiscais +6 operador), incluindo retorno interrompido,
 restricao de frontend/migration/deps, locks e preservacao de timestamps.
 Nao houve deploy EC2 ou carga real pelo agente.
+
+## Backend main publicado e frontend retido
+
+Backend:03c91cfeb290ad3d3535185083be011a5b96ae23, sem mudanca de frontend.
+SHA256 operador:a506bf3bef44047b52dda181facbf26b4c39daa5fc38bcee79c5dedd182071e2.
+Refactor:a26c1760d7e2fc00c5e0b37589ff622f34c22f49. Arquivos runtime da correcao
+comparados byte a byte entre o pacote DEV e main (exceto scripts package por
+branch). Inventario real de blobs staged aprovado e seis QAs do operador.
+Frontend em commit local separado, reter push ate evidencia backend EC2.
+Proximo comando do usuario:preparar03c91cfeb290ad3d3535185083be011a5b96ae23,
+depois aplicar/conferir com quatro flags e backup/timer/janela conferidos.
+Nao executar complemento antes do backend nem liberar UI main antecipada.
