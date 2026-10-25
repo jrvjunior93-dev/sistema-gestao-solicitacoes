@@ -2,6 +2,11 @@
 
 ## Carga historica NSDOCS PROD e retirada de consultas SEFAZ da UI - 2026-10-24
 
+- Reservar somente recibos desta retomada: planoPROD criado pelo usuario
+  8e0a4179-506a-4670-88a2-d9079728e263, emissao01/01/2026..23/10/2026.
+  Primeiro lote concluido:1completed/19pending,5observacoesNF-e,0unsupported,
+  needs_partitionfalse/completefalse,6chamadas; consulta posterior0chamadas.
+  Preparar continuacao manual max-lotes10 com mesmo ID; automaticoOFF.
 - Piloto PROD aprovado pelo usuario: bfabb75c-71e6-4eea-94b8-8d74d114cc7d,
   documents1/xmls1/persistedtrue, cinco eventos, replaytrue/0NSDOCS. AutomaticoOFF.
   Reservar recibos/publicacao frontend996c9e69 e conferencia Vercel/artefatos.

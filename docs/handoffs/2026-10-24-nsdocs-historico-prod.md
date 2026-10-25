@@ -60,6 +60,28 @@ Agente unico, branch codex/nsdocs-historico-prod-20261024, base0b20cc4d.
 
 ## Estado e proximo passo
 
+### Plano historico PROD ativo, primeiro lote concluido
+
+- Frontend publicado mainb1683b6d3148d68ffe34f90b00d7a620ab5363ab. Dois checks
+  Vercel success; dominioPROD com index-xtc5p3R1 e chunksJS fiscais novos,
+  NSDOCS/historico legado presentes, acoesSEFAZ ausentes; healthAPI200. Evidencia
+  local outputs/nsdocs-frontend-prod-publicado-20261024.json, nao commitada.
+  DEV remoto2920e1f1 preservado; sem nova operacao na EC2 pelo agente.
+- Usuario criou plano8e0a4179-506a-4670-88a2-d9079728e263 para emissao
+  01/01/2026..23/10/2026. Inicial0completed/20pending,0NSDOCS.
+- Primeiro lote real executado pelo usuario:1completed/19pending,5observacoes
+  NF-e,0unsupported,needs_partitionfalse/completefalse,6chamadasNSDOCS.
+  Consulta posterior conserva progresso e faz0NSDOCS. Automatico permaneceOFF.
+- Proximo: continuar mesmo plano por comando --executar-plano --max-lotes10,
+  tres confirmacoes e flagsbackup/timer/captureSIM. Espera inicial60s para
+  cooldown; intervalos internos60s, ate10lotes/50docs/60GETs por comando.
+  Pode terminar antes se plano completo ou particionamento. Nao recriar plano
+  nem anunciar19lotes como total fixo: paginacao pode acrescentar outros.
+- Receber resumo apos essa tentativa; completefalse e normal com pendencias.
+  Se erro ou needs_partitiontrue, parar e diagnosticar mantendo ID/progresso.
+  ObservacoesNF-e nao sao contagem comprovada de novos registros canonicos.
+  Agente nao executa carga real, restart, env, IAM, NSDOCS ou S3 nesta retomada.
+
 ### Piloto PROD aprovado; liberacao frontend e periodo historico
 
 - Prova usuario bfabb75c-71e6-4eea-94b8-8d74d114cc7d: empresa1/CNPJ27123,
