@@ -86,7 +86,9 @@ function normalizePage(rows, request, total, { countMode = 'global' } = {}) {
       company_cnpj: request.companyCnpj, model: 'nfe', access_key: row.chave_acesso,
       identity: `nsdocs:v2:${request.companyCnpj}:nfe:${row.chave_acesso}`,
       issuer_cnpj: issuerCnpj, issuer_name: text(row.emitente_nome),
-      recipient_cnpj: recipientCnpj, recipient_name: text(row.destinatario_nome),
+      // A listagem real pode omitir o nome mesmo com CNPJ valido. Preservar a
+      // ausencia sem inventar razao social; identidade e XML seguem conferidos.
+      recipient_cnpj: recipientCnpj, recipient_name: row.destinatario_nome === '' ? '' : text(row.destinatario_nome),
       number: identifier(row.numero, 30), issued_on: issuedDate,
       received_on: receivedDate, total_cents: moneyCents(row.valor),
       fiscal_status: text(row.situacao, 80), provider_usage_status: row.status,
