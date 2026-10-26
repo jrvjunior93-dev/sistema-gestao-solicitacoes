@@ -6494,3 +6494,6 @@ e ownership liberado para publicacao dev. outputs/ permanece fora do commit.
 - Usuario autorizou migracao e necessidade de atualizar EC2 mesmo com historico pausado. Reserva operador/teste/manifesto/README backend-pwa-titulos-prod-20261026, documentacao e separacao dos commits. Backend antes frontend; preservar planos/NSDOCS e DEV. Automatico novo fica em avaliacao separada, sem ativar flags.
 
 -26/10/2026: prova backend7e6cf469 recebida; reserva documental/publicacao frontend concluida para commit/push autorizado. Sem EC2 ou alteracao de NSDOCS/DEV nesta etapa.
+
+## Promocao de autorizacao parcial/moeda para main - 2026-10-26
+- Agente desta conversa: reserva os arquivos funcionais do pacote fc369151/ba7393ab/ed211fab no worktree outputs/worktree-autorizacao-valor-main, novo doctor PROD, aplicador/manifesto/testes/roteiro e handoff. Base 920f639c; backend e frontend separados. Preservar S3/NSDOCS PROD e DEV. Somente preparar/testar/publicar codigo e fornecer comandos; nao aplicar ou reiniciar EC2 pelo agente. Sem delegacao.

@@ -36,6 +36,7 @@ const rows = ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE', 'BAIXADO', 'RESOLVIDO', 'DIV
 const moduleSaldo = { exports: {} };
 vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/pagamentoFilaSaldoService.js'), 'utf8'), {
   module: moduleSaldo, require(id) {
+    if (id === './pagamentoAutorizacaoValorDomain') return require('../src/services/pagamentoAutorizacaoValorDomain');
     if (id === 'sequelize') return { Op };
     if (id === '../models') return { PagamentoManualFilaItem: { findAll: async options => {
       assert(options.lock); return rows;
@@ -53,6 +54,12 @@ vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/paga
     assert.equal(row.juros, index < 3 ? 10 : undefined);
   });
   await assert.rejects(moduleSaldo.exports.sincronizarSaldoFilaAposEdicao({}, null), /transacao/);
+  const parcial = { id: 90, status: 'PENDENTE', movimento_financeiro_id: null,
+    autorizacao_valor_json: { versao: 1, valor_autorizado: 100, limite: 100 },
+    async update(data) { Object.assign(this, data); } };
+  rows.push(parcial);
+  await moduleSaldo.exports.sincronizarSaldoFilaAposEdicao({ id: 1, valor_saldo: 900, juros: 0, multa: 0 }, tx);
+  assert.equal(parcial.valor_previsto, 100, 'Edicao de titulo nao amplia o limite assinado');
   const migration = require('../migrations/202610080002_fila_pagamentos_juros_multa');
   const columns = new Set(), added = [];
   const context = { DataTypes: { DECIMAL: (p, s) => { assert.equal(p, 14); assert.equal(s, 2); return 'DECIMAL'; } },

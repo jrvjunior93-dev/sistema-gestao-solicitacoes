@@ -452,7 +452,11 @@ async function revokePasskey(req, credentialId) {
 
 function normalizeDecisions(decisions) {
   if (!Array.isArray(decisions) || !decisions.length) throw httpError(400, 'Selecione ao menos um item para decidir.');
-  const result = decisions.map((item) => ({ item_id: Number(item.item_id), decisao: String(item.decisao || '').toUpperCase(), motivo: item.motivo ? String(item.motivo).trim().slice(0, 500) : null })).sort((a, b) => a.item_id - b.item_id);
+  const result = decisions.map((item) => {
+    if (item.valor_autorizado !== undefined && String(item.decisao).toUpperCase() !== 'AUTORIZAR') throw httpError(400, 'Valor editado exige uma autorizacao.');
+    return { item_id: Number(item.item_id), decisao: String(item.decisao || '').toUpperCase(), motivo: item.motivo ? String(item.motivo).trim().slice(0, 500) : null,
+      ...(item.valor_autorizado === undefined ? {} : { valor_autorizado: require('./pagamentoAutorizacaoValorDomain').centavos(item.valor_autorizado) / 100 }) };
+  }).sort((a, b) => a.item_id - b.item_id);
   if (result.length > 200 || result.some(item => !Number.isSafeInteger(item.item_id) || item.item_id <= 0) ||
     new Set(result.map(item => item.item_id)).size !== result.length) throw httpError(400, 'Itens de decisao invalidos ou repetidos.');
   if (result.some(item => item.decisao === 'REVOGAR') && result.some(item => item.decisao !== 'REVOGAR')) {
@@ -478,6 +482,10 @@ async function authenticationOptions(req, lotId, decisions) {
   if (normalized.some((item) => ['REJEITAR', 'REVOGAR', 'REJEITAR_FILA'].includes(item.decisao) && !item.motivo)) throw httpError(400, 'Informe o motivo para rejeitar ou revogar um pagamento.');
   const availableItems = await PagamentoAutorizacaoItem.count({ where: { lote_id: lotId, id: { [Op.in]: normalized.map((item) => item.item_id) }, status: revogando ? { [Op.in]: ['AUTORIZADO', 'ENFILEIRADO'] } : 'PENDENTE' } });
   if (availableItems !== normalized.length) throw httpError(409, 'Um ou mais itens ja foram decididos ou nao pertencem ao lote.');
+  if (normalized.some(i => i.valor_autorizado !== undefined)) {
+    const itens = await PagamentoAutorizacaoItem.findAll({ where: { lote_id: lotId, id: { [Op.in]: normalized.map(i => i.item_id) } } });
+    for (const decision of normalized.filter(i => i.decisao === 'AUTORIZAR')) require('./pagamentoAutorizacaoValorDomain').valorDecisao(itens.find(i => Number(i.id) === decision.item_id), decision.valor_autorizado);
+  }
   const credentials = await WebauthnCredential.findAll({ where: { usuario_id: req.user.id, ativo: true } });
   if (!credentials.length) throw httpError(409, 'Cadastre uma passkey antes de autorizar pagamentos.');
   const { generateAuthenticationOptions } = await webauthnLib();
@@ -594,7 +602,7 @@ async function decideBatch(req, lotId, payload = {}) {
     stage = 'ITEMS_LOCK';
     const items = await PagamentoAutorizacaoItem.findAll({ where: { lote_id: lotId, id: { [Op.in]: decisions.map((item) => item.item_id) }, status: revogando ? { [Op.in]: ['AUTORIZADO', 'ENFILEIRADO'] } : 'PENDENTE' }, transaction, lock: transaction.LOCK.UPDATE });
     if (items.length !== decisions.length) throw httpError(409, 'Um ou mais itens ja foram decididos ou nao pertencem ao lote.');
-    if (authorizer.limite_por_lote && decisions.filter((item) => item.decisao === 'AUTORIZAR').reduce((sum, decision) => sum + roundCurrency(items.find((item) => Number(item.id) === decision.item_id)?.valor_snapshot), 0) > Number(authorizer.limite_por_lote)) throw httpError(403, 'O valor autorizado excede o limite nominal deste autorizador.');
+    if (authorizer.limite_por_lote && decisions.filter((item) => item.decisao === 'AUTORIZAR').reduce((sum, decision) => sum + require('./pagamentoAutorizacaoValorDomain').valorDecisao(items.find(item => Number(item.id) === decision.item_id), decision.valor_autorizado), 0) > Number(authorizer.limite_por_lote)) throw httpError(403, 'O valor autorizado excede o limite nominal deste autorizador.');
     for (const decision of decisions) {
       const item = items.find((candidate) => Number(candidate.id) === decision.item_id);
       if (decision.decisao === 'REJEITAR_FILA') {
@@ -619,7 +627,7 @@ async function decideBatch(req, lotId, payload = {}) {
         if (fila.some(row => row.movimento_financeiro_id)) throw httpError(409, 'A fila ja registrou baixa; revogacao indisponivel.');
         for (const row of fila) await row.update({ status: 'RESOLVIDO', resolvido_por: req.user.id, resolvido_em: new Date(),
           motivo: `Autorizacao revogada pelo proprietario: ${decision.motivo}` }, { transaction });
-        await item.update({ status: 'PENDENTE', fila_item_id: null, decidido_em: null, motivo_decisao: null }, { transaction });
+        await item.update({ status: 'PENDENTE', fila_item_id: null, decidido_em: null, motivo_decisao: null, autorizacao_valor_json: null }, { transaction });
         await recordEvent({ loteId: lotId, itemId: item.id, userId: req.user.id, type: 'ITEM_AUTORIZACAO_REVOGADA',
           data: { motivo: decision.motivo, fila_ids: fila.map(row => row.id), revisao_anterior: Number(currentLot.revisao_autorizacao || 0) }, transaction });
         await marcarAnaliseProprietario({ titulos: [title], usuarioId: req.user.id, transaction, origem: 'REVOGACAO_DIGITAL', loteId: lotId });
@@ -650,8 +658,9 @@ async function decideBatch(req, lotId, payload = {}) {
           await recordEvent({ loteId: lotId, itemId: item.id, userId: req.user.id, type: 'SALDO_REAUTORIZADO',
             data: { titulo_id: title.id, bloqueio_anterior: bloqueio, saldo: Number(title.valor_saldo) }, transaction });
         }
-        await item.update({ status: 'AUTORIZADO', motivo_decisao: decision.motivo, decidido_em: new Date() }, { transaction });
-        await recordEvent({ loteId: lotId, itemId: item.id, userId: req.user.id, type: 'ITEM_AUTORIZADO', data: { snapshot_hash: item.snapshot_hash }, transaction });
+        const autorizacaoValor = require('./pagamentoAutorizacaoValorDomain').auditoria(item, decision.valor_autorizado, req.user.id);
+        await item.update({ status: 'AUTORIZADO', motivo_decisao: decision.motivo, decidido_em: new Date(), autorizacao_valor_json: autorizacaoValor }, { transaction });
+        await recordEvent({ loteId: lotId, itemId: item.id, userId: req.user.id, type: 'ITEM_AUTORIZADO', data: { snapshot_hash: item.snapshot_hash, autorizacao_valor: autorizacaoValor }, transaction });
       } else {
         if (!decision.motivo) throw httpError(400, 'Informe o motivo para rejeitar um pagamento.');
         await item.update({ status: 'REJEITADO', motivo_decisao: decision.motivo, decidido_em: new Date() }, { transaction });

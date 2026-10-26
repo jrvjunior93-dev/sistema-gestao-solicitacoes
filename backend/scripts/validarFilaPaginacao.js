@@ -31,6 +31,7 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/services/pagament
     if(id==='./pagamentoFilaDestinatarioService')return{anexarDestinatarios:async()=>{}};
     if(id==='./authorizationService')return{getFinanceiroObraScopeIds:async()=>null};
     if(id==='./tituloCompartilhadoLeitura')return{anexarParticipacoes:async()=>{}};
+    if(id==='./pagamentoAutorizacaoValorDomain')return require('../src/services/pagamentoAutorizacaoValorDomain');
     return{};
   }
 });

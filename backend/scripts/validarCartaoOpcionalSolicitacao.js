@@ -158,7 +158,8 @@ const vinculoModule = { exports: {} };
 vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/tituloSolicitacaoContratoService.js'), 'utf8'), {
   module: vinculoModule, require(id) { if (!(id in dependencies)) throw Error(`Dependencia de vinculo nao isolada: ${id}`); return dependencies[id]; }
 });
-const queueDependencies = { ...dependencies,
+const queueDependencies = {
+  './pagamentoAutorizacaoValorDomain': require('../src/services/pagamentoAutorizacaoValorDomain'), ...dependencies,
   './tituloSolicitacaoContratoService': vinculoModule.exports,
   './tituloFinanceiroService': { baixarTitulo },
   './analiseProprietarioService': {}, './pagamentoAutorizacaoFilaService': {},

@@ -4,6 +4,7 @@ module.exports = (sequelize, DataTypes) => sequelize.define('PagamentoAutorizaca
   titulo_financeiro_id: { type: DataTypes.INTEGER, allowNull: false },
   status: { type: DataTypes.STRING(30), allowNull: false, defaultValue: 'PENDENTE' },
   valor_snapshot: { type: DataTypes.DECIMAL(14, 2), allowNull: false },
+  autorizacao_valor_json: { type: DataTypes.JSON, allowNull: true },
   vencimento_snapshot: { type: DataTypes.DATEONLY, allowNull: true },
   snapshot_json: { type: DataTypes.JSON, allowNull: false },
   snapshot_hash: { type: DataTypes.STRING(64), allowNull: false },

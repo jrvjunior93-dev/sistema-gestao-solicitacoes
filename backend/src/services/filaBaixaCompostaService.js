@@ -64,7 +64,9 @@ async function preparar(req, payload, transaction, carregado) {
     assertTituloDisponivelParaBaixa(titulo);
     if ([fila.juros, fila.multa, fila.instrumento_pagamento_json?.desconto].some(v => centavos(v))) erro(409, 'Titulo com encargos na fila: use a baixa simples para preservar juros, multa e desconto.');
     const pago = somaTitulo.get(Number(titulo.id));
-    if (pago < centavos(titulo.valor_saldo) && !payload.observacoes) erro(400, 'Informe nas observacoes a justificativa do pagamento parcial.');
+    const valorDomain = require('./pagamentoAutorizacaoValorDomain');
+    valorDomain.conferirPagamento(fila, pago / 100);
+    if (pago < centavos(valorDomain.limite(fila) ?? titulo.valor_saldo) && !payload.observacoes) erro(400, 'Informe nas observacoes a justificativa do pagamento parcial.');
   }
   const validacao = await validarBaixaComposta(payload, transaction, { lock: true, empresaReferenciaFonte: true, lockFontes: true });
   const componentes = [];
@@ -84,7 +86,7 @@ async function preparar(req, payload, transaction, carregado) {
   conferirChequesUnicosLote(componentes);
   const versao = hash({ usuario: req.user.id, data: payload.data_movimento, observacoes: payload.observacoes,
     alocacoes: payload.alocacoes, fontes: componentes,
-    filas: filas.map(f => [f.id, f.status, f.valor_previsto, f.juros, f.multa, f.instrumento_pagamento_json?.desconto]),
+    filas: filas.map(f => [f.id, f.status, f.valor_previsto, f.juros, f.multa, f.instrumento_pagamento_json?.desconto, f.autorizacao_valor_json]),
     titulos: validacao.titulos.map(t => [t.id, t.status, t.valor_original, t.valor_baixado, t.valor_saldo, t.empresa_id,
       t.obra_id, t.parceiro_id, t.forma_pagamento_id, t.cartao_id, t.fatura_cartao_id, t.updatedAt]) });
   return { filas, titulos, validacao, componentes, versao };

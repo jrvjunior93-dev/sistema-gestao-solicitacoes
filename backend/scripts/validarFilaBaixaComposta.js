@@ -78,6 +78,7 @@ const servico = load('filaBaixaCompostaService', { 'node:crypto': require('node:
   './authorizationService': auth, '../validators/filaBaixaCompostaValidator': { validarFilaBaixaComposta: validar },
   './chequeTerceiroService': composto, './pagamentoManualFilaService': fila, './tituloFinanceiroService': canonico,
   './tituloBloqueioRetornoObraService': qdeps['./tituloBloqueioRetornoObraService'],
+  './pagamentoAutorizacaoValorDomain': require('../src/services/pagamentoAutorizacaoValorDomain'),
   './pagamentoFilaChequesDomain': require('../src/services/pagamentoFilaChequesDomain'),
   './pagamentoFilaComprovanteDomain': require('../src/services/pagamentoFilaComprovanteDomain'), './permutaOperacionalDomain': permuta,
   './tituloCompartilhadoLeitura': compartilhadoLeitura, './tituloCompartilhadoPagamento': compartilhadoPagamento,
@@ -193,6 +194,20 @@ const semEscrita = () => { assert.equal(state.movimentos.length, 0); assert.equa
     const respostas = await Promise.all([1, 2].map(() => servico.confirmarFilaBaixaComposta(req, p, 'simultaneo')));
     assert.equal(respostas.filter(r => r.idempotente).length, 1); assert.equal(state.movimentos.length, 2);
   } finally { models.sequelize.transaction = txReal; }
+  body = await preparar();
+  state.fila[0].autorizacao_valor_json = require('../src/services/pagamentoAutorizacaoValorDomain').auditoria({ valor_snapshot: 200 }, 100, 31);
+  await assert.rejects(revisar(body), /ultrapassa o valor autorizado/); semEscrita();
+  body.componentes[0].valor=60;body.componentes[1].valor=40;
+  body.alocacoes[0].valor=60;body.alocacoes[1].valor=40;
+  p=await revisar(body);
+  state.fila[0].autorizacao_valor_json.usuario_id=32;
+  await assert.rejects(servico.confirmarFilaBaixaComposta(req,p,'auditoria-alterada'), /mudou|mudaram|alterad|revisao/); semEscrita();
+  state.fila[0].autorizacao_valor_json.usuario_id=31;
+  await servico.confirmarFilaBaixaComposta(req,p,'composta-parcial-autorizada');
+  assert.equal(state.titulos[0].valor_saldo,100);assert.equal(state.fila[0].status,'BAIXADO');
+  await fila.estornarBaixaFila(req,state.fila[0].id,{motivo:'Estorno parcial autorizado',idempotency_key:'estorno-parcial-composto'});
+  assert.equal(state.titulos[0].valor_saldo,200);
+  assert.equal(state.fila[1].autorizacao_valor_json.limite,100);assert.equal(state.fila[1].valor_previsto,100);
   const routes = fs.readFileSync(path.join(__dirname, '../src/routes.js'), 'utf8');
   assert(routes.includes("'/financeiro/fila-pagamentos/baixas-compostas/preview', allowFilaPagamentosBaixa, allowBaixaCompostaCriar"));
   assert(routes.includes("'/financeiro/fila-pagamentos/baixas-compostas/confirmar', allowFilaPagamentosBaixa, allowBaixaCompostaCriar, allowBaixaCompostaConfirmar"));
