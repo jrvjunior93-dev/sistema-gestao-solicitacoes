@@ -106,7 +106,7 @@ await page.route('**/*', async route => {
           return {...i,pago_no_periodo:baixas.reduce((s,b)=>s+b.valor,0),ultima_baixa_periodo:baixas.at(-1)?.data||null,
             data_referencia:dataTipo==='PAGAMENTO'?baixas.at(-1)?.data||null:dataTipo==='EMISSAO'?i.data_emissao||null:i.vencimento_atual};
         });
-        const recorte = preparados.filter(i => (!ids || ids.includes(i.id)) && (!p.get('situacao') || p.get('situacao') === i.situacao_financeira
+        const recorte = preparados.filter(i => (!p.get('solicitacao') || [i.snapshot_json?.solicitacao?.codigo,i.snapshot_json?.solicitacao?.descricao].some(v => String(v || '').toLowerCase().includes(p.get('solicitacao').toLowerCase()))) && (!ids || ids.includes(i.id)) && (!p.get('situacao') || p.get('situacao') === i.situacao_financeira
             || p.get('situacao')==='NA_FILA' && i.situacao_financeira!=='EXCLUIDO' && ['PENDENTE','EM_EDICAO'].includes(i.fila_atual?.status) && !i.bloqueado_proprietario)
           && (!di || i.data_referencia >= di) && (!df || i.data_referencia && i.data_referencia <= df))
           .map(i => ({ ...i, obras: i.obras.filter(id => (!p.get('obra') || nomes(id).toLowerCase().includes(p.get('obra').toLowerCase())) && (!p.get('obra_id') || Number(p.get('obra_id')) === id)) })).filter(i => i.obras.length);
@@ -595,6 +595,49 @@ try {
   assert.equal(decisoes.length,antesGrande+1);assert.equal(await page.evaluate(()=>window.__passkeys),passkeysGrande+1);
   assert.equal(decisoes.at(-1).body.item_ids.length,130);assert.equal(new Set(decisoes.at(-1).body.item_ids).size,130);
   assert(await page.getByRole('button',{name:'Limpar seleção de todas as páginas',exact:true}).isDisabled());
+  // Edicao parcial: lista coletiva e detalhe individual usam o valor conferido.
+  items.splice(0,items.length,...structuredClone(originais));
+  await page.getByRole('button',{name:'Limpar filtros',exact:true}).click();await pronto();await abrirObra(1);
+  await page.getByLabel('Valor a autorizar de TIT-1',{exact:true}).fill('60.00');
+  await page.getByLabel('Selecionar TIT-1',{exact:true}).check();
+  await page.getByRole('button',{name:/^Autorizar selecionados \(1\)$/}).click();
+  const conferenciaParcial=page.getByRole('region',{name:'Conferência da decisão'});
+  assert((await conferenciaParcial.innerText()).includes('60,00'));
+  assert.match(await conferenciaParcial.innerText(), /restante R\$\s40,00/);
+  await page.getByLabel('Valor a autorizar de TIT-1',{exact:true}).fill('65.00');
+  await conferenciaParcial.waitFor({state:'detached'});
+  await page.getByRole('button',{name:/^Autorizar selecionados \(1\)$/}).click();
+  await conferenciaParcial.waitFor();
+  for(const width of [320,390,1366]) {
+    await page.setViewportSize({width,height:900});
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Autorizacao parcial sem overflow '+width);
+    await page.screenshot({path:path.join(output,'autorizacao-valor-parcial-'+width+'.png'),fullPage:false});
+  }
+  await page.getByRole('button',{name:'Confirmar autorização com passkey (1)',exact:true}).click();
+  await page.getByRole('status').getByText(/1 título\(s\) confirmado\(s\) e enviado\(s\)/).waitFor();await pronto();
+  assert.deepEqual(decisoes.at(-1).body.valores_autorizados,[{item_id:1,valor:65}]);
+  assert.equal(items[0].valor_snapshot,100);assert.equal(items[0].titulo.valor_saldo,100,'UI nao altera titulo ao autorizar');
+  await page.getByRole('button',{name:'Abrir detalhes de TIT-2',exact:true}).click();
+  await detalhe.getByLabel('Valor a autorizar de TIT-2',{exact:true}).waitFor();
+  await page.waitForFunction(()=>!document.querySelector('.pa-titulo-rodape button')?.disabled);
+  const passkeysAntesInvalido=await page.evaluate(()=>window.__passkeys);
+  await detalhe.getByLabel('Valor a autorizar de TIT-2',{exact:true}).fill('0');
+  await detalhe.getByRole('button',{name:'Autorizar somente este título',exact:true}).click();
+  await detalhe.getByText('Informe um valor maior que zero e até o valor enviado para autorização.',{exact:true}).waitFor();
+  assert(await detalhe.getByLabel('Valor a autorizar de TIT-2',{exact:true}).isVisible(),'Validacao permite corrigir sem recarregar');
+  assert.equal(await page.evaluate(()=>window.__passkeys),passkeysAntesInvalido);
+  await detalhe.getByLabel('Valor a autorizar de TIT-2',{exact:true}).fill('50.00');
+  await detalhe.getByRole('button',{name:'Autorizar somente este título',exact:true}).click();
+  assert((await detalhe.getByRole('region',{name:'Conferência deste título'}).innerText()).includes('50,00'));
+  await detalhe.getByRole('button',{name:'Confirmar somente este título com passkey',exact:true}).click();
+  await detalhe.getByText('Somente este título foi aprovado. Os demais não foram decididos.',{exact:true}).waitFor();
+  assert.equal(decisoes.at(-1).body.decisoes[0].valor_autorizado,50);
+  await detalhe.getByRole('button',{name:'Voltar à lista',exact:true}).click();await pronto();
+  await page.getByRole('button',{name:'Limpar filtros',exact:true}).click();await pronto();
+  const filtrada=page.waitForResponse(r=>r.url().includes('/painel/obras')&&new URL(r.url()).searchParams.get('solicitacao')==='SOL-3');
+  await page.getByLabel('Solicitação',{exact:true}).fill('SOL-3');await filtrada;await pronto();
+  await abrirObra(1);
+  assert((await page.locator('.pa-obra-titulo').first().innerText()).includes('SOL-3'));
   assert.equal(maxActive, 1, 'Leituras seriais, sem N+1/polling concorrente'); assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
   console.log('UI por obra/titulo: uma passkey/POST para130 titulos entre lotes/paginas/obras, cancelamento sem escrita, falha sem parcial, resposta perdida reconciliada, duplo clique e320/390/1366; regressoes de filtros/detalhe/ACL/rejeicao/historico preservadas. APIs isoladas.');
 } finally { liberarDecisao?.(); await page.close(); await browser.close(); await server.close(); }

@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import ValorAutorizacao, { conferirValorAutorizacao } from './ValorAutorizacao';
 import { DONO_DETALHE } from '../../hooks/useAutorizacaoHistorico';
 import ModalPortal from '../ui/ModalPortal';
 import TituloExcluidoAviso from './TituloExcluidoAviso';
@@ -14,13 +15,14 @@ import NotasFiscaisAutorizacao from './NotasFiscaisAutorizacao';
 const moeda = value => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const mesmaVersao = (a, b) => assinaturaDecisao(a) === assinaturaDecisao(b);
 
-// Dados de leitura, nao o formulario editavel da solicitacao. POSTs digitais e
+// Dossie imutavel; somente o valor desta autorizacao tem rascunho local. POSTs digitais e
 // diretos usam contratos separados, com passkey nominal e UM titulo explicito.
-export default function AutorizacaoTituloDetalhe({ inicial, filtro, caps, setBusy, abrirDocumento, onFechar, onDecidido, onOcupado }) {
+export default function AutorizacaoTituloDetalhe({ inicial, filtro, caps, setBusy, abrirDocumento, onFechar, onDecidido, onOcupado, valorInicial }) {
   const [item, setItem] = useState(inicial), [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(''), [aviso, setAviso] = useState('');
   const [motivo, setMotivo] = useState(''), [confirmacao, setConfirmacao] = useState(null), [operando, setOperando] = useState(false);
   const [pedindoMotivo, setPedindoMotivo] = useState(false);
+  const [valorEditado, setValorEditado] = useState(valorInicial);
   const vivo = useRef(true), trava = useRef(false), painel = useRef(null), corpo = useRef(null), motivoRef = useRef(null);
   const ativo = useWorkspaceActive();
   const s = item.snapshot_json || {};
@@ -62,7 +64,7 @@ export default function AutorizacaoTituloDetalhe({ inicial, filtro, caps, setBus
   async function atualizar() {
     if (trava.current) return;
     trava.current = true; setCarregando(true); setConfirmacao(null);
-    try { const atual = await consultarAtual(); if (vivo.current) { setItem(atual); setErro(''); } }
+    try { const atual = await consultarAtual(); if (vivo.current) { if (!mesmaVersao(item, atual)) setValorEditado(undefined); setItem(atual); setErro(''); } }
     catch (e) { if (vivo.current) setErro(e.message || 'Não foi possível consultar o título. Atualize para tentar novamente.'); }
     finally { trava.current = false; if (vivo.current) setCarregando(false); }
   }
@@ -75,22 +77,26 @@ export default function AutorizacaoTituloDetalhe({ inicial, filtro, caps, setBus
         cursor_item_id: String(item.id), cursor_vencimento: referencia ? String(referencia).slice(0, 10) : 'SEM_DATA' });
       if (!vivo.current) return;
       if (!resposta.data?.[0]) { setAviso(sentido === 'PROXIMA' ? 'Último título deste filtro na obra.' : 'Primeiro título deste filtro na obra.'); return; }
-      setItem(resposta.data[0]); setMotivo(''); setPedindoMotivo(false); setErro(''); corpo.current?.scrollTo(0, 0);
+      setItem(resposta.data[0]); setValorEditado(undefined); setMotivo(''); setPedindoMotivo(false); setErro(''); corpo.current?.scrollTo(0, 0);
       painel.current?.querySelector('h2')?.focus();
     } catch (e) { if (vivo.current) setErro(e.message || 'Não foi possível navegar. Atualize o título antes de decidir.'); }
     finally { trava.current = false; if (vivo.current) setCarregando(false); }
   }
   async function conferir(decisao) {
     if (trava.current || !podeDecidir || !podeDecidirItem(item, decisao)) return;
+    if (decisao === 'AUTORIZAR') {
+      try { conferirValorAutorizacao(item, valorEditado); }
+      catch (e) { setConfirmacao(null); setAviso(e.message); return; }
+    }
     if (decisao === 'REJEITAR' && !motivo.trim()) { setAviso('Informe o motivo da rejeição.'); motivoRef.current?.focus(); return; }
     trava.current = true; setCarregando(true); setBusy(true); setConfirmacao(null); setAviso('');
     try {
       const atual = await consultarAtual();
       if (!vivo.current) return;
       setItem(atual);
-      if (!podeDecidirItem(atual, decisao) || !mesmaVersao(item, atual)) { setAviso('A situação do título mudou. Confira os dados atualizados antes de decidir.'); return; }
+      if (!podeDecidirItem(atual, decisao) || !mesmaVersao(item, atual)) { setValorEditado(undefined); setAviso('A situação do título mudou. Confira os dados atualizados antes de decidir.'); return; }
       setPedindoMotivo(false);
-      setConfirmacao({ decisao, item: atual, motivo: decisao === 'REJEITAR' ? motivo.trim() : null });
+      setConfirmacao({ decisao, item: atual, valor: decisao === 'AUTORIZAR' ? conferirValorAutorizacao(atual, valorEditado) : undefined, motivo: decisao === 'REJEITAR' ? motivo.trim() : null });
       setErro('');
     } catch (e) { if (vivo.current) setErro(e.message || 'Não foi possível conferir o título.'); }
     finally { trava.current = false; setBusy(false); if (vivo.current) setCarregando(false); }
@@ -101,7 +107,7 @@ export default function AutorizacaoTituloDetalhe({ inicial, filtro, caps, setBus
     try {
       const decisao = confirmacao.decisao === 'REJEITAR' && podeRejeitarFila(item) ? 'REJEITAR_FILA' : confirmacao.decisao;
       const decisoes = direto ? [{ fila_id: item.fila_id, titulo_id: item.titulo_financeiro_id, versao: item.versao_painel, motivo: confirmacao.motivo }]
-        : [{ item_id: Number(item.id), decisao, motivo: confirmacao.motivo }];
+        : [{ item_id: Number(item.id), decisao, motivo: confirmacao.motivo, ...(decisao === 'AUTORIZAR' ? { valor_autorizado: confirmacao.valor } : {}) }];
       const opcoes = direto ? await obterOpcoesRejeicaoFilaDireta(decisoes) : await obterOpcoesDecisaoPasskey(item.lote_id, decisoes);
       if (!vivo.current) return;
       const credential = await autenticarComPasskey(opcoes);
@@ -165,6 +171,9 @@ export default function AutorizacaoTituloDetalhe({ inicial, filtro, caps, setBus
         {s.solicitacao?.descricao && <section><h3>Descrição da solicitação</h3><p>{s.solicitacao.descricao}</p></section>}
         {item.titulo?.solicitacao?.justificativa && <section><h3>Justificativa atual da solicitação</h3><p>{item.titulo.solicitacao.justificativa}</p></section>}
         {s.favorecido_pagamento && <section><h3>Dados para autorização</h3><p>{[s.favorecido_pagamento.metodo, s.favorecido_pagamento.pix_tipo, s.favorecido_pagamento.pix_mascarado, s.favorecido_pagamento.banco, s.favorecido_pagamento.agencia_mascarada, s.favorecido_pagamento.conta_mascarada, s.favorecido_pagamento.tipo_conta].filter(Boolean).join(' · ') || 'Não informados'}</p></section>}
+        {podeDecidir && podeAutorizar(item) && <ValorAutorizacao item={item} value={valorEditado} disabled={bloqueado}
+          onChange={valor => { setValorEditado(valor); setConfirmacao(null); }} />}
+        {item.autorizacao_valor_json && <p>Valor editado pelo proprietário: {moeda(item.autorizacao_valor_json.valor_autorizado)} · Original: {moeda(item.autorizacao_valor_json.valor_original)}</p>}
         {(Number(s.juros) > 0 || Number(s.multa) > 0) && <p>Juros: {moeda(s.juros)} · Multa: {moeda(s.multa)} · Total enviado para autorização: {moeda(s.valor_total ?? item.valor_snapshot)}</p>}
         {s.participacoes?.length > 0 && <section><h3>Participações do título compartilhado</h3><p>A decisão abrange o título inteiro, não apenas esta obra.</p>{s.participacoes.map((p, i) => <p key={i}>{p.obra_nome || `Obra #${p.obra_id}`} · {p.empresa_nome || `Empresa #${p.empresa_id}`} · {moeda(p.valor)}</p>)}</section>}
         <section><h3>Documentos enviados para autorização</h3><div className="pa-obra-documentos">{(item.documentos || []).map(doc => <button type="button" className="btn btn-outline btn-sm" key={doc.id} disabled={operando} onClick={() => abrirDocumento(doc)}>{doc.nome}</button>)}</div>{!item.documentos?.length && <p>Nenhum documento enviado para autorização.</p>}</section>
@@ -178,6 +187,7 @@ export default function AutorizacaoTituloDetalhe({ inicial, filtro, caps, setBus
           <h3>{confirmacao.decisao === 'AUTORIZAR' ? 'Aprovar' : 'Rejeitar'} somente {s.codigo || `título #${item.titulo_financeiro_id}`}?</h3>
           <p>{moeda(valorSelecionado(item))} · Os demais títulos permanecem como estão.</p>
           {confirmacao.motivo && <p>Motivo: {confirmacao.motivo}</p>}
+          {confirmacao.decisao === 'AUTORIZAR' && <p>Valor a autorizar: <strong>{moeda(confirmacao.valor)}</strong> · Valor enviado: {moeda(item.valor_snapshot)} · Restante pendente: {moeda(Number(item.valor_snapshot) - confirmacao.valor)}. O título original será preservado.</p>}
           <div className="pa-obras-acoes"><button type="button" className="btn btn-outline btn-sm" disabled={bloqueado} onClick={() => setConfirmacao(null)}>Voltar à conferência</button><button type="button" className="btn btn-primary btn-sm" disabled={bloqueado || !podeDecidir} onClick={confirmar}>Confirmar {confirmacao.decisao === 'AUTORIZAR' ? 'somente este título com passkey' : 'rejeição com passkey'}</button></div>
         </section>}
       </div>

@@ -201,7 +201,11 @@ try {
   }
   await page.screenshot({path:path.join(output,'obras-compactas-navegador.png'),fullPage:false});
   await page.getByRole('button', { name: 'Por lote / histórico', exact: true }).click();
-  await page.getByRole('checkbox').waitFor();
+  await page.getByRole('checkbox').waitFor().catch(async e => { console.error({ errors, unexpected, body: await page.locator('body').innerText() }); throw e; });
+  const valorLegado=page.getByLabel('Valor a autorizar de TIT-1',{exact:true});
+  assert(await valorLegado.isVisible(),'Visao por lote tambem permite editar no celular');
+  await valorLegado.fill('60.00');
+  await page.getByText(/R\$\s40,00 permanece pendente no título/).waitFor();
   assert.equal(await page.locator('.fx-topbar').count(), 0);
   assert.equal(await page.locator('[data-qa-tabs]').count(), 0);
   assert.equal(await page.locator('.pa-toolbar').count(), 0);

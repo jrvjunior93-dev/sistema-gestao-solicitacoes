@@ -3,7 +3,7 @@ export const revisaoFila = row => JSON.stringify([
   row.titulo?.status, row.titulo?.status_financeiro, row.titulo?.valor_saldo, row.valor_informado, row.juros, row.multa,
   row.conta_bancaria_id, row.data_baixa, row.titulo?.forma_pagamento_id,
   row.titulo?.cartao_id, row.titulo?.fatura_cartao_id,
-  row.instrumento_pagamento_json
+  row.instrumento_pagamento_json, row.autorizacao_valor_json
 ]);
 // Lista explicita de inputs, nao comprovantes, URLs, DTOs ou permissoes.
 const camposParcelamento = value => value && typeof value === 'object'
