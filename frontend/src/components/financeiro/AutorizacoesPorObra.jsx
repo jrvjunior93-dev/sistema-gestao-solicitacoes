@@ -12,10 +12,11 @@ import TituloExcluidoAviso from './TituloExcluidoAviso';
 import useAutorizacaoHistorico from '../../hooks/useAutorizacaoHistorico';
 import BotaoReenvioAutorizacao from './BotaoReenvioAutorizacao';
 import RetirarEnvios from './RetirarEnvios';
+import ValorAutorizacao, { conferirValorAutorizacao } from './ValorAutorizacao';
 import { envioDoPainel, podeRetirarEnvio } from '../../utils/retiradaEnvio';
 
 const moeda = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-const INICIAL = { data_tipo: 'VENCIMENTO', vencimento_inicio: '', vencimento_fim: '', obra: '', situacao: 'AGUARDANDO' };
+const INICIAL = { data_tipo: 'VENCIMENTO', vencimento_inicio: '', vencimento_fim: '', obra: '', solicitacao: '', situacao: 'AGUARDANDO' };
 const EVENTO = 'fluxy-autorizacoes-obras-atualizar';
 const emptyPage = { data: [], paginacao: { pagina: 1, total: 0, mais: false }, resumo: { quantidade_titulos: 0, valor_total: 0 } };
 function Paginacao({ pagina, dados, alterar, disabled, nome, children }) {
@@ -42,6 +43,9 @@ export default function AutorizacoesPorObra({ caps, userId, user, busy, setBusy,
   const [chaveCarregada, setChaveCarregada] = useState('');
   const [tentativaManual, setTentativaManual] = useState(0);
   const [detalheOcupado, setDetalheOcupado] = useState(false);
+  const [valores, setValores] = useState({});
+  const proposto = item => valores[item.id]?.assinatura === assinaturaDecisao(item) ? valores[item.id].valor : undefined;
+  const valorDaSelecao = item => podeAutorizar(item) ? Number(proposto(item) ?? valorSelecionado(item)) : valorSelecionado(item);
   const [pedindoMotivo, setPedindoMotivo] = useState(false);
   const motivoRef = useRef(null), formularioFiltros = useRef(null), conferenciaRef = useRef(null);
   const { obra, detalhe, abrirObra, abrirDetalhe, voltar } = useAutorizacaoHistorico(slot, busy || preparando || detalheOcupado);
@@ -49,7 +53,7 @@ export default function AutorizacoesPorObra({ caps, userId, user, busy, setBusy,
   const parametros = { filtro, obra, paginaObras, paginaTitulos };
   const chave = JSON.stringify(parametros), contexto = useRef({ parametros, chave }); contexto.current = { parametros, chave };
   const selecionados = Object.values(selecao);
-  const totalSelecionado = selecionados.reduce((s, i) => s + Math.round((podeSelecionarAutorizacao(i) ? valorSelecionado(i) : Number(i.titulo?.valor_saldo || 0)) * 100), 0) / 100;
+  const totalSelecionado = selecionados.reduce((s, i) => s + Math.round((podeSelecionarAutorizacao(i) ? valorDaSelecao(i) : Number(i.titulo?.valor_saldo || 0)) * 100), 0) / 100;
   const indisponivel = busy || preparando || carregando || Boolean(erro) || chaveCarregada !== chave;
   const podeRetirar = item => { const envio = envioDoPainel(item); return envio && podeRetirarEnvio(user, envio.origem); };
   const selecionavel = item => (!caps.paused && caps.can_decide && podeSelecionarAutorizacao(item)) || podeRetirar(item);
@@ -151,8 +155,9 @@ export default function AutorizacoesPorObra({ caps, userId, user, busy, setBusy,
       setSelecao(next);
       if (mudou) { setRevisaoDecisao(null); setAviso('A situação de um ou mais títulos mudou. A seleção foi atualizada; confira novamente antes de decidir.'); atualizar(); return; }
       const grupos = agruparDecisoes(validos, decisao, motivo);
+      const valoresAutorizados = decisao === 'AUTORIZAR' ? validos.map(i => ({ item_id: Number(i.id), valor: conferirValorAutorizacao(i, proposto(i)) })) : [];
       setPedindoMotivo(false);
-      setRevisaoDecisao({ decisao, grupos, itens: validos, motivo: motivo.trim() });
+      setRevisaoDecisao({ decisao, grupos, itens: validos, valoresAutorizados, motivo: motivo.trim() });
     } catch (e) { if (vivo.current) setAviso(e.message || 'Não foi possível conferir a seleção.'); }
     finally { travado.current = false; if (vivo.current) setPreparando(false); }
   }
@@ -162,9 +167,9 @@ export default function AutorizacoesPorObra({ caps, userId, user, busy, setBusy,
     try {
       if (revisaoDecisao.decisao === 'AUTORIZAR') {
         const ids = revisaoDecisao.itens.map(i => Number(i.id)).sort((a, b) => a - b);
-        const opcoes = await obterOpcoesAutorizacaoSelecao(ids);
+        const opcoes = await obterOpcoesAutorizacaoSelecao(ids, revisaoDecisao.valoresAutorizados);
         const credential = await autenticarComPasskey(opcoes.publicKey);
-        const resultado = await autorizarSelecaoPagamento(ids, opcoes.selecao_id, credential);
+        const resultado = await autorizarSelecaoPagamento(ids, opcoes.selecao_id, credential, revisaoDecisao.valoresAutorizados);
         if (!Array.isArray(resultado?.itens) || resultado.itens.length !== ids.length || resultado.envio_pendente
           || new Set(resultado.itens.map(i => Number(i.id))).size !== ids.length
           || resultado.itens.some(i => !ids.includes(Number(i.id)) || i.status !== 'ENFILEIRADO' || !i.fila_item_id)) {
@@ -228,6 +233,7 @@ export default function AutorizacoesPorObra({ caps, userId, user, busy, setBusy,
       <label>{(rascunho.data_tipo || 'VENCIMENTO') === 'VENCIMENTO' ? 'Vencimento inicial' : 'Data inicial'}<DateInputBR key={'inicio:' + revisaoFiltros} data-filtro-data edicaoSegmentada value={rascunho.vencimento_inicio} onChange={altera('vencimento_inicio')} disabled={busy || preparando} /></label>
       <label>{(rascunho.data_tipo || 'VENCIMENTO') === 'VENCIMENTO' ? 'Vencimento final' : 'Data final'}<DateInputBR key={'fim:' + revisaoFiltros} data-filtro-data edicaoSegmentada value={rascunho.vencimento_fim} onChange={altera('vencimento_fim')} disabled={busy || preparando} /></label>
       <label className="pa-obras-busca">Obra / centro de custo<input value={rascunho.obra} onChange={altera('obra')} placeholder="Digite parte do nome da obra" maxLength={120} disabled={busy || preparando} /></label>
+      <label className="pa-obras-busca">Solicitação<input value={rascunho.solicitacao || ''} onChange={altera('solicitacao')} placeholder="Código ou descrição da solicitação" maxLength={120} disabled={busy || preparando} /></label>
       <label className="pa-obras-situacao">Situação atual<select value={rascunho.situacao} onChange={altera('situacao')} disabled={busy || preparando}>
         <option value="">Todas as situações</option>{SITUACOES_AUTORIZACAO.map(([id, nome]) => <option key={id} value={id}>{nome}</option>)}
       </select></label>
@@ -266,6 +272,9 @@ export default function AutorizacoesPorObra({ caps, userId, user, busy, setBusy,
                   onClick={() => abrirDetalhe({ item, filtro: { ...filtro, obra_id: String(obra.id) } })}>{s.solicitacao?.codigo || s.codigo || `Título #${item.titulo_financeiro_id}`} <span aria-hidden="true">›</span></button></div>
                 <span className={`pa-status pa-status--${item.situacao_financeira?.toLowerCase()}`}>{rotuloSituacao(item.situacao_financeira)}</span></div>
               <TituloExcluidoAviso exclusao={item.exclusao_titulo} />
+              {caps.can_decide && !caps.paused && podeAutorizar(item) && <ValorAutorizacao item={item} value={proposto(item)} disabled={indisponivel}
+                onChange={valor => { setRevisaoDecisao(null); setValores(current => ({ ...current, [item.id]: { valor, assinatura: assinaturaDecisao(item) } })); }} />}
+              {item.autorizacao_valor_json && <small>Valor editado pelo proprietário: {moeda(item.autorizacao_valor_json.valor_autorizado)} · Original: {moeda(item.autorizacao_valor_json.valor_original)}</small>}
               <BotaoReenvioAutorizacao item={item} caps={caps} disabled={indisponivel} setBusy={setBusy}
                 onEnviado={() => setTentativaManual(current => current + 1)} />
               {!item.exclusao_titulo && item.status === 'PENDENTE' && (!permitido || item.situacao_financeira !== 'AGUARDANDO') && <small>{permitido ? 'Aguardando aprovação do saldo deste título.' : 'Pendente de decisão, mas o saldo ou vínculo mudou. Confira o financeiro antes de aprovar.'}</small>}
@@ -303,18 +312,18 @@ export default function AutorizacoesPorObra({ caps, userId, user, busy, setBusy,
       {!caps.passkey_count && <small>Cadastre uma passkey nas opções para confirmar decisões.</small>}
       {revisaoDecisao && <section ref={conferenciaRef} tabIndex={-1} className="pa-obras-conferencia" aria-label="Conferência da decisão">
         <strong>Conferir {revisaoDecisao.decisao === 'AUTORIZAR' ? 'autorização' : 'rejeição'} de {revisaoDecisao.itens.length} título(s)</strong>
-        <p>Total selecionado: <strong>{moeda(revisaoDecisao.itens.reduce((total, item) => total + Math.round(valorSelecionado(item) * 100), 0) / 100)}</strong></p>
+        <p>Total selecionado: <strong>{moeda(revisaoDecisao.itens.reduce((total, item) => total + Math.round(valorDaSelecao(item) * 100), 0) / 100)}</strong></p>
         <p>{revisaoDecisao.decisao === 'AUTORIZAR'
           ? 'Uma única confirmação por passkey autoriza e envia todos os títulos selecionados para a fila, mesmo de lotes diferentes. Os demais permanecem como estão.'
           : `Somente os títulos selecionados serão decididos. Serão solicitadas ${revisaoDecisao.grupos.length} confirmações por passkey, separadas por lote e tipo de decisão. Se interromper, as decisões já confirmadas não serão desfeitas.`}</p>
-        <ul>{revisaoDecisao.itens.map(i => <li key={i.id}>{i.snapshot_json?.codigo || `Título #${i.titulo_financeiro_id}`} · {i.obras_nomes} · {moeda(valorSelecionado(i))}</li>)}</ul>
+        <ul>{revisaoDecisao.itens.map(i => <li key={i.id}>{i.snapshot_json?.codigo || `Título #${i.titulo_financeiro_id}`} · {i.obras_nomes} · {moeda(valorDaSelecao(i))}{revisaoDecisao.decisao === 'AUTORIZAR' && valorDaSelecao(i) < Number(i.valor_snapshot) ? ` · Valor editado pelo proprietário; original ${moeda(i.valor_snapshot)}, restante ${moeda(Number(i.valor_snapshot) - valorDaSelecao(i))}` : ''}</li>)}</ul>
         {revisaoDecisao.decisao === 'REJEITAR' && <p>Motivo: {revisaoDecisao.motivo}</p>}
         <div className="pa-obras-acoes"><button type="button" className="btn btn-outline btn-sm" disabled={busy} onClick={() => setRevisaoDecisao(null)}>Voltar à seleção</button>
           <button type="button" className="btn btn-primary btn-sm" disabled={busy || caps.paused} onClick={confirmar}>Confirmar {revisaoDecisao.decisao === 'AUTORIZAR' ? `autorização com passkey (${revisaoDecisao.itens.length})` : 'rejeição com passkey'}</button></div>
       </section>}
     </section>}
     {aviso && <p role="status">{aviso}</p>}
-    {detalhe && <AutorizacaoTituloDetalhe inicial={detalhe.item} filtro={detalhe.filtro} caps={caps} setBusy={setBusy} abrirDocumento={abrirDocumento}
+    {detalhe && <AutorizacaoTituloDetalhe inicial={detalhe.item} valorInicial={proposto(detalhe.item)} filtro={detalhe.filtro} caps={caps} setBusy={setBusy} abrirDocumento={abrirDocumento}
       onOcupado={setDetalheOcupado} onFechar={() => { voltar(); setTentativaManual(current => current + 1); }}
       onDecidido={tituloId => { setRevisaoDecisao(null); setSelecao(current => Object.fromEntries(Object.entries(current).filter(([id]) => Number(id) !== Number(tituloId)))); }} />}
   </section>;

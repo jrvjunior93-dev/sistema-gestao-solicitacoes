@@ -28,6 +28,7 @@ import { criarAssinaturaPush, obterAssinaturaPush, suportaWebPush } from '../uti
 import { codigoLoteAutorizacao, motivosAjusteAutorizacao, resumoSolicitacaoAutorizacao } from '../utils/autorizacaoPagamentoResumo';
 import OverlayModal from '../components/ui/OverlayModal';
 import AutorizacoesPorObra from '../components/financeiro/AutorizacoesPorObra';
+import ValorAutorizacao, { conferirValorAutorizacao } from '../components/financeiro/ValorAutorizacao';
 import AutorizacaoReenvioAviso from '../components/financeiro/AutorizacaoReenvioAviso';
 import { rotuloSituacao, tituloExcluido, podeReenviarAutorizacao } from '../utils/autorizacaoPagamentoSituacao';
 import TituloExcluidoAviso from '../components/financeiro/TituloExcluidoAviso';
@@ -68,6 +69,8 @@ export default function FinanceiroAutorizacoesPagamento() {
   const [authorizerUserId, setAuthorizerUserId] = useState('');
   const [pushActive, setPushActive] = useState(false);
   const [passkeys, setPasskeys] = useState([]);
+  const [valoresEditados, setValoresEditados] = useState({});
+  const valorProposto = item => valoresEditados[item.id] && valoresEditados[item.id].hash === item.snapshot_hash ? valoresEditados[item.id].valor : undefined;
   const listaRequestRef = useRef(0);
   const vooLotes = useRef(Promise.resolve());
 
@@ -94,7 +97,7 @@ export default function FinanceiroAutorizacoesPagamento() {
   const setRejectReason = update => alterarTrabalho('rejectReason', update);
   const setRevokeReason = update => alterarTrabalho('revokeReason', update);
   useWorkspaceWork(Boolean(Object.keys(trabalhoPorLote).length), busy);
-  const selectedTotal = useMemo(() => pendingItems.filter((item) => selectedItems.includes(Number(item.id))).reduce((sum, item) => sum + Number(item.valor_snapshot || 0), 0), [pendingItems, selectedItems]);
+  const selectedTotal = pendingItems.filter(item => selectedItems.includes(Number(item.id))).reduce((sum, item) => sum + Number(valorProposto(item) ?? item.valor_snapshot ?? 0), 0);
   const justificativaId = searchParams.get('justificativa');
   const loteJustificativa = lots.find(lot => (lot.itens || []).some(item => String(item.id) === justificativaId));
   const itemJustificativa = loteJustificativa?.itens.find(item => String(item.id) === justificativaId);
@@ -245,10 +248,14 @@ export default function FinanceiroAutorizacoesPagamento() {
   async function decide(decision) {
     if (!selectedItems.length || busy || mutationRef.current) return;
     if (decision === 'REJEITAR' && !rejectReason.trim()) return avisar.erro('Informe o motivo da rejeição.');
-    const decisions = selectedItems.map((itemId) => ({ item_id: itemId, decisao: decision, motivo: decision === 'REJEITAR' ? rejectReason.trim() : null }));
     mutationRef.current = true;
     setBusy(true);
     try {
+      const decisions = selectedItems.map(itemId => {
+        const item = pendingItems.find(i => Number(i.id) === itemId);
+        return { item_id: itemId, decisao: decision, motivo: decision === 'REJEITAR' ? rejectReason.trim() : null,
+          ...(decision === 'AUTORIZAR' ? { valor_autorizado: conferirValorAutorizacao(item, valorProposto(item)) } : {}) };
+      });
       const options = await obterOpcoesDecisaoPasskey(selected.id, decisions);
       const credential = await autenticarComPasskey(options);
       const resultado = await decidirAutorizacaoPagamento(selected.id, decisions, credential);
@@ -390,12 +397,17 @@ export default function FinanceiroAutorizacoesPagamento() {
                     <td>{item.status === 'PENDENTE' && !tituloExcluido(item) && <input type="checkbox" checked={selectedItems.includes(Number(item.id))} onChange={(event) => setSelectedItems((current) => event.target.checked ? [...current, Number(item.id)] : current.filter((id) => id !== Number(item.id)))} />}</td>
                     <td><strong>{snapshot.solicitacao?.codigo || snapshot.codigo || `#${snapshot.titulo_id}`}</strong>
                       {snapshot.solicitacao?.codigo && <small>Título {snapshot.codigo || `#${snapshot.titulo_id}`}</small>}
-                      <small>{resumoSolicitacaoAutorizacao(snapshot)}</small><small className="pa-title-value"><span>Valor do título</span><strong>{money(item.valor_snapshot)}</strong></small></td>
+                      <small>{resumoSolicitacaoAutorizacao(snapshot)}</small><small className="pa-title-value"><span>Valor do título</span><strong>{money(item.valor_snapshot)}</strong></small>
+                      {caps.can_decide && caps.passkey_count && !caps.paused && item.status === 'PENDENTE' && !tituloExcluido(item) && <ValorAutorizacao item={item} value={valorProposto(item)} disabled={busy}
+                        onChange={valor => setValoresEditados(current => ({ ...current, [item.id]: { valor, hash: item.snapshot_hash } }))} />}
+                      {item.autorizacao_valor_json && <small>Valor editado pelo proprietário: {money(item.autorizacao_valor_json.valor_autorizado)}</small>}
+                    </td>
                     <td>{snapshot.favorecido_pagamento?.nome || snapshot.credor?.nome || '-'}<small>{snapshot.favorecido_pagamento?.documento_mascarado || snapshot.credor?.documento_mascarado || ''}</small><small>{snapshot.forma_pagamento?.nome || snapshot.favorecido_pagamento?.metodo || ''}{snapshot.favorecido_pagamento?.pix_mascarado ? ` · ${snapshot.favorecido_pagamento.pix_mascarado}` : ''}</small></td>
                     <td>{snapshot.obra?.nome || (snapshot.compartilhamento_id ? 'Várias origens' : '-')}
                       {snapshot.compartilhamento_id && <details><summary>Lote #{snapshot.compartilhamento_id} · participações</summary>
                         {(snapshot.participacoes || []).map((p, i) => <small key={i}>Solicitação #{p.solicitacao_id}{p.pedido_compra_id ? ` · PC-${String(p.pedido_compra_id).padStart(5, '0')}` : ''}<br />{p.obra_nome || `Obra #${p.obra_id}`} · {p.empresa_nome || `Empresa #${p.empresa_id}`} · {money(p.valor)}</small>)}
-                      </details>}</td><td>{snapshot.data_vencimento || '-'}</td><td className="num pa-value-column">{money(item.valor_snapshot)}</td>
+                      </details>}</td><td>{snapshot.data_vencimento || '-'}</td><td className="num pa-value-column">{money(item.valor_snapshot)}
+                    </td>
                     <td><div className="pa-documents">{(item.documentos || []).map((doc) => <button type="button" key={doc.id} onClick={() => openDocument(doc)} title={doc.nome}><HiOutlineDocumentText /><span>{doc.nome}</span></button>)}</div>
                       {!tituloExcluido(item) && <NotasFiscaisAutorizacao key={item.id} item={item}/>}</td>
                     <td><Status value={item.situacao_financeira || item.status} />{item.fila_item_id && <small>Fila #{item.fila_item_id}</small>}

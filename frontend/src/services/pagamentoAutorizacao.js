@@ -31,8 +31,8 @@ export const assinarNotificacoesPagamento = (subscription) => request('/push/ass
 export const removerNotificacoesPagamento = (endpoint) => request('/push/remover', { method: 'POST', body: { endpoint } });
 export const obterOpcoesDecisaoPasskey = (id, decisoes) => request(`/${id}/autenticacao/opcoes`, { method: 'POST', body: { decisoes } });
 export const decidirAutorizacaoPagamento = (id, decisoes, credential) => request(`/${id}/decidir`, { method: 'POST', body: { decisoes, credential } });
-export const obterOpcoesAutorizacaoSelecao = itemIds => request('/painel/selecao/autenticacao/opcoes', { method: 'POST', body: { item_ids: itemIds } });
-export const autorizarSelecaoPagamento = (itemIds, selecaoId, credential) => request('/painel/selecao/autorizar', { method: 'POST', body: { item_ids: itemIds, selecao_id: selecaoId, credential } });
+export const obterOpcoesAutorizacaoSelecao = (itemIds, valores) => request('/painel/selecao/autenticacao/opcoes', { method: 'POST', body: { item_ids: itemIds, ...(valores ? { valores_autorizados: valores } : {}) } });
+export const autorizarSelecaoPagamento = (itemIds, selecaoId, credential, valores) => request('/painel/selecao/autorizar', { method: 'POST', body: { item_ids: itemIds, selecao_id: selecaoId, credential, ...(valores ? { valores_autorizados: valores } : {}) } });
 export const obterOpcoesRejeicaoFilaDireta = decisoes => request('/painel/fila-direta/autenticacao/opcoes', { method: 'POST', body: { decisoes } });
 export const rejeitarFilaDireta = (decisoes, credential) => request('/painel/fila-direta/rejeitar', { method: 'POST', body: { decisoes, credential } });
 export const reenviarAutorizacaoParaFila = (id, itemIds) => request(`/${id}/enfileirar`, { method: 'POST', body: itemIds ? { item_ids: itemIds } : {} });

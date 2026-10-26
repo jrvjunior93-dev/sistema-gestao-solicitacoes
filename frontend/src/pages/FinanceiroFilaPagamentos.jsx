@@ -204,12 +204,17 @@ function tipoDivergenciaPagamento(row, draft = {}) {
   const multa = valorEmCentavos(draft.multa || 0);
   if (!valorPago || saldo === null || juros === null || multa === null) return '';
   const principal = valorPago - juros - multa + (valorEmCentavos(draft.desconto || 0) || 0);
+  const limite = row?.autorizacao_valor_json?.limite;
+  if (limite != null && valorPago > valorEmCentavos(limite)) return 'ACIMA_AUTORIZADO';
+  if (limite != null && principal <= saldo) return valorPago < valorEmCentavos(limite) ? 'PARCIAL' : '';
   if (principal < saldo) return 'PARCIAL';
   if (principal > saldo) return 'ACIMA_SALDO';
   return '';
 }
 
 function totalPrevistoFila(row, draft = {}) {
+  if (row.autorizacao_valor_json) return Math.max(0, Math.min(Number(row.autorizacao_valor_json.limite),
+    Number(row.titulo?.valor_saldo || 0) + Number(draft.juros || 0) + Number(draft.multa || 0) - Number(draft.desconto || 0)));
   const base = ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'].includes(row.status) && !Number(row.movimento_financeiro_id)
     ? row.titulo?.valor_saldo : row.valor_previsto;
   return ((valorEmCentavos(base) || 0) + (valorEmCentavos(draft.juros || 0) || 0)
@@ -217,6 +222,7 @@ function totalPrevistoFila(row, draft = {}) {
 }
 
 function mensagemJustificativaDivergencia(tipo) {
+  if (tipo === 'ACIMA_AUTORIZADO') return 'O valor ultrapassa o autorizado pelo proprietário. Reduza o pagamento ou solicite nova autorização.';
   if (tipo === 'PARCIAL') return 'Justifique por que o pagamento será parcial.';
   if (tipo === 'ACIMA_SALDO') return 'Justifique por que o pagamento será maior que o saldo.';
   if (tipo === 'DIFERENTE_PREVISTO') return 'Justifique a diferença em relação ao valor previsto.';
@@ -891,6 +897,9 @@ export default function FinanceiroFilaPagamentos() {
           correcao: 'Descarte o rascunho conflitante e confira os dados atuais antes de baixar.', filaId: row.id };
       }
       const draft = dados[row.id] || {};
+      if (row.autorizacao_valor_json && Number(draft.valor_pago) > Number(row.autorizacao_valor_json.limite)) return {
+        mensagem: 'O pagamento ultrapassa o valor autorizado pelo proprietário.',
+        correcao: 'Reduza o valor ou solicite nova autorização para o saldo restante.', filaId: row.id, campo: 'valor_pago' };
       const forma = instrumentos.formas.find(item => Number(item.id) === Number(draft.forma_pagamento_id));
       if (!forma) return { mensagem: 'Selecione uma forma de pagamento ativa.', correcao: 'Informe a forma efetivamente utilizada na linha.', filaId: row.id, campo: 'forma_pagamento_id' };
       const tipo = tipoInstrumentoFila(forma);
@@ -1499,6 +1508,7 @@ export default function FinanceiroFilaPagamentos() {
                     </td>
                     <td className="px-3 py-3 align-top">
                       <div className="max-w-64 whitespace-pre-wrap break-words text-xs" title={title.observacoes || undefined}>
+                        {row.autorizacao_valor_json && <p className="font-medium mb-1">Valor editado pelo proprietário · Autorizado {currency(row.autorizacao_valor_json.valor_autorizado)} · Original {currency(row.autorizacao_valor_json.valor_original)} · Limite desta fila {currency(row.autorizacao_valor_json.limite)}</p>}
                         {title.observacoes?.length > 120 ? <details><summary className="cursor-pointer">{title.observacoes.slice(0, 120)}…</summary><div className="mt-1">{title.observacoes}</div></details> : title.observacoes || '—'}
                       </div>
                     </td>
@@ -1591,7 +1601,8 @@ export default function FinanceiroFilaPagamentos() {
                         type="number"
                         min="0.01"
                         step="0.01"
-                        value={drafts[row.id]?.valor_pago ?? valorParaInput(row.valor_informado || title.valor_saldo)}
+                        max={row.autorizacao_valor_json?.limite}
+                        value={drafts[row.id]?.valor_pago ?? valorParaInput(row.valor_informado || totalPrevistoFila(row, row))}
                         onChange={(event) => updateDraft(row.id, { valor_pago: event.target.value })}
                         disabled={!editable || busy}
                         aria-label={`Valor pago de ${title.codigo || row.id}`}
@@ -1679,7 +1690,7 @@ export default function FinanceiroFilaPagamentos() {
       </BlocoConteudo>
       <ErroRegistroBaixaModal erro={erroBaixa} onFechar={fecharErroRegistroBaixa} />
       {baixaFontes && canCompose && <BaixaCompostaModal contextoFila
-        titulos={filasFontes.map(row => row.titulo)} empresas={instrumentos.empresas || []}
+        titulos={filasFontes.map(row => row.autorizacao_valor_json ? { ...row.titulo, valor_saldo: Math.min(Number(row.titulo.valor_saldo), Number(row.autorizacao_valor_json.limite)) } : row.titulo)} empresas={instrumentos.empresas || []}
         contas={accounts} formas={instrumentos.formas.filter(f => !f.gera_fatura && !/CREDITO/.test([f.tipo, f.codigo, f.nome].join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()))}
         cartoes={instrumentos.cartoes.filter(c => String(c.tipo).toUpperCase() === 'DEBITO')} cheques={instrumentos.cheques}
         chaveRascunho={`fila:fontes:${baixaFontes.usuario}:${baixaFontes.ids.join(':')}`} revisaoContexto={JSON.stringify(filasFontes.map(revisaoFila))} dataInicial={baixaFontes.dataInicial}

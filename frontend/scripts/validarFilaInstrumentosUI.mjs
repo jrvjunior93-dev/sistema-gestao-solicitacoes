@@ -64,6 +64,7 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
         (window.__filterQueries ||= []).push(params);
         const paid=window.__paid,receipt=window.__receipt,saldo=window.__saldo||200;
         const row={id:1,status:paid?'BAIXADO':'PENDENTE',movimento_financeiro_id:paid?10:null,valor_informado:paid?200:null,valor_previsto:saldo,juros:window.__juros||0,multa:window.__multa||0,conta_bancaria_id:5,data_baixa:paid?'2026-10-08':null,pendente_comprovante:paid&&!receipt,comprovante_hash:receipt||!window.__receiptScenario?'qa':null,comprovante_url:receipt||!window.__receiptScenario?'qa':null,titulo:{id:1,codigo:'TIT-QA',status:paid?'QUITADO':'ABERTO',valor_saldo:paid?0:saldo,forma_pagamento_id:1,solicitacao_id:100,solicitacao:{id:100,codigo:'SOL-QA'}}};
+        if(new URLSearchParams(location.search).has('valor-parcial')) {row.autorizacao_valor_json={versao:1,valor_original:200,valor_autorizado:100,limite:100,usuario_id:31,observacao:'Valor editado pelo proprietario'};row.valor_previsto=100;row.titulo.forma_pagamento_id=3;}
         if(window.__uploadedName)row.comprovante_nome=window.__uploadedName;
         if(new URLSearchParams(location.search).has('retirada')) {
           const data=[1,2].map(id=>({...row,id,titulo_financeiro_id:id,status:window.__retirados?.includes(id)?'RESOLVIDO':id===2?'DIVERGENTE':new URLSearchParams(location.search).has('nao-pago')?'NAO_PAGO':'PENDENTE',
@@ -187,7 +188,30 @@ try {
     if (new URL(route.request().url()).origin === 'http://127.0.0.1:5308') return route.continue();
     unexpected.push(route.request().url()); return route.abort();
   });
-  if (process.argv.includes('--retirada')) {
+  if (process.argv.includes('--valor-parcial')) {
+    for (const width of [1366,390]) {
+      await page.setViewportSize({width,height:900});
+      await page.goto('http://127.0.0.1:5308/qa-fila?valor-parcial=1');
+      await page.getByText(/Valor editado pelo proprietário · Autorizado/).waitFor();
+      const valor=page.getByLabel('Valor pago de TIT-QA',{exact:true});
+      assert.equal(await valor.inputValue(),'100.00');assert.equal(await valor.getAttribute('max'),'100');
+      await page.getByText('Saldo R$ 200,00',{exact:true}).waitFor();
+      await page.screenshot({path:path.join(root,'../outputs/fila-valor-parcial-'+width+'.png'),fullPage:true});
+      await page.getByLabel('Conta pagadora de TIT-QA',{exact:true}).selectOption('5');
+      await valor.fill('101.00');
+      await page.getByRole('button',{name:'Registrar baixa',exact:true}).click();
+      await page.getByText('O pagamento ultrapassa o valor autorizado pelo proprietário.',{exact:true}).waitFor();
+      assert.equal(await page.evaluate(()=>window.__settles.length),0,'Teto tambem validado na UI');
+      await page.goto('http://127.0.0.1:5308/qa-fila?valor-parcial=1');
+      await page.getByLabel('Valor pago de TIT-QA',{exact:true}).waitFor();
+      await page.getByLabel('Conta pagadora de TIT-QA',{exact:true}).selectOption('5');
+      await page.getByRole('button',{name:'Registrar baixa',exact:true}).click();
+      await page.waitForFunction(()=>window.__settles.length===1);
+      assert.equal(await page.evaluate(()=>window.__settles[0].itens[0].valor_pago),100);
+    }
+    assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
+    console.log('OK fila parcial: limite/default 100, original/saldo 200, observacao visivel, bloqueio acima do autorizado e baixa normal sem justificativa adicional.');
+  } else if (process.argv.includes('--retirada')) {
     await validarRetiradaFila(page, root);
     assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
   } else if (process.argv.includes('--filtros-arranjo')) {
