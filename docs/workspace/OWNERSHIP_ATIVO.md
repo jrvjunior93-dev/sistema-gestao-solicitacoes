@@ -6498,3 +6498,7 @@ e ownership liberado para publicacao dev. outputs/ permanece fora do commit.
 ## Promocao de autorizacao parcial/moeda para main - 2026-10-26
 - Retomada: branch codex/autorizacao-valor-prod-preflight-20261026 a partir de c405f805; ownership exclusivo de doctor/teste, aplicador/teste/manifesto, README e handoff desta promocao. Corrigir carregamento do .env antes da validacao, mantendo exports. Diagnostico EC2 somente leitura; codigo/migration/restart somente pelos comandos executados pelo usuario. Sem delegacao.
 - Agente desta conversa: reserva os arquivos funcionais do pacote fc369151/ba7393ab/ed211fab no worktree outputs/worktree-autorizacao-valor-main, novo doctor PROD, aplicador/manifesto/testes/roteiro e handoff. Base 920f639c; backend e frontend separados. Preservar S3/NSDOCS PROD e DEV. Somente preparar/testar/publicar codigo e fornecer comandos; nao aplicar ou reiniciar EC2 pelo agente. Sem delegacao.
+
+Ownership codex-publicar-apropriacoes-main-20261026: promocao isolada do ajuste publicado na refactor/frontend b620379f605620603faf4e5f2bc04be11296bb0f. Reservados App.jsx, navigationConfig.jsx, catalogo backend, teste validarAcessoGestaoApropriacoes.mjs, handoff e este registro. Sem demais alteracoes da refactor/frontend; sem EC2/banco.
+
+Promocao isolada validada sobre main f429b6f2: testes de acesso/sincronizacao e build aprovados. Delta somente menu/rota/catalogo/teste/handoff e este registro; sem migrations/dependencias/servicos. Ownership de edicao liberado para publicacao main autorizada. Nao executado deploy/EC2/banco.

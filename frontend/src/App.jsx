@@ -28,6 +28,7 @@ import {
   canAccessConfiguracoes,
   canAccessPagamentos,
   canAccessGestaoObras,
+  canManageGestaoObrasApropriacoes,
   canAccessPrioridadesDiretoria,
   canCreateCompraSolicitacao,
   canCreateProvisionamentos,
@@ -791,6 +792,14 @@ function GestaoObrasRoute({ children }) {
   return children;
 }
 
+function GestaoApropriacoesRoute({ children }) {
+  const { user } = useAuth();
+  if (!canManageGestaoObrasApropriacoes(user)) {
+    return <Navigate to="/" replace />;
+  }
+  return children;
+}
+
 function ContratosRoute({ children, can }) {
   const { user } = useAuth();
   if (!can(user)) {
@@ -1214,7 +1223,7 @@ export default function App() {
         <Route path="pedidos-compra" element={<ComprasPedidosRoute><PedidosCompra /></ComprasPedidosRoute>} />
         <Route path="pedidos-compra/:id" element={<ComprasPedidosRoute><PedidoCompraDetalhe /></ComprasPedidosRoute>} />
         <Route path="compras/delegacao" element={<ComprasDelegacaoRoute><ComprasDelegacao /></ComprasDelegacaoRoute>} />
-        <Route path="gestao-apropriacoes" element={<GestaoObrasRoute><BusinessAdminRoute><GestaoApropriacoes /></BusinessAdminRoute></GestaoObrasRoute>} />
+        <Route path="gestao-apropriacoes" element={<GestaoApropriacoesRoute><GestaoApropriacoes /></GestaoApropriacoesRoute>} />
         <Route path="gestao-insumos" element={<ModuloComprasRoute><ComprasConfiguracoesRoute><GestaoInsumos /></ComprasConfiguracoesRoute></ModuloComprasRoute>} />
         <Route path="gestao-unidades" element={<ModuloComprasRoute><ComprasConfiguracoesRoute><GestaoUnidades /></ComprasConfiguracoesRoute></ModuloComprasRoute>} />
         <Route path="gestao-categorias" element={<ModuloComprasRoute><ComprasConfiguracoesRoute><GestaoCategorias /></ComprasConfiguracoesRoute></ModuloComprasRoute>} />
