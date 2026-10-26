@@ -192,7 +192,7 @@ async function listarFilaPagamentos(req, filters = {}) {
     .map((item) => ({ ...item.toJSON(),
       desconto: Number(item.instrumento_pagamento_json?.desconto || 0),
       // Leitura tambem cobre filas antigas, sem reescrever historico de pagamentos.
-      valor_previsto: filaSemBaixaAtualizavel(item) ? roundCurrency(item.titulo.valor_saldo) : item.valor_previsto,
+      valor_previsto: filaSemBaixaAtualizavel(item) ? require('./pagamentoAutorizacaoValorDomain').principalPrevisto(item, item.titulo) : item.valor_previsto,
       // Filas antigas podem ter sido criadas antes dos encargos do titulo.
       // Pagamentos executados preservam o snapshot; saldo parcial nao repete encargos.
       juros: item.status === 'PENDENTE' && filaSemBaixaAtualizavel(item)
@@ -484,6 +484,7 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
       throw createHttpError(409, 'Um ou mais titulos ja possuem pagamento bancario em andamento.');
     }
 
+    const valoresAutorizados = new Map();
     if (options.autorizacaoInterna) {
       const lote = await PagamentoAutorizacaoLote.findByPk(Number(options.autorizacaoLoteId), {
         transaction, lock: transaction.LOCK.UPDATE
@@ -496,6 +497,7 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
         lote_id: Number(options.autorizacaoLoteId), titulo_financeiro_id: { [Op.in]: novos.map(titulo => titulo.id) }, status: 'AUTORIZADO'
       }, transaction });
       if (autorizados.length !== novos.length) throw createHttpError(409, 'Um ou mais titulos nao possuem autorizacao digital neste lote.');
+      for (const item of autorizados) valoresAutorizados.set(Number(item.titulo_financeiro_id), item.autorizacao_valor_json || null);
     }
 
     for (const titulo of novos) {
@@ -511,7 +513,9 @@ async function enfileirarTitulos(req, payload = {}, options = {}) {
     const criados = await Promise.all(novos.map((titulo) => PagamentoManualFilaItem.create({
       titulo_financeiro_id: titulo.id,
       status: 'PENDENTE',
-      valor_previsto: roundCurrency(titulo.valor_saldo),
+      autorizacao_valor_json: valoresAutorizados.get(Number(titulo.id)) || null,
+      valor_previsto: require('./pagamentoAutorizacaoValorDomain').principalPrevisto({ autorizacao_valor_json: valoresAutorizados.get(Number(titulo.id)),
+        juros: titulo.juros, multa: titulo.multa }, titulo),
       juros: Number(titulo.valor_baixado || 0) > 0 ? 0 : roundCurrency(titulo.juros),
       multa: Number(titulo.valor_baixado || 0) > 0 ? 0 : roundCurrency(titulo.multa),
       data_vencimento_prevista: titulo.data_vencimento || null,
@@ -787,12 +791,17 @@ async function processarItemFila(req, itemPayload, requestKey, transaction, liqu
     : Boolean(empresaTituloId && Number(empresaPagadoraId) !== empresaTituloId);
 
   const valorPago = roundCurrency(itemPayload.valor_pago);
+  const valorDomain = require('./pagamentoAutorizacaoValorDomain');
+  valorDomain.conferirPagamento(filaItem, itemPayload.valor_pago);
   const encargos = { juros: itemPayload.juros ?? filaItem.juros, multa: itemPayload.multa ?? filaItem.multa,
     desconto: itemPayload.desconto ?? filaItem.instrumento_pagamento_json?.desconto ?? 0 };
   const valores = calcularValoresFila(itemPayload.valor_pago, titulo.valor_saldo, encargos);
   const saldoAtual = roundCurrency(titulo.valor_saldo);
   if ((permutaIntegral || Number(instrumento.valor_permuta)) && valores.principal>saldoAtual) throw createHttpError(409,'Ajuste o titulo antes de registrar permuta acima do saldo.');
-  const tipoDivergencia = valores.divergencia;
+  const limiteAutorizado = valorDomain.limite(filaItem);
+  if (limiteAutorizado !== null && valores.principal > saldoAtual) throw createHttpError(409, 'Pagamento acima do saldo exige nova conferencia do titulo e da autorizacao.');
+  const tipoDivergencia = limiteAutorizado === null ? valores.divergencia
+    : valores.principal > saldoAtual ? 'ACIMA_SALDO' : valorPago < limiteAutorizado ? 'PARCIAL' : '';
   const divergente = Boolean(tipoDivergencia);
   const motivo = String(itemPayload.motivo || '').trim();
 
@@ -812,7 +821,7 @@ async function processarItemFila(req, itemPayload, requestKey, transaction, liqu
     instrumento_pagamento_json: { ...instrumento, desconto: valores.desconto },
     juros: valores.juros,
     multa: valores.multa,
-    valor_previsto: saldoAtual,
+    valor_previsto: limiteAutorizado === null ? saldoAtual : filaItem.valor_previsto,
     valor_informado: valorPago,
     data_baixa: itemPayload.data_baixa,
     conta_bancaria_id: conta?.id || null,
@@ -867,7 +876,7 @@ async function processarItemFila(req, itemPayload, requestKey, transaction, liqu
       ...(baixa.liquidacao_id ? {liquidacao_id:baixa.liquidacao_id} : {}),
       movimentos_financeiros_ids: baixa.movimentos_financeiros_ids },
     status: divergente ? 'DIVERGENTE' : 'BAIXADO',
-    motivo: motivo || null,
+    motivo: motivo || (limiteAutorizado === null ? null : 'Pagamento conforme valor editado pelo proprietario.'),
     movimento_financeiro_id: baixa.movimento_financeiro_id || baixa.movimento?.id || null
   }, { transaction });
 
@@ -1008,6 +1017,7 @@ async function aprovarDivergenciasFila(req, payload = {}) {
       let baixaRegistrada = false;
 
       if (!movimentoId) {
+        require('./pagamentoAutorizacaoValorDomain').conferirPagamento(current, current.valor_informado);
         if (!['ABERTO', 'PARCIAL'].includes(String(titulo.status || '').toUpperCase()) || roundCurrency(titulo.valor_saldo) <= 0) {
           throw createHttpError(409, `O titulo ${titulo.codigo || titulo.id} nao esta mais disponivel para baixa.`);
         }
@@ -1163,6 +1173,7 @@ async function resolverItemFila(req, id, payload = {}) {
     }
     assertTituloDisponivelParaBaixa(titulo);
     const autorizacao = await conferirAutorizacaoRetorno(current, transaction);
+    const valorRetorno = require('./pagamentoAutorizacaoValorDomain').paraRetorno(current);
     await current.update({
       status: 'RESOLVIDO',
       motivo: current.motivo,
@@ -1172,7 +1183,8 @@ async function resolverItemFila(req, id, payload = {}) {
     const reaberto = await PagamentoManualFilaItem.create({
       titulo_financeiro_id: titulo.id,
       status: 'PENDENTE',
-      valor_previsto: roundCurrency(titulo.valor_saldo),
+      autorizacao_valor_json: valorRetorno,
+      valor_previsto: require('./pagamentoAutorizacaoValorDomain').principalPrevisto({ autorizacao_valor_json: valorRetorno, juros: titulo.juros, multa: titulo.multa }, titulo),
       juros: Number(titulo.valor_baixado || 0) > 0 ? 0 : roundCurrency(titulo.juros),
       multa: Number(titulo.valor_baixado || 0) > 0 ? 0 : roundCurrency(titulo.multa),
       motivo: null,
@@ -1219,7 +1231,8 @@ async function transferirAutorizacaoRetorno(req, autorizacao, anterior, novo, tr
   if (!autorizacao) return;
   await autorizacao.update({ fila_item_id: novo.id }, { transaction });
   await recordEvent({ loteId: autorizacao.lote_id, itemId: autorizacao.id, userId: req.user.id,
-    type: 'ITEM_DEVOLVIDO_FILA', data: { fila_item_anterior_id: anterior.id, fila_item_id: novo.id, origem }, transaction });
+    type: 'ITEM_DEVOLVIDO_FILA', data: { fila_item_anterior_id: anterior.id, fila_item_id: novo.id, origem,
+      ...(novo.autorizacao_valor_json ? { autorizacao_valor: novo.autorizacao_valor_json } : {}) }, transaction });
 }
 
 async function estornarBaixaFila(req, id, payload) {
@@ -1249,7 +1262,8 @@ async function estornarBaixaFila(req, id, payload) {
     await current.update({ status: 'RESOLVIDO', resolvido_por: req.user.id, resolvido_em: new Date(),
       motivo: `${String(current.motivo || '').trim()}\nEstorno: ${payload.motivo}`.trim() }, { transaction });
     const reaberto = await PagamentoManualFilaItem.create({ titulo_financeiro_id: titulo.id, status: 'PENDENTE',
-      valor_previsto: roundCurrency(titulo.valor_saldo), data_vencimento_prevista: titulo.data_vencimento,
+      autorizacao_valor_json: require('./pagamentoAutorizacaoValorDomain').paraRetorno(current, true),
+      valor_previsto: require('./pagamentoAutorizacaoValorDomain').principalPrevisto({ juros: titulo.juros, multa: titulo.multa, autorizacao_valor_json: require('./pagamentoAutorizacaoValorDomain').paraRetorno(current, true) }, titulo), data_vencimento_prevista: titulo.data_vencimento,
       juros: Number(titulo.valor_baixado || 0) > 0 ? 0 : roundCurrency(titulo.juros),
       multa: Number(titulo.valor_baixado || 0) > 0 ? 0 : roundCurrency(titulo.multa),
       selecionado_por: req.user.id, selecionado_em: new Date() }, { transaction });
@@ -1301,7 +1315,8 @@ async function estornarLiquidacaoFila(req, anchorId, grupoId, payload) {
       assertTituloDisponivelParaBaixa(titulo);
       if (!titulo || !['ABERTO', 'PARCIAL'].includes(titulo.status) || Number(titulo.valor_saldo) <= 0) throw createHttpError(409, 'Saldo do grupo nao ficou disponivel.');
       const novo = await PagamentoManualFilaItem.create({ titulo_financeiro_id: titulo.id, status: 'PENDENTE',
-        valor_previsto: titulo.valor_saldo, data_vencimento_prevista: titulo.data_vencimento,
+        autorizacao_valor_json: require('./pagamentoAutorizacaoValorDomain').paraRetorno(current, true),
+        valor_previsto: require('./pagamentoAutorizacaoValorDomain').principalPrevisto({ juros: titulo.juros, multa: titulo.multa, autorizacao_valor_json: require('./pagamentoAutorizacaoValorDomain').paraRetorno(current, true) }, titulo), data_vencimento_prevista: titulo.data_vencimento,
         juros: Number(titulo.valor_baixado || 0) > 0 ? 0 : roundCurrency(titulo.juros),
         multa: Number(titulo.valor_baixado || 0) > 0 ? 0 : roundCurrency(titulo.multa), selecionado_por: req.user.id, selecionado_em: new Date() }, { transaction });
       await current.update({ status: 'RESOLVIDO', resolvido_por: req.user.id, resolvido_em: new Date(),

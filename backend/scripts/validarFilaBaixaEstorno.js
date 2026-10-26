@@ -113,6 +113,7 @@ async function baixarTitulo(request, id, payload, options) {
   return { movimento_financeiro_id: movimento.id };
 }
 const deps = {
+  './pagamentoAutorizacaoValorDomain': require('../src/services/pagamentoAutorizacaoValorDomain'),
   '../models': models, 'crypto': require('node:crypto'), 'sequelize': { Op },
   './tituloFinanceiroService': { baixarTitulo, estornarMovimentoTitulo: scope.estornar },
   './pagamentoFilaValoresDomain': valores, './pagamentoFilaInstrumentoDomain': instrumento,
@@ -187,6 +188,7 @@ async function executar() {
   faturas[0].status = 'ABERTA';
   await fila.estornarBaixaFila(req, 1, { motivo: 'Erro cartao', idempotency_key: 'cartao-estorno' });
   assert.equal(titulos[0].fatura_cartao_id, null); assert.equal(faturas[0].valor_total, 0); assert.equal(vinculosFatura.length, 0);
+  await require('./validarFilaValorParcial')({ iniciar, fila, req, validators, dados: () => ({ filas, titulos, movimentos }) });
   const permissao = require('../src/services/financeiroRotaPermissoesService');
   assert.equal(permissao.PERMISSOES_ROTAS_FINANCEIRAS['POST /financeiro/fila-pagamentos/:id/estornar'][0], 'financeiro.titulos.estornar');
   console.log('OK: descontos, soma/rateio centavos, multiplos cheques, rollback integral, estorno real sob lock, carteira, ACL, autorizacao e idempotencia. Sem banco/rede.');

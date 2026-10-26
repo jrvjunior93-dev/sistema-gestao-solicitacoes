@@ -144,6 +144,7 @@ module.exports = async function validar(h) {
   assert.equal(getState().PagamentoManualFilaItem.length, 2, 'Compartilhado confere anexos de todas as origens, sem duplicar o titulo');
   await preparar(true);const docAlterado = await options();getState().Anexo[1].caminho_arquivo = 'qa-doc-alterado';
   const antesDoc = snap();await assert.rejects(authorize(docAlterado), /documentos mudaram/);assert.equal(snap(), antesDoc);
+  await require('./validarAutorizacaoValorParcial')({ ...h, preparar, dono });
   // As novas rotas continuam atras da autenticacao global e do rate limit.
   const routes = fs.readFileSync(path.join(__dirname, '../src/routes.js'), 'utf8');
   const selectionRoute = routes.indexOf("router.post('/financeiro/autorizacoes-pagamento/painel/selecao/autenticacao/opcoes', criticalRateLimit");

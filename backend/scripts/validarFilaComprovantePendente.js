@@ -82,6 +82,7 @@ DESCRICAO:SOL-5296
 PAGO PARA: FORNECEDOR TESTE
 CNPJ: 22.222.222/0001-22`;
 const deps = {
+  './pagamentoAutorizacaoValorDomain': require('../src/services/pagamentoAutorizacaoValorDomain'),
   crypto, sequelize: require('sequelize'), '../models': models,
   'pdf-parse': { PDFParse: class { async getText() { return { text: receiptText }; } async destroy() {} } },
   './s3': { async uploadToS3(file) { uploads++; uploadMimes.push(file.mimetype); if (changeDuringUpload) rows[0].status = 'NAO_PAGO'; return `isolado://comprovante-${uploads}`; } },

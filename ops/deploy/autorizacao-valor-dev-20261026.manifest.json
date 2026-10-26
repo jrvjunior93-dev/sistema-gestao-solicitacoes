@@ -1,0 +1,146 @@
+{
+  "base": "f05705e3ffdd5e4998328c062049f4934f44c188",
+  "previous_backend": "a78a5b1b0660366f030b1cb320907d199d1dcec6",
+  "files": [
+    {
+      "path": "backend/scripts/validarAutorizacaoSelecao.js",
+      "sha256": "2a7f1be77e424d0a70efbf2f0b94f7c8d677d7b54e0e50bfa1f877673ef8f010",
+      "old_sha256": "23db49552380d33eb6f463a671fe66f139b9170f89d3ecedc15d12ac8b2bdae5"
+    },
+    {
+      "path": "backend/scripts/validarCartaoOpcionalSolicitacao.js",
+      "sha256": "cf99d541c8d19660d828be36f85068935035dba277d681b7b7e8f8727904eb18",
+      "old_sha256": "485a1600b69422a548ec82f1a1a89df5923f09dd8a5db125555a02c3c5432177"
+    },
+    {
+      "path": "backend/scripts/validarFilaBaixaComposta.js",
+      "sha256": "02bb0514d36cde68687c52faf0920c72f05828533ff2e044548cdb732cc2227f",
+      "old_sha256": "43a430c7ebe03d194fe101adc33e6683aafa02b219af0cd8460d57756f4bb19e"
+    },
+    {
+      "path": "backend/scripts/validarFilaBaixaEstorno.js",
+      "sha256": "337c0e3d0fee8263cc0cfd3999761246cf8fd556459b1d31783b23a6758f550c",
+      "old_sha256": "af9e5d6a5df8478f612c290397d30d9bc835e0fd342dd6601b98a7adc59b87bf"
+    },
+    {
+      "path": "backend/scripts/validarFilaComprovantePendente.js",
+      "sha256": "aa614e9161893edaa9e540e12a1004a1a806c466f87c62a6e7aaabc6fe7a2f36",
+      "old_sha256": "c4eac835c8a43212eedc38fb8d1daffae71408b45bf7911559c1ea712013a6c0"
+    },
+    {
+      "path": "backend/scripts/validarFilaJurosMulta.js",
+      "sha256": "5ee4c0c53af96c8dee335053d921688e32512c502788b3c7a9adddd64bfd3bb7",
+      "old_sha256": "296f5adf81ad906e613c9906cfa687b5033e81186dcb67e9d83989705500b743"
+    },
+    {
+      "path": "backend/scripts/validarFilaPaginacao.js",
+      "sha256": "ed0662d705c324267332cdd31f57d7c6d676c94c4b8944791db6e6c61bbe365f",
+      "old_sha256": "86bb48b3f19822d764e657f51d537825ac1f9d55daa36232e8f6ab26145afaf5"
+    },
+    {
+      "path": "backend/scripts/validarPainelAutorizacoesSqlLocal.js",
+      "sha256": "1194b465f8978072aae7e9d1a76ff29251dbafb37927d898327a60fff7fd9182",
+      "old_sha256": "836b5964569e6dc3c0fa93174c47be8ebbb7c7f8f2b5e6ddbbe253bdfa75ef38"
+    },
+    {
+      "path": "backend/src/models/PagamentoAutorizacaoItem.js",
+      "sha256": "f0796b86762ba7fd4c4ac6c177dfc1d1e937df5484031eefc666a07185edf311",
+      "old_sha256": "d84dbc982402257e38185809d5fc67c70b0868b71732f9309b27f4503b31b505"
+    },
+    {
+      "path": "backend/src/models/PagamentoManualFilaItem.js",
+      "sha256": "516e69e22513f7b9819edcb21d046cee9fb4dd7d06e4638f53e856d3708166a7",
+      "old_sha256": "ac2258fde8e2088c1c1f6cceb55fa9c4b0aa79a2e19758018783a0515e6dbdec"
+    },
+    {
+      "path": "backend/src/services/filaBaixaCompostaService.js",
+      "sha256": "db63f4eef4ce328eeb6667023662ae1206925d1b756d2e2aa670580d51e118c9",
+      "old_sha256": "a244664ae93f4e43f67b9fb876be1e0f893b71769cc9915692ca086896f7db9f"
+    },
+    {
+      "path": "backend/src/services/pagamentoAutorizacaoConsultaService.js",
+      "sha256": "3f76082f534f3a25b28f6a477427b7f873cde2c48a22e74c2144f3c324af92aa",
+      "old_sha256": "4e18eac5c029a6a43c125befb2d24aa0f194cd3c674b390cfcd8f186e3057f85"
+    },
+    {
+      "path": "backend/src/services/pagamentoAutorizacaoSelecaoService.js",
+      "sha256": "aeb47a6d67cc40bd7f06ea328b0cad91423e01f370c093705afd428a0b89b2b5",
+      "old_sha256": "cc11aba41048d20720b440aafcd70297164d89d184756e4b4e5c0d1f20cd4a9d"
+    },
+    {
+      "path": "backend/src/services/pagamentoAutorizacaoService.js",
+      "sha256": "6b7dbe034a803b168b02d71cd6de93ae9d9cb368d4260c1bb5e17b54d6964c88",
+      "old_sha256": "1836de80d307372a26d075f47ca2f4d191b117e116f64587db1b21ccfbb8a350"
+    },
+    {
+      "path": "backend/src/services/pagamentoFilaSaldoService.js",
+      "sha256": "daf3510fbcc1af2d9510383797bbde8ad10fd71ecfdeba6856940e2055d7bb08",
+      "old_sha256": "9420d4e81c43e9d23281fadb01c65bcf0463af6f482c89a3a59a68c3a458b23d"
+    },
+    {
+      "path": "backend/src/services/pagamentoManualFilaService.js",
+      "sha256": "813da1a783c964befc1f6b4a2af3b4fe57dbfde45d4cfa43043b19ae4b86554c",
+      "old_sha256": "1956a9bf50d4cfff0b16d7db8168f9d1f554ff7265c03564a71aabe14df52b91"
+    },
+    {
+      "path": "backend/migrations/202610260001_pagamento_autorizacao_valor.js",
+      "sha256": "cec991abcb7c57b70567f3a4a36021d3ff11761c691e90547f9aa7950d1649bd",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/autorizacaoValorDevSchema.js",
+      "sha256": "6ab2d28d0ec065336452c8bf29a978fdc3ace1354a461deab0033b38be4ee71a",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarAutorizacaoValorDevSchema.js",
+      "sha256": "943ee33eb731cf9f8d92b1a28659740cabbc959abe1f82d24e218280ce2bae24",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarAutorizacaoValorParcial.js",
+      "sha256": "dd4436c7df1a4efb7978157165f3668ccf098aeacdb0f9111538c891d62d83a8",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarAutorizacaoValorSchema.js",
+      "sha256": "94bbb592e775f007fa20ef696841a76bd1bd0632977884979a923f08ecf531bb",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarFilaValorParcial.js",
+      "sha256": "730c86c37d040db6b57daeef111543fd8f1b39ee074a85ae1c7d571630c7c4f0",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/src/services/pagamentoAutorizacaoValorDomain.js",
+      "sha256": "d03966c6778286afa13db577f4f7f9cb9832f41f0b7fc7292f48e6206beabedc",
+      "old_sha256": null
+    },
+    {
+      "path": "ops/deploy/atualizar-dev-autorizacao-valor-20261026.cjs",
+      "sha256": "f055f01bbd248d0b45be6124df2d5e4e29d7b61dc6ddfa071c9254ce27eba403",
+      "old_sha256": null
+    },
+    {
+      "path": "ops/deploy/atualizar-dev-autorizacao-valor-20261026.test.cjs",
+      "sha256": "b65f3a2b91633124401d0f525f3e3f750b99c2d3ab4f7b60699e262193e709f7",
+      "old_sha256": null
+    },
+    {
+      "path": "ops/deploy/README-autorizacao-valor-dev-20261026.md",
+      "sha256": "dde97c416f5cbc704d09325f00474dc9e8a8da8f5f6e21317d522a93821a8af8",
+      "old_sha256": null
+    },
+    {
+      "path": "docs/handoffs/2026-10-26-autorizacao-valor-parcial.md",
+      "sha256": "a859a8d28469c622fe8f584b249fcac0832bbe1b331730f5e4e9db2ca7bea6a6",
+      "old_sha256": null
+    },
+    {
+      "path": "docs/workspace/OWNERSHIP_ATIVO.md",
+      "sha256": "99f97a7d9be1c9f507da1c83bf5dd14a61ab31fa069cbfd8717c26d3ef24e23e",
+      "old_sha256": "c0d19a8d81600bf020d0f51fcba01c24f50636492bc0443b55db192616d0e054"
+    }
+  ]
+}

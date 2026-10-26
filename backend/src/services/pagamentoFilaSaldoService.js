@@ -12,7 +12,7 @@ async function sincronizarSaldoFilaAposEdicao(titulo, transaction) {
   });
   for (const item of itens) {
     if (!filaSemBaixaAtualizavel(item)) continue;
-    await item.update({ valor_previsto: titulo.valor_saldo,
+    await item.update({ valor_previsto: require('./pagamentoAutorizacaoValorDomain').principalPrevisto({ autorizacao_valor_json: item.autorizacao_valor_json, juros: titulo.juros, multa: titulo.multa }, titulo),
       juros: Number(titulo.juros || 0), multa: Number(titulo.multa || 0),
       data_vencimento_prevista: titulo.data_vencimento || null }, { transaction });
   }

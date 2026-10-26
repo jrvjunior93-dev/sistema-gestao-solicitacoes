@@ -9,13 +9,14 @@ const { situacaoItem, projetarLotesAtuais } = require('../src/services/pagamento
 const sqlite = new DatabaseSync(':memory:'); sqlite.function('NOW', () => '2026-10-17 12:00:00');
 sqlite.exec(`CREATE TABLE pagamento_autorizacao_itens (id INTEGER PRIMARY KEY,lote_id INTEGER,titulo_financeiro_id INTEGER,status TEXT,valor_snapshot REAL,vencimento_snapshot TEXT);
 CREATE TABLE pagamento_autorizacao_lotes (id INTEGER PRIMARY KEY,status TEXT,expira_em TEXT,criado_por INTEGER,createdAt TEXT);
-CREATE TABLE titulos_financeiros (id INTEGER PRIMARY KEY,tipo TEXT DEFAULT 'PAGAR',codigo TEXT,descricao TEXT,status TEXT,renegociado_por_id INTEGER,renegociacao_id INTEGER,compartilhamento_id INTEGER,obra_id INTEGER,valor_baixado REAL,valor_saldo REAL,data_vencimento TEXT,data_emissao TEXT,bloqueio_pagamento_proprietario TEXT,deleted_at TEXT,deleted_by INTEGER,deleted_reason TEXT);
+CREATE TABLE titulos_financeiros (id INTEGER PRIMARY KEY,tipo TEXT DEFAULT 'PAGAR',codigo TEXT,descricao TEXT,status TEXT,renegociado_por_id INTEGER,renegociacao_id INTEGER,compartilhamento_id INTEGER,obra_id INTEGER,solicitacao_id INTEGER,valor_baixado REAL,valor_saldo REAL,data_vencimento TEXT,data_emissao TEXT,bloqueio_pagamento_proprietario TEXT,deleted_at TEXT,deleted_by INTEGER,deleted_reason TEXT);
 CREATE TABLE pagamentos_manuais_fila (id INTEGER PRIMARY KEY,titulo_financeiro_id INTEGER,status TEXT,motivo TEXT,valor_previsto REAL,selecionado_por INTEGER,selecionado_em TEXT,instrumento_pagamento_json TEXT);
 CREATE TABLE movimentos_financeiros (id INTEGER PRIMARY KEY,titulo_financeiro_id INTEGER,status TEXT,tipo_movimento TEXT,valor_quitacao REAL,data_movimento TEXT);
-CREATE TABLE titulos_compartilhados_origens (titulo_financeiro_id INTEGER,obra_id INTEGER,valor REAL);
+CREATE TABLE titulos_compartilhados_origens (titulo_financeiro_id INTEGER,obra_id INTEGER,solicitacao_id INTEGER,valor REAL);
 CREATE TABLE titulo_renegociacao_alocacoes (titulo_destino_id INTEGER,obra_id INTEGER,valor REAL);
 CREATE TABLE titulos_financeiros_rateios (titulo_financeiro_id INTEGER,obra_id INTEGER,valor_rateio REAL);
 CREATE TABLE obras (id INTEGER PRIMARY KEY,nome TEXT);
+CREATE TABLE solicitacoes (id INTEGER PRIMARY KEY,codigo TEXT,descricao TEXT);
 CREATE TABLE users (id INTEGER PRIMARY KEY,nome TEXT);`);
 const inserir = (t, o) => sqlite.prepare(`INSERT INTO ${t} (${Object.keys(o)}) VALUES (${Object.keys(o).map(() => '?')})`).run(...Object.values(o));
 const itens = [];
@@ -48,6 +49,20 @@ db.PagamentoManualFilaItem = { findAll: async o => {
 } };
 db.User = { findAll: async () => [{ id: 5, nome: 'Financeiro QA' }, { id:7,nome:'Novo remetente direto' }, { id:8,nome:'Novo remetente digital' }, { id:9,nome:'Novo preparador' }, { id:65,nome:'Operador do estorno' }] };
 (async () => { try {
+  inserir('solicitacoes', { id: 700, codigo: 'SOL-700', descricao: 'Material eletrico %_ especial' });
+  inserir('solicitacoes', { id: 701, codigo: 'SOL-701', descricao: 'Cimento para obra' });
+  sqlite.prepare('UPDATE titulos_financeiros SET solicitacao_id=700 WHERE id IN (1,2)').run();
+  sqlite.prepare('UPDATE titulos_financeiros SET compartilhamento_id=1 WHERE id=3').run();
+  inserir('titulos_compartilhados_origens', { titulo_financeiro_id: 3, solicitacao_id: 700, obra_id: 1, valor: 50 });
+  inserir('titulos_compartilhados_origens', { titulo_financeiro_id: 3, solicitacao_id: 701, obra_id: 2, valor: 50 });
+  assert.equal((await listarObras({ solicitacao: 'SOL-700' }, db)).resumo.quantidade_titulos, 3);
+  assert.equal((await listarObras({ solicitacao: '%_' }, db)).resumo.quantidade_titulos, 3, 'Curingas sao texto literal');
+  assert.equal((await listarTitulos({ solicitacao: 'Cimento' }, db)).data[0].titulo_financeiro_id, 3);
+  assert.equal((await listarTitulos({ solicitacao: 'SOL-700', pagina: '2', limite: '2' }, db)).data.length, 1);
+  assert.equal((await listarObras({ solicitacao: "' OR 1=1 --" }, db)).resumo.quantidade_titulos, 0);
+  assert.throws(() => consulta({ solicitacao: ['SOL-700'] }), /Filtro invalido/);
+  sqlite.prepare('UPDATE titulos_financeiros SET compartilhamento_id=NULL WHERE id=3').run();
+  sqlite.prepare('DELETE FROM titulos_compartilhados_origens WHERE titulo_financeiro_id=3').run();
   const todas = await listarObras({}, db); assert.equal(todas.resumo.quantidade_titulos, 650); assert.equal(todas.resumo.valor_total, 65000); assert.equal(todas.paginacao.total, 150);
   const obras = []; for (let pagina = 1; pagina <= 5; pagina++) obras.push(...(await listarObras({ pagina: String(pagina) }, db)).data);
   assert.equal(new Set(obras.map(o => o.obra_id)).size, 150);

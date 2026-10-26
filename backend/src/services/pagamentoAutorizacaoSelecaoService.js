@@ -3,8 +3,15 @@ const { Op } = require('sequelize');
 
 const falhar = (statusCode, message) => { throw Object.assign(new Error(message), { statusCode }); };
 const MAX_ITENS = 1000;
+const valorDomain = require('./pagamentoAutorizacaoValorDomain');
+function valoresPropostos(payload, ids) {
+  const valores = payload.valores_autorizados ?? [];
+  if (!Array.isArray(valores) || valores.length > ids.length || valores.some(v => !v || Object.keys(v).some(k => !['item_id', 'valor'].includes(k))
+    || !ids.includes(v.item_id)) || new Set(valores.map(v => v.item_id)).size !== valores.length) falhar(400, 'Valores da selecao invalidos.');
+  return new Map(valores.map(v => [v.item_id, valorDomain.centavos(v.valor) / 100]));
+}
 function normalizar(payload, confirmar = false) {
-  const permitidos = confirmar ? ['item_ids', 'selecao_id', 'credential'] : ['item_ids'];
+  const permitidos = confirmar ? ['item_ids', 'selecao_id', 'credential', 'valores_autorizados'] : ['item_ids', 'valores_autorizados'];
   if (!payload || Array.isArray(payload) || typeof payload !== 'object' || Object.keys(payload).some(k => !permitidos.includes(k))) falhar(400, 'Selecao de autorizacao invalida.');
   const ids = payload.item_ids;
   if (!Array.isArray(ids) || !ids.length || ids.length > MAX_ITENS || ids.some(id => !Number.isSafeInteger(id) || id <= 0)
@@ -21,7 +28,7 @@ module.exports = function criarServicoSelecao(d) {
     d.assertFeatureAvailable(); d.assertNoDevSwitch(req); d.assertWebauthnConfig();
     return d.assertActiveAuthorizer(req.user);
   }
-  async function conferir(req, ids, authorizer, transaction) {
+  async function conferir(req, ids, authorizer, transaction, propostos = new Map()) {
     const opts = transaction ? { transaction, lock: transaction.LOCK.UPDATE } : {};
     // Descobrir apenas IDs antes dos locks, depois reler tudo sob bloqueio.
     const candidatos = await db.PagamentoAutorizacaoItem.findAll({ where: { id: { [Op.in]: ids } },
@@ -52,18 +59,18 @@ module.exports = function criarServicoSelecao(d) {
     for (const lot of lotes) {
       const selecionados = itens.filter(i => Number(i.lote_id) === Number(lot.id));
       if (selecionados.length > 200) falhar(400, 'O lote excede o limite de 200 itens por confirmacao.');
-      const total = selecionados.reduce((sum, i) => sum + Math.round(Number(i.valor_snapshot) * 100), 0);
+      const total = selecionados.reduce((sum, i) => sum + Math.round(valorDomain.valorDecisao(i, propostos.get(Number(i.id))) * 100), 0);
       if (authorizer.limite_por_lote && total > Math.round(Number(authorizer.limite_por_lote) * 100)) falhar(403, 'O valor autorizado excede o limite nominal deste autorizador.');
     }
     const vinculo = { usuario_id: Number(req.user.id), item_ids: ids,
       lotes: lotes.map(l => ({ id: Number(l.id), dossie_hash: l.dossie_hash, revisao: Number(l.revisao_autorizacao || 0) })),
       itens: itens.map(i => ({ id: Number(i.id), lote_id: Number(i.lote_id), titulo_id: Number(i.titulo_financeiro_id),
-        snapshot_hash: i.snapshot_hash, valor: roundCurrency(i.valor_snapshot) })) };
+        snapshot_hash: i.snapshot_hash, valor: roundCurrency(i.valor_snapshot), valor_autorizado: valorDomain.valorDecisao(i, propostos.get(Number(i.id))) })) };
     return { itens, lotes, vinculo };
   }
   async function opcoes(req, payload) {
     const authorizer = await precondicoes(req), ids = normalizar(payload);
-    const { vinculo } = await conferir(req, ids, authorizer);
+    const { vinculo } = await conferir(req, ids, authorizer, undefined, valoresPropostos(payload, ids));
     const credentials = await db.WebauthnCredential.findAll({ where: { usuario_id: req.user.id, ativo: true } });
     if (!credentials.length) falhar(409, 'Cadastre uma passkey antes de autorizar pagamentos.');
     const lib = await d.webauthnLib();
@@ -93,7 +100,7 @@ module.exports = function criarServicoSelecao(d) {
     return { item, title, bloqueio };
   }
   async function autorizar(req, payload) {
-    await precondicoes(req);const ids = normalizar(payload, true);
+    await precondicoes(req);const ids = normalizar(payload, true), propostos = valoresPropostos(payload, ids);
     const stored = await d.consumeChallengeAtomic({ purpose: 'authorize-selection', userId: req.user.id, lotId: payload.selecao_id });
     if (!stored?.challenge || !stored.selecao_hash) falhar(409, 'Confirmacao expirada ou ja utilizada. Atualize antes de tentar novamente.');
     return db.sequelize.transaction(async transaction => {
@@ -102,7 +109,7 @@ module.exports = function criarServicoSelecao(d) {
       await precondicoes(req);
       const authorizer = await db.PagamentoAutorizador.findOne({ where: { usuario_id: req.user.id, ativo: true }, transaction, lock: transaction.LOCK.UPDATE });
       if (!authorizer) falhar(403, 'Usuario nao cadastrado como autorizador nominal de pagamentos.');
-      const dados = await conferir(req, ids, authorizer, transaction);
+      const dados = await conferir(req, ids, authorizer, transaction, propostos);
       if (sha256(dados.vinculo) !== stored.selecao_hash) falhar(409, 'A selecao ou um dossie mudou. Recarregue antes de autorizar.');
       let verification;
       try {
@@ -122,9 +129,10 @@ module.exports = function criarServicoSelecao(d) {
           await recordEvent({ loteId: item.lote_id, itemId: item.id, userId: req.user.id, type: 'SALDO_REAUTORIZADO',
             data: { titulo_id: title.id, bloqueio_anterior: bloqueio, saldo: Number(title.valor_saldo) }, transaction });
         }
-        await item.update({ status: 'AUTORIZADO', motivo_decisao: null, decidido_em: new Date() }, { transaction });
+        const autorizacaoValor = valorDomain.auditoria(item, propostos.get(Number(item.id)), req.user.id);
+        await item.update({ status: 'AUTORIZADO', motivo_decisao: null, decidido_em: new Date(), autorizacao_valor_json: autorizacaoValor }, { transaction });
         await recordEvent({ loteId: item.lote_id, itemId: item.id, userId: req.user.id, type: 'ITEM_AUTORIZADO',
-          data: { snapshot_hash: item.snapshot_hash, selecao_id: payload.selecao_id, selecao_hash: stored.selecao_hash }, transaction });
+          data: { snapshot_hash: item.snapshot_hash, selecao_id: payload.selecao_id, selecao_hash: stored.selecao_hash, autorizacao_valor: autorizacaoValor }, transaction });
       }
       for (const lot of dados.lotes) {
         await lot.update({ decidido_por: req.user.id, decidido_em: new Date() }, { transaction });

@@ -14,6 +14,7 @@ function filtros(query = {}) {
   for (const d of [inicio, fim].filter(Boolean)) if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !Number.isFinite(Date.parse(d + 'T00:00:00Z')) || new Date(d + 'T00:00:00Z').toISOString().slice(0, 10) !== d) erro('Informe uma data valida.');
   if (inicio && fim && inicio > fim) erro('A data inicial deve ser anterior ou igual a final.');
   const q = scalar('obra'); if (q.length > 120) erro('Busca de obra muito longa.');
+  const solicitacao = scalar('solicitacao'); if (solicitacao.length > 120) erro('Busca de solicitacao muito longa.');
   const obra = scalar('obra_id'); if (obra && !/^(0|[1-9]\d{0,9})$/.test(obra)) erro('Obra invalida.');
   const pagina = scalar('pagina') || '1', limite = scalar('limite') || '30';
   if (!/^[1-9]\d{0,5}$/.test(pagina) || !/^[1-9]\d?$/.test(limite) || Number(limite) > 50) erro('Paginacao invalida. Use no maximo 50 registros por pagina.');
@@ -27,7 +28,7 @@ function filtros(query = {}) {
       || (cursorData !== 'SEM_DATA' && (!/^\d{4}-\d{2}-\d{2}$/.test(cursorData) || !Number.isFinite(Date.parse(cursorData + 'T00:00:00Z')) || new Date(cursorData + 'T00:00:00Z').toISOString().slice(0, 10) !== cursorData))
       || pagina !== '1' || ids) erro('Cursor de navegacao invalido.');
   }
-  return { status, dataTipo, inicio, fim, q, obra, pagina: Number(pagina), limite: Number(limite), ids: ids ? [...new Set(ids.split(',').map(Number))] : [],
+  return { status, dataTipo, inicio, fim, q, obra, solicitacao, pagina: Number(pagina), limite: Number(limite), ids: ids ? [...new Set(ids.split(',').map(Number))] : [],
     sentido, cursorId: Number(cursorId), cursorData };
 }
 function navegar(f, replacements) {
@@ -46,6 +47,15 @@ function navegar(f, replacements) {
 function consulta(query) {
   const f = filtros(query), replacements = { limite: f.limite, offset: (f.pagina - 1) * f.limite };
   const where = [], partesWhere = [];
+  if (f.solicitacao) {
+    replacements.solicitacao = '%' + f.solicitacao.replace(/[!%_]/g, c => '!' + c) + '%';
+    // EXISTS nao multiplica titulos compartilhados nem seus totais/paginacao.
+    where.push(`(EXISTS (SELECT 1 FROM solicitacoes s WHERE s.id = situados.solicitacao_id
+      AND (s.codigo LIKE :solicitacao ESCAPE '!' OR s.descricao LIKE :solicitacao ESCAPE '!'))
+      OR EXISTS (SELECT 1 FROM titulos_compartilhados_origens so JOIN solicitacoes s ON s.id = so.solicitacao_id
+      WHERE so.titulo_financeiro_id = situados.titulo_financeiro_id
+      AND (s.codigo LIKE :solicitacao ESCAPE '!' OR s.descricao LIKE :solicitacao ESCAPE '!')))`);
+  }
   // Um titulo ja parcialmente pago pode ter um NOVO dossie para seu saldo.
   // Aguardando e estado da decisao, nao pode esconder essa pendencia financeira.
   if (f.status === 'AGUARDANDO') where.push("status_decisao = 'PENDENTE' AND lote_status = 'AGUARDANDO' AND (fila_status IS NULL OR fila_status NOT IN ('PENDENTE','EM_EDICAO','DIVERGENTE','NAO_PAGO')) AND titulo_status IN ('ABERTO','PARCIAL') AND valor_saldo > 0 AND renegociado_por_id IS NULL");
@@ -83,7 +93,7 @@ function consulta(query) {
     SELECT COALESCE(a.id,-CAST(f.id AS SIGNED)) id, a.lote_id, u.titulo_financeiro_id,
       CASE WHEN a.id IS NULL THEN 'FILA_DIRETA' ELSE 'AUTORIZACAO' END origem_painel,
       a.status status_decisao, COALESCE(a.valor_snapshot,f.valor_previsto) valor_snapshot,
-      l.status lote_status, l.expira_em, t.id titulo_id, t.status titulo_status,
+      l.status lote_status, l.expira_em, t.id titulo_id, COALESCE(t.solicitacao_id,h.solicitacao_id) solicitacao_id, t.status titulo_status,
       t.renegociado_por_id, t.renegociacao_id, t.compartilhamento_id, COALESCE(t.obra_id,h.obra_id) obra_id,
       h.deleted_at titulo_excluido_em, h.deleted_by titulo_excluido_por_id,
       h.deleted_reason titulo_excluido_motivo, h.codigo titulo_excluido_codigo, h.descricao titulo_excluido_descricao,
