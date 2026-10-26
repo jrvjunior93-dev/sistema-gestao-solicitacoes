@@ -98,7 +98,7 @@ async function assertPrevisaoConfirmada(pedido, transaction) {
   }
 }
 
-async function operarEntrega({ pedidoId, compraId, solicitacaoId, usuarioId, payload }) {
+async function operarEntrega({ pedidoId, compraId, solicitacaoId, usuarioId, payload, transaction: externalTransaction, preservarRateios = false }) {
   const { acao, itens, idempotency_key: chave } = payload;
   const acoes = ['RECEBER', 'NAO_ENTREGUE', 'PREVISAO', 'CANCELAR_SALDO', 'CORRIGIR_RECEBIDO', 'DEVOLVER_EXCESSO'];
   if (!acoes.includes(acao) || !Array.isArray(itens) || !itens.length || itens.length > 500) falhar('Ação ou seleção de itens inválida.', 400);
@@ -145,7 +145,7 @@ async function operarEntrega({ pedidoId, compraId, solicitacaoId, usuarioId, pay
       } else if (acao === 'CANCELAR_SALDO') {
         if (!anterior.restante) falhar('Este item não possui saldo pendente para cancelar.');
         const service = require('./pedidoCompraService');
-        try { await service.cancelarSaldoNaoRecebido({ pedido, item, recebido, motivo, usuarioId, transaction }); }
+        try { await service.cancelarSaldoNaoRecebido({ pedido, item, recebido, motivo, usuarioId, transaction, preservarRateios }); }
         catch (error) { if (!error.statusCode) error.statusCode = 409; throw error; }
         Object.assign(atualizacao, { estado: 'CONCLUIDO', prazo_compras: null,
           saldo_cancelado: arredondar(Number(controle.saldo_cancelado || 0) + anterior.restante) });
@@ -190,9 +190,9 @@ async function operarEntrega({ pedidoId, compraId, solicitacaoId, usuarioId, pay
     await PedidoCompraEntregaOperacao.create({ chave, pedido_compra_id: pedido.id, usuario_id: usuarioId, payload_hash: hash, resultado }, { transaction });
     return resultado;
   };
-  try { return await sequelize.transaction(executar); }
+  try { return externalTransaction ? await executar(externalTransaction) : await sequelize.transaction(executar); }
   catch (error) {
-    if (error.name === 'SequelizeUniqueConstraintError') {
+    if (!externalTransaction && error.name === 'SequelizeUniqueConstraintError') {
       const repetida = await PedidoCompraEntregaOperacao.findOne({ where: { chave } });
       if (repetida?.payload_hash === hash) return repetida.resultado;
     }

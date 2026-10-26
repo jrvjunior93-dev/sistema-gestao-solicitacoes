@@ -5999,3 +5999,6 @@ e ownership liberado para publicacao dev. outputs/ permanece fora do commit.
 
 ## Publicacao DEV da autorizacao parcial - 2026-10-26
 - Agente desta conversa: reserva pacote de autorizacao parcial copiado de outputs/worktree-autorizacao-valor-parcial, novo schema doctor DEV, operador/manifesto/testes/roteiro em ops/deploy e handoff. Branch codex/autorizacao-valor-dev-20261026 baseada em f05705e3. Dois commits backend/frontend, publicar backend primeiro; nenhuma aplicacao EC2 pelo agente. Validar alias estrutural NSDOCS sem DDL e somente duas novas colunas JSON.
+
+## Publicacao SC reversivel DEV - 2026-10-26
+- Agente desta conversa reserva o pacote de compras reversivel, doctor e aplicador exclusivos DEV, testes, manifesto, roteiro e handoff. Base origin/refactor/frontend ed211fab. Usuario autorizou commit/push para refactor/frontend e comandos para ele executar na EC2 DEV. Proibido agente acessar EC2; sem main/producao, cancelamentos, SQL financeiro ou deploy pelo agente. Sem delegacao.

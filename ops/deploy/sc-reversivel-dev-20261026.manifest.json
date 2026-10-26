@@ -1,0 +1,114 @@
+{
+  "base": "ed211fabd4dfb2d0b43074af9e0a982b4b461822",
+  "previous_backend": "fc369151f81b7fc7801207a10ae43cfec84ce79a",
+  "files": [
+    {
+      "path": ".gitignore",
+      "sha256": "da0cb2cedea489a8b7e3e7ec4a02ec4ecfb9652c24b68754b759391022f51344"
+    },
+    {
+      "path": "backend/migrations/202610260002_compra_reorganizacao_reversivel.js",
+      "sha256": "73026b8619486bd2679f0999ff1376c5271deba4668943b4bb0ea5ad8af6b563"
+    },
+    {
+      "path": "backend/scripts/compraReorganizacaoDevSchema.js",
+      "sha256": "342aebdd7c1fd0852cf531996d7119c5e07c04bf07dfcae902f647e61e203cd9"
+    },
+    {
+      "path": "backend/scripts/compraReorganizacaoHttp.js",
+      "sha256": "066e98da65511a4ad9554b5c50c2c361da2c7ece75728f8cdac064dd36234075"
+    },
+    {
+      "path": "backend/scripts/helpers/semRedeQa.js",
+      "sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf"
+    },
+    {
+      "path": "backend/scripts/helpers/sqliteSequelizeMemory.js",
+      "sha256": "36d69c26ce2cfcc50808e3763fa0ec528d6cb181a31b7b4b759cea7db0797c9d"
+    },
+    {
+      "path": "backend/scripts/prepararCompraReorganizacaoManifestos.js",
+      "sha256": "7aeb0234cb4c1376afa3e29718706592ffbd5afccfd85b2e48b2b94009ac12ee"
+    },
+    {
+      "path": "backend/scripts/validarCompraReorganizacao.js",
+      "sha256": "ead9a7c22cb97fa04eb431262acd1d3cbc376ede820306d226c2a2f0b7e3d902"
+    },
+    {
+      "path": "backend/scripts/validarCompraReorganizacaoCliente.js",
+      "sha256": "eada31afa55dfea93859c6a825dac3a14243298fe17c5be0ce4b2c46253f3036"
+    },
+    {
+      "path": "backend/scripts/validarCompraReorganizacaoDevSchema.js",
+      "sha256": "b45c2aed860e452491935d19b0e7c3c647113611e0017fa89a7d4d1d8ab8b405"
+    },
+    {
+      "path": "backend/scripts/validarCompraReorganizacaoSeguranca.js",
+      "sha256": "7916fa00f4315176c470f0637ce2bdd89a43b11908d61da1154845ad35504067"
+    },
+    {
+      "path": "backend/src/controllers/CompraReorganizacaoController.js",
+      "sha256": "7f880d768e3083fbc6c8509e38ec6083a9acea15bb5c216befe28eedfc164f62"
+    },
+    {
+      "path": "backend/src/models/CompraReorganizacaoOperacao.js",
+      "sha256": "c11f42d71847cd3ff9109682cfcb1af09c9d4e687b7a0b7d46a5ee2b42de9da2"
+    },
+    {
+      "path": "backend/src/models/index.js",
+      "sha256": "17e1e216446d147d3c9b929089b40a07a8cf0776bdf423e6b160c08b6f816bd6"
+    },
+    {
+      "path": "backend/src/routes.js",
+      "sha256": "8398c2b42df05463412352eb36f36b3b4c281d9d734233ad359d7a1c46f57a82"
+    },
+    {
+      "path": "backend/src/services/compraReorganizacaoDomain.js",
+      "sha256": "2e084d9f17e11149325c5cc97ba84be5d7ce9a00b8728a289d844545eecdc664"
+    },
+    {
+      "path": "backend/src/services/compraReorganizacaoService.js",
+      "sha256": "ff02580b2095958b31be590ffaae350b46401d04370080e6da4e82f7dda8ae1e"
+    },
+    {
+      "path": "backend/src/services/compraReorganizacaoStore.js",
+      "sha256": "86a0f755e86cd9f930fa210aab788bfb32d1a415e7fb80990fd9ae4d484ffd06"
+    },
+    {
+      "path": "backend/src/services/pedidoCompraFreteService.js",
+      "sha256": "8b8a659d7df387421b855e58f015f6da32e5455b73bc81dda584f8ab9eef32e1"
+    },
+    {
+      "path": "backend/src/services/pedidoCompraService.js",
+      "sha256": "eacfef3db7be6201489256512e67939f0b7223d82f156f1647bcc97a615077b9"
+    },
+    {
+      "path": "backend/src/services/pedidoEntregaService.js",
+      "sha256": "1ad4a37adb1629fdb13c0df2a4b57122ccdc1d6684b5a08723947587d52d8734"
+    },
+    {
+      "path": "docs/handoffs/2026-10-26-sc-cancelamento-reversivel.md",
+      "sha256": "c1350a93fa5308d7c48138c6b159e70353d9ed32867f636c7b98a640b7ac9099"
+    },
+    {
+      "path": "docs/workspace/OWNERSHIP_ATIVO.md",
+      "sha256": "0894b7c5be70aeae61741be883d7f0dc1f5ad7122c0073c7e79db85d20c73920"
+    },
+    {
+      "path": "ops/deploy/README-sc-reversivel-dev-20261026.md",
+      "sha256": "b908296c3bbe9299de75e4a9ae16bf1453c5f9be01077fca153ba383677b46a6"
+    },
+    {
+      "path": "ops/deploy/atualizar-dev-sc-reversivel-20261026.cjs",
+      "sha256": "23cec8cea083ef46f2c7ee8757c3a0ac3bd0221eb5f386087f43a506a46a83d6"
+    },
+    {
+      "path": "ops/deploy/atualizar-dev-sc-reversivel-20261026.test.cjs",
+      "sha256": "b27ff68066d13299a69886baf69fd67f468deba39a4db0392c0a930db494014f"
+    },
+    {
+      "path": "ops/operacao/README-sc-cancelamento-reversivel-20261026.md",
+      "sha256": "240198ee617c50aa31bcc9698ac78e583ea7cf63517f702dbb412658a5191a87"
+    }
+  ]
+}

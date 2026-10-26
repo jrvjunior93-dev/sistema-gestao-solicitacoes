@@ -528,7 +528,21 @@ async function registrarHistoricoControleFrete({
   }
 }
 
-async function recalcularRateiosFrete({ pedido, frete, valorTotal, rateiosInformados, transaction }) {
+async function salvarRateiosPreservandoRegistros(freteId, rateios, transaction) {
+  const existentes = await PedidoCompraFreteRateio.findAll({ where: { frete_id: freteId }, transaction, lock: transaction?.LOCK?.UPDATE });
+  const pendentes = new Map(rateios.map(r => [Number(r.pedido_compra_item_id), r]));
+  for (const row of existentes) {
+    const next = pendentes.get(Number(row.pedido_compra_item_id));
+    await row.update(next ? {
+      valor_item_base: next.valor_item_base, percentual_rateio: next.percentual_rateio,
+      valor_rateado: next.valor_rateado, manual: next.manual
+    } : { valor_item_base: 0, percentual_rateio: 0, valor_rateado: 0 }, { transaction });
+    pendentes.delete(Number(row.pedido_compra_item_id));
+  }
+  if (pendentes.size) await PedidoCompraFreteRateio.bulkCreate([...pendentes.values()].map(r => ({ ...r, frete_id: freteId })), { transaction });
+}
+
+async function recalcularRateiosFrete({ pedido, frete, valorTotal, rateiosInformados, transaction, preservarRateios = false }) {
   const itensAtivos = (pedido.itens || []).filter((item) => !item.removido);
   let totalEfetivo = roundMoney(valorTotal);
   let rateios;
@@ -609,15 +623,18 @@ async function recalcularRateiosFrete({ pedido, frete, valorTotal, rateiosInform
     });
   }
 
-  await PedidoCompraFreteRateio.destroy({
-    where: { frete_id: frete.id },
-    transaction
-  });
+  if (preservarRateios) await salvarRateiosPreservandoRegistros(frete.id, rateios, transaction);
+  else {
+    await PedidoCompraFreteRateio.destroy({
+      where: { frete_id: frete.id },
+      transaction
+    });
 
-  await PedidoCompraFreteRateio.bulkCreate(
-    rateios.map((rateio) => ({ ...rateio, frete_id: frete.id })),
-    { transaction }
-  );
+    await PedidoCompraFreteRateio.bulkCreate(
+      rateios.map((rateio) => ({ ...rateio, frete_id: frete.id })),
+      { transaction }
+    );
+  }
   if (roundMoney(frete.valor_total) !== totalEfetivo) {
     await frete.update({ valor_total: totalEfetivo }, { transaction });
   }
@@ -628,7 +645,8 @@ async function sincronizarRateiosFretesPendentesPedido({
   pedidoId,
   usuarioId = null,
   motivo = 'Itens do pedido alterados',
-  transaction
+  transaction,
+  preservarRateios = false
 }) {
   const pedido = await PedidoCompra.findByPk(Number(pedidoId), {
     include: [
@@ -660,7 +678,8 @@ async function sincronizarRateiosFretesPendentesPedido({
   for (const frete of fretes) {
     if (!itensAtivos.length) {
       await frete.update({ status_financeiro: 'CANCELADO' }, { transaction });
-      await PedidoCompraFreteRateio.destroy({ where: { frete_id: frete.id }, transaction });
+      if (preservarRateios) await salvarRateiosPreservandoRegistros(frete.id, [], transaction);
+      else await PedidoCompraFreteRateio.destroy({ where: { frete_id: frete.id }, transaction });
       await registrarHistoricoControleFrete({
         pedido,
         frete,
@@ -678,7 +697,8 @@ async function sincronizarRateiosFretesPendentesPedido({
       pedido: { ...pedido.toJSON(), itens: itensAtivos },
       frete,
       valorTotal: roundMoney(frete.valor_total),
-      transaction
+      transaction,
+      preservarRateios
     });
   }
 

@@ -5,6 +5,7 @@ const db = {};
 
 db.Sequelize = Sequelize;
 db.sequelize = sequelize;
+db.CompraReorganizacaoOperacao = require('./CompraReorganizacaoOperacao')(sequelize, Sequelize);
 db.CartaoBaixaParcela = require('./CartaoBaixaParcela')(sequelize, Sequelize);
 db.TituloCompartilhadoLote = require('./TituloCompartilhadoLote')(sequelize, Sequelize);
 db.TituloCompartilhadoOrigem = require('./TituloCompartilhadoOrigem')(sequelize, Sequelize);

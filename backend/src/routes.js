@@ -2558,6 +2558,12 @@ router.post('/compras/solicitacoes', allowCompraSolicitacoesCreate, validateRequ
 router.post('/compras/solicitacoes-diretas', allowCompraSolicitacoesCreate, validateRequest({ body: validateCompraDiretaCreateBody }), requireCompraBodyObraAccess, SolicitacaoCompraController.create);
 router.delete('/compras/solicitacoes/:id', allowCompraSolicitacoesDelete, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de compra') }), requireCompraAccess, SolicitacaoCompraController.inativar);
 router.patch('/compras/solicitacoes/:id/cancelar', allowCompraSolicitacoesDelete, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de compra'), body: validateCompraSolicitacaoCancelBody }), requireCompraAccess, SolicitacaoCompraController.cancelar);
+// Operacao manual, autenticada e granular. Simulacao precede qualquer gravacao.
+router.post('/compras/reorganizacao/simular', criticalRateLimit, requireEnabledModule('COTACOES'), require('./controllers/CompraReorganizacaoController').simulate);
+router.post('/compras/reorganizacao/lotes/:loteId/aplicar', criticalRateLimit, requireEnabledModule('COTACOES'), require('./controllers/CompraReorganizacaoController').apply);
+router.post('/compras/reorganizacao/lotes/:loteId/simular-reversao', criticalRateLimit, requireEnabledModule('COTACOES'), require('./controllers/CompraReorganizacaoController').simulateReverse);
+router.post('/compras/reorganizacao/lotes/:loteId/reverter', criticalRateLimit, requireEnabledModule('COTACOES'), require('./controllers/CompraReorganizacaoController').reverse);
+router.get('/compras/reorganizacao/lotes/:loteId', requireEnabledModule('COTACOES'), require('./controllers/CompraReorganizacaoController').status);
 router.get('/compras/cotacoes', requireEnabledModule('COTACOES'), allowComprasCotacoesRead, scopeCompraListAccess, CotacaoFornecedorController.index);
 router.post('/compras/cotacoes/avulsa', requireEnabledModule('COTACOES'), allowComprasCotacoesManage, SolicitacaoCompraController.createAvulsa);
 router.patch('/compras/cotacoes/:id/reabrir', requireEnabledModule('COTACOES'), allowComprasCotacoesReabrir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Cotacao') }), CotacaoFornecedorController.reabrir);
