@@ -107,6 +107,11 @@ const OPCOES_SITUACAO = [
 ];
 
 const SEM_FILTRO = { situacao: new Set(), tipo: new Set() };
+const rotuloPagamento = s => {
+  const linhas = (s.dados_json?.linhas || []).filter(l => !l.removido_em && l.pagamento_estado !== 'CANCELADO');
+  if (linhas.length && linhas.every(l => l.vale)) return 'Pagamento de Vale';
+  return linhas.some(l => l.vale) ? 'Pagamento e Vale' : 'Pagamento';
+};
 const ehPagamentoPorSolicitacao = s => s.dados_json?.fluxo_pagamento === 'PAGAMENTO_POR_SOLICITACAO';
 const rotuloSituacao = s => s.demissao_pendente_conclusao ? 'Aguardando conclusão do DP'
   : s.demissao_concluida ? 'Concluída' : ROTULO_SITUACAO[s.situacao] || s.situacao;
@@ -774,7 +779,7 @@ export default function RhDpPessoalSolicitacoes({ obraId, podeAbrir, podeDecidir
                   */}
                   {(s.tipo === 'TROCA_OBRA' || s.subtipo === 'TRANSFERENCIA_OBRA') && !s.colaborador?.obra_id
                     ? 'Vincular a obra'
-                    : ehPagamentoPorSolicitacao(s) ? 'Pagamento'
+                    : ehPagamentoPorSolicitacao(s) ? rotuloPagamento(s)
                       : s.tipo === 'MOVIMENTACAO' && s.subtipo ? rotuloMovimentacao(s.subtipo) : ROTULO_TIPO[s.tipo] || s.tipo}
                 </span>
               )
