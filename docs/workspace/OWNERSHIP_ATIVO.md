@@ -6002,3 +6002,7 @@ e ownership liberado para publicacao dev. outputs/ permanece fora do commit.
 
 ## Publicacao SC reversivel DEV - 2026-10-26
 - Agente desta conversa reserva o pacote de compras reversivel, doctor e aplicador exclusivos DEV, testes, manifesto, roteiro e handoff. Base origin/refactor/frontend ed211fab. Usuario autorizou commit/push para refactor/frontend e comandos para ele executar na EC2 DEV. Proibido agente acessar EC2; sem main/producao, cancelamentos, SQL financeiro ou deploy pelo agente. Sem delegacao.
+
+Ownership codex-publicar-apropriacoes-20261026: reservar frontend/src/App.jsx, frontend/src/navigation/navigationConfig.jsx, backend/src/generated/navegacaoFonteUnica.cjs, frontend/scripts/validarAcessoGestaoApropriacoes.mjs, docs/handoffs/2026-10-26-acesso-gestao-apropriacoes.md e este registro. Integracao isolada autorizada em refactor/frontend e main; sem EC2/banco.
+
+Publicacao de acesso a apropriacoes: integracao sobre refactor/frontend 6618f6ca, matriz de permissoes, sincronizacao da tela e build aprovados. Arquivos limitados a menu/rota/catalogo/teste/handoff e este registro. Ownership de edicao desta etapa liberado para commit/push autorizado; EC2/banco permanecem fora do escopo de execucao do agente.
