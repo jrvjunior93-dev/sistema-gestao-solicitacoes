@@ -1,0 +1,18 @@
+{
+  "base": "09b66e4b114e5f89219c58c8697a40bca04fbabd",
+  "no_restart": false,
+  "no_schema": true,
+  "files": [
+    {
+      "path": "backend/src/services/pedidoCompraFinanceiroService.js",
+      "old_sha256": "4526c53b3d1b60f1075d587bf46a96f1e0834e2f1bfc64e784234872d717bae8",
+      "sha256": "10dca44674edfc2085e1d5da8d899c83626bb2be856a8eb24c55da17edac9913"
+    }
+  ],
+  "qa": [
+    {
+      "path": "backend/scripts/validarTitulosPorPedido.js",
+      "sha256": "a8c7c3453fbbb0d20fdac7b0ddce0c43e7975fe52dcda75208c66ee527a214a2"
+    }
+  ]
+}

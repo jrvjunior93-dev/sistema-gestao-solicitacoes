@@ -716,7 +716,7 @@ async function criarPrevisoesPedido({ req, pedidoId, payload, idempotencyKey, tr
 
   await require('./tituloSobreposicaoService').assertSemAvulsosCompra(pedido.solicitacao.solicitacao_principal_id, transaction);
   const existentes = await buscarTitulosPedido(pedido.id, { transaction, incluirLegados: true });
-  if (existentes.some((item) => !STATUS_TITULO_ENCERRADO.has(normalize(item.titulo?.status)))) {
+  if (existentes.some((item) => item.origem !== 'FRETE_TERCEIRO' && !STATUS_TITULO_ENCERRADO.has(normalize(item.titulo?.status)))) {
     throw httpError(409, 'Este pedido ja possui titulo financeiro ativo.', 'PEDIDO_JA_POSSUI_TITULO');
   }
 
