@@ -13,6 +13,12 @@ function numero(v, campo, max = 999999999) {
 
 function calcularLinha(linha, cadastro) {
   const diaria = cadastro.forma_calculo_gerencial === 'DIARIA';
+  if (linha.vale != null && typeof linha.vale !== 'boolean') throw new ValidationError('Opcao Vale invalida.');
+  if (linha.vale) {
+    if (linha.parcela_40 || linha.parcela_50 || linha.parcela_60 || Number(linha.acrescimos || 0) || Number(linha.descontos || 0) || linha.reembolso) throw new ValidationError('Vale deve conter somente o valor, sem percentuais, ajustes ou reembolso.');
+    const valor = numero(linha.valor_vale, 'Valor do vale');
+    return { vale: true, valor_vale: valor, percentual: null, dias: 0, faltas: 0, acrescimos: 0, descontos: 0, bruto: valor, liquido: valor, diaria, base: 0 };
+  }
   if (linha.parcela_50 != null && typeof linha.parcela_50 !== 'boolean') throw new ValidationError('Opcao 50% invalida.');
   if (!diaria && linha.parcela_50 && (linha.parcela_40 || linha.parcela_60)) {
     throw new ValidationError('Selecione somente 50%, sem combinar com 40% ou 60%.');

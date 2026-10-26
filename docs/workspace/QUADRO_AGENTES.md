@@ -853,3 +853,10 @@ Sessao codex-contrato-vigencia-main: finalizado; testes backend/UI, build e docu
 - Colaboracao: usuario informou outro agente em autorizacao/fila de pagamentos. Esses fluxos, routes.js e package.json ficam fora desta reserva. Registros do painel apenas acrescentados, preservando os anteriores.
 
 Sessao codex-contrato-vigencia-2026-10-08: finalizado. Edicao e validacoes locais concluidas; ownership integralmente liberado. Handoff: docs/handoffs/2026-10-08-edicao-vigencia-contrato.md. Sem banco real, EC2, commit, push ou deploy desta tarefa. Autorizacao/fila de pagamentos preservadas.
+
+
+## Promocao SC reversivel e Vale - 2026-10-26
+- Sessao codex-sc-reversivel-vale-main-20261026; agente desta conversa. Usuario autorizou promover o Vale junto ao cancelamento reversivel. Integracao isolada em outputs/worktree-sc-reversivel-vale-main, base main98d04a21. Fontes do outro agente preservadas; sete arquivos do Vale congelados e testados nesta base. Regularizacao de cheques fora do pacote. Sem EC2/cancelamentos pelo agente.
+- Backend primeiro; frontend Vale preparado, publicacao somente apos SC_VALE_BACKEND_PROD_PRONTO fornecido pelo usuario. Nao publicar esses arquivos novamente sem conferir a continuacao deste registro.
+
+- QA de promocao concluido:30testes SC/doctor PROD,7testes do aplicador,servico Vale em memoria,UI desktop/mobile,buildfrontend,16regressoes e documentacao651MD/19canonicos aprovados. Corrigido somente mock de lock no teste antigo de escopo RH. Ownership de implementacao liberado; publicacao backend autorizada, frontend aguarda retorno EC2.

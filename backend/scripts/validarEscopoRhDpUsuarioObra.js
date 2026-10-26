@@ -102,8 +102,13 @@ async function executar() {
     historicoCreate: RhSolicitacaoHistorico.create
   };
   const eventosDoAnexo = [];
-  sequelize.transaction = async (callback) => callback({});
-  RhSolicitacao.findByPk = async () => ({ id: 701, situacao: 'ABERTA' });
+  const transactionAnexo = { LOCK: { UPDATE: 'UPDATE' } };
+  sequelize.transaction = async (callback) => callback(transactionAnexo);
+  RhSolicitacao.findByPk = async (_id, options) => {
+    assert.equal(options.transaction, transactionAnexo);
+    assert.equal(options.lock, transactionAnexo.LOCK.UPDATE);
+    return { id: 701, situacao: 'ABERTA' };
+  };
   RhSolicitacaoAnexo.create = async (dados) => ({ id: 801, ...dados });
   RhSolicitacaoHistorico.create = async (dados) => {
     eventosDoAnexo.push(dados);

@@ -9,6 +9,11 @@ const domain = require('../src/services/rhPagamentoSolicitacaoDomain');
 const { ValidationError } = require('../src/middlewares/validation');
 const cadastro = { id: 11, nome: 'Ana QA', cpf: '52998224725', obra_id: 7, status: 'ATIVO', empresa_grupo_id: 3,
   forma_calculo_gerencial: 'MENSAL', salario_base: 3000, pix_chave: 'ana@example.test' };
+for (const diaria of [false,true]) {
+ const base={nome:'QA',forma_calculo_gerencial:diaria?'DIARIA':'MENSAL',salario_base:5000,valor_diaria:200};
+ const linha={vale:true,valor_vale:234.56};assert.equal(domain.calcularLinha(linha,base).liquido,234.56);
+ for(const patch of [{valor_vale:-1},{valor_vale:Infinity},{vale:'true'},{parcela_50:true},{acrescimos:5},{descontos:5},{reembolso:{}}])assert.throws(()=>domain.calcularLinha({...linha,...patch},base));
+}
 const dados = { dias: 30, faltas: 0, acrescimos: 0, descontos: 100, parcela_40: true, parcela_60: false };
 assert.equal(domain.calcularLinha(dados, cadastro).liquido, 1100);
 assert.equal(domain.calcularLinha({ ...dados, parcela_60: true }, cadastro).bruto, 3000);
@@ -127,7 +132,7 @@ async function filaCanonicaTransacaoExterna() {
   let transacoes = 0, nominal = true, gate = 'DIRECT';
   const audits = [], callbacks = [], criados = [];
   const tx = { LOCK: { UPDATE: 'UPDATE' }, afterCommit: fn => callbacks.push(fn) };
-  const context = { module: { exports: {} }, Op, crypto: require('node:crypto'), Map, Set,
+  const context = { module: { exports: {} }, require: key => { if(key === './pagamentoAutorizacaoValorDomain') return require('../src/services/pagamentoAutorizacaoValorDomain'); throw Error('Dependencia nao simulada: '+key); }, Op, crypto: require('node:crypto'), Map, Set,
     createHttpError: (code, message) => new ValidationError(message, code),
     userHasNominalAreaPermission: async () => nominal,
     resolvePaymentQueueGate: () => gate, env: { paymentOwnerApprovalMode: 'PILOT' },
@@ -493,6 +498,21 @@ async function validarCadastroAtual() {
     assert(final.solicitacao.dados_json.titulos.every(t => t.modo_recebimento === 'DINHEIRO'));
   }
   console.log('DINHEIRO: individual/todos/selecionados, sem Pix/conta, identificacao preservada, snapshot por titulo e replay concorrente aprovados.');
+  for (const idColaborador of [11,13]) {
+    const pedidoVale = await service.iniciar(obra, { obra_id: 7, colaborador_id: idColaborador });
+    const salvoVale = await service.salvar(obra, pedidoVale.solicitacao.id, { ...pedidoVale.solicitacao.dados_json,
+      linhas: pedidoVale.solicitacao.dados_json.linhas.map(l => ({ ...l, vale: true, valor_vale: 123.45, parcela_40: false, parcela_50: false, parcela_60: false, acrescimos: 0, descontos: 0, reembolso: null, selecionado: true, conferido_obra: true })) });
+    assert.equal(salvoVale.solicitacao.dados_json.linhas[0].liquido,123.45);
+    await service.enviar(obra,pedidoVale.solicitacao.id,{revisao:salvoVale.solicitacao.dados_json.revisao});
+    const noDp = await service.mostrar(dp,pedidoVale.solicitacao.id);
+    const conferido = await service.salvar(dp,pedidoVale.solicitacao.id,{...noDp.solicitacao.dados_json,linhas:noDp.solicitacao.dados_json.linhas.map(l=>({...l,conferido_dp:true,conferir_alteracoes:true}))});
+    const antes=store.titles.length;
+    await service.enviar(dp,pedidoVale.solicitacao.id,{revisao:conferido.solicitacao.dados_json.revisao});
+    assert.equal(store.titles.length,antes+1);assert.equal(store.titles.at(-1).valor_original,123.45);assert.match(store.titles.at(-1).descricao,/Pagamento de Vale/);
+    const final=await service.mostrar(dp,pedidoVale.solicitacao.id);assert.equal(final.solicitacao.dados_json.titulos[0].natureza,'VALE');
+    await service.enviar(dp,pedidoVale.solicitacao.id,{revisao:conferido.solicitacao.dados_json.revisao});assert.equal(store.titles.length,antes+1);
+  }
+  console.log('Vale mensalista/diarista: persistencia, conferencia, valor independente, titulo identificado e replay aprovados.');
   const outroRascunho = await service.iniciar(obra, { obra_id: 7 });
   ativo = false;
   await assert.rejects(service.salvar(obra, outroRascunho.solicitacao.id, { ...outroRascunho.solicitacao.dados_json,

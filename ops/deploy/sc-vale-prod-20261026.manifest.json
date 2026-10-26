@@ -1,0 +1,168 @@
+{
+  "base": "98d04a2177c2f0b54b46c30c18c6e79f614970d4",
+  "migration": "202610260002_compra_reorganizacao_reversivel.js",
+  "additive_only": true,
+  "cancelamentos_executados": 0,
+  "financial_data_writes": 0,
+  "nsdocs_automatic_enabled": false,
+  "files": [
+    {
+      "path": "backend/migrations/202610260002_compra_reorganizacao_reversivel.js",
+      "sha256": "73026b8619486bd2679f0999ff1376c5271deba4668943b4bb0ea5ad8af6b563",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/compraReorganizacaoHttp.js",
+      "sha256": "066e98da65511a4ad9554b5c50c2c361da2c7ece75728f8cdac064dd36234075",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/compraReorganizacaoProdSchema.js",
+      "sha256": "4636f175abd3931b1ecffbd88f554aed6e2f0de6c7e08d3351ee04ee95bbce11",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/helpers/semRedeQa.js",
+      "sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/helpers/sqliteSequelizeMemory.js",
+      "sha256": "36d69c26ce2cfcc50808e3763fa0ec528d6cb181a31b7b4b759cea7db0797c9d",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/prepararCompraReorganizacaoManifestos.js",
+      "sha256": "7aeb0234cb4c1376afa3e29718706592ffbd5afccfd85b2e48b2b94009ac12ee",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarCompraReorganizacao.js",
+      "sha256": "ead9a7c22cb97fa04eb431262acd1d3cbc376ede820306d226c2a2f0b7e3d902",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarCompraReorganizacaoCliente.js",
+      "sha256": "eada31afa55dfea93859c6a825dac3a14243298fe17c5be0ce4b2c46253f3036",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarCompraReorganizacaoProdSchema.js",
+      "sha256": "adb5755556f48eb5f3ffa12490eb4b8fad3551eb4c530f224ec98f5e9d8ce73e",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarCompraReorganizacaoSeguranca.js",
+      "sha256": "7916fa00f4315176c470f0637ce2bdd89a43b11908d61da1154845ad35504067",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarEscopoRhDpUsuarioObra.js",
+      "sha256": "eec7f1faae6b856a3726c93274bd9d05b462c2f87fa24078ae65aa15d2f18b2d",
+      "old_sha256": "9845777208f5e8c2214cdd364e6f7eb0fa581151a15c1a908a8ad1885183a959"
+    },
+    {
+      "path": "backend/scripts/validarRhPagamentoSolicitacao.js",
+      "sha256": "53f357a6841aa0c5fe7b6711ad996ab2b6f8ca1af6093b065520622e8848923a",
+      "old_sha256": "b51a76a1528ddf694d5eca9d3530fce58076c4470cec2156ac7c24951fe193c1"
+    },
+    {
+      "path": "backend/src/controllers/CompraReorganizacaoController.js",
+      "sha256": "7f880d768e3083fbc6c8509e38ec6083a9acea15bb5c216befe28eedfc164f62",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/src/models/CompraReorganizacaoOperacao.js",
+      "sha256": "c11f42d71847cd3ff9109682cfcb1af09c9d4e687b7a0b7d46a5ee2b42de9da2",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/src/models/index.js",
+      "sha256": "17e1e216446d147d3c9b929089b40a07a8cf0776bdf423e6b160c08b6f816bd6",
+      "old_sha256": "8796792e4a2c10f2b68deb2ce2afc6daab00de1a1f96a75c45d55678f01029ee"
+    },
+    {
+      "path": "backend/src/routes.js",
+      "sha256": "8398c2b42df05463412352eb36f36b3b4c281d9d734233ad359d7a1c46f57a82",
+      "old_sha256": "769183db714d485db178d0045ab26a1cde7d5d51940f6fc540cbc8b931d770ff"
+    },
+    {
+      "path": "backend/src/services/compraReorganizacaoDomain.js",
+      "sha256": "2e084d9f17e11149325c5cc97ba84be5d7ce9a00b8728a289d844545eecdc664",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/src/services/compraReorganizacaoService.js",
+      "sha256": "ff02580b2095958b31be590ffaae350b46401d04370080e6da4e82f7dda8ae1e",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/src/services/compraReorganizacaoStore.js",
+      "sha256": "86a0f755e86cd9f930fa210aab788bfb32d1a415e7fb80990fd9ae4d484ffd06",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/src/services/pedidoCompraFreteService.js",
+      "sha256": "8b8a659d7df387421b855e58f015f6da32e5455b73bc81dda584f8ab9eef32e1",
+      "old_sha256": "7c174b1c5038521c524b3574d3185eddb51c4bd975eeb6dfa067c2438cf9a1d9"
+    },
+    {
+      "path": "backend/src/services/pedidoCompraService.js",
+      "sha256": "eacfef3db7be6201489256512e67939f0b7223d82f156f1647bcc97a615077b9",
+      "old_sha256": "bc6304a45fbdaff9329dca0f04bfc095c995f351cbf77e5029188a1b060016b6"
+    },
+    {
+      "path": "backend/src/services/pedidoEntregaService.js",
+      "sha256": "1ad4a37adb1629fdb13c0df2a4b57122ccdc1d6684b5a08723947587d52d8734",
+      "old_sha256": "8cdfcb38b5ebe6054e7ca29ff8cff9a7f982742d12de58dd41b003afda7d7810"
+    },
+    {
+      "path": "backend/src/services/rhPagamentoSolicitacaoDomain.js",
+      "sha256": "64c7ca5fa1c762ff26b34099cd8b5aff0e24d20efef115c7f767d2739426316b",
+      "old_sha256": "fa2ce222a808706d66ab04543f5e48a918b71768543934fa95d91c05e4528308"
+    },
+    {
+      "path": "backend/src/services/rhPagamentoSolicitacaoService.js",
+      "sha256": "d1ca4dfe49b39402156d3dc6fbbd3dac78fd5d21c46acb1021b7d7f8404c1e56",
+      "old_sha256": "075b8de961471b8d54ebd9516380539b2c18a26f3d862377edf1b0dee70d07cf"
+    }
+  ],
+  "extra": [
+    {
+      "path": "ops/deploy/atualizar-prod-sc-vale-20261026.cjs",
+      "sha256": "c05963f88bfb2ac1e275a1ce22688eaf6461175803630a3420827a59cab5ef8d"
+    },
+    {
+      "path": "ops/deploy/atualizar-prod-sc-vale-20261026.test.cjs",
+      "sha256": "dc7cb16f84603384bff5a4d20ed4506469c1a708b7fa96201ae1b1d418617535"
+    },
+    {
+      "path": "ops/deploy/README-sc-vale-prod-20261026.md",
+      "sha256": "ac8bc02d6d8ab1bbcdfbe2a0f736d7a3d54893600baa7ed1625cbda2e626a3b3"
+    },
+    {
+      "path": "ops/operacao/README-sc-cancelamento-reversivel-20261026.md",
+      "sha256": "240198ee617c50aa31bcc9698ac78e583ea7cf63517f702dbb412658a5191a87"
+    },
+    {
+      "path": "docs/handoffs/2026-10-26-sc-vale-promocao-main.md",
+      "sha256": "327337fc95c9d0cac183bc144ad1ab387ee35adfbf8bcd836ac01db4eb3b3ebc"
+    },
+    {
+      "path": "docs/workspace/OWNERSHIP_ATIVO.md",
+      "sha256": "7b0e8c07405a724ce1773d6fa6afba03dbb54607fb2af60734e66aad19657b57"
+    },
+    {
+      "path": "docs/workspace/QUADRO_AGENTES.md",
+      "sha256": "1df9e9e1e180655313510fa4d18d53f3460cac678795df33e83eb8b9deac7b16"
+    },
+    {
+      "path": "docs/workspace/SESSOES_ATIVAS.md",
+      "sha256": "2b8bb82deb73ba9247185efa14008318e5d7f9e02db3e4da2221791be35a1f68"
+    },
+    {
+      "path": "docs/workspace/HANDOFF_GLOBAL.md",
+      "sha256": "86074393d08de945bc3d696260b6f43a90b1ccb97404d94408834ea67b556bb2"
+    }
+  ]
+}

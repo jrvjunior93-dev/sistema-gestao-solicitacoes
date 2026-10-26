@@ -231,7 +231,7 @@ async function salvar(req, id, payload, transactionExterna = null) {
           valor: valorReembolso({ nome: original.nome, descontos: calculo.descontos, reembolso: l.reembolso }),
           ...recebimento(l.reembolso, { nome: l.reembolso.favorecido_nome, cpf: l.reembolso.favorecido_documento }) };
       }
-      const campos = { selecionado: Boolean(l.selecionado), dias: calculo.dias, faltas: calculo.faltas,
+      const campos = { vale: Boolean(l.vale), valor_vale: l.vale ? calculo.liquido : null, selecionado: Boolean(l.selecionado), dias: calculo.dias, faltas: calculo.faltas,
         acrescimos: calculo.acrescimos, descontos: calculo.descontos,
         parcela_40: !calculo.diaria && Boolean(l.parcela_40), parcela_60: !calculo.diaria && Boolean(l.parcela_60),
         parcela_50: !calculo.diaria && Boolean(l.parcela_50),
@@ -386,7 +386,7 @@ async function enviar(req, id, payload) {
           numero_documento: destino.sufixo === 'REEMBOLSO'
             ? `RHDP-${d.competencia}-SOL-${s.id}-RESP-${destino.responsavel_id}-EMP-${destino.empresa_id}-REEMBOLSO`
             : `RHDP-${d.competencia}-COL-${l.colaborador_id}-SOL-${s.id}-SALARIO`,
-          descricao: `${s.codigo} - ${destino.sufixo === 'REEMBOLSO' ? 'Reembolso de vale' : `Salario ${destino.calculo.percentual}%`} - ${conta.favorecido_nome}`.slice(0, 255),
+          descricao: `${s.codigo} - ${destino.sufixo === 'REEMBOLSO' ? 'Reembolso de vale' : destino.calculo.vale ? 'Pagamento de Vale' : `Salario ${destino.calculo.percentual}%`} - ${conta.favorecido_nome}`.slice(0, 255),
           observacoes: destino.sufixo === 'REEMBOLSO'
             ? `${payloadTitulo.observacoes} | Solicitacao RH: ${s.codigo}\nReembolsos de vale:\n${destino.origens.map(o => `${o.nome} (colaborador #${o.colaborador_id}): R$ ${o.valor.toFixed(2).replace('.', ',')}`).join('\n')}`
             : `${payloadTitulo.observacoes} | Solicitacao RH: ${s.codigo} | Bruto: ${destino.calculo.bruto} | Acrescimos: ${destino.calculo.acrescimos} | Descontos: ${destino.calculo.descontos}` };
@@ -400,7 +400,7 @@ async function enviar(req, id, payload) {
         idsEnvio.push(Number(titulo.id));
         const ref = { id: titulo.id, codigo: titulo.codigo,
           ...(destino.sufixo === 'SALARIO' ? { colaborador_id: l.colaborador_id } : { origens: destino.origens }),
-          tipo: destino.sufixo, valor: destino.valor, empresa_id: destino.empresa_id || l.empresa_grupo_id,
+          tipo: destino.sufixo, natureza: destino.calculo?.vale ? 'VALE' : destino.sufixo, valor: destino.valor, empresa_id: destino.empresa_id || l.empresa_grupo_id,
           modo_recebimento: conta.modo_recebimento,
           responsavel_id: destino.responsavel_id || null };
         const index = titulos.findIndex(t => Number(t.id) === Number(titulo.id));

@@ -6502,3 +6502,10 @@ e ownership liberado para publicacao dev. outputs/ permanece fora do commit.
 Ownership codex-publicar-apropriacoes-main-20261026: promocao isolada do ajuste publicado na refactor/frontend b620379f605620603faf4e5f2bc04be11296bb0f. Reservados App.jsx, navigationConfig.jsx, catalogo backend, teste validarAcessoGestaoApropriacoes.mjs, handoff e este registro. Sem demais alteracoes da refactor/frontend; sem EC2/banco.
 
 Promocao isolada validada sobre main f429b6f2: testes de acesso/sincronizacao e build aprovados. Delta somente menu/rota/catalogo/teste/handoff e este registro; sem migrations/dependencias/servicos. Ownership de edicao liberado para publicacao main autorizada. Nao executado deploy/EC2/banco.
+
+
+## Promocao SC reversivel e Vale - 2026-10-26
+- Sessao codex-sc-reversivel-vale-main-20261026; agente desta conversa. Usuario autorizou promover o Vale junto ao cancelamento reversivel. Integracao isolada em outputs/worktree-sc-reversivel-vale-main, base main98d04a21. Fontes do outro agente preservadas; sete arquivos do Vale congelados e testados nesta base. Regularizacao de cheques fora do pacote. Sem EC2/cancelamentos pelo agente.
+- Backend primeiro; frontend Vale preparado, publicacao somente apos SC_VALE_BACKEND_PROD_PRONTO fornecido pelo usuario. Nao publicar esses arquivos novamente sem conferir a continuacao deste registro.
+
+- QA de promocao concluido:30testes SC/doctor PROD,7testes do aplicador,servico Vale em memoria,UI desktop/mobile,buildfrontend,16regressoes e documentacao651MD/19canonicos aprovados. Corrigido somente mock de lock no teste antigo de escopo RH. Ownership de implementacao liberado; publicacao backend autorizada, frontend aguarda retorno EC2.

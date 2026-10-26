@@ -4468,7 +4468,7 @@ async function assertItensSemRecebimento(ids, transaction) {
   if (recebido > 0) throw Object.assign(new Error('Há recebimentos registrados. Preserve a entrega e use Cancelar saldo não entregue no acompanhamento da solicitação.'), { statusCode: 409 });
 }
 
-async function cancelarSaldoNaoRecebido({ pedido, item, recebido, motivo, usuarioId, transaction }) {
+async function cancelarSaldoNaoRecebido({ pedido, item, recebido, motivo, usuarioId, transaction, preservarRateios = false }) {
   // O recebimento permanece intocado. Cancelamento financeiro requer tratamento previo.
   await assertPedidoSemVinculoFinanceiroParaCancelamento(pedido.id, transaction);
   const anterior = item.toJSON();
@@ -4489,7 +4489,7 @@ async function cancelarSaldoNaoRecebido({ pedido, item, recebido, motivo, usuari
     dadosNovos: { ...item.toJSON(), quantidade_cancelada_nesta_operacao: saldo }, transaction });
   if (alocacoes) await sincronizarDescontoPedidoPorAlocacoes(pedido.id, transaction);
   await recalcularPedidoPorId(pedido.id, transaction);
-  await sincronizarRateiosFretesPendentesPedido({ pedidoId: pedido.id, usuarioId, motivo, transaction });
+  await sincronizarRateiosFretesPendentesPedido({ pedidoId: pedido.id, usuarioId, motivo, transaction, preservarRateios });
 }
 
 module.exports = {
