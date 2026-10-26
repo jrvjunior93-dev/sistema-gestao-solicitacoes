@@ -1,0 +1,65 @@
+{
+  "base": "09b66e4b114e5f89219c58c8697a40bca04fbabd",
+  "source_dev": "f05705e3ffdd5e4998328c062049f4934f44c188",
+  "candidate_branch": "codex/promocao-pwa-titulos-main-20261025",
+  "no_schema": true,
+  "no_dependencies": true,
+  "backend_before_frontend": true,
+  "runtime": [
+    {
+      "path": "backend/src/services/pedidoCompraFinanceiroService.js",
+      "old_sha256": "4526c53b3d1b60f1075d587bf46a96f1e0834e2f1bfc64e784234872d717bae8",
+      "sha256": "10dca44674edfc2085e1d5da8d899c83626bb2be856a8eb24c55da17edac9913"
+    },
+    {
+      "path": "frontend/src/components/financeiro/AutorizacaoTituloDetalhe.jsx",
+      "old_sha256": "49e113e58f086156aa9462b9b2f2981ef4af314193c89f28f7b7e46d4bf030cc",
+      "sha256": "2a9f641c1a1b86409f80a72f4cf36df73ea4e695d0aa303c3f1ce5b7c9b45508"
+    },
+    {
+      "path": "frontend/src/components/financeiro/AutorizacoesPorObra.jsx",
+      "old_sha256": "dfddea205e138ef9769ecf704fd6ad6434681c11847b0d09514de38427bba3cc",
+      "sha256": "0c84a82bb52f76a2643b6d76b41d9675782e1ce7236f256352862a9faf73e86e"
+    },
+    {
+      "path": "frontend/src/modules/solicitacao-compra/components/PedidoCompraFinanceiro.jsx",
+      "old_sha256": "bd35780bf95011841f4fa7f27f8a671f9334a7dd41aef3a7570412e0cf76525a",
+      "sha256": "d6edc5c773e38ca28e2d3500a9c95c6ada782b1fb49496a217c30f2e4f00b8e1"
+    },
+    {
+      "path": "frontend/src/pages/SolicitacaoDetalhe/PedidoResumo.jsx",
+      "old_sha256": "5062c6fba53c2204e1451b1572832ff19e7718ed319ea7313140abcec4bb8389",
+      "sha256": "66e7b2b16f7680f163aac39eceb27967c4664814e7dbd3f7d729fd8024995d5b"
+    },
+    {
+      "path": "frontend/src/styles/financeiro-autorizacoes-pagamento.css",
+      "old_sha256": "285768202ef17a723a8e6d13d7cebc2bf3af1e59a69321098e1455a1c3275e1e",
+      "sha256": "d005b9265e5387a771e800280074279ca31ebd3f02ac632fa31c218dba7ee208"
+    }
+  ],
+  "qa": [
+    {
+      "path": "backend/scripts/validarTitulosPorPedido.js",
+      "sha256": "a8c7c3453fbbb0d20fdac7b0ddce0c43e7975fe52dcda75208c66ee527a214a2"
+    },
+    {
+      "path": "frontend/scripts/validarAutorizacaoPwa.mjs",
+      "sha256": "067d6721ddaac40428533fb02ba9befd91a1d206748bab6e3cd09644798bca1d"
+    },
+    {
+      "path": "frontend/scripts/validarAutorizacoesPorObra.mjs",
+      "sha256": "39fb12dbe47ba5eeeb27b7cd135d546eb6d02502b372693dab83ca947a87c601"
+    },
+    {
+      "path": "frontend/scripts/validarVinculosNfeUI.mjs",
+      "sha256": "7a44995300c73a579c21f06dcaf56221ae47b3cb70f51275e985bee1f4caf88c"
+    },
+    {
+      "path": "frontend/scripts/validarPedidoResumoEscopo.mjs",
+      "sha256": "7691babcddb73f05331f1c78745a0717c7acb0dddbc460071bbea920dfcd58c1"
+    }
+  ],
+  "backend_deployed_commit": "7e6cf469a753e0372c07aa43e7cb35fb8dba609d",
+  "backend_confirmed_by_user": true,
+  "frontend_deployment_pending": true
+}

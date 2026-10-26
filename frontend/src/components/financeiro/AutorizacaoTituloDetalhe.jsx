@@ -178,12 +178,12 @@ export default function AutorizacaoTituloDetalhe({ inicial, filtro, caps, setBus
           <h3>{confirmacao.decisao === 'AUTORIZAR' ? 'Aprovar' : 'Rejeitar'} somente {s.codigo || `título #${item.titulo_financeiro_id}`}?</h3>
           <p>{moeda(valorSelecionado(item))} · Os demais títulos permanecem como estão.</p>
           {confirmacao.motivo && <p>Motivo: {confirmacao.motivo}</p>}
-          <div className="pa-obras-acoes"><button type="button" className="btn btn-outline btn-sm" disabled={bloqueado} onClick={() => setConfirmacao(null)}>Voltar à conferência</button><button type="button" className="btn btn-primary btn-sm" disabled={bloqueado || !podeDecidir} onClick={confirmar}>Confirmar {confirmacao.decisao === 'AUTORIZAR' ? 'aprovação' : 'rejeição'} com passkey</button></div>
+          <div className="pa-obras-acoes"><button type="button" className="btn btn-outline btn-sm" disabled={bloqueado} onClick={() => setConfirmacao(null)}>Voltar à conferência</button><button type="button" className="btn btn-primary btn-sm" disabled={bloqueado || !podeDecidir} onClick={confirmar}>Confirmar {confirmacao.decisao === 'AUTORIZAR' ? 'somente este título com passkey' : 'rejeição com passkey'}</button></div>
         </section>}
       </div>
       <footer className="pa-titulo-rodape">
-        <small>Anterior e Próxima apenas navegam pelos títulos da obra e dos filtros aplicados.</small>
-        <nav aria-label="Ações e navegação do título"><button type="button" className="btn btn-outline btn-sm" disabled={bloqueado} onClick={() => navegar('ANTERIOR')}>Anterior</button><button type="button" className="btn btn-outline btn-sm pa-titulo-rejeitar" disabled={bloqueado || !podeDecidir} onClick={() => { setConfirmacao(null); setPedindoMotivo(true); }}>Rejeitar</button><button type="button" className="btn btn-primary btn-sm" disabled={bloqueado || !podeDecidir || !podeAutorizar(item)} onClick={() => conferir('AUTORIZAR')}>Autorizar</button><button type="button" className="btn btn-outline btn-sm" disabled={bloqueado} onClick={() => navegar('PROXIMA')}>Próxima</button></nav>
+        <small>Autorização individual. Para autorizar os títulos marcados, volte à lista. Anterior e Próxima apenas navegam.</small>
+        <nav aria-label="Ações e navegação do título"><button type="button" className="btn btn-outline btn-sm" disabled={bloqueado} onClick={() => navegar('ANTERIOR')}>Anterior</button><button type="button" className="btn btn-outline btn-sm pa-titulo-rejeitar" disabled={bloqueado || !podeDecidir} onClick={() => { setConfirmacao(null); setPedindoMotivo(true); }}>Rejeitar</button><button type="button" className="btn btn-primary btn-sm" disabled={bloqueado || !podeDecidir || !podeAutorizar(item)} onClick={() => conferir('AUTORIZAR')}>Autorizar somente este título</button><button type="button" className="btn btn-outline btn-sm" disabled={bloqueado} onClick={() => navegar('PROXIMA')}>Próxima</button></nav>
       </footer>
     </section>
   </ModalPortal>;

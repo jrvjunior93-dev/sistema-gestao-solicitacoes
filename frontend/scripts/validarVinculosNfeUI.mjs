@@ -131,8 +131,13 @@ try{
   await page.waitForTimeout(100);
   assert.equal(await page.getByRole('button',{name:'Vincular / revisar NF-e e pedidos',exact:true}).count(),0);
   await page.goto(uiOrigin+'/qa-nfe?mode=pedido');
-  await page.getByRole('button',{name:'Vincular / revisar NF-e e pedidos',exact:true}).waitFor();
-  assert.deepEqual(await page.evaluate(()=>window.qaCalls),[],'Consultar vinculos nao muda status do pedido');
+  await page.getByRole('button',{name:'Fechar com o fornecedor e preparar títulos',exact:true}).click();
+  await page.getByRole('button',{name:'Cancelar',exact:true}).click();
+  assert.equal((await page.evaluate(()=>window.qaCalls)).length,0,'Cancelar nao fecha pedido');
+  await page.getByRole('button',{name:'Fechar com o fornecedor e preparar títulos',exact:true}).click();
+  await page.getByRole('button',{name:'Confirmar',exact:true}).evaluate(el=>{el.click();el.click();});
+  await page.getByRole('button',{name:'Criar títulos',exact:true}).waitFor();
+  assert.deepEqual(await page.evaluate(()=>window.qaCalls),[{id:25,status:'FECHADO_FORNECEDOR'}]);
   assert.deepEqual(external,[]);assert.deepEqual(errors,[]);
-  console.log('OK UI: multi-pedidos/solicitacoes, retry apos commit, um envio, historico/baixa parcial, leitura do titulo e pedido, permissoes e mobile. Sem mudar a criacao de titulos da main.');
+  console.log('OK UI: multi-pedidos/solicitacoes, retry apos commit, um envio, historico/baixa parcial, leitura do titulo, permissoes, mobile e fechamento por Compras.');
 }finally{await browser?.close();await vite.close();await new Promise(resolve=>api.close(resolve));f.close();}

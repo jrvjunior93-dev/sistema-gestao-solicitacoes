@@ -209,26 +209,26 @@ try {
   // Aprovar somente um titulo; outro do MESMO lote deve continuar pendente.
   await abrirObra(1); await page.getByLabel('Selecionar TIT-1', { exact: true }).check();
   await page.evaluate(()=>{window.__cancelPasskeyAt=(window.__passkeys||0)+1;});
-  await page.getByRole('button', { name: 'Autorizar', exact: true }).click();
+  await page.getByRole('button', { name: /^Autorizar selecionados \(\d+\)$/, exact: true }).click();
   await page.getByRole('button', { name: 'Confirmar autorização com passkey' }).click();
   await page.getByRole('status').getByText(/Confirmação por passkey não concluída.*Nenhuma decisão foi enviada/).waitFor(); await pronto();
   assert.equal(decisoes.length,0,'Cancelar passkey nao envia POST de decisao');
   assert(await page.getByLabel('Selecionar TIT-1',{exact:true}).isChecked(),'Cancelar preserva selecao');
-  assert(await page.getByRole('button',{name:'Autorizar',exact:true}).isEnabled(),'Pode tentar novamente');
+  assert(await page.getByRole('button',{name:/^Autorizar selecionados \(\d+\)$/,exact:true}).isEnabled(),'Pode tentar novamente');
   assert(!/w3\.org|timed out/.test(await page.locator('.pa-obras').innerText()));
-  await page.getByRole('button', { name: 'Autorizar', exact: true }).click();
+  await page.getByRole('button', { name: /^Autorizar selecionados \(\d+\)$/, exact: true }).click();
   await page.getByRole('region', { name: 'Conferência da decisão' }).waitFor();
   await page.getByRole('button', { name: 'Confirmar autorização com passkey' }).evaluate(el => { el.click(); el.click(); });
   await page.getByRole('status').getByText(/1 título\(s\) confirmado/).waitFor(); await pronto();
   assert.equal(decisoes.length, 1); assert.equal(decisoes[0].id, 7); assert.deepEqual(decisoes[0].body.decisoes.map(d=>d.item_id), [1]); assert.equal(items[1].status, 'PENDENTE');
   await abrirObra(2); await abrirObra(1); await page.getByLabel('Selecionar TIT-2', { exact: true }).check();
-  await page.getByRole('button', { name: 'Autorizar', exact: true }).click();
+  await page.getByRole('button', { name: /^Autorizar selecionados \(\d+\)$/, exact: true }).click();
   await page.getByRole('button', { name: 'Confirmar autorização com passkey' }).click(); await page.getByRole('status').getByText(/1 título\(s\) confirmado/).waitFor(); await pronto();
   assert.equal(decisoes.length, 2); assert.equal(decisoes[1].id, 7); assert.deepEqual(decisoes[1].body.decisoes.map(d=>d.item_id), [2]);
   // Status atuais, inclusive quitado/nao pago, sem modificar a decisao assinada.
   for (const s of ['QUITADO','PARCIALMENTE_PAGO','NAO_PAGO','NA_FILA']) {
     await aplicarStatus(s); await abrirObra(1); assert.equal(await page.locator('.pa-status').first().textContent(), { QUITADO:'Quitado', PARCIALMENTE_PAGO:'Parcialmente pago', NAO_PAGO:'Não pago', NA_FILA:'Na fila' }[s]);
-    assert(await page.getByRole('button', { name: 'Autorizar', exact: true }).isDisabled());
+    assert(await page.getByRole('button', { name: /^Autorizar selecionados \(\d+\)$/, exact: true }).isDisabled());
   }
   // Filtros usam vencimento, e so disparam ao aplicar.
   const antes = chamadas.length; await page.getByLabel('Obra / centro de custo').fill('Obra 002'); assert.equal(chamadas.length, antes);
@@ -236,15 +236,15 @@ try {
   await page.getByRole('button', { name: 'Limpar filtros', exact: true }).click(); await pronto(); await abrirObra(1);
   await page.getByLabel('Selecionar TIT-3', { exact: true }).check();
   items[2].titulo.status = 'QUITADO'; items[2].titulo.valor_saldo = 0; items[2].titulo.valor_baixado = 100; items[2].situacao_financeira = 'QUITADO';
-  await page.getByRole('button', { name: 'Autorizar', exact: true }).click();
+  await page.getByRole('button', { name: /^Autorizar selecionados \(\d+\)$/, exact: true }).click();
   await page.getByRole('status').getByText(/A situação de um ou mais títulos mudou/).waitFor(); assert.equal(decisoes.length, 2); assert.equal(await page.getByRole('region', { name: 'Conferência da decisão' }).count(), 0); await pronto();
   // Uma falha entre lotes nao autoriza/envia nenhum dos selecionados.
   await page.getByLabel('Selecionar TIT-10', { exact: true }).check(); await page.getByLabel('Selecionar TIT-11', { exact: true }).check(); failLot = 111;
-  await page.getByRole('button', { name: 'Autorizar', exact: true }).click(); await page.getByRole('button', { name: 'Confirmar autorização com passkey' }).click();
+  await page.getByRole('button', { name: /^Autorizar selecionados \(\d+\)$/, exact: true }).click(); await page.getByRole('button', { name: 'Confirmar autorização com passkey' }).click();
   await page.getByRole('status').getByText(/Falha QA no próximo lote/).waitFor(); await pronto(); assert.equal(items[9].status, 'PENDENTE'); assert.equal(items[10].status, 'PENDENTE'); await limpar(); failLot = 0;
   // Servidor pode invalidar material sob lock: HTTP200 nao significa aprovado.
   invalidar = 12; await page.getByLabel('Selecionar TIT-12', { exact: true }).check();
-  await page.getByRole('button', { name: 'Autorizar', exact: true }).click(); await page.getByRole('button', { name: 'Confirmar autorização com passkey' }).click();
+  await page.getByRole('button', { name: /^Autorizar selecionados \(\d+\)$/, exact: true }).click(); await page.getByRole('button', { name: 'Confirmar autorização com passkey' }).click();
   await page.getByRole('status').getByText(/Um ou mais títulos mudaram ou foram invalidados/).waitFor(); await pronto(); assert.equal(items[11].status, 'PENDENTE'); invalidar = 0;await limpar();
   await page.getByLabel('Selecionar TIT-13', { exact: true }).check(); await page.getByRole('button', { name: 'Rejeitar', exact: true }).click();
   assert(await page.getByLabel('Motivo para rejeição').isVisible());
@@ -256,11 +256,11 @@ try {
   // Somente leitura e sem passkey nao habilitam decisao.
   await page.evaluate(() => window.__setCaps({ can_decide: false, passkey_count: 0 })); await page.getByRole('region', { name: 'Conferência e avisos' }).waitFor({ state: 'detached' });
   assert(await page.getByLabel('Selecionar TIT-11', { exact: true }).isDisabled());
-  await page.evaluate(() => window.__setCaps({ can_decide: true, passkey_count: 0 })); assert(await page.getByRole('button', { name: 'Autorizar', exact: true }).isDisabled());
+  await page.evaluate(() => window.__setCaps({ can_decide: true, passkey_count: 0 })); assert(await page.getByRole('button', { name: /^Autorizar selecionados \(\d+\)$/, exact: true }).isDisabled());
   await page.evaluate(() => window.__setCaps({ can_decide: true, passkey_count: 1 }));
   // Erro preserva dados/rascunho, mas bloqueia acoes ate refresh confirmado.
   fail = true; await page.evaluate(() => window.dispatchEvent(new Event('fluxy-autorizacoes-obras-atualizar'))); await page.getByRole('alert').waitFor();
-  assert(await page.getByRole('button', { name: 'Autorizar', exact: true }).isDisabled());
+  assert(await page.getByRole('button', { name: /^Autorizar selecionados \(\d+\)$/, exact: true }).isDisabled());
   fail = false; await page.getByRole('button', { name: 'Tentar novamente' }).click();
   await page.getByRole('alert').waitFor({ state: 'detached' }); await pronto();
   // Troca rapida de filtros e tempestade de foco com respostas lentas.
@@ -300,7 +300,7 @@ try {
   await detalhe.getByRole('heading', { name: 'Documentos enviados para autorização', exact: true }).waitFor();
   assert(!/dossi[eê]/i.test(await detalhe.innerText()), 'Rotulos do detalhe usam linguagem de autorizacao, sem renomear contratos tecnicos');
   assert.equal(await page.locator('#root').evaluate(el => el.inert), true);
-  assert.deepEqual(await detalhe.getByRole('navigation').getByRole('button').allTextContents(), ['Anterior','Rejeitar','Autorizar','Próxima']);
+  assert.deepEqual(await detalhe.getByRole('navigation').getByRole('button').allTextContents(), ['Anterior','Rejeitar','Autorizar somente este título','Próxima']);
   await detalhe.getByRole('button', { name: 'Próxima', exact: true }).click(); await prontoDetalhe(80);
   await detalhe.getByRole('button', { name: 'Anterior', exact: true }).click(); await prontoDetalhe(81);
   assert.equal(decisoes.length, totalDecisoes, 'Anterior/proxima nao chamam POST de decisao');
@@ -326,27 +326,27 @@ try {
   await page.screenshot({path:path.join(output,'titulo-tela-inteira-dark.png')}); await page.evaluate(()=>document.documentElement.classList.remove('dark'));
   await detalhe.getByRole('button',{name:'Próxima',exact:true}).focus(); await page.keyboard.press('Tab');
   assert.equal(await detalhe.getByRole('button',{name:'Voltar à lista'}).evaluate(el=>el===document.activeElement),true,'Foco permanece no detalhe');
-  await detalhe.getByRole('button', { name: 'Autorizar', exact: true }).click();
+  await detalhe.getByRole('button', { name: 'Autorizar somente este título', exact: true }).click();
   await detalhe.getByRole('region',{name:'Conferência deste título'}).waitFor();
   await detalhe.getByRole('button',{name:'Anterior',exact:true}).click(); await prontoDetalhe(81);
   assert.equal(decisoes.length,totalDecisoes,'Navegar apos conferir tambem nao decide');
   assert.equal(await detalhe.getByRole('region',{name:'Conferência deste título'}).count(),0);
   await detalhe.getByRole('button',{name:'Próxima',exact:true}).click(); await prontoDetalhe(80);
   await page.evaluate(()=>{window.__cancelPasskeyAt=window.__passkeys+1;window.__cancelPasskeyName='AbortError';});
-  await detalhe.getByRole('button', { name: 'Autorizar', exact: true }).click();
-  await detalhe.getByRole('button', { name: 'Confirmar aprovação com passkey' }).click();
+  await detalhe.getByRole('button', { name: 'Autorizar somente este título', exact: true }).click();
+  await detalhe.getByRole('button', { name: 'Confirmar somente este título com passkey' }).click();
   await detalhe.getByRole('status').getByText(/Confirmação por passkey não concluída/).waitFor();
   assert.equal(decisoes.length,totalDecisoes);
   assert.equal(await detalhe.getByRole('alert').count(),0,'Cancelamento nao bloqueia o detalhe como erro');
-  assert(await detalhe.getByRole('button',{name:'Autorizar',exact:true}).isEnabled());
-  await detalhe.getByRole('button', { name: 'Autorizar', exact: true }).click();
+  assert(await detalhe.getByRole('button',{name:'Autorizar somente este título',exact:true}).isEnabled());
+  await detalhe.getByRole('button', { name: 'Autorizar somente este título', exact: true }).click();
   const decisaoEmVoo = new Promise(resolve => { sinalDecisao = resolve; });
-  await detalhe.getByRole('button', { name: 'Confirmar aprovação com passkey' }).evaluate(el=>{el.click();el.click();});
+  await detalhe.getByRole('button', { name: 'Confirmar somente este título com passkey' }).evaluate(el=>{el.click();el.click();});
   await decisaoEmVoo;
   const indiceEmDecisao = await page.evaluate(() => history.state.idx);
   await page.goBack(); await page.waitForFunction(idx => history.state.idx === idx, indiceEmDecisao);
   assert(await detalhe.isVisible(), 'Voltar nao desmonta uma decisao em andamento');
-  assert(await detalhe.getByRole('button', { name: 'Confirmar aprovação com passkey' }).isDisabled());
+  assert(await detalhe.getByRole('button', { name: 'Confirmar somente este título com passkey' }).isDisabled());
   liberarDecisao(); liberarDecisao = null;
   await detalhe.getByText('Somente este título foi aprovado. Os demais não foram decididos.').waitFor(); await prontoDetalhe(80);
   assert.deepEqual(decisoes.at(-1).body.decisoes.map(d=>d.item_id), [80]); assert.equal(decisoes.length,totalDecisoes+1);
@@ -362,21 +362,21 @@ try {
   assert.deepEqual(decisoes.at(-1).body.decisoes,[{item_id:79,decisao:'REJEITAR',motivo:'Conferir valores do contrato'}]);
   await detalhe.getByRole('button', { name: 'Próxima', exact: true }).click(); await prontoDetalhe(78);
   await page.evaluate(()=>window.__setCaps({can_decide:false,passkey_count:1}));
-  assert(await detalhe.getByRole('button', {name:'Autorizar',exact:true}).isDisabled());
+  assert(await detalhe.getByRole('button', {name:'Autorizar somente este título',exact:true}).isDisabled());
   assert(await detalhe.getByRole('button', {name:'Rejeitar',exact:true}).isDisabled());
   assert(await detalhe.getByRole('button', {name:'Próxima',exact:true}).isEnabled());
-  await page.evaluate(()=>window.__setCaps({can_decide:true,passkey_count:0})); assert(await detalhe.getByRole('button', {name:'Autorizar',exact:true}).isDisabled());
-  await page.evaluate(()=>window.__setCaps({can_decide:true,passkey_count:1,paused:true})); assert(await detalhe.getByRole('button', {name:'Autorizar',exact:true}).isDisabled());
+  await page.evaluate(()=>window.__setCaps({can_decide:true,passkey_count:0})); assert(await detalhe.getByRole('button', {name:'Autorizar somente este título',exact:true}).isDisabled());
+  await page.evaluate(()=>window.__setCaps({can_decide:true,passkey_count:1,paused:true})); assert(await detalhe.getByRole('button', {name:'Autorizar somente este título',exact:true}).isDisabled());
   await page.evaluate(()=>window.__setCaps({can_decide:true,passkey_count:1}));
   invalidar=78;
-  await detalhe.getByRole('button', { name: 'Autorizar', exact: true }).click(); await detalhe.getByRole('button', { name: 'Confirmar aprovação com passkey' }).click();
+  await detalhe.getByRole('button', { name: 'Autorizar somente este título', exact: true }).click(); await detalhe.getByRole('button', { name: 'Confirmar somente este título com passkey' }).click();
   await detalhe.getByRole('alert').getByText(/O servidor não confirmou esta decisão/).waitFor(); invalidar=0;
-  assert(await detalhe.getByRole('button', {name:'Autorizar',exact:true}).isDisabled());
+  assert(await detalhe.getByRole('button', {name:'Autorizar somente este título',exact:true}).isDisabled());
   await detalhe.getByRole('button',{name:'Atualizar título',exact:true}).click(); await prontoDetalhe(78);
   await detalhe.getByRole('button',{name:'Próxima',exact:true}).click(); await prontoDetalhe(77);
   const antesObsoleto=decisoes.length;
   items[76].titulo.status='QUITADO';items[76].titulo.valor_saldo=0;items[76].situacao_financeira='QUITADO';
-  await detalhe.getByRole('button',{name:'Autorizar',exact:true}).click(); await detalhe.getByText(/A situação do título mudou/).waitFor();
+  await detalhe.getByRole('button',{name:'Autorizar somente este título',exact:true}).click(); await detalhe.getByText(/A situação do título mudou/).waitFor();
   assert.equal(decisoes.length,antesObsoleto); assert.equal(await detalhe.getByRole('region',{name:'Conferência deste título'}).count(),0);
   await page.keyboard.press('Escape'); await detalhe.waitFor({state:'detached'}); await pronto();
   assert.equal(await page.locator('#root').evaluate(el=>el.inert),false);
@@ -413,8 +413,8 @@ try {
   await limpar();
   await page.getByLabel('Selecionar TIT-5', { exact:true }).check();
   assert((await page.locator('.pa-obras-total-selecao').innerText()).includes('70,00'));
-  const barra = page.getByRole('navigation', { name:'Paginação de títulos' });
-  assert.deepEqual(await barra.getByRole('button').allTextContents(), ['Anterior','Rejeitar','Autorizar','Próxima']);
+  const barra = page.getByRole('group', { name:'Ações dos títulos selecionados' });
+  assert.deepEqual(await barra.getByRole('button').allTextContents(), ['Rejeitar','Autorizar selecionados (1)']);
   for (const width of [320,390,768,1366]) {
     await page.setViewportSize({width,height:900});
     await barra.scrollIntoViewIfNeeded();
@@ -423,7 +423,7 @@ try {
     await page.screenshot({path:path.join(output,'rejeitar-saldo-'+width+'.png')});
   }
   await page.setViewportSize({width:390,height:900});
-  assert(await barra.getByRole('button', { name:'Autorizar', exact:true }).isDisabled());
+  assert(await barra.getByRole('button', { name:/^Autorizar selecionados \(\d+\)$/, exact:true }).isDisabled());
   assert.equal(await page.getByLabel('Motivo para rejeição').count(), 0);
   await barra.getByRole('button', { name:'Rejeitar', exact:true }).click();
   await page.getByLabel('Motivo para rejeição').fill('Suspender somente o saldo de 70');
@@ -435,7 +435,7 @@ try {
   await page.getByRole('button', { name:'Voltar às obras' }).click(); await pronto();
   await aplicarStatus('NA_FILA'); await abrirObra(1);
   await page.getByRole('button', { name:'Abrir detalhes de TIT-7', exact:true }).click(); await prontoDetalhe(7);
-  assert(await detalhe.getByRole('button', { name:'Autorizar',exact:true }).isDisabled());
+  assert(await detalhe.getByRole('button', { name:'Autorizar somente este título',exact:true }).isDisabled());
   await detalhe.getByRole('button', { name:'Rejeitar',exact:true }).click();
   await detalhe.getByLabel('Motivo da rejeição').fill('Suspender o pagamento');
   await detalhe.getByRole('button', { name:'Conferir rejeição',exact:true }).click();
@@ -449,15 +449,15 @@ try {
   await page.getByLabel('Selecionar TIT-126',{exact:true}).check();
   await page.evaluate(()=>{window.__cancelPasskeyAt=window.__passkeys+1;window.__cancelPasskeyName='NotAllowedError';});
   const antesInterromper=decisoes.length;
-  await page.getByRole('button',{name:'Autorizar',exact:true}).click();
-  await page.getByRole('button',{name:'Confirmar autorização com passkey',exact:true}).click();
+  await page.getByRole('button',{name:/^Autorizar selecionados \(\d+\)$/,exact:true}).click();
+  await page.getByRole('button',{name:/^Confirmar autorização com passkey \(\d+\)$/,exact:true}).click();
   await page.getByRole('status').getByText(/Confirmação por passkey não concluída.*Nenhuma decisão foi enviada/).waitFor(); await pronto();
   assert.equal(decisoes.length,antesInterromper,'Cancelar confirmacao unica nao envia nenhum lote');
   assert.equal(items[124].status,'PENDENTE');assert.equal(items[125].status,'PENDENTE');
   assert(await page.getByLabel('Selecionar TIT-126',{exact:true}).isChecked());
   const passkeysAntes = await page.evaluate(()=>window.__passkeys);
-  await page.getByRole('button',{name:'Autorizar',exact:true}).click();
-  await page.getByRole('button',{name:'Confirmar autorização com passkey',exact:true}).evaluate(el=>{el.click();el.click();});
+  await page.getByRole('button',{name:/^Autorizar selecionados \(\d+\)$/,exact:true}).click();
+  await page.getByRole('button',{name:/^Confirmar autorização com passkey \(\d+\)$/,exact:true}).evaluate(el=>{el.click();el.click();});
   await page.getByRole('status').getByText(/2 título\(s\) confirmado\(s\) e enviado\(s\).*única autorização/).waitFor();await pronto();
   assert.equal(await page.evaluate(()=>window.__passkeys),passkeysAntes+1,'Uma passkey para dois lotes');
   assert.equal(decisoes.length,antesInterromper+1,'Um POST global, inclusive com duplo clique');
@@ -467,8 +467,8 @@ try {
   await page.getByLabel('Selecionar TIT-123',{exact:true}).check();
   await page.getByLabel('Selecionar TIT-124',{exact:true}).check();loseSelectionResponse=true;
   const antesRespostaPerdida=decisoes.length;
-  await page.getByRole('button',{name:'Autorizar',exact:true}).click();
-  await page.getByRole('button',{name:'Confirmar autorização com passkey',exact:true}).click();
+  await page.getByRole('button',{name:/^Autorizar selecionados \(\d+\)$/,exact:true}).click();
+  await page.getByRole('button',{name:/^Confirmar autorização com passkey \(\d+\)$/,exact:true}).click();
   await page.getByRole('status').getByText(/A atualização confirmou 2 título\(s\) enviado\(s\)/).waitFor();await pronto();
   assert.equal(decisoes.length,antesRespostaPerdida+1,'Resposta perdida nao repete POST');
   assert(await page.getByRole('button',{name:'Limpar seleção de todas as páginas',exact:true}).isDisabled(),'GET reconciliado limpa selecao apos commit');
@@ -511,7 +511,7 @@ try {
   await detalhe.getByRole('heading',{name:'SOL-D1',exact:true}).waitFor();await page.waitForFunction(()=>!document.querySelector('.pa-titulo-rodape button')?.disabled);
   assert((await detalhe.innerText()).includes('Financeiro QA'));assert(!/Lote #null/.test(await detalhe.innerText()));
   assert((await detalhe.getByText(/Valor efetivamente pago no período:/).innerText()).includes('30,00'),'Revalidacao do detalhe preserva periodo');
-  assert(await detalhe.getByRole('button',{name:'Autorizar',exact:true}).isDisabled());
+  assert(await detalhe.getByRole('button',{name:'Autorizar somente este título',exact:true}).isDisabled());
   const antesDireto=decisoes.length;
   await detalhe.getByRole('button',{name:'Rejeitar',exact:true}).click();await detalhe.getByLabel('Motivo da rejeição').fill('Bloquear apenas o saldo');
   await detalhe.getByRole('button',{name:'Conferir rejeição',exact:true}).click();
@@ -556,7 +556,7 @@ try {
   assert.equal(await page.getByText(/Pendente de decisão, mas/).count(),0);
   for(const codigo of ['TIT-009718','TIT-009810','TIT-010187'])
     assert(await page.getByLabel('Selecionar '+codigo,{exact:true}).isDisabled());
-  assert(await page.getByRole('button',{name:'Autorizar',exact:true}).isDisabled());
+  assert(await page.getByRole('button',{name:/^Autorizar selecionados \(\d+\)$/,exact:true}).isDisabled());
   assert(await page.getByRole('button',{name:'Rejeitar',exact:true}).isDisabled());
   await page.getByRole('button',{name:'Abrir detalhes de TIT-009810',exact:true}).click();
   await detalhe.getByRole('heading',{name:'SOL-6312',exact:true}).waitFor();
@@ -565,7 +565,7 @@ try {
   assert((await historico.innerText()).includes('Operadora QA'));
   assert((await historico.innerText()).includes('Exclusao em massa pela tela de contas a pagar/receber'));
   assert((await detalhe.locator('.pa-titulo-valores').innerText()).includes('2.480,00'),'Snapshot historico nao e reescrito');
-  assert(await detalhe.getByRole('button',{name:'Autorizar',exact:true}).isDisabled());
+  assert(await detalhe.getByRole('button',{name:'Autorizar somente este título',exact:true}).isDisabled());
   assert(await detalhe.getByRole('button',{name:'Rejeitar',exact:true}).isDisabled());
   for(const width of [320,390,1366]){
     await page.setViewportSize({width,height:900});
@@ -582,7 +582,7 @@ try {
   await page.getByRole('checkbox',{name:'Selecionar os disponíveis desta página'}).check();
   await abrirObra(2);await page.getByRole('checkbox',{name:'Selecionar os disponíveis desta página'}).check();
   await page.getByText(/^130 selecionado\(s\)/).waitFor();
-  await page.getByRole('button',{name:'Autorizar',exact:true}).click();
+  await page.getByRole('button',{name:/^Autorizar selecionados \(\d+\)$/,exact:true}).click();
   await page.getByRole('region',{name:'Conferência da decisão'}).getByText(/Uma única confirmação por passkey/).waitFor();
   for(const width of [320,390,1366]) {
     await page.setViewportSize({width,height:900});
@@ -590,7 +590,7 @@ try {
     await page.screenshot({path:path.join(output,'autorizacao-unica-'+width+'.png'),fullPage:false});
   }
   const antesGrande=decisoes.length, passkeysGrande=await page.evaluate(()=>window.__passkeys);
-  await page.getByRole('button',{name:'Confirmar autorização com passkey',exact:true}).click();
+  await page.getByRole('button',{name:/^Confirmar autorização com passkey \(\d+\)$/,exact:true}).click();
   await page.getByRole('status').getByText(/130 título\(s\) confirmado\(s\) e enviado\(s\)/).waitFor();await pronto();
   assert.equal(decisoes.length,antesGrande+1);assert.equal(await page.evaluate(()=>window.__passkeys),passkeysGrande+1);
   assert.equal(decisoes.at(-1).body.item_ids.length,130);assert.equal(new Set(decisoes.at(-1).body.item_ids).size,130);

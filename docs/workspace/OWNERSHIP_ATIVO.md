@@ -6484,3 +6484,13 @@ e ownership liberado para publicacao dev. outputs/ permanece fora do commit.
 
 ## Publicacao main da descoberta otimizada - 2026-10-25
 - Usuario autorizou commit/push somente main e comandos EC2/retomada, preservando DEV. Agente desta conversa reserva operador/testes/manifesto/launcher/README otimizacao-prod e handoff. Backups privados e guardas de progresso/automaticoOFF; sem aplicar na EC2 ou executar NSDOCS pelo agente. Nenhum arquivo do checkout DEV sera editado.
+
+## Promocao PWA e titulos por pedido para main - 2026-10-25
+- Reserva agente desta conversa: dois componentes de autorizacao/CSS e QA PWA; PedidoCompraFinanceiro/PedidoResumo e QA de vinculos; service/QA titulos por pedido; documentacao e handoff. Base09b66e4b; somente preparo/testes locais, sem commit/push ou producao/DEV/NSDOCS. Sem delegacao.
+
+- Preparo/testes concluidos. Candidato local sem publicacao; escopo e evidencias no handoff2026-10-25-promocao-pwa-titulos-main.md. Reserva liberada para continuacao autorizada, sem alterar carga ativa.
+
+## Publicacao e atualizacao PWA/titulos - 2026-10-26
+- Usuario autorizou migracao e necessidade de atualizar EC2 mesmo com historico pausado. Reserva operador/teste/manifesto/README backend-pwa-titulos-prod-20261026, documentacao e separacao dos commits. Backend antes frontend; preservar planos/NSDOCS e DEV. Automatico novo fica em avaliacao separada, sem ativar flags.
+
+-26/10/2026: prova backend7e6cf469 recebida; reserva documental/publicacao frontend concluida para commit/push autorizado. Sem EC2 ou alteracao de NSDOCS/DEV nesta etapa.

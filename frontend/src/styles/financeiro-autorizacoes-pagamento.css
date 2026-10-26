@@ -51,6 +51,12 @@
 .pa-obra-titulo details{font-size:12px;margin-top:8px}.pa-obra-titulo summary{cursor:pointer;min-height:32px;display:flex;align-items:center;text-decoration:underline;text-underline-offset:3px}
 .pa-obra-titulo p{white-space:pre-wrap;margin:4px 0;line-height:1.5}
 .pa-obras-paginacao{display:flex;align-items:center;gap:6px;justify-content:flex-end;flex-wrap:wrap;padding:8px;font-size:12px}.pa-obras-paginacao>span{margin-right:auto}
+.pa-obras-itens{min-height:0;flex:1 1 auto;overflow:auto;overscroll-behavior:contain}
+.pa-obras-itens>.pa-obras-total-selecao{padding:8px 12px;border-bottom:1px solid var(--c-border,#d7dfeb)}
+.pa-obras-rodape{flex:0 0 auto;border-top:1px solid var(--c-border,#d7dfeb);background:var(--ui-surface,#fff);padding-bottom:env(safe-area-inset-bottom,0px)}
+.pa-obras-acoes-selecao{display:flex;justify-content:flex-end;gap:8px;padding:8px 8px 0}
+.pa-obras-acoes-selecao button{min-height:44px;white-space:normal;overflow-wrap:anywhere}
+.pa-obras-conferencia:focus{outline:2px solid var(--c-primary,#4059dc);outline-offset:2px}
 .pa-obras-decisao{display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-top:12px;padding:12px;border:1px solid var(--c-border,#d7dfeb);border-radius:8px;background:var(--c-surface,#fff)}
 .pa-obras-decisao>div:first-child{flex:1 1 240px}.pa-obras-decisao small{display:block;color:var(--c-muted,#52617a);font-size:12px;line-height:1.5}
 .pa-obras-decisao>label{flex:1 1 240px}.pa-obras-acoes{display:flex;gap:8px;flex-wrap:wrap}.pa-obras-decisao>p{flex-basis:100%;margin:0;white-space:pre-wrap;line-height:1.5}
@@ -102,6 +108,11 @@
 .pa-justification-text{margin:0;padding:16px;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--c-text);line-height:1.6}
 .pa-retry{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:10px;padding:10px 14px;background:#fff7ed;border-top:1px solid #fed7aa;font-size:12px;color:#9a3412}
 .pa-reenvio-aviso{justify-content:space-between}.pa-reenvio-aviso>div{min-width:0;overflow-wrap:anywhere}.pa-reenvio-aviso p{margin:4px 0}.pa-reenvio-aviso .pa-obras-acoes{flex-wrap:wrap}
+/* O conteudo da lista rola; voltar, decisao coletiva e paginacao ficam acessiveis. */
+.pa-obras-titulos{display:flex;flex-direction:column;overflow:hidden}
+.pa-obras-titulos>.pa-obras-cabecalho{position:static;flex:0 0 auto}
+.pa-obras-titulos>.pa-obras-selecao{flex:0 0 auto}
+@media(max-width:480px){.pa-obras-acoes-selecao{display:grid;grid-template-columns:auto minmax(0,1fr)}.pa-titulo-rodape nav{grid-template-columns:minmax(44px,1fr) minmax(44px,1fr) minmax(0,2fr) minmax(44px,1fr)}.pa-titulo-rodape button{font-size:12px;line-height:1.3}}
 .pa-table .pa-reason-column{min-width:140px;max-width:260px;white-space:normal;overflow-wrap:anywhere}
 .pa-detail,.pa-list{min-width:0}
 .pa-lot-record{font-size:12px;margin-top:4px}.pa-lot-record summary{cursor:pointer;color:var(--c-muted,#64748b)}

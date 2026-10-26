@@ -35,7 +35,8 @@ export default function PedidoResumo({ pedido, user, onUpdated }) {
 
   async function carregarFinanceiro() {
     const retorno = await obterPedidoCompra(pedido.id);
-    if (!retorno?.financeiro) throw new Error('Não foi possível carregar a gestão financeira deste pedido.');
+    if (!retorno?.financeiro || Number(retorno.id) !== Number(pedido.id) ||
+      (retorno.financeiro.pedido_id && Number(retorno.financeiro.pedido_id) !== Number(pedido.id))) throw new Error('Não foi possível conferir a gestão financeira deste pedido. Atualize a página.');
     setDetalhe(retorno);
   }
 
