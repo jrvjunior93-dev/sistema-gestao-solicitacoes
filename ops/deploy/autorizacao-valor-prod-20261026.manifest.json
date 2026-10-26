@@ -12,7 +12,7 @@
     },
     {
       "path": "backend/scripts/autorizacaoValorProdSchema.js",
-      "sha256": "7cb334329e0fede16b377b479df56c416e1bbf31640c5c5df3ea69ececdc9f5f",
+      "sha256": "6f1ce72ee507ce2537f31beb9de18a67fb9aaade0468c543b58b3fcb6318a18d",
       "old_sha256": null
     },
     {
@@ -27,7 +27,7 @@
     },
     {
       "path": "backend/scripts/validarAutorizacaoValorProdSchema.js",
-      "sha256": "1e349843768b0cdfea8cf416971c570317aeb404896565854ccb969bac8e0a2a",
+      "sha256": "9e2e10e5e8ee1be82112ab870cca3a6558d2d752c25c071ac8f3baed14ead423",
       "old_sha256": null
     },
     {
@@ -124,23 +124,23 @@
   "extra": [
     {
       "path": "ops/deploy/atualizar-prod-autorizacao-valor-20261026.cjs",
-      "sha256": "3e49b59a0b6be497cde5507dd9bcde139beca26820ca99168e07e5fe084370e3"
+      "sha256": "ff0db29de5bcdfc5a15a0f4943c34103e340fc36cb24c21beecde604d78724e2"
     },
     {
       "path": "ops/deploy/atualizar-prod-autorizacao-valor-20261026.test.cjs",
-      "sha256": "e2893a18fef93dfd0f6880cdba6cf2e267761320d3b900ad0e5f1a3a1c0196df"
+      "sha256": "f6a6bc27faa9d05f0ae5e3978d851646b972fd4e2e86e1e0c105b836aa117e02"
     },
     {
       "path": "ops/deploy/README-autorizacao-valor-prod-20261026.md",
-      "sha256": "d0c212a7bf96eb6d07c3e0deafeff91fae8738f9b75e5fa79f3bd5287f4d7c2f"
+      "sha256": "93d076fb45f2e7a4bc6a36e639eb36d42bae9aec33bdf91f956a753e5342fece"
     },
     {
       "path": "docs/handoffs/2026-10-26-autorizacao-valor-promocao-main.md",
-      "sha256": "743f09ca3a463f82a4406f9dd0a52b993e555827d693e5f6e153ac0f20d851a7"
+      "sha256": "75b571fec663bce0901ad464a5438817fc4ac9ea911a512af9017b53fa1b2f44"
     },
     {
       "path": "docs/workspace/OWNERSHIP_ATIVO.md",
-      "sha256": "126a6bb8221e72c3c4b737b55014b33e28377bb7744bc3c5a71da62ae9cea2e4"
+      "sha256": "10b91fc0cefd6a90066c8f7f1fdba04c9ee5e7c3e619dc07c17cab3809e2e239"
     }
   ]
 }

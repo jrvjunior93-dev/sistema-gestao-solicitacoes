@@ -13,3 +13,9 @@ Validacoes aprovadas: os 16 scripts backend listados no aplicador, cinco testes 
 Proximo passo operacional: usuario confere backup atual/timer/janela, executa preparar/aplicar/conferir com SHA backend publicado e envia saida. So depois publicar commit frontend e conferir build Vercel. Sem executar SQL direto financeiro, migrations gerais, restart DEV, resume captura ou habilitar automatico.
 
 Riscos delimitados: DDL MySQL nao e transacional, por isso doctor retoma colunas parciais e so registra ledger ao final; nao oferece down destrutivo. Aplicador aborta se ambiente, plano, processo, origem Git, outro schema pendente ou dados de auditoria divergirem. Homologacao real de autorizacao por passkey permanece com o usuario.
+
+## Correcao do bootstrap apos tentativa c405f805
+
+Usuario executou preparar/aplicar; QA passou e o doctor interrompeu antes do schema. Diagnostico somente leitura confirmou fase arquivos_prontos, HEAD c405f805 limpo, zero colunas/ledger novos e todos os PIDs/contadores iguais ao snapshot. Causa reproduzida: DB_HOST ausente no ambiente inicial de /proc, validacao de contexto executada antes de dotenv. Correcao: dotenv quiet/override:false antes da validacao e teste de CLI com ambiente PM2 inicial incompleto/exports preservados.
+
+Aplicador ganhou corrigir-preflight, limitado ao filho de c405f805 e delta doctor/testes/aplicador/docs. Atualiza codigo e hashes esperados, preservando snapshot/backup original, sem schema ou restart. Em seguida usuario retoma aplicar/conferir. Frontend c946eabc continua local e devera ser reaplicado sobre este novo backend antes de publicar; nao enviar c946eabc diretamente sobre a main corrigida. Diagnostico e leitura de schema pelo agente nao autorizam executar migration ou restart por conta propria.

@@ -4,6 +4,7 @@
 const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process'),crypto=require('node:crypto'),http=require('node:http');
 const ROOT='/home/ubuntu/sistema-gestao-solicitacoes-main',BACKEND=ROOT+'/backend';
 const BASE='920f639c33ea3b7e8b6a1b9564862cd2bd8fd6e3',OLD='7e6cf469a753e0372c07aa43e7cb35fb8dba609d';
+const PATCH_BASE='c405f80524a5b9907fe6db7dfae37d476ddb72cc';
 const NODE='/home/ubuntu/fluxy-node24-prod/node-v24.22.1-linux-x64/bin/node';
 const DAEMON='/opt/fluxy-node24-pm2/node-v24.22.1-linux-x64/bin/node',CLI='/usr/lib/node_modules/pm2/bin/pm2';
 const MANIFEST='ops/deploy/autorizacao-valor-prod-20261026.manifest.json',STATE=ROOT+'/.git/fluxy-autorizacao-valor-prod-20261026';
@@ -37,6 +38,7 @@ const FILES=[
 ];
 const QA=['validarAnaliseProprietario.js','validarAutorizacaoValorSchema.js','validarAutorizacaoValorProdSchema.js','validarFilaBaixaEstorno.js','validarFilaBaixaComposta.js','validarFilaJurosMulta.js','validarFilaLiquidacaoRateada.js','validarFilaComprovantePendente.js','validarFilaEstornoPermissao.js','validarFilaPaginacao.js','validarPainelAutorizacoes.js','validarPainelAutorizacoesSqlLocal.js','validarVinculosNfePedidos.js','validarFiscalS3RoleProd.js','validarPedidoCompraFinanceiroGeo.js','auditarPermissoesGranulares.js'];
 const EXTRA=['ops/deploy/atualizar-prod-autorizacao-valor-20261026.cjs','ops/deploy/atualizar-prod-autorizacao-valor-20261026.test.cjs','ops/deploy/README-autorizacao-valor-prod-20261026.md','docs/handoffs/2026-10-26-autorizacao-valor-promocao-main.md','docs/workspace/OWNERSHIP_ATIVO.md'];
+const FIX_FILES=['backend/scripts/autorizacaoValorProdSchema.js','backend/scripts/validarAutorizacaoValorProdSchema.js',...EXTRA,MANIFEST];
 const check=(v,c)=>{if(!v)throw Error(c);};
 const canonical=v=>Array.isArray(v)?'['+v.map(canonical).join(',')+']':v&&typeof v==='object'?'{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+canonical(v[k])).join(',')+'}':JSON.stringify(v);
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
@@ -116,10 +118,22 @@ function inventory(m,names,read,oldRead){
 function blob(ref,file){const exists=git(['ls-tree',ref,'--',file]);return exists?run('/usr/bin/git',['show',ref+':'+file],{encoding:null}):null;}
 function verify(version){
  check(/^[a-f0-9]{40}$/.test(version||''),'VALOR_PROD_SHA_INVALIDO');
- git(['fetch','origin','main']);check(git(['rev-parse','origin/main'])===version&&git(['rev-parse',version+'^'])===BASE,'VALOR_PROD_MAIN_OU_BASE_DIVERGENTE');
+ git(['fetch','origin','main']);const parent=git(['rev-parse',version+'^']);check(git(['rev-parse','origin/main'])===version&&[BASE,PATCH_BASE].includes(parent),'VALOR_PROD_MAIN_OU_BASE_DIVERGENTE');
  const read=p=>{const b=blob(version,p);check(b!==null,'VALOR_PROD_ARQUIVO_AUSENTE');return b;},m=JSON.parse(read(MANIFEST));
  inventory(m,git(['diff','--name-only',BASE,version]).split(/\r?\n/).filter(Boolean),read,p=>blob(BASE,p));
+ if(parent===PATCH_BASE)repairInventory(git(['diff','--name-only',PATCH_BASE,version]).split(/\r?\n/).filter(Boolean),JSON.parse(blob(PATCH_BASE,MANIFEST)),m);
  check(!git(['diff','--diff-filter=D','--name-only',BASE,version]),'VALOR_PROD_EXCLUSAO_NEGADA');return m;
+}
+function repairInventory(changed,old,next){
+ check(changed.length>0&&changed.every(p=>FIX_FILES.includes(p)),'VALOR_PROD_CORRECAO_FORA_DO_ESCOPO');
+ check(canonical(old.files.map(f=>f.path))===canonical(next.files.map(f=>f.path)),'VALOR_PROD_CORRECAO_ESCOPO_DIVERGENTE');
+ for(const f of next.files){const prior=old.files.find(p=>p.path===f.path);check(prior.old_sha256===f.old_sha256&&(FIX_FILES.includes(f.path)||prior.sha256===f.sha256),'VALOR_PROD_CORRECAO_RUNTIME_DIVERGENTE');}
+}
+function repairedState(s,version,manifest){
+ check(['arquivos_prontos','corrigindo_preflight'].includes(s.phase)&&[PATCH_BASE,version].includes(s.version)&&(s.version===PATCH_BASE||s.correction?.from===PATCH_BASE&&s.correction?.to===version),'VALOR_PROD_CORRECAO_ESTADO_INVALIDO');
+ check(!s.correction||s.correction.to===version,'VALOR_PROD_CORRECAO_ALVO_DIVERGENTE');
+ repairInventory(['backend/scripts/autorizacaoValorProdSchema.js'],{files:s.files},manifest);
+ return{...s,version,correction:{from:PATCH_BASE,to:version},phase:'arquivos_prontos',files:manifest.files.map(f=>({...s.files.find(p=>p.path===f.path),...f}))};
 }
 function atomic(file,bytes,mode=0o600){const tmp=file+'.tmp-'+crypto.randomUUID();fs.writeFileSync(tmp,bytes,{mode,flag:'wx',flush:true});fs.renameSync(tmp,file);}
 function state(){privateStat(STATE,true);privateStat(STATE+'/estado.json');return JSON.parse(fs.readFileSync(STATE+'/estado.json','utf8'));}
@@ -167,7 +181,7 @@ function protectedCheck(s,allowRestart=false){same(s.protected,snapshot(!allowRe
 function report(s){console.log(JSON.stringify({outcome:'AUTORIZACAO_VALOR_BACKEND_PROD_PRONTO',phase:s.phase,commit:s.version,migration:'202610260001_pagamento_autorizacao_valor.js',node:NODE,
  somente_duas_colunas_json_novas:true,financial_data_writes:0,external_calls:0,automatico_nsdocs_desligado:true,dev_experience_daemon_nodes_env_dumps_preservados:true,plano_historico_xmls_preservados:true,frontend_liberado:false}));}
 async function main(action,version){
- check(['preparar','aplicar','conferir'].includes(action),'VALOR_PROD_ACAO_INVALIDA');
+ check(['preparar','corrigir-preflight','aplicar','conferir'].includes(action),'VALOR_PROD_ACAO_INVALIDA');
  check(process.platform==='linux'&&process.arch==='x64'&&process.getuid()===1000&&process.version==='v24.22.1'&&fs.realpathSync(process.execPath)===NODE&&fs.realpathSync(process.cwd())===ROOT&&!process.env.NODE_OPTIONS&&process.env.NODE_TLS_REJECT_UNAUTHORIZED!=='0'&&process.env.ALLOW_SCHEMA_MIGRATIONS!=='true','VALOR_PROD_CONTEXTO_INVALIDO');
  check(fs.realpathSync(ROOT+'/.git')===ROOT+'/.git'&&git(['branch','--show-current'])==='main','VALOR_PROD_GIT_INVALIDO');
  if(action==='conferir'){
@@ -175,6 +189,14 @@ async function main(action,version){
   sourceCheck(s);protectedCheck(s,true);doctor(s);check(await health(),'VALOR_PROD_HEALTH_FALHOU');progress();report(s);return;
  }
  return withLocks(async()=>{
+  if(action==='corrigir-preflight'){
+   const s=state(),m=verify(version),head=git(['rev-parse','HEAD']);
+   check(git(['rev-parse',version+'^'])===PATCH_BASE&&[PATCH_BASE,version].includes(head)&&!git(['status','--porcelain','--untracked-files=no']),'VALOR_PROD_CORRECAO_HEAD_DIVERGENTE');
+   const next=repairedState(s,version,m);protectedCheck(s);progress();check(await health(),'VALOR_PROD_HEALTH_FALHOU');
+   if(head===PATCH_BASE){sourceCheck(s);s.correction=next.correction;save(s,'corrigindo_preflight');git(['merge','--ff-only',version]);}
+   sourceCheck(next);protectedCheck(s);save(next,'arquivos_prontos');
+   console.log(JSON.stringify({outcome:'AUTORIZACAO_VALOR_PREFLIGHT_CORRIGIDO',commit:version,phase:'arquivos_prontos',restarts:0,migrations:0,database_writes:0,env_preservado:true,dev_preservado:true}));return;
+  }
   if(action==='preparar'){
    check(!fs.existsSync(STATE)&&!git(['status','--porcelain','--untracked-files=no']),'VALOR_PROD_ESTADO_OU_TRACKED_ALTERADO');
    const m=verify(version),head=git(['rev-parse','HEAD']);check([BASE,OLD].includes(head),'VALOR_PROD_HEAD_FORA_DA_BASE');git(['merge-base','--is-ancestor',head,version]);
@@ -204,7 +226,7 @@ async function main(action,version){
   report(s);
  });
 }
-module.exports={main,inventory,hash,canonical,BASE,OLD,FILES,EXTRA,MANIFEST,QA,automaticOff,same,restartNeeded,confirmations};
+module.exports={main,inventory,hash,canonical,BASE,OLD,PATCH_BASE,FILES,EXTRA,MANIFEST,QA,automaticOff,same,restartNeeded,confirmations,repairInventory,repairedState};
 if(require.main===module||process.argv[1]==='-')main(process.argv[2],process.argv[3]).catch(e=>{
  console.error(/^VALOR_PROD_[A-Z0-9_]+$/.test(e.message||'')?e.message:'VALOR_PROD_INTERROMPIDO_SEM_SEGREDOS');
  console.error('Preserve estado e locks existentes; nao force Git nem repita capturas. Envie somente esta saida.');process.exitCode=1;

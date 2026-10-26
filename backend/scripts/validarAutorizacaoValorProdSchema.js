@@ -1,6 +1,21 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const op=require('./autorizacaoValorProdSchema');
+test('CLI carrega .env antes de validar o ambiente inicial do PM2, sem sobrescrever exports',()=>{
+ const cp=require('node:child_process');
+ for(const existing of[false,true]){
+  const script=`const assert=require('node:assert/strict'),Module=require('node:module'),load=Module._load,events=[];
+   ${existing?"process.env.DB_HOST='export-preservado';":"delete process.env.DB_HOST;"}
+   Module._load=function(id,...args){
+    if(id==='dotenv')return{config:opts=>{assert.equal(opts.quiet,true);assert.equal(opts.override,false);events.push('dotenv');process.env.DB_HOST??='config-do-arquivo';}};
+    if(id.endsWith('/manual/runtime'))return{assertProdProcess:()=>{events.push('validacao');assert.equal(process.env.DB_HOST,'${existing?'export-preservado':'config-do-arquivo'}');},withProdReadDatabase:async()=>({somente_leitura:true})};
+    return load.call(this,id,...args);
+   };
+   require('./scripts/autorizacaoValorProdSchema').main(['--conferir']).then(r=>{assert(r.somente_leitura);assert.deepEqual(events,['dotenv','validacao']);}).catch(()=>{process.exitCode=1;});`;
+  const env={...process.env};delete env.NODE_OPTIONS;delete env.NODE_TLS_REJECT_UNAUTHORIZED;delete env.ALLOW_SCHEMA_MIGRATIONS;
+  const r=cp.spawnSync(process.execPath,['-e',script],{cwd:require('node:path').resolve(__dirname,'..'),env,encoding:'utf8',timeout:10000});assert.equal(r.status,0,r.stderr);
+ }
+});
 function fixture(){
  const executed=new Set(),columns=[],calls=[];let failSecond=false;
  const db={async query(sql,opts){calls.push(sql);

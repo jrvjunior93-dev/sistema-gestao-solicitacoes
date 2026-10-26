@@ -44,6 +44,9 @@ async function apply(db,dependencies={}){
 }
 async function main(args){
  check(args.length===1&&['--conferir','--aplicar'].includes(args[0]),'VALOR_PROD_ARGUMENTOS_INVALIDOS');
+ // /proc/PID/environ contem o ambiente inicial, nao as variaveis carregadas
+ // pelo dotenv dentro do backend. Carregar antes de validar, sem sobrescrever exports.
+ require('dotenv').config({quiet:true,override:false});
  const runtime=require('../src/modules/fiscal/services/nsdocsHistorical/manual/runtime');runtime.assertProdProcess();
  check(!process.env.NODE_OPTIONS&&process.env.NODE_TLS_REJECT_UNAUTHORIZED!=='0'&&process.env.ALLOW_SCHEMA_MIGRATIONS!=='true','VALOR_PROD_AMBIENTE_INSEGURO');
  if(args[0]==='--conferir')return runtime.withProdReadDatabase(async db=>{await identity(db.query.bind(db));return state(db.query.bind(db));});

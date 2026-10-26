@@ -5,6 +5,22 @@ function manifest(){return{base:op.BASE,migration:'202610260001_pagamento_autori
  files:op.FILES.map(p=>({path:p,sha256:op.hash(p),old_sha256:p.includes('migration')?null:op.hash('old:'+p)})),
  extra:op.EXTRA.map(p=>({path:p,sha256:op.hash(p)}))};}
 const names=()=>[...op.FILES,...op.EXTRA,op.MANIFEST],old=p=>p.includes('migration')?null:'old:'+p;
+test('correcao permite somente bootstrap/testes/operador; runtime financeiro e migration imutaveis',()=>{
+ const previous=manifest(),next=structuredClone(previous);next.files.find(f=>f.path==='backend/scripts/autorizacaoValorProdSchema.js').sha256='novo';
+ op.repairInventory(['backend/scripts/autorizacaoValorProdSchema.js'],previous,next);
+ for(const p of['backend/src/services/pagamentoManualFilaService.js','backend/migrations/202610260001_pagamento_autorizacao_valor.js','frontend/src/App.jsx'])
+  assert.throws(()=>op.repairInventory([p],previous,next));
+ next.files.find(f=>f.path==='backend/src/services/pagamentoManualFilaService.js').sha256='alterado';assert.throws(()=>op.repairInventory(['backend/scripts/autorizacaoValorProdSchema.js'],previous,next));
+});
+test('retomada de atualizacao parcial mantem snapshot original, backup e nenhuma autorizacao de restart',()=>{
+ const m=manifest(),s={phase:'arquivos_prontos',version:op.PATCH_BASE,files:m.files.map(f=>({...f,old:'backup-original'})),protected:snapshot(),data:[['plano','hash']]};
+ const version='a'.repeat(40),next=op.repairedState(s,version,m);assert.equal(next.phase,'arquivos_prontos');assert.equal(next.version,version);
+ assert.equal(next.files[0].old,'backup-original');assert.deepEqual(next.protected,s.protected);assert.deepEqual(next.data,s.data);
+ assert.deepEqual(op.repairedState({...s,phase:'corrigindo_preflight',correction:{to:version}},version,m),next);
+ assert.deepEqual(op.repairedState(next,version,m),next);
+ for(const phase of['preparado','schema_pronto','reiniciando','aplicado'])assert.throws(()=>op.repairedState({...s,phase},version,m));
+ assert.throws(()=>op.repairedState({...s,correction:{to:'b'.repeat(40)}},version,m));
+});
 test('manifesto exato rejeita frontend, configuracao fiscal/NSDOCS, exclusao e hash alterado',()=>{
  op.inventory(manifest(),names(),p=>p,old);
  for(const file of['frontend/src/App.jsx','backend/.env','backend/src/modules/fiscal/services/fiscalS3Service.js','backend/src/modules/fiscal/services/nsdocsHistorical/manual/complement/plan.js'])

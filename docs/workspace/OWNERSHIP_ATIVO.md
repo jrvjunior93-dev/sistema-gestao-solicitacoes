@@ -6496,4 +6496,5 @@ e ownership liberado para publicacao dev. outputs/ permanece fora do commit.
 -26/10/2026: prova backend7e6cf469 recebida; reserva documental/publicacao frontend concluida para commit/push autorizado. Sem EC2 ou alteracao de NSDOCS/DEV nesta etapa.
 
 ## Promocao de autorizacao parcial/moeda para main - 2026-10-26
+- Retomada: branch codex/autorizacao-valor-prod-preflight-20261026 a partir de c405f805; ownership exclusivo de doctor/teste, aplicador/teste/manifesto, README e handoff desta promocao. Corrigir carregamento do .env antes da validacao, mantendo exports. Diagnostico EC2 somente leitura; codigo/migration/restart somente pelos comandos executados pelo usuario. Sem delegacao.
 - Agente desta conversa: reserva os arquivos funcionais do pacote fc369151/ba7393ab/ed211fab no worktree outputs/worktree-autorizacao-valor-main, novo doctor PROD, aplicador/manifesto/testes/roteiro e handoff. Base 920f639c; backend e frontend separados. Preservar S3/NSDOCS PROD e DEV. Somente preparar/testar/publicar codigo e fornecer comandos; nao aplicar ou reiniciar EC2 pelo agente. Sem delegacao.

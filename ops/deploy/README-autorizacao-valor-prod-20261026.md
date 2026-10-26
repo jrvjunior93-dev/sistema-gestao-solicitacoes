@@ -33,6 +33,10 @@ O aplicador faz a migration especifica; nao rodar migrate geral. O caminho do No
 
 ## Interrupcao e retomada
 
+Correcao do preflight apos c405f805: `/proc/PID/environ` fornece o ambiente inicial do processo, enquanto DB_HOST e outras variaveis sao carregadas pelo dotenv no backend. O doctor agora carrega `.env` com `override:false` antes de validar o contexto; nao altera arquivo ou ambiente PM2. A tentativa anterior interrompeu em arquivos_prontos sem colunas novas, registro de migration ou restart.
+
+Para esse estado ja preparado, nao repetir preparar: usar o aplicador atualizado por stdin com `corrigir-preflight COMMIT_CORRECAO`. Essa acao confere o commit filho de c405f805, o manifesto integral e o delta limitado a doctor/testes/operador/documentacao; faz fast-forward e atualiza os hashes esperados do estado, preservando backups e snapshots originais. Nao aplica schema e nao reinicia. Se a conexao cair entre Git e estado, a mesma acao admite retomar. Depois executar o mesmo aplicar/conferir, com as confirmacoes atuais de backup/timer/manutencao. Frontend continua retido.
+
 Preservar `.git/fluxy-autorizacao-valor-prod-20261026` e a saida de erro. Se uma etapa falhar, enviar a saida antes de agir. Reexecucao do mesmo `aplicar` retoma as fases verificadas; nao usa reset/force, nao repete DDL ja presente nem um restart ja contabilizado. Locks preexistentes bloqueiam a operacao e nunca sao removidos pelo aplicador. Sem reversao destrutiva das novas colunas de auditoria.
 
 ## Homologacao depois do frontend
