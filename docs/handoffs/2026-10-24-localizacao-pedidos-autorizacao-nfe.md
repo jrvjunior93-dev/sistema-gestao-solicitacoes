@@ -51,7 +51,7 @@ notas vinculadas apos o envio exigirao atualizacao/reenvio do dossie.
 ## Relatorio implementado localmente
 
 - Nova pagina `/compras/relatorios/localizar-pedidos` e GET correspondente.
-- Filtros combinados AND: q, descricao da solicitacao, codigo SOL/SC/Sienge,
+- Filtros combinados AND: q, descricao da solicitacao, codigo SOL/SC/externo,
   pedido PC/ID/externo, fornecedor/CNPJ sem pontuacao, item ativo, valor minimo/
   maximo da aquisicao, obra, status e data de criacao no dia operacional do ES.
 - Busca geral separa palavras e as combina entre campos da compra e itens.

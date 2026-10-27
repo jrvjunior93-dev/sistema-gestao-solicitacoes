@@ -59,7 +59,7 @@ readonly e restart somente backend-solicitacoes, executado pelo operador.
 
 Implementacao local ainda nao publicada, baseada em refactor/frontend100620bf.
 Compras > Relatorios > Localizar pedidos permite combinar busca geral, descricao
-da solicitacao, codigo SOL/SC/Sienge, numero PC/ID/externo, fornecedor/CNPJ,
+da solicitacao, codigo SOL/SC/externo, numero PC/ID/externo, fornecedor/CNPJ,
 descricao/observacao de item ativo, valores minimo/maximo da aquisicao, obra,
 status e periodo de criacao. Consulta explicita pelo botao Consultar.
 

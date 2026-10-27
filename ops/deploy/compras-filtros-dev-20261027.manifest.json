@@ -1,0 +1,178 @@
+{
+  "base": "d4c2a1042dac21502b6b6eb38383cfc30caa4fee",
+  "main": "46ac88de88957ffc15e8b0db45dfcd6eed7bc34e",
+  "files": [
+    {
+      "path": "backend/package.json",
+      "sha256": "99a56fd6f635372e0ece01b6bd86ad3267235fd7042b65e8eaf79f4a5c70d56a"
+    },
+    {
+      "path": "backend/src/controllers/CotacaoFornecedorController.js",
+      "sha256": "ba66ab57a906c2a1b8f411637e02be0144073d00fb10af019aa1feb8cbb983f2"
+    },
+    {
+      "path": "backend/src/controllers/SolicitacaoCompraController.js",
+      "sha256": "3ce62f9651067790e6e1fc2c5b7981e3395cebf28717fff5406c8c5d9149f606"
+    },
+    {
+      "path": "backend/src/generated/navegacaoFonteUnica.cjs",
+      "sha256": "4a633e36a30e7e4c05dad23919b325af51ee1ef59275e115961ba6ae6b0f159a"
+    },
+    {
+      "path": "backend/src/modules/fiscal/services/fiscalProdS3Policy.json",
+      "sha256": "02a7b21086d169df9d8d6d6a172fc47c26a0ca3c7d5d70728beb0f0954b241f6"
+    },
+    {
+      "path": "backend/src/modules/fiscal/services/fiscalProdS3Role.js",
+      "sha256": "d0f55dbb218e02572334f2689a776d052788df163aaadea048fd1e17014b99d5"
+    },
+    {
+      "path": "backend/src/modules/fiscal/services/fiscalS3Service.js",
+      "sha256": "6cd4ddeb7c4dbc3ae97b30a472c41c3418edb2adc730b0fedb55219535fd2dbd"
+    },
+    {
+      "path": "backend/src/modules/fiscal/services/nsdocsHistorical/manual/complement/discovery.js",
+      "sha256": "f3605723eaff02d5cbc55bdddcc75a1683a8fb5f5426639c9f3ad069e2b730ce"
+    },
+    {
+      "path": "backend/src/modules/fiscal/services/nsdocsHistorical/manual/complement/plan.js",
+      "sha256": "1e808ef296672bb0b6168cf55d4b491aefd2492b37ab947dba7fccc8963c09c2"
+    },
+    {
+      "path": "backend/src/services/pagamentoFilaAutocompleteService.js",
+      "sha256": "3fa72be1e8c2f23b62b701ee66d64c972bb26f0c62e58200e093c2a51fa2993b"
+    },
+    {
+      "path": "backend/src/services/pagamentoFilaLiquidacaoService.js",
+      "sha256": "914f7d6609595e71f1ef1a34ca372ce7e959afea240e77b8e86805ec260320d5"
+    },
+    {
+      "path": "backend/src/services/rhPagamentoSolicitacaoDomain.js",
+      "sha256": "64c7ca5fa1c762ff26b34099cd8b5aff0e24d20efef115c7f767d2739426316b"
+    },
+    {
+      "path": "backend/src/services/rhPagamentoSolicitacaoService.js",
+      "sha256": "d1ca4dfe49b39402156d3dc6fbbd3dac78fd5d21c46acb1021b7d7f8404c1e56"
+    },
+    {
+      "path": "backend/src/services/solicitacoesCompraPaginacao.js",
+      "sha256": "4440d6b48eddb9affb58cbddb8f56e4c65e5ea730e079eaa87d92c452deb8b45"
+    },
+    {
+      "path": "backend/src/services/tituloFinanceiroService.js",
+      "sha256": "c4eff65d0e5e1a5cdec4a781146836cbce8a553a76a9993556c4256d8c97674b"
+    },
+    {
+      "path": "backend/src/services/tituloSolicitacaoCodigoFiltro.js",
+      "sha256": "21231e3da69245bc9a5b9c67a674d54364790989b42573706ad1097f11f15eab"
+    },
+    {
+      "path": "backend/src/validators/financialValidators.js",
+      "sha256": "91a99b6e0f20bdcc83b11fea6db9d8d2e07f7a0bd31dfa7172cde14ac9066a50"
+    },
+    {
+      "path": "backend/src/validators/paymentValidators.js",
+      "sha256": "fcab4ea7c71942b29cd1aacfb95f28cfe23e69288a093a9a7103d9d84986e9bc"
+    },
+    {
+      "path": "backend/scripts/helpers/semRedeQa.js",
+      "sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf"
+    },
+    {
+      "path": "backend/scripts/validarCartaoParcelamentoBaixa.js",
+      "sha256": "5dabc03a040cc3268109cd295a582afa9589cb219cdc790a0ce293e90b01d652"
+    },
+    {
+      "path": "backend/scripts/validarCompraCotacaoEnvio.js",
+      "sha256": "4a9cf0b832bf1ba03d53d34eb015812d9124ab2750b349b5c9dd44063ff848a7"
+    },
+    {
+      "path": "backend/scripts/validarCompraRemanejamento.js",
+      "sha256": "b2c429482c9178f803f6b9aa851e0c412c5d3cb8e3daf4da47ed13181196b5de"
+    },
+    {
+      "path": "backend/scripts/validarCompraReorganizacao.js",
+      "sha256": "ead9a7c22cb97fa04eb431262acd1d3cbc376ede820306d226c2a2f0b7e3d902"
+    },
+    {
+      "path": "backend/scripts/validarComprasCarregamentoSemProduto.js",
+      "sha256": "5c13436fef74b3e322fbafd624fb100962d6025bd9e88ed8c98f15059ee337e7"
+    },
+    {
+      "path": "backend/scripts/validarFilaBaixaComposta.js",
+      "sha256": "02bb0514d36cde68687c52faf0920c72f05828533ff2e044548cdb732cc2227f"
+    },
+    {
+      "path": "backend/scripts/validarFilaBaixaEstorno.js",
+      "sha256": "337c0e3d0fee8263cc0cfd3999761246cf8fd556459b1d31783b23a6758f550c"
+    },
+    {
+      "path": "backend/scripts/validarFilaCartaoRepetido.js",
+      "sha256": "2779e6ca006dc19e508a129a6272e0d0adadaad5cf166878e088ed364ecb16ed"
+    },
+    {
+      "path": "backend/scripts/validarFilaFormasDisponiveis.js",
+      "sha256": "b7abca6828da113d9a4138a3bd24cea5b244c2ed57f3f64519b8f43641bf3b56"
+    },
+    {
+      "path": "backend/scripts/validarFilaLiquidacaoRateada.js",
+      "sha256": "e5ce8a295ef0c40de42b9073ecac3ac5d59f130e3ea3448d631a3dc70db9659d"
+    },
+    {
+      "path": "backend/scripts/validarFiscalS3RoleProd.js",
+      "sha256": "ec3f95f68e6e5c7b1e8d522e116f2775060cc147a54b667a2e01d8b061bca2c7"
+    },
+    {
+      "path": "backend/scripts/validarItensCotacaoDetalhe.js",
+      "sha256": "6276e9c51c9404e2c20acaef12c908808dd1e496db6dde131eaa1ffeedc76ce8"
+    },
+    {
+      "path": "backend/scripts/validarNsdocsComplemento.js",
+      "sha256": "562b534fb4c3c19a143296c56e78b392390d58ba5ae5333bc7428233c96a530c"
+    },
+    {
+      "path": "backend/scripts/validarNsdocsDescobertaOtimizada.js",
+      "sha256": "47d86ac922b0fef8cab85160f899d278bfe798c76e4cd8ed266610e141da91b8"
+    },
+    {
+      "path": "backend/scripts/validarNsdocsManualDev.js",
+      "sha256": "61cdbd94a46683c7adcae8153b9d0b5b9236765170e38b9b3a33f932fddfa11e"
+    },
+    {
+      "path": "backend/scripts/validarNsdocsV2.js",
+      "sha256": "f0d9709fb79dc23e118220efc1bba238d9228488de44ad255913eb9919251596"
+    },
+    {
+      "path": "backend/scripts/validarPedidoEntregas.js",
+      "sha256": "c11fb43a9957b640bf66a685f9786f29fc37ef2c7d6e2063ac13bb7fc0758ddc"
+    },
+    {
+      "path": "backend/scripts/validarPrevisaoEntregaCotacao.js",
+      "sha256": "51b008163579ead3102227a8c1702d90e9345182d0e701336e9d01aeb88105de"
+    },
+    {
+      "path": "backend/scripts/validarRhPagamentoSolicitacao.js",
+      "sha256": "53f357a6841aa0c5fe7b6711ad996ab2b6f8ca1af6093b065520622e8848923a"
+    },
+    {
+      "path": "backend/scripts/validarSolicitacoesCompraPaginacao.js",
+      "sha256": "81567e6dd617990899efc46bb73cb2440ece1b351fa4889d051b9b9ebdc4a611"
+    },
+    {
+      "path": "backend/scripts/validarTitulosPorPedido.js",
+      "sha256": "a8c7c3453fbbb0d20fdac7b0ddce0c43e7975fe52dcda75208c66ee527a214a2"
+    },
+    {
+      "path": "backend/scripts/validarTitulosSolicitacaoCodigo.js",
+      "sha256": "bb3dde9bd8eb787d62916b54ceea24cb70a2f9769a09b3ee433086541fc48991"
+    },
+    {
+      "path": "ops/deploy/atualizar-dev-compras-filtros-20261027.cjs",
+      "sha256": "91e6c55d523a93c362d5da4d5ccde718c5ad7537b3ea719611177b121bc46374"
+    },
+    {
+      "path": "ops/deploy/atualizar-dev-compras-filtros-20261027.test.cjs",
+      "sha256": "c34397b17ed7d9f203cba0202aeaa0dced778e07118191eed2355a5da3b23b9f"
+    }
+  ]
+}
