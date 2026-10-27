@@ -1,5 +1,9 @@
 # Ownership Ativo
 
+## Chamada real de heap no snapshot - 2026-10-27
+- Agente principal reserva aplicador/testes/manifesto/README e docs para corrigir slice(1) remanescente na chamada real do snapshot. O titulo PM2 era removido antes de validar. Teste deve extrair e executar a expressao real com o /proc sanitizado informado pelo operador. Nao alterar controllers, heap/env/dumps, DEV ou registros. Publicacao main permanece no escopo autorizado; nenhuma EC2 pelo agente.
+- Concluido: slice(1) removido, chamada real e snapshot completo em VM aprovados; 13testes totais do aplicador/inventario, sintaxe e diff aprovados. Controllers/QA funcional identicos ao51e8. Ownership liberado com este commit; executar novo preparar manual com SHA/hash novos, sem remover estado ou repetir aumento de heap.
+
 ## Correcao do preflight PM2 - 2026-10-27
 - Agente principal reserva aplicador/testes/manifesto/README compras-oom-20261027 e handoff/ownership. Operador confirmou configuracao PM2 e metadado de processo4096, sem NODE_OPTIONS, com titulo PM2 reescrito e nenhum estado de deploy. Corrigir esse falso bloqueio preservando runtime/heap/pares/env/dumps; controllers/QA funcional nao mudam. Publicacao main e comandos manuais continuam autorizados; nenhuma EC2 pelo agente ou escrita em registros.
 - Correcao concluida: 11 testes do aplicador aprovados (inclui cenario real e casos negativos); sintaxe/diff aprovados. Controllers e QA funcional identicos ao51e8fef7. Ownership liberado com este commit; proximo passo e execucao manual do novo SHA pelo operador, sem apagar estados/locks ou reaplicar heap.

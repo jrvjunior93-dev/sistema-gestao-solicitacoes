@@ -1,6 +1,6 @@
 {
   "base": "2f6bd864ebda5d87e13852dc605c1a6c881abbf2",
-  "release_parent": "51e8fef738da25b78970664b6bc3eebeb59e4e85",
+  "release_parent": "ae7f9539e7c64a0d042baae2d939f18a09a2a60c",
   "runtime_files": 2,
   "database_writes": 0,
   "migrations": 0,
@@ -25,23 +25,23 @@
   "extra": [
     {
       "path": "ops/deploy/atualizar-prod-compras-oom-20261027.cjs",
-      "sha256": "b32a0151eb8f96cbc1e8e362e2f5122da93a5760414388c27c3a036b55733b40"
+      "sha256": "d12bb7410ad78d5891291378b41cf874a23365299e54be93cc426872e2def5eb"
     },
     {
       "path": "ops/deploy/atualizar-prod-compras-oom-20261027.test.cjs",
-      "sha256": "21017ae21b4693a7808f23ce165f65cf2342ac4caee784876a8f25844cc9a973"
+      "sha256": "03153a437b3be22b393b3a7a6f781b732bf02ed085165bba1cc2c46a2c9cfef3"
     },
     {
       "path": "ops/deploy/README-compras-oom-prod-20261027.md",
-      "sha256": "b3a4060cf1ab1e8e739cd982a17c1f162f81ed047299ba97a027921f14c0b1c7"
+      "sha256": "e3da77fd8a467db40538c62b80bd471b28c08f2d1d582d12d02672f37584c70b"
     },
     {
       "path": "docs/handoffs/2026-10-27-compras-oom-carregamento.md",
-      "sha256": "e9c27c405c0ce5beebc758d63334754873dbfca91ab39ec43edf674b2b8268b9"
+      "sha256": "fbc540a5d024fd1b72666626bb8d6c0103896ed5f9b055703c99073f78b013be"
     },
     {
       "path": "docs/workspace/OWNERSHIP_ATIVO.md",
-      "sha256": "fe83b6f1f126ba4b35c4081b21fb0b3ec7184dbb826b1d4bcdc85456c0789a18"
+      "sha256": "22d3204eaa168c8fdb778dda7ea3a982992025cec8236cd951420dfebe61f2b5"
     }
   ]
 }

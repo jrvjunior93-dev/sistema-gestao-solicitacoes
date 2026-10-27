@@ -42,4 +42,6 @@ O heap 4096 e preservado apenas como ja esta no PM2 em memoria. Este deploy nao 
 
 O primeiro preparar bloqueou antes de criar estado porque exigia flag em cmdline. Leitura manual de 27/10/2026 17:29:47Z confirmou PM2/configuracao e metadado do filho4096, NODE_OPTIONS ausente e titulo PM2 reescrito; estado de deploy inexistente. Preflight corrigido e testado para esse caso, recusando limites ausentes/divergentes/ambiguos, titulo desconhecido e NODE_OPTIONS. Nao reaplicar heap, reiniciar ou remover locks por causa dessa mensagem.
 
-Utilizar o NOVO SHA publicado no chat, que tem como pai 51e8fef738da25b78970664b6bc3eebeb59e4e85. O manifesto cobre a cadeia fechada desde2f6 e mantem os mesmos controllers/QA funcional. Nao reutilizar o commit anterior com o aplicador novo.
+Utilizar o NOVO SHA publicado no chat, que tem como pai ae7f9539e7c64a0d042baae2d939f18a09a2a60c, avo51e8fef738da25b78970664b6bc3eebeb59e4e85 e base2f6. O manifesto cobre essa cadeia fechada e mantem os mesmos controllers/QA funcional. Nao reutilizar um commit anterior com o aplicador novo.
+
+O segundo preparar mostrou que a chamada do snapshot ainda removia argv[0] antes de conferir o titulo unico. Essa remocao foi corrigida. Teste novo extrai e executa a expressao REAL do snapshot com cmdline sanitizada do operador: falhava antes e passa depois, inclusive argv original e casos negativos. O limite continua exigido; nenhum novo aumento de heap, restart ou coleta remota pelo agente foi feito para corrigir o aplicador.

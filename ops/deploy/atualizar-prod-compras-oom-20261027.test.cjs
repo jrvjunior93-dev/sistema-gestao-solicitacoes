@@ -1,6 +1,34 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),cp=require('node:child_process'),path=require('node:path');
 const op=require('./atualizar-prod-compras-oom-20261027.cjs');
+test('snapshot COMPLETO reproduz PM2/proc do operador sem acesso ao host ou rede',()=>{
+ const vm=require('node:vm'),source=fs.readFileSync(__dirname+'/atualizar-prod-compras-oom-20261027.cjs','utf8');
+ const home='/home/ubuntu',backend=home+'/sistema-gestao-solicitacoes-main/backend',node=home+'/fluxy-node24-prod/node-v24.22.1-linux-x64/bin/node',daemon='/opt/fluxy-node24-pm2/node-v24.22.1-linux-x64/bin/node';
+ function actual({configured='--max-old-space-size=4096',metadata='--max-old-space-size=4096',options='',badDev=false}={}){
+  const rows=[['backend-solicitacoes',2050,backend,node],['backend-dev',710,home+'/sistema-gestao-solicitacoes-dev/backend',home+'/fluxy-node24-dev/node-v24.22.1-linux-x64/bin/node'],['fluxy-experience-api',713,home+'/fluxy-experience/api',home+'/fluxy-node24-experience/node-v24.22.1-linux-x64/bin/node']];
+  const files=new Map([[home+'/.pm2/pm2.pid','42']]),links=new Map([['/proc/42/exe',daemon]]);
+  const apps=rows.map(([name,pid,cwd,exe],id)=>{links.set('/proc/'+pid+'/exe',badDev&&id===1?'outro-node':exe);links.set('/proc/'+pid+'/cwd',cwd);files.set(cwd+'/.env','NSDOCS_V2_ENABLED=false');files.set('/proc/'+pid+'/cmdline','node '+cwd+'/server.js\0\0');files.set('/proc/'+pid+'/environ',id===0?'node_args='+metadata+'\0NODE_OPTIONS='+options+'\0':'');
+   return{name,pid,pm_id:id,pm2_env:{pm_cwd:cwd,pm_exec_path:cwd+'/server.js',exec_interpreter:exe,status:'online',exec_mode:'fork_mode',node_args:id===0?[configured]:[],restart_time:id===0?9:0}};});
+  for(const f of ['/usr/bin/node',daemon,...rows.map(r=>r[3]),home+'/.pm2/dump.pm2',home+'/.pm2/dump.pm2.bak','/etc/systemd/system/pm2-ubuntu.service','/etc/systemd/system/pm2-ubuntu.service.d/30-fluxy-node24.conf'])files.set(f,'FIXTURE:'+f);
+  const fakeFs={readFileSync:(file,encoding)=>{assert(files.has(file),'Leitura fora da fixture: '+file);return encoding?files.get(file):Buffer.from(files.get(file));},readlinkSync:file=>{assert(links.has(file));return links.get(file);},lstatSync:()=>({isFile:()=>true,isSymbolicLink:()=>false,nlink:1,mode:0o100600,uid:1000})};
+  const fakeCp={spawnSync:(bin,args)=>{assert.equal(bin,daemon);assert.deepEqual(Array.from(args),['/usr/lib/node_modules/pm2/bin/pm2','jlist']);return{status:0,stdout:JSON.stringify(apps)};}};
+  function requireFixture(name){if(name==='node:fs')return fakeFs;if(name==='node:child_process')return fakeCp;if(name===backend+'/node_modules/dotenv')return{parse:()=>({NSDOCS_V2_ENABLED:'false'})};if(name==='node:crypto')return require(name);if(name==='node:http')return{};throw Error('REQUIRE_FORA_FIXTURE');}
+  const sandbox={module:{exports:{}},require:requireFixture,process:{argv:['node','qa']},Buffer,console};vm.runInNewContext(source+'\nmodule.exports.snapshotQa=snapshot;',sandbox);return sandbox.module.exports.snapshotQa();
+ }
+ const result=actual();assert.equal(result.apps[0].pid,2050);assert.equal(result.apps[0].restarts,9);assert.equal(result.apps[1].pid,710);assert.equal(result.apps[2].pid,713);
+ for(const config of [{configured:'--max-old-space-size=2304'},{metadata:''},{metadata:'--max-old-space-size=2304'},{options:'--max-old-space-size=1024'},{badDev:true}])assert.throws(()=>actual(config));
+});
+test('chamada REAL do snapshot preserva titulo PM2 de argv unico recebido do operador',()=>{
+ const vm=require('node:vm'),source=fs.readFileSync(__dirname+'/atualizar-prod-compras-oom-20261027.cjs','utf8');
+ const call=source.split(/\r?\n/).find(line=>line.trim().startsWith('heap4096(e.node_args,'));assert(call,'Chamada real do snapshot deve ser exercitada.');
+ function actual(raw,metadata='--max-old-space-size=4096'){
+  vm.runInNewContext(call,{heap4096:op.heap4096,e:{node_args:['--max-old-space-size=4096']},p:{pid:2050},env:{node_args:metadata},fs:{readFileSync:(file,encoding)=>{assert.equal(file,'/proc/2050/cmdline');assert.equal(encoding,'utf8');return raw;}}});
+ }
+ assert.doesNotThrow(()=>actual('node /home/ubuntu/sistema-gestao-solicitacoes-main/backend/server.js\0\0\0'));
+ assert.doesNotThrow(()=>actual('/home/ubuntu/fluxy-node24-prod/node-v24.22.1-linux-x64/bin/node\0--max-old-space-size=4096\0/usr/lib/node_modules/pm2/lib/ProcessContainerFork.js\0'));
+ assert.throws(()=>actual('titulo desconhecido\0'));
+ assert.throws(()=>actual('node /home/ubuntu/sistema-gestao-solicitacoes-main/backend/server.js\0','--max-old-space-size=2304'));
+});
 function manifest(){return{base:op.BASE,release_parent:op.RELEASE_PARENT,runtime_files:2,database_writes:0,migrations:0,heap_mib:4096,
  files:op.FILES.map(p=>({path:p,sha256:op.hash(p),old_sha256:op.hash('old:'+p)})),extra:op.EXTRA.map(p=>({path:p,sha256:op.hash(p)}))};}
 function snap(){return{daemon:'42',persisted:[['dump','hash']],apps:[
@@ -22,8 +50,8 @@ test('caso real: titulo PM2 oculta argv, mas configuracao e metadado do filho ma
  assert.throws(()=>op.heap4096(['--max-old-space-size=4096'],['--max-old-space-size=2304'],{node_args:'--max-old-space-size=4096'}));
  assert.throws(()=>op.heap4096(['--max-old-space-size=4096'],['--max-old-space-size=4096'],{node_args:'--max-old-space-size=2304'}));
 });
-test('cadeia publicada aceita somente correcao apos51e8 com base original2f6',()=>{
- op.releaseChain(op.RELEASE_PARENT,op.BASE);assert.throws(()=>op.releaseChain('other',op.BASE));assert.throws(()=>op.releaseChain(op.RELEASE_PARENT,'other'));
+test('cadeia publicada aceita somente correcao aposae7f/51e8 com base original2f6',()=>{
+ op.releaseChain(op.RELEASE_PARENT,op.PREVIOUS_PARENT,op.BASE);assert.throws(()=>op.releaseChain('other',op.PREVIOUS_PARENT,op.BASE));assert.throws(()=>op.releaseChain(op.RELEASE_PARENT,'other',op.BASE));assert.throws(()=>op.releaseChain(op.RELEASE_PARENT,op.PREVIOUS_PARENT,'other'));
 });
 test('heap4096 deve estar configurado e presente no processo real, sem conflitos',()=>{
  op.heap4096(['--max-old-space-size=4096'],['--max-old-space-size=4096','script.js'],{});

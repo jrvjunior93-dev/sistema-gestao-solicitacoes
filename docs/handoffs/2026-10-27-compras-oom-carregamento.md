@@ -1,5 +1,13 @@
 # Compras OOM: separar colecoes no carregamento - 27/10/2026
 
+## Chamada real do snapshot corrigida apos segundo bloqueio
+
+Segundo preparar de ae7f9539 retornou o mesmo HEAP_4096_NAO_CONFERIDO. Diagnostico local encontrou slice(1) na chamada real do snapshot, que descartava o unico titulo PM2 antes de chegar a funcao corrigida. Nao se tratava de outro problema no servidor. Novo teste extrai a expressao REAL do aplicador e a executa em VM com /proc/PID/cmdline sanitizado correspondente ao coletor: falha reproduzida ANTES de alterar; retirada somente a chamada slice(1), passando a manter toda a cmdline. Testa tambem argv original, titulo desconhecido e metadado2304. Guardas de4096/ausencia NODE_OPTIONS/pares/env/runtime/dumps preservadas, sem mudanca de controllers ou QA funcional.
+
+Nova cadeia fechada exige pai ae7f9539, avo51e8fef7 e bisavoBASE2f6. Publicacao de continuacao autorizada na main; preparar ainda deve partir dos HEADs originais2f6/d7 com fontes antigas intactas. Nenhum estado de deploy criado pelo erro de heap (snapshot anterior ao mkdir); nao apagar/remover/reaplicarheap. Agente nao acessou EC2 nem reiniciou/alterou registros. Usar novo SHA/hash do chat; comandos preparar/aplicar continuam manuais pelo operador. As secoes abaixo registram historico das tentativas anteriores.
+
+Validacao ampliada para a chamada REAL extraida do codigo e para snapshot COMPLETO executado em VM com fs/PM2 simulados (3 apps e caminhos exatos). Cenário de2050/710/713 com titulo unico e4GB passa; limites2304/ausentes, NODE_OPTIONS e NodeDEV diferente bloqueiam. Teste de chamada real falhou no codigo anterior e passou com a remocao de slice(1). Total13testes do aplicador/inventario aprovados, sintaxe e diff aprovados. Controllers e QA funcional continuam identicos ao51e8. Ownership liberado com este commit; resultado manual da EC2 ainda pendente.
+
 ## Preflight PM2 corrigido com evidencia real
 
 Primeiro preparar foi bloqueado por exigir4096 em /proc/PID/cmdline; nenhum estado/merge/restart ocorreu. Usuario executou coletor somente leitura: 2026-10-27T17:29:47.899Z PROD2050/restarts9 online, Nodeisolado/cwdcorretos, heap_pm2 e heap_metadado_processo4096 com1limite/semconflitos, cmdline semflag mas tituloPM2exato, NODE_OPTIONS ausente, estado_deploy_existefalse. DEV710/restarts0 eExperience713/restarts0 preservados. PM2 local confirma que reescreve process.title. Nao medirheapinterno por essa evidencia; nao reaplicar o limite, nao reiniciar apenas para corrigir o preflight.

@@ -4,7 +4,8 @@
 const fs=require('node:fs'),cp=require('node:child_process'),crypto=require('node:crypto'),http=require('node:http');
 const ROOT='/home/ubuntu/sistema-gestao-solicitacoes-main',BACKEND=ROOT+'/backend';
 const BASE='2f6bd864ebda5d87e13852dc605c1a6c881abbf2';
-const RELEASE_PARENT='51e8fef738da25b78970664b6bc3eebeb59e4e85';
+const RELEASE_PARENT='ae7f9539e7c64a0d042baae2d939f18a09a2a60c';
+const PREVIOUS_PARENT='51e8fef738da25b78970664b6bc3eebeb59e4e85';
 const STARTING_HEADS=[BASE,'d7d02aeb48ff2f2c8d8053ba34acdfe406242ee8'];
 const NODE='/home/ubuntu/fluxy-node24-prod/node-v24.22.1-linux-x64/bin/node';
 const DAEMON='/opt/fluxy-node24-pm2/node-v24.22.1-linux-x64/bin/node',CLI='/usr/lib/node_modules/pm2/bin/pm2';
@@ -54,7 +55,7 @@ function snapshot(){const ps=list();check(ps.length===3,'PROCESSOS_DIFERENTES');
   check(Number.isSafeInteger(p.pm_id)&&p.pid>1&&e.status==='online'&&e.pm_cwd===cwd&&e.exec_interpreter===node&&fs.readlinkSync(`/proc/${p.pid}/exe`)===node&&fs.readlinkSync(`/proc/${p.pid}/cwd`)===cwd,'APP_OU_NODE_DIFERENTE');
   const env=procEnv(p.pid);regular(cwd+'/.env');
   if(name===NAME){check(e.pm_exec_path===BACKEND+'/server.js'&&e.exec_mode==='fork_mode'&&(!e.watch||Array.isArray(e.watch)&&!e.watch.length),'CONFIG_PROD_DIFERENTE');
-   heap4096(e.node_args,fs.readFileSync(`/proc/${p.pid}/cmdline`,'utf8').split('\0').filter(Boolean).slice(1),env);
+   heap4096(e.node_args,fs.readFileSync(`/proc/${p.pid}/cmdline`,'utf8').split('\0').filter(Boolean),env);
    automaticOff(e,e.env,env,require(BACKEND+'/node_modules/dotenv').parse(fs.readFileSync(BACKEND+'/.env')));}
   const keys=['name','pm_cwd','pm_exec_path','exec_interpreter','exec_mode','args','node_args','watch','ignore_watch','cron_restart','max_memory_restart','autorestart','min_uptime','max_restarts','restart_delay','exp_backoff_restart_delay','kill_timeout','wait_ready','listen_timeout','namespace','merge_logs','time','log_date_format','pm_out_log_path','pm_err_log_path','pm_pid_path','instance_var','filter_env'];
   const policy={config:Object.fromEntries(keys.filter(k=>e[k]!==undefined).map(k=>[k,e[k]])),flat:upper(e),nested:upper(e.env)};
@@ -82,8 +83,8 @@ function inventory(m,names,read,oldRead){check(m.base===BASE&&m.release_parent==
  check(canonical([...names].sort())===canonical([...FILES,...EXTRA,MANIFEST].sort()),'ARQUIVOS_EXTRAS');
  for(const f of [...m.files,...m.extra])check(hash(read(f.path))===f.sha256,'HASH_DIVERGENTE');
  for(const f of m.files){const old=oldRead(f.path);check((old===null?null:hash(old))===f.old_sha256,'BASE_HASH_DIVERGENTE');}}
-function releaseChain(parent,grandparent){check(parent===RELEASE_PARENT&&grandparent===BASE,'BASE_DIVERGENTE');}
-function verify(version){check(/^[a-f0-9]{40}$/.test(version||''),'SHA_INVALIDO');git(['fetch','origin','main']);git(['merge-base','--is-ancestor',version,'origin/main']);releaseChain(git(['rev-parse',version+'^']),git(['rev-parse',RELEASE_PARENT+'^']));
+function releaseChain(parent,grandparent,greatgrandparent){check(parent===RELEASE_PARENT&&grandparent===PREVIOUS_PARENT&&greatgrandparent===BASE,'BASE_DIVERGENTE');}
+function verify(version){check(/^[a-f0-9]{40}$/.test(version||''),'SHA_INVALIDO');git(['fetch','origin','main']);git(['merge-base','--is-ancestor',version,'origin/main']);releaseChain(git(['rev-parse',version+'^']),git(['rev-parse',RELEASE_PARENT+'^']),git(['rev-parse',PREVIOUS_PARENT+'^']));
  const read=p=>{const bytes=blob(version,p);check(bytes!==null,'ARQUIVO_AUSENTE');return bytes;},m=JSON.parse(read(MANIFEST));
  inventory(m,git(['diff','--name-only',BASE,version]).split(/\r?\n/).filter(Boolean),read,p=>blob(BASE,p));
  check(!git(['diff','--diff-filter=D','--name-only',BASE,version]),'EXCLUSAO_NEGADA');
@@ -124,5 +125,5 @@ async function main(action,version){check(['preparar','aplicar','conferir'].incl
   check(git(['rev-parse','HEAD'])===s.version&&!git(['status','--porcelain','--untracked-files=no']),'HEAD_OU_TRACKED_DIVERGENTE');sourceCheck(s);
   await finish(s,{qa,baseline:()=>protectedCheck(s,'refresh'),save,restart:()=>restart(s),ready:async()=>{sourceCheck(s);protectedCheck(s,'one');check(await health(),'HEALTH_FALHOU');}});report(s);
  });}
-module.exports={main,BASE,RELEASE_PARENT,releaseChain,STARTING_HEADS,FILES,EXTRA,MANIFEST,SELF,TEST,QA,canonical,hash,inventory,oldSpace,heap4096,automaticOff,same,confirmations,restartNeeded,finish};
+module.exports={main,BASE,RELEASE_PARENT,PREVIOUS_PARENT,releaseChain,STARTING_HEADS,FILES,EXTRA,MANIFEST,SELF,TEST,QA,canonical,hash,inventory,oldSpace,heap4096,automaticOff,same,confirmations,restartNeeded,finish};
 if(require.main===module||process.argv[1]==='-')main(process.argv[2],process.argv[3]).catch(e=>{console.error(/^COMPRAS_OOM_PROD_[A-Z0-9_]+$/.test(e.message||'')?e.message:'COMPRAS_OOM_PROD_INTERROMPIDO_SEM_SEGREDOS');console.error('Nao repita reinicios nem remova estado ou locks. Envie somente esta saida.');process.exitCode=1;});
