@@ -1,5 +1,26 @@
 # Modulo FINANCEIRO
 
+## Titulos: codigo da solicitacao e retorno dos filtros - 2026-10-27 (local)
+
+Contas a Pagar/Receber oferecem Codigo da solicitacao em Filtros visiveis.
+Codigo SOL ou numero, distinto de ID interno; SQL filtra antes de paginar,
+inclusive origens de titulos compartilhados/negociados, mantendo escopo.
+Voltar do detalhe retoma a carteira/query/pagina original; ordem identica ao
+remontar nao reinicia a pagina. Preferencias protegem escolhas contra carga
+atrasada e gravacoes simultaneas; esconder limpa tambem o criterio salvo.
+Sem EC2/banco real/migration/publicacao; backend deve preceder frontend.
+[Escopo, limites e testes](../../handoffs/2026-10-27-titulos-filtros-retorno-local.md).
+
+## Fila: formas disponiveis ao clicar - 2026-10-27 (local)
+
+Forma de pagamento abre sugestoes das formas previstas nos titulos da fila
+autorizada/status, inclusive fora da pagina carregada, sem exigir digitacao.
+Consulta leve existente por ID/nome; limite inicial100 e pesquisa digitada20.
+Preserva escopo/permissoes, Todos, limpeza e forma efetiva da baixa. Demais
+autocompletes continuam com minimo de dois caracteres. Sem escrita real,
+migration, EC2 ou publicacao; backend deve preceder frontend no futuro deploy.
+[Escopo e testes locais](../../handoffs/2026-10-27-fila-formas-disponiveis-local.md).
+
 ## Promocao MAIN: reprogramacao parcial do contrato - 2026-10-23
 
 Usuario homologou DEVfee28b6d e autorizou promover para main; backup cifrado

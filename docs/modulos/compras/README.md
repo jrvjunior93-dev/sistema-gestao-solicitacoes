@@ -1,5 +1,33 @@
 # Modulo COMPRAS
 
+## Paginacao SQL da lista principal - implementacao local 27/10/2026
+
+A tela de solicitacoes consulta 50 SCs por pagina. `GET /compras/solicitacoes`
+com `page`/`limit` devolve `{ data, pagination, filters }`, com limite maximo100.
+Busca por codigo/obra/solicitante, obra, multiplos status e visibilidade sao
+aplicados ANTES de COUNT e LIMIT/OFFSET. Ordenacao: createdAt DESC, id DESC.
+Aliases CANCELADA/CANCELADO e os demais sinonimos da tela sao preservados.
+Contagens de itens/fornecedores abrangem somente IDs da pagina autorizada.
+
+A lista devolve campos resumidos; itens, anexos, condicoes e dados completos
+continuam no detalhe existente, consultado ao abrir a SC. PDF e acoes
+continuam nos endpoints anteriores. Selecao em lote e limitada a pagina atual
+e limpa ao trocar pagina/filtro; confirmacoes antigas perdem validade.
+Consultas sao canceladas/serializadas, com debounce da busca e descarte de
+respostas obsoletas. Nao ha carregamento automatico de todas as paginas.
+
+Compatibilidade: chamadas SEM page/limit, incluindo Delegacao, preservam o
+contrato anterior de array. Esta entrega pagina a lista principal, nao altera
+o painel de Delegacao. Publicar backend ANTES do frontend; a tela rejeita
+resposta do contrato legado, sem fazer fallback que percorra todas as paginas.
+Nenhuma migration, escrita de dados reais, EC2 ou deploy nesta implementacao.
+
+QA: `node --require ./backend/scripts/helpers/semRedeQa.js backend/scripts/validarSolicitacoesCompraPaginacao.js`
+e `node frontend/scripts/validarSolicitacoesCompraPaginacao.mjs`. Compara ACL com
+o controller anterior em SQL SQLite :memory:, gera SQL MySQL sem conectar,
+e testa tela/hook/servico reais com API ficticia em navegador isolado.
+[Escopo, validacoes e limites](../../handoffs/2026-10-27-compras-paginacao-local.md).
+
 ## Promocao MAIN Compra Direta e pendencias financeiras - 2026-10-23
 
 Credor configurado como obrigatorio passa a ser exigido na nova tela e no
