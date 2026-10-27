@@ -1,5 +1,8 @@
 # Ownership Ativo
 
+## Publicacao correcao OOM Compras na main - 2026-10-27
+- Agente principal preparou os dois controllers de cotacao/lista SC, validarComprasCarregamentoSemProduto.js, aplicador/testes/manifesto/roteiro compras-oom-20261027 e handoff correspondente para publicacao autorizada na main. SQL gerado e retorno completo em SQLite memoria aprovados, seis regressoes existentes e nove testes do aplicador aprovados. Preservar heap4096 e DEV/Experience/daemon/env/dumps; nenhuma EC2 pelo agente, migration, SQL real, frontend ou alteracao de registros. Ownership funcional liberado apos este commit; continuacao operacional somente com comandos manuais do usuario e handoff desta publicacao. Frontend de cartao no DEV de outra tarefa permanece pendente, nao incluido.
+
 ## Publicacao DEV e promocao por etapas - 2026-10-25
 
 - Usuario autorizou commit/push refactor/frontend, depois promocao main e

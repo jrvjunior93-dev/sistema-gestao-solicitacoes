@@ -2868,6 +2868,7 @@ module.exports = {
         includesLista.push({
           model: PedidoCompra,
           as: 'pedidos',
+          separate: true,
           attributes: ['id', 'status', 'encerrado_em']
         });
       }
@@ -2877,6 +2878,7 @@ module.exports = {
           {
             model: SolicitacaoCompraItem,
             as: 'itens',
+            separate: true,
             include: [
               { model: Insumo, as: 'insumo', attributes: ['id', 'nome', 'codigo'] },
               { model: Unidade, as: 'unidade', attributes: ['id', 'nome', 'sigla'] },
@@ -2887,6 +2889,7 @@ module.exports = {
           {
             model: SolicitacaoCompraItemManual,
             as: 'itensManuais',
+            separate: true,
             include: [
               { model: Apropriacao, as: 'apropriacao', attributes: ['id', 'codigo', 'descricao'] },
               buildIncludeRateiosItemManual()
@@ -2895,6 +2898,7 @@ module.exports = {
           {
             model: SolicitacaoCompraFornecedor,
             as: 'fornecedores',
+            separate: true,
             attributes: ['id', 'status', 'respondido_em', 'fornecedor_compra_id']
           }
         );
@@ -2902,6 +2906,7 @@ module.exports = {
           includesLista.push({
             model: PedidoCompra,
             as: 'pedidos',
+            separate: true,
             attributes: ['id', 'status', 'encerrado_em']
           });
         }

@@ -1,0 +1,44 @@
+# Compras OOM: separar colecoes no carregamento - 27/10/2026
+
+## Publicacao autorizada e pacote manual de producao
+
+Usuario autorizou commit/push desta correcao na main e comandos manuais PROD, preservando heap 4096 e DEV, sem EC2 pelo agente e sem alterar registros. Base remota confirmada: 2f6bd864ebda5d87e13852dc605c1a6c881abbf2. Escopo funcional continua 11 linhas separate:true nos dois controllers, sem frontend, mudanca de regra, migration ou dependencia.
+
+QA novo evoluiu para comparar o retorno COMPLETO do carregador antigo com o corrigido em SQL real SQLite :memory:, incluindo apropriacoes, respostas excluidas, token ausente e isolamento de outra SC/cotacao. Usa preload semRedeQa e adapter restrito a memoria. Comparacao da consulta original usa BASE imutavel, permitindo execucao depois do commit/deploy.
+
+Pacote ops/deploy/atualizar-prod-compras-oom-20261027.cjs + test.cjs + manifesto fechado + README: preparar verifica fontes antigas, heap configurado E cmdline real4096, pares/Nodes/ambientes/dumps/planos/historico/automatico OFF e cria backup privado apenas de codigo em .git/fluxy-compras-oom-prod-20261027. Aplicar exige backup/timer/janela, ff-only ao SHA publicado validado com paiBASE, roda 7 validadores sob bloqueio de rede e os testes do aplicador, reinicia exclusivamente backend-solicitacoes SEM update-env/node-args/save, confere heap, pares e health. Nao importa app/models, nao conecta ao banco; QA usa mocks e SQLite memoria. Nenhum SQL de producao, migration/install, S3, chamada de cotacao/captura, cancelamento ou novo profiling. Reinicio retoma a API e seus jobs EXISTENTES, sem alterar flags ou regras; nao e congelamento de gravacoes normais dos usuarios.
+
+Base EC2 pode ser d7d02aeb ou2f6, mas backend deve ser identico aBASE; qualquer arquivo rastreado alterado bloqueia. Aplicador tolera reinicios automaticos de PROD antes do corte com politica/env/pares identicos; baseline e congelado antes de um unico restart da operacao. Retomada de reiniciando nao repete restart se contador/PID comprovam que ja ocorreu. Sem rollback automatico: preservar backup/estado para reversao por escopo em caso de falha, nunca reset/clean/restauracao de banco. Limite4GB continua temporarioPM2 como antes, sem persistir dumps.
+
+Validacao do retorno real e 6 regressoes existentes aprovadas; sintaxe/diff e 9 testes do aplicador/inventario aprovados. Manifesto nao inclui outputs preexistentes nem frontendcartaoDEV pendente. Nenhum comando remoto executado pelo agente. SHA final de publicacao e comandos exatos serao registrados no chat e handoff raiz; aplicacao EC2 e validacao funcional pelo usuario permanecem pendentes. Ownership funcional liberado com este commit; preservar esta documentacao e estado privado do aplicador para a continuacao manual.
+
+## Retorno real da sonda SC 650
+
+Usuario executou e enviou contagens em 27/10: 6 itens cadastrados, 57 manuais, cotacao 313 com 63 respostas ativas e 63 itens selecionados. Pesos com apropriacoes permanecem 6 e 57. Consulta antiga pode gerar estruturalmente 6 * 57 * 63 * 63 = 1.357.398 linhas intermediarias, apesar de 189 registros somados nas quatro colecoes. Sonda fez 5 SELECTs de contagem, sem materializar esse JOIN, sem escrita/restart/chamada de cotacao. Nao houve acesso EC2 pelo agente. Evidencia reforca risco de alocacao multiplicativa, sem medir heap por request nem confirmar resultado de cada salvamento. Correcao local pronta/testada continua sem commit/push/deploy; isolamento de processos e bloqueio de concorrencia seguem futuros. Nao aplicar producao sem preparar corte manual e escopo autorizado.
+
+Trabalho local neste worktree ja existente, LIMPO antes desta tarefa, HEAD2f6bd864ebda5d87e13852dc605c1a6c881abbf2/originmain. Usuario informouSC650 e varias tentativas de salvar rascunho travado. ProducaorecebeOOM4GB apesarEC28GB; agente proibido de acessarEC2. Nenhum acesso remoto, deploy, migration, SQLreal, commit oupush nesta tarefa. Root de coordenacao: C:/Users/Ricardo/.codex/worktrees/retirada-envios-main-20261024/Fluxy.
+
+Evidencia: outputv2fornecidopelousuario emattachmentf42478b6-d701-4b28-8a28-88e514c2b0cb/Texto colado.txt. Nginxultima janela16:43:51ZPOSTrascunho504, depoislista504, reinicio16:45:04Z e502global.4POSTrascunho,4timeout504;29GETlistaSCcom0visaoresumo/29visaooutra,6timeout504,1erro502,1cancel499. PM2registrou4SAIDASIGABRT16:13:10/16:17:15/16:26:47/16:45:04 (hora semfuso noarquivoPM2, ultimoidenticoaoepochUTCdo processo eNginx). Usuario confirmouSC650 e repeticoes; Nginx nao expoetoken nemliga diretamenteSC650acadaPOSTpublico. Ha correlacaoforte, nao prova final dealocacaoporrequest. Tokens/corpos/SQL/credenciais nao exportados. Ver handoffroot2026-10-27-rastreio-oom-compras.md.
+
+Mudanca funcional exata:11linhas `separate:true` adicionadas, nenhum campo/filtro/projecao/regra/permissao removido:
+- backend/src/controllers/CotacaoFornecedorController.js: somente carregarCotacaoPorToken. Separar solicitacao.itens e suasapropriacoes, itensManuais/suasapropriacoes, respostasativas e itensSelecionados. EvitaJOINentreHasMany que multiplica linhas. Afeta abertura/salvamentopublico/interno porque todosusamo carregadorcomum; nao executa nenhumaacao real em teste.
+- backend/src/controllers/SolicitacaoCompraController.js: somente index/inclusionoptions; separar pedidosdelegacao, itens, itensManuais, fornecedores e pedidos da visao completa. Retorno continuaarraycomtodos os registrosautorizados, sem LIMIT/paginacao novaque descartedados. Visao resumo inalterada; indexcompleto eraefetivamentechamadonaproducao segundoNginx.
+
+Novo backend/scripts/validarComprasCarregamentoSemProduto.js: extrai funcoesREAIS antes/depois doHEAD, usamodelos/associacoes SequelizeMYSQLisolados e geradorSQLreal. Prova queJOINSdecolecoes existiam antes e naogeneradosdepois, compares opcoesexcetosseparate eprojecoes/filtros/escopo, usuariosemacessonaoconsulta, escopovazio retorna[],usuario restrito comprador/solicitante/obras preservados. ConexaoDBproibida e preloadsemRedeQa barrarede. Exemplo somenteemfixture:100itens*20manuais*120respostas*120selecionados=28.800.000linhas vs360membros, semmaterializarproduto. NAO e contagemrealSC650.
+
+Validacoes locaisPASS:
+- node --require ./backend/scripts/helpers/semRedeQa.js backend/scripts/validarComprasCarregamentoSemProduto.js
+- validarCompraCotacaoEnvio.js (concluiuPASS, naoprivarseaopendente)
+- validarItensCotacaoDetalhe.js
+- validarPrevisaoEntregaCotacao.js
+- validarPedidoEntregas.js (inclui idempotencia/rollback/versoes/escopo)
+- validarCompraRemanejamento.js
+- validarCompraReorganizacao.js (14casos SQLiteemmemoria, bloqueiofinanceiro/permissoes/reversao preservados)
+- node --check nos2controllers e git diff --check.
+Nao houve buildfrontend porque nenhumUI alterada. Testesnaofazemcargaescritaem bancoexterno. Outputsnaorastreados desteworktree jaexistiamdetarefasanteriores; naoadicionaroulimpar indiscriminadamente.
+
+Rootpreparou outputs/rastreio-oom-compras-20261027/sondar-sc650.cjs e3testesPASS. Script somente leitura a ser executado MANUALMENTEpelo usuario:5SELECTs escopados650 (COUNTporcolecao eporcotacao), hints MAX_EXECUTION_TIME2000/timeout3000/deadline30s, usa conexaodedicada runtime.withProdReadDatabase existente (TLS/UUID/branch/flags). Nenhumtokennomeconteudoouvalorfinanceiro, nenhum GETcotacaooucalculo cartesiano real. Apropriacoessomam pesos deLEFTJOIN para estimar numericamente produtosem alocar. Hash32ca129c7c9a5d1e4d1f07b587d82a5079eb45de4a9c006a9fef73b33536d6bf. Ainda SEM resultado real dessa sonda.
+
+PENDENTE: recebercontagensSC650 paraquantificarevitarafirmacao semprova; revisarpublicacao/deployconformeautorizacaoexplicita. Codigo LOCALnaocommitado, nao aplicadoPROD/DEV. Ownershipdos2controllers/QA permanece nesta sessao atepublicacao/liberacaoexplicita. Nao levar pagamento/cartaoDEV pendenteououtrasmudancasparajunto. PrepararaplicadormanualsemSQL/migration/install quando usuario autorizarcorte, verificandobeforehashesproducaoja conferidos/coincidentescom2f6,privadoBackup/estado,4096heap epares/env/dumps. Nenhum restart poragente.
+
+Isolamento: usuario perguntou como impedirCompras de afetarMFA/outros. Explicadoque hoje APIeCompras no mesmoNode e OOMatinge todos. Mudancaatual SOMENTE elimina multiplicacaodeJOIN; naoisolaprocessos/concorrencia. Etapasfuturas, naoimplementadas: prevenir enviosduplicados/concorrentes, fila limitada paraoperacoespesadas, processoCPU/RAM/cgroupcontrolado e poolDBdedicado/limitado, deadlines/revalidacaoACL/idempotencia; backendprincipal/autenticacaodevemtercapacidadepropria. Nao prometerquetransferirprocessamento removetodosbloqueiosdoDBnem usar limiter deheap como tetodeRSS. Usuario disseok, mas naohouve implementacaodearquiteturaouautorizacaodeployinferida. HomeBlocoscolunavalor e problema separado; naocorrigido nesta tarefa.

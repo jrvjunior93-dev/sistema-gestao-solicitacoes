@@ -1,0 +1,46 @@
+{
+  "base": "2f6bd864ebda5d87e13852dc605c1a6c881abbf2",
+  "runtime_files": 2,
+  "database_writes": 0,
+  "migrations": 0,
+  "heap_mib": 4096,
+  "files": [
+    {
+      "path": "backend/src/controllers/CotacaoFornecedorController.js",
+      "old_sha256": "31f923c01e41c2b91d7df023874a46e3dfe0ffc4b2ffd763b453dc88998d3ce5",
+      "sha256": "ba66ab57a906c2a1b8f411637e02be0144073d00fb10af019aa1feb8cbb983f2"
+    },
+    {
+      "path": "backend/src/controllers/SolicitacaoCompraController.js",
+      "old_sha256": "d9d5f8aad914e3bf1363c13e06a92828531806e018f1782d656ef8eb3be5ad07",
+      "sha256": "65e0b195dab63b411c9f47d9f60347f846e9fc89cc1934d835a7dfdcb42e5dcb"
+    },
+    {
+      "path": "backend/scripts/validarComprasCarregamentoSemProduto.js",
+      "old_sha256": null,
+      "sha256": "5c13436fef74b3e322fbafd624fb100962d6025bd9e88ed8c98f15059ee337e7"
+    }
+  ],
+  "extra": [
+    {
+      "path": "ops/deploy/atualizar-prod-compras-oom-20261027.cjs",
+      "sha256": "22fbab4af68ebb56d22524ca9c3ec457cbb24fbf6187a40c79fdf3bd84afba21"
+    },
+    {
+      "path": "ops/deploy/atualizar-prod-compras-oom-20261027.test.cjs",
+      "sha256": "faea423649ca3fdee20cffe7ba7c36207c8d1bdca92f6501f259d40ec8a16ff3"
+    },
+    {
+      "path": "ops/deploy/README-compras-oom-prod-20261027.md",
+      "sha256": "4b00de9396edfe31bb2e1a1cb7f1d952749043d09d8f5bc4b80257eca102de10"
+    },
+    {
+      "path": "docs/handoffs/2026-10-27-compras-oom-carregamento.md",
+      "sha256": "903fc3f2e2922cec3134d438fdf30c17089e2fc0dbcc95e5e6d9eda0fc98c82e"
+    },
+    {
+      "path": "docs/workspace/OWNERSHIP_ATIVO.md",
+      "sha256": "e6970b91989b57fab2b860eccdba1b1a9cff9d0dc5cacbab9aa0c17214d52898"
+    }
+  ]
+}

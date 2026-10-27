@@ -381,12 +381,14 @@ async function carregarCotacaoPorToken(token) {
           {
             model: SolicitacaoCompraItem,
             as: 'itens',
+            separate: true,
             include: [
               { model: Insumo, as: 'insumo', attributes: ['id', 'nome', 'codigo'] },
               { model: Unidade, as: 'unidade', attributes: ['id', 'sigla'] },
               {
                 model: SolicitacaoCompraItemApropriacao,
                 as: 'apropriacoes',
+                separate: true,
                 include: [
                   {
                     model: Apropriacao,
@@ -400,10 +402,12 @@ async function carregarCotacaoPorToken(token) {
           {
             model: SolicitacaoCompraItemManual,
             as: 'itensManuais',
+            separate: true,
             include: [
               {
                 model: SolicitacaoCompraItemManualApropriacao,
                 as: 'apropriacoes',
+                separate: true,
                 include: [
                   {
                     model: Apropriacao,
@@ -419,12 +423,14 @@ async function carregarCotacaoPorToken(token) {
       {
         model: SolicitacaoCompraRespostaItem,
         as: 'respostas',
+        separate: true,
         where: { deleted_at: null },
         required: false
       },
       {
         model: SolicitacaoCompraFornecedorItem,
         as: 'itensSelecionados',
+        separate: true,
         required: false
       }
     ]
