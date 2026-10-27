@@ -1753,8 +1753,8 @@ export default function FinanceiroConciliacao() {
   const [contasResumo, setContasResumo] = useState([]);
   const [loadingContasResumo, setLoadingContasResumo] = useState(false);
   const [tarifasBancarias, setTarifasBancarias] = useState([]);
-  const [filters, setFilters] = useState({ status: 'PENDENTE', conta_bancaria_id: '', data_inicial: '', data_final: '', page: 1, page_size: 100 });
-  const [appliedFilters, setAppliedFilters] = useState({ status: 'PENDENTE', conta_bancaria_id: '', data_inicial: '', data_final: '', page: 1, page_size: 100 });
+  const [filters, setFilters] = useState({ status: 'PENDENTE', natureza: 'TODOS', conta_bancaria_id: '', data_inicial: '', data_final: '', page: 1, page_size: 100 });
+  const [appliedFilters, setAppliedFilters] = useState({ status: 'PENDENTE', natureza: 'TODOS', conta_bancaria_id: '', data_inicial: '', data_final: '', page: 1, page_size: 100 });
   const [uploadForm, setUploadForm] = useState({ conta_bancaria_id: '', files: [] });
   const [importResults, setImportResults] = useState([]);
   const [dados, setDados] = useState({
@@ -1961,8 +1961,12 @@ export default function FinanceiroConciliacao() {
     const consultaId = ++consultaMatchRef.current;
     try {
       setLoading(true);
+      const consulta = { ...appliedFilters };
+      // Backend DEV e frontend sao publicados separadamente. Nao enviar o
+      // parametro novo ate a resposta anunciar que o backend aceita o filtro.
+      if (!dados.meta.filtro_natureza_disponivel) delete consulta.natureza;
       const [response, importacoesResponse] = await Promise.all([
-        getConciliacoesBancarias(appliedFilters),
+        getConciliacoesBancarias(consulta),
         getImportacoesConciliacao({ conta_bancaria_id: appliedFilters.conta_bancaria_id, data_inicial: appliedFilters.data_inicial, data_final: appliedFilters.data_final, limit: 8 })
       ]);
       if (consultaId !== consultaMatchRef.current) return false;
@@ -1981,6 +1985,7 @@ export default function FinanceiroConciliacao() {
           current_page: Number(response?.meta?.current_page || appliedFilters.page || 1),
           page_size: Number(response?.meta?.page_size || appliedFilters.page_size || 100),
           total_pages: Number(response?.meta?.total_pages || 1),
+          filtro_natureza_disponivel: response?.meta?.filtro_natureza_disponivel === true,
           grupos_match: Array.isArray(response?.meta?.grupos_match) ? response.meta.grupos_match : []
         },
         itens: Array.isArray(response?.itens) ? response.itens : []
@@ -2277,7 +2282,9 @@ export default function FinanceiroConciliacao() {
       contaDoRecorte ? `conta ${getContaNome(contaDoRecorte)}` : 'todas as contas',
       appliedFilters.data_inicial || appliedFilters.data_final
         ? `período de ${appliedFilters.data_inicial ? formatDate(appliedFilters.data_inicial) : 'início'} a ${appliedFilters.data_final ? formatDate(appliedFilters.data_final) : 'hoje'}`
-        : 'todo o período'
+        : 'todo o período',
+      appliedFilters.natureza === 'CREDITO' ? 'somente créditos (entradas)'
+        : appliedFilters.natureza === 'DEBITO' ? 'somente débitos (saídas)' : 'créditos e débitos'
     ].join(', ');
     const { ok } = await confirmar({
       titulo: 'Conciliar em lote?',
@@ -2290,7 +2297,7 @@ export default function FinanceiroConciliacao() {
     confirmacaoEmAndamentoRef.current = true;
     try {
       setBulkReconciling(true); limparAvisos();
-      const response = await conciliarSugestoesBancarias({ status: appliedFilters.status === 'TODOS' ? 'TODOS' : 'PENDENTE', conta_bancaria_id: appliedFilters.conta_bancaria_id, data_inicial: appliedFilters.data_inicial, data_final: appliedFilters.data_final });
+      const response = await conciliarSugestoesBancarias({ status: appliedFilters.status === 'TODOS' ? 'TODOS' : 'PENDENTE', ...(dados.meta.filtro_natureza_disponivel ? { natureza: appliedFilters.natureza } : {}), conta_bancaria_id: appliedFilters.conta_bancaria_id, data_inicial: appliedFilters.data_inicial, data_final: appliedFilters.data_final });
       const r = response?.resumo || {};
       avisar.sucesso(`${r.total_conciliadas || 0} confirmada(s) em lote. ${r.associacao_manual || 0} para associação manual. ${r.sem_sugestao || 0} sem sugestão.`);
       await carregarConciliacoes();
@@ -2751,6 +2758,7 @@ export default function FinanceiroConciliacao() {
   function abrirConferenciaManual(conta) {
     const next = {
       status: 'PENDENTE',
+      natureza: 'TODOS',
       conta_bancaria_id: String(conta?.id || ''),
       data_inicial: appliedDashboardFilters.data_inicial,
       data_final: appliedDashboardFilters.data_final,
@@ -2799,7 +2807,7 @@ export default function FinanceiroConciliacao() {
   */
   const rascunhoDashboard = ['busca', 'banco', 'situacao', 'data_inicial', 'data_final']
     .some((campo) => String(dashboardFilters[campo] || '') !== String(appliedDashboardFilters[campo] || ''));
-  const rascunhoConferencia = ['status', 'conta_bancaria_id', 'data_inicial', 'data_final']
+  const rascunhoConferencia = ['status', 'natureza', 'conta_bancaria_id', 'data_inicial', 'data_final']
     .some((campo) => String(filters[campo] || '') !== String(appliedFilters[campo] || ''));
 
   return (
@@ -3099,6 +3107,15 @@ export default function FinanceiroConciliacao() {
               <option value="TODOS">Todos</option>
             </select>
           </label>
+          {dados.meta.filtro_natureza_disponivel && <label className="app-filter-field">
+            <span className="app-filter-label">Movimentação</span>
+            <select className="input w-full input-sm" value={filters.natureza}
+              onChange={(e) => setFilters((c) => ({ ...c, natureza: e.target.value }))}>
+              <option value="TODOS">Todos</option>
+              <option value="CREDITO">Crédito (entradas)</option>
+              <option value="DEBITO">Débito (saídas)</option>
+            </select>
+          </label>}
           <label className="app-filter-field flex-1">
             <span className="app-filter-label">Conta bancária</span>
             <select className="input w-full input-sm" value={filters.conta_bancaria_id} disabled={loadingContas}
@@ -3120,7 +3137,7 @@ export default function FinanceiroConciliacao() {
           <div className="flex gap-2 shrink-0">
             <button type="submit" className="btn btn-primary btn-sm">Atualizar lançamentos</button>
             <button type="button" className="btn btn-outline btn-sm" onClick={() => {
-              const next = { status: 'PENDENTE', conta_bancaria_id: '', data_inicial: '', data_final: '', page: 1, page_size: filters.page_size || 100 };
+              const next = { status: 'PENDENTE', natureza: 'TODOS', conta_bancaria_id: '', data_inicial: '', data_final: '', page: 1, page_size: filters.page_size || 100 };
               setFilters(next); setAppliedFilters(next);
             }}>Limpar</button>
           </div>

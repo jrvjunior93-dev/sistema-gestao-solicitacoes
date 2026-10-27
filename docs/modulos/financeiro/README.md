@@ -2283,3 +2283,32 @@ Testes sem banco: `validarSobreposicaoTitulos.js`, `validarTitulosCompartilhados
 `validarTituloRenegociacaoSincronizacao.js`, `validarPedidoBoletoOpcional.js` e
 `validarCompraDiretaFreteFinanceiro.js` em backend/scripts; resumo e UI real do
 card/cancelamento em frontend/scripts, alem de build e teste de documentacao.
+
+## OFX: credito/debito na conferencia manual - 2026-10-27
+
+- O bloco de filtros em Conferir manualmente inclui Movimentacao: Todos,
+  Credito (entradas) e Debito (saidas). Segue o sinal do valor OFX: positivo
+  para credito e negativo para debito; valor zero permanece somente em Todos.
+- A escolha so atualiza o extrato ao clicar em Atualizar lancamentos, junto
+  de status, conta e datas, retornando a pagina 1. Limpar restaura Todos.
+- GET /financeiro/conciliacoes valida natureza TODOS/CREDITO/DEBITO e aplica
+  o predicado SQL antes dos totais, contagem e paginacao, incluindo registros
+  fora da pagina carregada. A permissao e o escopo existentes permanecem.
+- Conciliar em lote descreve e envia a natureza do filtro aplicado, mesmo
+  havendo outro filtro em rascunho. O backend restringe a operacao aos
+  pendentes do mesmo recorte. Regras de match, baixas e confirmacao preservadas.
+- Filtrar e uma leitura; nao importa, reconcilia nem altera lancamentos.
+  A conciliacao em lote continua uma operacao com gravacao quando confirmada
+  pelo usuario. Os contadores de importacao continuam referentes aos arquivos.
+- Testes locais: validarConciliacaoNaturezaFiltro.js (3 casos, service real
+  com models isolados e SQL Sequelize/MySQL executado no SQLite em memoria),
+  validarConciliacaoNaturezaFiltro.mjs (pagina real em 1366/390 com HTTP
+  interceptado), regressoes OFX/matches/rendimentos e build frontend.
+- Backend anuncia suporte em meta.filtro_natureza_disponivel. Frontend omite
+  natureza e conserva a tela anterior ate essa confirmacao; apos atualizacao
+  do backend passa a exibir o filtro. Compativel com publicacoes separadas.
+- Usuario autorizou commit/push na refactor/frontend e entrega de comandos
+  DEV. Aplicador dedicado: [OFX DEV](../../../ops/deploy/README-ofx-natureza-dev-20261027.md),
+  sem SQL/migrations, reinicio exclusivo backend-dev e preservacao PROD4096.
+  Nenhum acesso EC2 ou deploy e executado pelo agente.
+  Handoff: [OFX filtro natureza local](../../handoffs/2026-10-27-ofx-filtro-natureza-local.md).

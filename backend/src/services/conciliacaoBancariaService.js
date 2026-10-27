@@ -633,6 +633,12 @@ function buildConciliacaoWhere(filters = {}, { forcePending = false } = {}) {
     deleted_at: null
   };
   const status = forcePending ? 'PENDENTE' : normalizeStatusFilter(filters.status);
+  const natureza = String(filters.natureza || 'TODOS').trim().toUpperCase();
+  if (!['TODOS', 'CREDITO', 'DEBITO'].includes(natureza)) throw createHttpError(400, 'Tipo de lancamento invalido.');
+  // Valor OFX com sinal e a fonte: credito entra, debito sai. Mesmo predicado
+  // para resumo, contagem, pagina e lote, sem materializar todo o extrato.
+  if (natureza === 'CREDITO') where.valor = { [Op.gt]: 0 };
+  if (natureza === 'DEBITO') where.valor = { [Op.lt]: 0 };
 
   if (status !== 'TODOS') {
     where.status = status;
@@ -1815,6 +1821,7 @@ async function listarConciliacoes(req, filters = {}) {
       current_page: currentPage,
       page_size: pageSize,
       total_pages: Math.max(Math.ceil(totalRegistros / pageSize), 1),
+      filtro_natureza_disponivel: true,
       grupos_match: [...metaGruposMatch.values()]
     },
     itens: rows

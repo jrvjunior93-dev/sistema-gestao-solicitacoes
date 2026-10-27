@@ -34,6 +34,8 @@ function atende(row, where = {}) {
       if (op === Op.between) return value >= cond[op][0] && value <= cond[op][1];
       if (op === Op.gte) return value >= cond[op];
       if (op === Op.lte) return value <= cond[op];
+      if (op === Op.gt) return value > cond[op];
+      if (op === Op.lt) return value < cond[op];
       if (op === Op.like) return String(value || '').includes(cond[op].replaceAll('%', ''));
       throw Error('Operador QA nao implementado: ' + String(op));
     });
@@ -152,7 +154,8 @@ const req = { user: { id: 1 }, originalUrl: '/qa-isolado' };
 const listar = a => a.service.listarConciliacoes(req, { status: 'PENDENTE' });
 const confirmar = (a, bancoId, id) => a.service.confirmarConciliacao(req, bancoId,
   Array.isArray(id) ? { movimento_financeiro_ids: id } : { movimento_financeiro_id: id });
-(async () => {
+module.exports = { ambiente, banco, movimento };
+if (require.main === module) (async () => {
   let a = ambiente([banco(1), banco(2)], [movimento(101)]);
   let r = await listar(a);
   assert(r.itens.every(i => i.total_candidatos === 1 && i.associacao_manual_recomendada && !i.sugestao_automatica));

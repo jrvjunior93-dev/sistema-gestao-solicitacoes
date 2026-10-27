@@ -936,10 +936,15 @@ function validateFinanceiroObrasQuery(query = {}) {
   };
 }
 
+function parseNaturezaConciliacao(value) {
+  if (value != null && typeof value !== 'string') throw new ValidationError('Tipo de lancamento invalido.');
+  return parseEnum(value, 'Tipo de lancamento', ['TODOS', 'CREDITO', 'DEBITO']);
+}
+
 function validateFinanceConciliacaoQuery(query = {}) {
   ensureAllowedKeys(
     query,
-    ['status', 'conta_bancaria_id', 'data_inicial', 'data_final', 'page', 'page_size'],
+    ['status', 'natureza', 'conta_bancaria_id', 'data_inicial', 'data_final', 'page', 'page_size'],
     'Consulta de conciliacao bancaria'
   );
 
@@ -952,6 +957,7 @@ function validateFinanceConciliacaoQuery(query = {}) {
 
   return {
     status: parseEnum(query.status, 'Status', ['PENDENTE', 'CONCILIADO', 'IGNORADO', 'TODOS']),
+    natureza: parseNaturezaConciliacao(query.natureza),
     conta_bancaria_id: parseInteger(query.conta_bancaria_id, 'Conta bancaria'),
     data_inicial: dataInicial,
     data_final: dataFinal,
@@ -1221,7 +1227,7 @@ function validateFinanceConciliacaoCriarTituloBody(body = {}) {
 function validateFinanceConciliacaoConciliarSugeridosBody(body = {}) {
   ensureAllowedKeys(
     body,
-    ['conta_bancaria_id', 'data_inicial', 'data_final', 'status'],
+    ['conta_bancaria_id', 'data_inicial', 'data_final', 'status', 'natureza'],
     'Conciliacao em lote por sugestoes'
   );
 
@@ -1236,7 +1242,8 @@ function validateFinanceConciliacaoConciliarSugeridosBody(body = {}) {
     conta_bancaria_id: parseInteger(body.conta_bancaria_id, 'Conta bancaria'),
     data_inicial: dataInicial,
     data_final: dataFinal,
-    status: parseEnum(body.status, 'Status', ['PENDENTE', 'TODOS'])
+    status: parseEnum(body.status, 'Status', ['PENDENTE', 'TODOS']),
+    natureza: parseNaturezaConciliacao(body.natureza)
   };
 }
 
