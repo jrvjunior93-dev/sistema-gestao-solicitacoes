@@ -1,0 +1,41 @@
+{
+  "base": "b620379f605620603faf4e5f2bc04be11296bb0f",
+  "previous_backend": "6618f6ca7a613331535f46c946608265c4a9b3ef",
+  "files": [
+    {
+      "path": "backend/package.json",
+      "sha256": "b0ba40833a3c65bdc4d7856788acf0abd144ac0087f3804b355a11d48c728e5d",
+      "previous_sha256": "8235941ccc60177636f3c79f0a7594e5f6d3475b72fc4ccb46dd266f9168e064"
+    },
+    {
+      "path": "backend/scripts/validarFilaCartaoRepetido.js",
+      "sha256": "2779e6ca006dc19e508a129a6272e0d0adadaad5cf166878e088ed364ecb16ed",
+      "previous_sha256": null
+    },
+    {
+      "path": "backend/src/services/pagamentoFilaLiquidacaoService.js",
+      "sha256": "914f7d6609595e71f1ef1a34ca372ce7e959afea240e77b8e86805ec260320d5",
+      "previous_sha256": "86bb3d8e1c5500447f52955c17543cd3c2cab10e7ad7a3906ef2c1c14f08c5c8"
+    },
+    {
+      "path": "docs/handoffs/2026-10-27-cartao-repetido-dev.md",
+      "sha256": "f51c2b9c0c0247ce966f5ccf4e5aed1553401db52f4fbaee14ee4ea07bd4bc82",
+      "previous_sha256": null
+    },
+    {
+      "path": "ops/deploy/README-cartao-repetido-dev-20261027.md",
+      "sha256": "a9b40e857f877c7095b63153746e730da8194f2bfd26dee1ffdb391107ab71b5",
+      "previous_sha256": null
+    },
+    {
+      "path": "ops/deploy/atualizar-dev-cartao-repetido-20261027.cjs",
+      "sha256": "89c8841efca4ed48f2600b2846287a63db4bc77d6eadeb22e1da605e617129f9",
+      "previous_sha256": null
+    },
+    {
+      "path": "ops/deploy/atualizar-dev-cartao-repetido-20261027.test.cjs",
+      "sha256": "743074d6a5a4aa68d1f3737bcc0235a2319eb950f7db3db288553c68bb4a2ed1",
+      "previous_sha256": null
+    }
+  ]
+}

@@ -25,7 +25,7 @@
     "test:pedido-reabertura": "node scripts/validarPedidoReabertura.js",
     "test:centro-custo-distribuicao": "node scripts/validarDistribuicaoCentroCustoDestinos.js && node scripts/validarAdiantamentoCentroCusto.js",
     "test:rhdp-demissao-conclusao": "node scripts/validarRhDemissaoConclusao.js",
-    "test:cartao-parcelamento-baixa": "node scripts/validarCartaoParcelamentoBaixa.js",
+    "test:cartao-parcelamento-baixa": "node scripts/validarCartaoParcelamentoBaixa.js && node scripts/validarFilaCartaoRepetido.js",
     "test:titulo-cancelamento": "node scripts/validarTituloCancelamento.js",
     "test:fila-multiplas-fontes": "node scripts/validarFilaBaixaComposta.js && node scripts/validarFilaLiquidacaoRateada.js && node scripts/validarPermutasOperacionais.js && node scripts/validarCarteiraChequesBaixaComposta.js",
     "test:deploy-permutas-dev": "node scripts/validarDeployPermutasDev.js",
