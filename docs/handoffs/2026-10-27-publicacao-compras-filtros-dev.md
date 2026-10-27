@@ -80,6 +80,17 @@ estado de publicacao atualizado; este handoff governa a continuacao.
 
 ## Proximo passo exato
 
+Backend publicado e confirmado por ls-remote em refactor/frontend:
+c43c2d137de89f36ebf64c77544d1bf6b9bbce6f. Main remota inalterada46ac88de e ancestral
+da refactor. Inventario conferido pelos bytes do Git desse commit; delta runtime
+exatamente fechado. Frontend no commit publicado identico a DEVd4c2a104: ponte
+temporaria ate atualizacao manual do backend. SHA256 aplicador
+91e6c55d523a93c362d5da4d5ccde718c5ad7537b3ea719611177b121bc46374.
+
+Frontend final restaurado do candidato validado b4c49dbd no commit local seguinte,
+sem novo delta funcional; nao foi enviado. Permanece pronto para publicacao
+apos PRONTO, junto com estes metadados/README atualizados. Nao fazer force-push.
+
 Depois do push backend confirmado, fornecer SHA/hash e comandos do README.
 Usuario executa apenas aplicador DEV e retorna saida sanitizada. Somente com
 PRONTO conferir que origin/refactor/frontend continua no backend esperado e

@@ -498,7 +498,7 @@ export const NAV_MODULES = [
       { id: 'fiscal-documentos', ordem: 20, label: 'Documentos Fiscais', desc: 'NF-e e demais documentos capturados.', icon: HiOutlineDocumentText, to: '/fiscal/documentos', can: (user) => canViewFiscalDocuments(user) },
       { id: 'fiscal-divergencias', ordem: 30, label: 'Divergências', desc: 'Divergências entre fiscal e financeiro.', icon: HiOutlineExclamationTriangle, to: '/fiscal/divergencias', can: (user) => canViewFiscalDocuments(user) },
       { id: 'fiscal-exportacao', ordem: 40, label: 'Exportação Contábil', desc: 'Lotes de exportação para a contabilidade.', icon: HiOutlineFolderOpen, to: '/fiscal/exportacao-contabil', can: (user) => canViewFiscalDocuments(user) },
-      { id: 'fiscal-logs', ordem: 90, label: 'Logs de Sincronização', desc: 'Execuções das sincronizações fiscais.', icon: HiOutlineClipboardDocumentList, to: '/fiscal/logs', can: (user) => canViewFiscalLogs(user) }
+      { id: 'fiscal-logs', ordem: 90, label: 'Histórico Fiscal', desc: 'Consulta das execuções fiscais anteriores.', icon: HiOutlineClipboardDocumentList, to: '/fiscal/logs', can: (user) => canViewFiscalLogs(user) }
     ],
     commandItems: [
       { id: 'fiscal-relatorio-operacional', label: 'Painel Operacional Fiscal', desc: 'Relatório de documentos, divergências e arquivos fiscais por período.', icon: HiOutlineChartBar, to: '/fiscal/relatorios/operacional', can: (user) => canViewFiscalDocuments(user) }

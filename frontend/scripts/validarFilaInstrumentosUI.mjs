@@ -57,7 +57,7 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
         await new Promise(r=>setTimeout(r,params.q==='antiga'?700:30));
         if(signal.aborted)(window.__abortadas ||= []).push(params.q);
         if(params.q==='erro')throw Error('Falha ao consultar sugestões QA');
-        return {data:params.q==='antiga'?[{id:99,nome:'Opção antiga não deve aparecer'}]:sugestoes[params.campo]||[],mais:params.q==='muitos'};
+        return {data:params.q==='antiga'?[{id:99,nome:'Opção antiga não deve aparecer'}]:params.campo==='forma_pagamento_id'&&!params.q?[{id:3,nome:'PIX'},{id:8,nome:'BOLETO FORA DA PÁGINA'}]:sugestoes[params.campo]||[],mais:params.q==='muitos'};
       };
       export const getFilaPagamentos=async(params)=>{
         const {status}=params;

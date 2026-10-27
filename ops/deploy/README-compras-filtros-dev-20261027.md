@@ -40,7 +40,7 @@ de backend publicado informado na entrega. Nao usar o commit frontend pendente.
 cd /d "C:\Users\Ricardo\.codex\worktrees\compras-paginacao-local-20261027\Fluxy"
 set "EC2_FLUXY=ubuntu@3.142.33.181"
 set "EC2_CHAVE=C:\Users\Ricardo\Documents\AWS FLUXY\backend-key.pem"
-set "COMMIT_DEV=SHA_BACKEND_PUBLICADO"
+set "COMMIT_DEV=c43c2d137de89f36ebf64c77544d1bf6b9bbce6f"
 certutil -hashfile "ops\deploy\atualizar-dev-compras-filtros-20261027.cjs" SHA256
 ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15 -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -i "%EC2_CHAVE%" "%EC2_FLUXY%" "cd /home/ubuntu/sistema-gestao-solicitacoes-dev && CONFIRM_DEV_BACKUP=SIM CONFIRM_COMPRAS_FILTROS_DEV=SIM /home/ubuntu/fluxy-node24-dev/node-v24.22.1-linux-x64/bin/node - --backend %COMMIT_DEV% && /home/ubuntu/fluxy-node24-dev/node-v24.22.1-linux-x64/bin/node ops/deploy/atualizar-dev-compras-filtros-20261027.cjs --conferir %COMMIT_DEV%" < "ops\deploy\atualizar-dev-compras-filtros-20261027.cjs"
 ```
@@ -49,6 +49,12 @@ Esperado COMPRAS_FILTROS_BACKEND_DEV_PRONTO, runtime_files17, sql0/migrations0,
 producao_heap_4096_preservado e heap_dev_preservado true. Dois JSONs representam
 aplicacao e conferencia, nao dois reinicios. Envie a saida para liberar a etapa
 frontend ja preparada. Nunca enviar .env/chave/XML/credenciais.
+
+Publicacao backend confirmada em origin/refactor/frontend:
+c43c2d137de89f36ebf64c77544d1bf6b9bbce6f. SHA256 do aplicador:
+91e6c55d523a93c362d5da4d5ccde718c5ad7537b3ea719611177b121bc46374.
+Main remota permanece46ac88de. Frontend integrado fica em commit local posterior,
+aguardando a conferencia DEV. Nao enviar esse commit antes da saida PRONTO.
 
 ## Interrupcao e recuperacao
 

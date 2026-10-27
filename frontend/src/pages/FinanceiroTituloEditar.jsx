@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useWorkspaceState, useWorkspaceWork, useWorkspaceTitle, useWorkspaceClearPage } from '../navigation/WorkspaceContext';
 import useWorkspaceRecordDraft from '../navigation/useWorkspaceRecordDraft';
+import useRetornoTitulos from '../navigation/useRetornoTitulos';
 import { useFecharAoSair } from '../hooks/useFecharAoSair';
 import { getMinhasObras } from '../services/obras';
 import { buscarParceiros } from '../services/parceiros';
@@ -297,6 +298,7 @@ export default function FinanceiroTituloEditar() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [titulo, setTitulo] = useState(null);
+  const voltarParaLista = useRetornoTitulos(titulo?.tipo);
   const draft = useWorkspaceRecordDraft('editarTitulo:campos');
   const clearWorkspace = useWorkspaceClearPage();
   const { value: form, setValue: setForm } = draft;
@@ -923,7 +925,7 @@ export default function FinanceiroTituloEditar() {
             primária de retorno e fica também no estado sem registro. */}
         <PageHeader
           titulo="Editar título"
-          voltar={{ to: '/financeiro/titulos', title: 'Voltar para titulos' }}
+          voltar={{ to: voltarParaLista, title: 'Voltar para titulos' }}
         />
         <Avisos avisos={avisos} aoFechar={fechar} />
         <div className="app-empty-card">Título financeiro não encontrado.</div>

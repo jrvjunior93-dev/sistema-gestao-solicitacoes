@@ -144,7 +144,7 @@ export default function FiscalDashboard() {
               descricao="Como o módulo esta configurado neste ambiente."
             >
               <StatGrid colunas={3}>
-                <StatTile label="SEFAZ real" valor={modulo.sefaz_enabled ? 'habilitada' : 'desabilitada'} />
+                <StatTile label="Captura de NF-e" valor="NSDOCS manual" />
                 <StatTile label="S3 fiscal" valor={modulo.storage_configured ? 'configurado' : 'pendente'} />
                 <StatTile label="Prefixo S3" valor={modulo.storage_prefix || '—'} />
               </StatGrid>

@@ -8,8 +8,7 @@ import {
   encaminharSolicitacaoCompraParaCompras,
   encaminharSolicitacoesCompraParaCompras,
   inativarSolicitacaoCompra,
-  inativarSolicitacoesCompra,
-  listarSolicitacoesCompra
+  inativarSolicitacoesCompra
 } from '../../../services/compras';
 import { getMinhasObras } from '../../../services/obras';
 import {
@@ -25,6 +24,7 @@ import {
   CelulaDupla,
   Pagina,
   PageHeader,
+  Paginacao,
   TabelaPadrao,
   alternarValorFiltro,
   useAvisos,
@@ -42,6 +42,7 @@ import useComprasRealtimeRefresh from '../hooks/useComprasRealtimeRefresh';
 import { useWorkspaceState, useWorkspaceWork } from '../../../navigation/WorkspaceContext';
 import useQueryRevision from '../../../navigation/useQueryRevision';
 import useWorkspaceOpenRecord from '../../../navigation/useWorkspaceOpenRecord';
+import useSolicitacoesCompraPaginadas from '../hooks/useSolicitacoesCompraPaginadas';
 
 function formatarData(data) {
   if (!data) {
@@ -98,10 +99,7 @@ export default function SolicitacoesCompra() {
   const { avisos, avisar, fechar } = useAvisos();
   const abrirRegistro = useWorkspaceOpenRecord(avisar.alerta);
   const { confirmar, elementoConfirmacao } = useConfirmacao();
-  const [solicitacoes, setSolicitacoes] = useState([]);
   const [obras, setObras] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [consultaPronta, setConsultaPronta] = useState(false);
   const [inativando, setInativando] = useState(false);
   const [encaminhando, setEncaminhando] = useState(false);
   const [busca, setBusca] = useWorkspaceState('compras:busca', '');
@@ -177,11 +175,19 @@ export default function SolicitacoesCompra() {
     () => [...(ativos.obra_id || [])][0] || '',
     [ativos.obra_id]
   );
-  const consulta = useQueryRevision(obraId);
+  const lista = useSolicitacoesCompraPaginadas({ obraId, busca, statuses: ativos.status || new Set(), scopeKey: user?.id });
+  const solicitacoes = lista.data;
+  const loading = lista.loading;
+  const consultaPronta = !loading && !lista.error;
+  const consulta = useQueryRevision(lista.identity);
   const catalogo = useQueryRevision();
   useLayoutEffect(() => {
-    setSolicitacoes([]); setLoading(true); setConsultaPronta(false);
-  }, [obraId]);
+    // Uma confirmacao aberta nao pode operar sobre dados de uma carga anterior.
+    consulta.begin();
+  }, [lista.identity, lista.loading, lista.data]);
+  useLayoutEffect(() => {
+    setSelecionadas([]);
+  }, [lista.identity]);
 
   async function carregarObras() {
     const token = catalogo.begin();
@@ -197,35 +203,17 @@ export default function SolicitacoesCompra() {
     }
   }
 
-  async function carregarSolicitacoes() {
-    const token = consulta.begin();
-    try {
-      setLoading(true);
-      const params = { visao: 'resumo', ...(obraId ? { obra_id: obraId } : {}) };
-      const data = await listarSolicitacoesCompra(params);
-      if (!consulta.isCurrent(token)) return;
-      setSolicitacoes(Array.isArray(data) ? data : []);
-      setConsultaPronta(true);
-    } catch (error) {
-      if (!consulta.isCurrent(token)) return;
-      if ([401, 403].includes(Number(error?.status))) {
-        setSolicitacoes([]); setSelecionadas([]); setConsultaPronta(false);
-      }
-      console.error(error);
-      avisar.erro(error?.message || 'Erro ao carregar solicitacoes de compra');
-    } finally {
-      if (consulta.isCurrent(token)) setLoading(false);
+  const carregarSolicitacoes = lista.refresh;
+  useEffect(() => {
+    if (lista.error) {
+      setSelecionadas([]);
+      avisar.erro(lista.error?.message || 'Erro ao carregar solicitacoes de compra');
     }
-  }
+  }, [lista.error]);
 
   useEffect(() => {
     carregarObras();
   }, []);
-
-  // R23: o recorte de obra aplica ao MARCAR — nada de botão "aplicar".
-  useEffect(() => {
-    carregarSolicitacoes();
-  }, [obraId]);
 
   useComprasRealtimeRefresh(carregarSolicitacoes);
 
@@ -237,6 +225,10 @@ export default function SolicitacoesCompra() {
   */
   const opcoesStatus = useMemo(() => {
     const mapa = new Map(STATUS_SOLICITACAO_COMPRA.map((opcao) => [opcao.valor, opcao.rotulo]));
+    lista.statuses.forEach((status) => {
+      const chave = chaveStatusCompra(status);
+      if (chave && !mapa.has(chave)) mapa.set(chave, rotuloStatusCompra(chave));
+    });
     solicitacoes.forEach((solicitacao) => {
       const chave = chaveStatusCompra(solicitacao.status);
       if (chave && !mapa.has(chave)) {
@@ -249,7 +241,7 @@ export default function SolicitacoesCompra() {
       }
     });
     return [...mapa.entries()].map(([valor, rotulo]) => ({ valor, rotulo }));
-  }, [solicitacoes, ativos.status]);
+  }, [solicitacoes, ativos.status, lista.statuses]);
 
   const dimensoes = useMemo(() => [
     {
@@ -262,9 +254,7 @@ export default function SolicitacoesCompra() {
       }))
     },
     {
-      // O status é filtrado NA TELA (a lista já vem inteira), então aqui a
-      // marcação múltipla tem efeito de verdade: dois status marcados =
-      // união dos dois. Sem `unico`, porque nada se perde no caminho.
+      // A uniao dos status selecionados agora e filtrada no banco antes da pagina.
       id: 'status',
       rotulo: 'Status',
       opcoes: opcoesStatus
@@ -280,38 +270,7 @@ export default function SolicitacoesCompra() {
     setBusca('');
   }
 
-  const solicitacoesFiltradas = useMemo(() => {
-    const termo = String(busca || '').trim().toLowerCase();
-    const statusSelecionados = ativos.status || new Set();
-
-    return solicitacoes.filter((solicitacao) => {
-      // Compara pela CHAVE CANÔNICA: o banco grava CANCELADO e CANCELADA
-      // (RECUSADO e RECUSADA) para o mesmo estado, e filtrar por igualdade
-      // crua deixava metade dos registros de fora do próprio filtro.
-      const statusOk = statusSelecionados.size === 0
-        || statusSelecionados.has(chaveStatusCompra(solicitacao.status));
-
-      if (!statusOk) {
-        return false;
-      }
-
-      if (!termo) {
-        return true;
-      }
-
-      const obraNome = String(solicitacao.obra?.nome || '').toLowerCase();
-      const obraCodigo = String(solicitacao.obra?.codigo || '').toLowerCase();
-      const solicitante = String(solicitacao.solicitante?.nome || '').toLowerCase();
-      const codigo = codigoSolicitacao(solicitacao).toLowerCase();
-
-      return (
-        obraNome.includes(termo) ||
-        obraCodigo.includes(termo) ||
-        solicitante.includes(termo) ||
-        codigo.includes(termo)
-      );
-    });
-  }, [busca, solicitacoes, ativos.status]);
+  const solicitacoesFiltradas = solicitacoes;
 
   const idsFiltrados = useMemo(
     () => solicitacoesFiltradas.map((solicitacao) => Number(solicitacao.id)).filter(Boolean),
@@ -533,7 +492,7 @@ export default function SolicitacoesCompra() {
     <Pagina className="compras-solicitacoes-page">
       <PageHeader
         titulo="Solicitações de Compra"
-        contagem={loading ? null : `${solicitacoesFiltradas.length} solicitacao(oes)`}
+        contagem={loading ? null : `${lista.pagination.total} solicitacao(oes)`}
         descricao="Acompanhe as solicitações de compra criadas no módulo e gere o PDF quando necessário."
         acaoPrincipal={{
           rotulo: 'Nova solicitação',
@@ -584,18 +543,19 @@ export default function SolicitacoesCompra() {
       <BlocoConteudo
         variante="primario"
         cor="var(--sem-info)"
-        descricao={podeSelecionar && selecionadas.length > 0
-          ? `${selecionadas.length} selecionada(s) para acao em lote`
+        descricao={podeSelecionar
+          ? `${selecionadas.length} selecionada(s). Selecao limitada a pagina atual.`
           : undefined}
       >
         <TabelaPadrao
           colunas={colunas}
           itens={solicitacoesFiltradas}
+          paginaLocal={0}
           carregando={loading}
           vazio="Nenhuma solicitação de compra encontrada."
           storageKey="tabela:solicitacoes-compra"
           chaveWorkspace="compras:solicitacoes"
-          consultaWorkspace={JSON.stringify([busca, [...ativos.status], obraId])}
+          consultaWorkspace={lista.identity}
           rotuloRolagem="Solicitacoes de compra"
           /*
             A marcação em lote (com o "todos" no cabeçalho e o estado
@@ -656,6 +616,9 @@ export default function SolicitacoesCompra() {
           )}
           larguraAcoes={220}
         />
+        <Paginacao pagina={lista.pagination.page} totalPaginas={lista.pagination.pages}
+          total={lista.pagination.total} rotuloRegistro="solicitacao"
+          carregando={loading || inativando || encaminhando} aoMudarPagina={lista.changePage} />
       </BlocoConteudo>
 
       {elementoConfirmacao}

@@ -135,7 +135,7 @@ try{
   await page.getByRole('button',{name:'Cancelar',exact:true}).click();
   assert.equal((await page.evaluate(()=>window.qaCalls)).length,0,'Cancelar nao fecha pedido');
   await page.getByRole('button',{name:'Fechar com o fornecedor e preparar títulos',exact:true}).click();
-  await page.getByRole('button',{name:'Confirmar',exact:true}).click();
+  await page.getByRole('button',{name:'Confirmar',exact:true}).evaluate(el=>{el.click();el.click();});
   await page.getByRole('button',{name:'Criar títulos',exact:true}).waitFor();
   assert.deepEqual(await page.evaluate(()=>window.qaCalls),[{id:25,status:'FECHADO_FORNECEDOR'}]);
   assert.deepEqual(external,[]);assert.deepEqual(errors,[]);
