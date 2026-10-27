@@ -444,6 +444,9 @@ function validateFinanceTituloRelatorioBody(body = {}) {
 }
 
 function validateFinanceTituloQuery(query = {}) {
+  if (query.solicitacao_codigo != null && typeof query.solicitacao_codigo !== 'string') {
+    throw new ValidationError('Codigo da solicitacao invalido.');
+  }
   ensureAllowedKeys(
     query,
     [
@@ -459,6 +462,7 @@ function validateFinanceTituloQuery(query = {}) {
       'forma_pagamento_id',
       'cartao_id',
       'solicitacao_id',
+      'solicitacao_codigo',
       'numero_documento',
       'descricao',
       'valor_min',
@@ -512,6 +516,7 @@ function validateFinanceTituloQuery(query = {}) {
     forma_pagamento_id: parseInteger(query.forma_pagamento_id, 'Forma de pagamento'),
     cartao_id: parseInteger(query.cartao_id, 'Cartao'),
     solicitacao_id: parseInteger(query.solicitacao_id, 'Solicitacao'),
+    solicitacao_codigo: parseOptionalText(query.solicitacao_codigo, 'Codigo da solicitacao', 40),
     numero_documento: parseOptionalText(query.numero_documento, 'Numero do documento', 120),
     descricao: parseOptionalText(query.descricao, 'Descricao', 120),
     valor_min: valorMinimo,
