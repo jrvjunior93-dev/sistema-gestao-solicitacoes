@@ -1,5 +1,9 @@
 # Ownership Ativo
 
+## Correcao do preflight PM2 - 2026-10-27
+- Agente principal reserva aplicador/testes/manifesto/README compras-oom-20261027 e handoff/ownership. Operador confirmou configuracao PM2 e metadado de processo4096, sem NODE_OPTIONS, com titulo PM2 reescrito e nenhum estado de deploy. Corrigir esse falso bloqueio preservando runtime/heap/pares/env/dumps; controllers/QA funcional nao mudam. Publicacao main e comandos manuais continuam autorizados; nenhuma EC2 pelo agente ou escrita em registros.
+- Correcao concluida: 11 testes do aplicador aprovados (inclui cenario real e casos negativos); sintaxe/diff aprovados. Controllers e QA funcional identicos ao51e8fef7. Ownership liberado com este commit; proximo passo e execucao manual do novo SHA pelo operador, sem apagar estados/locks ou reaplicar heap.
+
 ## Publicacao correcao OOM Compras na main - 2026-10-27
 - Agente principal preparou os dois controllers de cotacao/lista SC, validarComprasCarregamentoSemProduto.js, aplicador/testes/manifesto/roteiro compras-oom-20261027 e handoff correspondente para publicacao autorizada na main. SQL gerado e retorno completo em SQLite memoria aprovados, seis regressoes existentes e nove testes do aplicador aprovados. Preservar heap4096 e DEV/Experience/daemon/env/dumps; nenhuma EC2 pelo agente, migration, SQL real, frontend ou alteracao de registros. Ownership funcional liberado apos este commit; continuacao operacional somente com comandos manuais do usuario e handoff desta publicacao. Frontend de cartao no DEV de outra tarefa permanece pendente, nao incluido.
 

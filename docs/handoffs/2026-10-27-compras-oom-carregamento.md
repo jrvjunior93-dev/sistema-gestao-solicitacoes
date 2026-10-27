@@ -1,5 +1,15 @@
 # Compras OOM: separar colecoes no carregamento - 27/10/2026
 
+## Preflight PM2 corrigido com evidencia real
+
+Primeiro preparar foi bloqueado por exigir4096 em /proc/PID/cmdline; nenhum estado/merge/restart ocorreu. Usuario executou coletor somente leitura: 2026-10-27T17:29:47.899Z PROD2050/restarts9 online, Nodeisolado/cwdcorretos, heap_pm2 e heap_metadado_processo4096 com1limite/semconflitos, cmdline semflag mas tituloPM2exato, NODE_OPTIONS ausente, estado_deploy_existefalse. DEV710/restarts0 eExperience713/restarts0 preservados. PM2 local confirma que reescreve process.title. Nao medirheapinterno por essa evidencia; nao reaplicar o limite, nao reiniciar apenas para corrigir o preflight.
+
+Alteracoes desta continuacao SOMENTE aplicador/testes/manifesto/roteiro/handoff/ownership. Novo heap4096 aceita argv original4096 ou o caso tituloPM2exato+metadado node_args4096 do filho, sempre com PM2configurado4096, sem limites conflitantes/duplicados e sem NODE_OPTIONS. Recusa titulo desconhecido, metadado ausente/2304, cmdline com2304 e conflito entre metadado/PM2. Verificacoes de exe/cwd/Nodes/env/pares/dumps/planos continuam. Nao houve mudanca nos controllers ou QA funcional.
+
+Publicacao e continuacao do pedido autorizado de commit/push main e comandos manuais PROD. Cadeia exige exatamente novoCommit^=51e8fef738da25b78970664b6bc3eebeb59e4e85 e51e8^=BASE2f6, com manifesto fechado do deltaBASE->novoCommit. Este nao pode ser aplicado passando o SHA antigo. Usuario confirmou que estado nao existe, entao novo preparar nao requer remover nada. Agente nao acessa EC2, nao altera flags/dumps/heap/registros. Aguardar novo COMPRAS_OOM_PROD_PREPARADO antes de aplicar, com mesmo restart exclusivoPROD autorizado e mesmas guardas de backup/timer/janela.
+
+Validacoes desta correcao: 11 testes do aplicador/inventario aprovados, sintaxe e diffcheck aprovados; caso real reproduzido localmente com valores sanitizados do coletor. Controllers e QA funcional conferidos identicos ao release51e8. Nenhuma prova de heap interno e alegada: limite configurado/metadado preservados; nao foi ativado inspector/profiler nem endpoint novo. Ownership deste ajuste liberado com commit; SHA final publicado fica no chat e handoff raiz.
+
 ## Publicacao autorizada e pacote manual de producao
 
 Usuario autorizou commit/push desta correcao na main e comandos manuais PROD, preservando heap 4096 e DEV, sem EC2 pelo agente e sem alterar registros. Base remota confirmada: 2f6bd864ebda5d87e13852dc605c1a6c881abbf2. Escopo funcional continua 11 linhas separate:true nos dois controllers, sem frontend, mudanca de regra, migration ou dependencia.

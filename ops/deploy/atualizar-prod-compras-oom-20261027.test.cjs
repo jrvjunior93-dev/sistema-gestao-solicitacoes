@@ -1,7 +1,7 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),cp=require('node:child_process'),path=require('node:path');
 const op=require('./atualizar-prod-compras-oom-20261027.cjs');
-function manifest(){return{base:op.BASE,runtime_files:2,database_writes:0,migrations:0,heap_mib:4096,
+function manifest(){return{base:op.BASE,release_parent:op.RELEASE_PARENT,runtime_files:2,database_writes:0,migrations:0,heap_mib:4096,
  files:op.FILES.map(p=>({path:p,sha256:op.hash(p),old_sha256:op.hash('old:'+p)})),extra:op.EXTRA.map(p=>({path:p,sha256:op.hash(p)}))};}
 function snap(){return{daemon:'42',persisted:[['dump','hash']],apps:[
  {name:'backend-solicitacoes',pid:50,restarts:3,env:'prod-env',envFile:'prod-file',node:'prod',policy:'prod4096'},
@@ -11,7 +11,19 @@ test('inventario fechado rejeita extras, exclusoes, adulteracao e escrita de ban
  const names=[...op.FILES,...op.EXTRA,op.MANIFEST];op.inventory(manifest(),names,p=>p,p=>'old:'+p);
  for(const p of ['backend/.env','frontend/src/App.jsx','backend/migrations/novo.js','backend/src/routes.js','backend/package.json','backend/src/controllers/HomeBlocosController.js'])assert.throws(()=>op.inventory(manifest(),[...names,p],p=>p,p=>'old:'+p));
  assert.throws(()=>op.inventory(manifest(),names.slice(1),p=>p,p=>'old:'+p));assert.throws(()=>op.inventory(manifest(),names,p=>p+'bad',p=>'old:'+p));assert.throws(()=>op.inventory(manifest(),names,p=>p,()=>null));
- for(const delta of [{migrations:1},{database_writes:1},{heap_mib:2304},{runtime_files:3},{base:'other'}])assert.throws(()=>op.inventory({...manifest(),...delta},names,p=>p,p=>'old:'+p));
+ for(const delta of [{migrations:1},{database_writes:1},{heap_mib:2304},{runtime_files:3},{base:'other'},{release_parent:'other'}])assert.throws(()=>op.inventory({...manifest(),...delta},names,p=>p,p=>'old:'+p));
+});
+test('caso real: titulo PM2 oculta argv, mas configuracao e metadado do filho mantem4096',()=>{
+ const title='node /home/ubuntu/sistema-gestao-solicitacoes-main/backend/server.js';
+ op.heap4096(['--max-old-space-size=4096'],[title],{node_args:'--max-old-space-size=4096'});
+ op.heap4096(['--max-old-space-size=4096'],[title],{node_args:'["--max-old-space-size=4096"]'});
+ for(const env of [{},{node_args:'--max-old-space-size=2304'},{node_args:'--max-old-space-size=4096 --max-old-space-size=4096'},{node_args:'--max-old-space-size=4096',NODE_OPTIONS:'--max-old-space-size=1024'}])assert.throws(()=>op.heap4096(['--max-old-space-size=4096'],[title],env));
+ assert.throws(()=>op.heap4096(['--max-old-space-size=4096'],['titulo desconhecido'],{node_args:'--max-old-space-size=4096'}));
+ assert.throws(()=>op.heap4096(['--max-old-space-size=4096'],['--max-old-space-size=2304'],{node_args:'--max-old-space-size=4096'}));
+ assert.throws(()=>op.heap4096(['--max-old-space-size=4096'],['--max-old-space-size=4096'],{node_args:'--max-old-space-size=2304'}));
+});
+test('cadeia publicada aceita somente correcao apos51e8 com base original2f6',()=>{
+ op.releaseChain(op.RELEASE_PARENT,op.BASE);assert.throws(()=>op.releaseChain('other',op.BASE));assert.throws(()=>op.releaseChain(op.RELEASE_PARENT,'other'));
 });
 test('heap4096 deve estar configurado e presente no processo real, sem conflitos',()=>{
  op.heap4096(['--max-old-space-size=4096'],['--max-old-space-size=4096','script.js'],{});

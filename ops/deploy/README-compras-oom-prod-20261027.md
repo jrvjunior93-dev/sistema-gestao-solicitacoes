@@ -9,7 +9,7 @@ SC 650/cotacao 313: 6 itens cadastrados, 57 manuais, 63 respostas ativas e 63 it
 - Operador executa os comandos; agente nao acessa EC2.
 - Informe uma breve janela para um restart exclusivo de backend-solicitacoes. Preserve dados nao enviados nos formularios; evite novos salvamentos enquanto houver manutencao.
 - Backup recente conferido, timer ativo, ambiente automatico NSDOCS desligado e carga historica pausada.
-- Node PROD deve continuar com --max-old-space-size=4096 na configuracao PM2 e no processo real. O pacote bloqueia se nao conferir.
+- Node PROD deve continuar com --max-old-space-size=4096 na configuracao PM2. Se o PM2 ocultou argv ao reescrever process.title, o pacote exige titulo exato do processo e metadado node_args4096 do filho, sem NODE_OPTIONS. Nao se usa cmdline sem flags como prova de perda do limite, nem se mede o heap efetivo por inspector.
 - Nenhuma migration, install, SQL, alteracao de registros, cancelamento de SC ou chamada S3/cotacao pelo aplicador.
 - QA utiliza mocks e SQLite em memoria sob bloqueio de rede. A API reiniciada continua apta a executar as gravacoes normais solicitadas pelos usuarios; nao se desabilitam regras, rotas ou jobs existentes.
 
@@ -37,3 +37,9 @@ Se houver erro, envie somente a saida sanitizada. Nao remova locks/estado nem fo
 O backup privado contem os bytes anteriores dos arquivos alterados e os hashes do estado protegido. Nao existe rollback automatico que possa desfazer registros. Em caso de regressao, preservar esse estado para preparar uma reversao de codigo por escopo, sem reset/clean nem restauracao de banco. Nao executar ferramentas de outra tarefa (heap/cancelamentos/captura) como parte deste pacote.
 
 O heap 4096 e preservado apenas como ja esta no PM2 em memoria. Este deploy nao altera o dump de boot: nao torna esse limite persistente apos um futuro reboot. O DEV nao e reiniciado nem recebe codigo.
+
+## Correcao do preflight apos retorno do operador
+
+O primeiro preparar bloqueou antes de criar estado porque exigia flag em cmdline. Leitura manual de 27/10/2026 17:29:47Z confirmou PM2/configuracao e metadado do filho4096, NODE_OPTIONS ausente e titulo PM2 reescrito; estado de deploy inexistente. Preflight corrigido e testado para esse caso, recusando limites ausentes/divergentes/ambiguos, titulo desconhecido e NODE_OPTIONS. Nao reaplicar heap, reiniciar ou remover locks por causa dessa mensagem.
+
+Utilizar o NOVO SHA publicado no chat, que tem como pai 51e8fef738da25b78970664b6bc3eebeb59e4e85. O manifesto cobre a cadeia fechada desde2f6 e mantem os mesmos controllers/QA funcional. Nao reutilizar o commit anterior com o aplicador novo.

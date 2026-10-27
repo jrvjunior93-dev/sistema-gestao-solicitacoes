@@ -4,6 +4,7 @@
 const fs=require('node:fs'),cp=require('node:child_process'),crypto=require('node:crypto'),http=require('node:http');
 const ROOT='/home/ubuntu/sistema-gestao-solicitacoes-main',BACKEND=ROOT+'/backend';
 const BASE='2f6bd864ebda5d87e13852dc605c1a6c881abbf2';
+const RELEASE_PARENT='51e8fef738da25b78970664b6bc3eebeb59e4e85';
 const STARTING_HEADS=[BASE,'d7d02aeb48ff2f2c8d8053ba34acdfe406242ee8'];
 const NODE='/home/ubuntu/fluxy-node24-prod/node-v24.22.1-linux-x64/bin/node';
 const DAEMON='/opt/fluxy-node24-pm2/node-v24.22.1-linux-x64/bin/node',CLI='/usr/lib/node_modules/pm2/bin/pm2';
@@ -29,11 +30,21 @@ function state(){privateStat(STATE,true);privateStat(STATE+'/estado.json');retur
 function save(s,phase){s.phase=phase;atomic(STATE+'/estado.json',JSON.stringify(s));}
 const upper=e=>Object.fromEntries(Object.entries(e||{}).filter(([k,v])=>/^[A-Z][A-Z0-9_]*$/.test(k)&&!k.startsWith('CONFIRM_')&&v!==undefined));
 function procEnv(pid){return Object.fromEntries(fs.readFileSync(`/proc/${pid}/environ`,'utf8').split('\0').filter(Boolean).map(s=>{const i=s.indexOf('=');return[s.slice(0,i),s.slice(i+1)];}));}
-function oldSpace(value){const args=Array.isArray(value)?value:String(value||'').trim().split(/\s+/).filter(Boolean);let result=null;
+function nodeArgs(value){if(Array.isArray(value))return value;if(typeof value==='string'&&value.trim().startsWith('[')){try{const v=JSON.parse(value);check(Array.isArray(v),'HEAP_INVALIDO');return v;}catch{check(false,'HEAP_INVALIDO');}}return String(value||'').trim().split(/\s+/).filter(Boolean);}
+function oldSpace(value){const args=nodeArgs(value);let result=null;
  for(let i=0;i<args.length;i++){const flag=args[i].replace(/_/g,'-');check(!/^--max-(?:old-space-size-percentage|heap-size)(?:=|$)/.test(flag),'HEAP_CONFLITANTE');
   if(/^--max-old-space-size(?:=|$)/.test(flag)){check(result===null,'HEAP_AMBIGUO');const n=flag.includes('=')?flag.split('=')[1]:args[++i];check(/^\d+$/.test(n||''),'HEAP_INVALIDO');result=Number(n);}}
  return result;}
-function heap4096(configured,cmdline,env){check(oldSpace(configured)===4096&&oldSpace(cmdline)===4096&&!env.NODE_OPTIONS,'HEAP_4096_NAO_CONFERIDO');}
+function heap4096(configured,cmdline,env){
+ check(oldSpace(configured)===4096&&!env.NODE_OPTIONS,'HEAP_4096_NAO_CONFERIDO');
+ const actual=oldSpace(cmdline),metadata=env.node_args===undefined?null:oldSpace(env.node_args);
+ check(env.node_args===undefined||metadata===4096,'HEAP_METADADO_DIVERGENTE');
+ if(actual===4096)return;
+ // PM2 ProcessContainerFork reescreve process.title, ocultando argv em /proc.
+ // Aceitar SOMENTE o titulo exato esperado e a flag4096 no metadado do filho.
+ const args=nodeArgs(cmdline),title=env.PROCESS_TITLE||'node '+BACKEND+'/server.js';
+ check(actual===null&&args.length===1&&args[0]===title&&metadata===4096,'HEAP_4096_NAO_CONFERIDO');
+}
 function automaticOff(...sources){for(const source of sources){check(source?.ALLOW_SCHEMA_MIGRATIONS!=='true'&&source?.NODE_TLS_REJECT_UNAUTHORIZED!=='0','AMBIENTE_INSEGURO');for(const k of ['NSDOCS_V2_ENABLED','NSDOCS_V2_FIXTURES_ENABLED']){const v=source?.[k];check(v===undefined||v===false||v===''||String(v).toLowerCase()==='false','AUTOMATICO_LIGADO');}}}
 function list(){const pid=Number(fs.readFileSync('/home/ubuntu/.pm2/pm2.pid','utf8').trim());
  check(pid>1&&fs.readlinkSync(`/proc/${pid}/exe`)===DAEMON,'DAEMON_DIFERENTE');return JSON.parse(run(DAEMON,[CLI,'jlist']));}
@@ -66,12 +77,13 @@ async function withLocks(action){const held=[];let owned=false;
   return await action();
  }finally{for(const{fd,file}of held.reverse()){const s=fs.fstatSync(fd);fs.closeSync(fd);const live=fs.lstatSync(file);check(live.ino===s.ino&&live.dev===s.dev,'LOCK_MUDOU');fs.unlinkSync(file);}if(owned)fs.rmdirSync(ROOT+'/.git/fluxy-nfe-prod-operacao.lock');}}
 function blob(ref,file){return git(['ls-tree',ref,'--',file])?run('/usr/bin/git',['show',ref+':'+file],{encoding:null}):null;}
-function inventory(m,names,read,oldRead){check(m.base===BASE&&m.runtime_files===2&&m.database_writes===0&&m.migrations===0&&m.heap_mib===4096,'MANIFESTO_DIVERGENTE');
+function inventory(m,names,read,oldRead){check(m.base===BASE&&m.release_parent===RELEASE_PARENT&&m.runtime_files===2&&m.database_writes===0&&m.migrations===0&&m.heap_mib===4096,'MANIFESTO_DIVERGENTE');
  check(canonical(m.files.map(f=>f.path))===canonical(FILES)&&canonical(m.extra.map(f=>f.path))===canonical(EXTRA),'ESCOPO_DIVERGENTE');
  check(canonical([...names].sort())===canonical([...FILES,...EXTRA,MANIFEST].sort()),'ARQUIVOS_EXTRAS');
  for(const f of [...m.files,...m.extra])check(hash(read(f.path))===f.sha256,'HASH_DIVERGENTE');
  for(const f of m.files){const old=oldRead(f.path);check((old===null?null:hash(old))===f.old_sha256,'BASE_HASH_DIVERGENTE');}}
-function verify(version){check(/^[a-f0-9]{40}$/.test(version||''),'SHA_INVALIDO');git(['fetch','origin','main']);git(['merge-base','--is-ancestor',version,'origin/main']);check(git(['rev-parse',version+'^'])===BASE,'BASE_DIVERGENTE');
+function releaseChain(parent,grandparent){check(parent===RELEASE_PARENT&&grandparent===BASE,'BASE_DIVERGENTE');}
+function verify(version){check(/^[a-f0-9]{40}$/.test(version||''),'SHA_INVALIDO');git(['fetch','origin','main']);git(['merge-base','--is-ancestor',version,'origin/main']);releaseChain(git(['rev-parse',version+'^']),git(['rev-parse',RELEASE_PARENT+'^']));
  const read=p=>{const bytes=blob(version,p);check(bytes!==null,'ARQUIVO_AUSENTE');return bytes;},m=JSON.parse(read(MANIFEST));
  inventory(m,git(['diff','--name-only',BASE,version]).split(/\r?\n/).filter(Boolean),read,p=>blob(BASE,p));
  check(!git(['diff','--diff-filter=D','--name-only',BASE,version]),'EXCLUSAO_NEGADA');
@@ -112,5 +124,5 @@ async function main(action,version){check(['preparar','aplicar','conferir'].incl
   check(git(['rev-parse','HEAD'])===s.version&&!git(['status','--porcelain','--untracked-files=no']),'HEAD_OU_TRACKED_DIVERGENTE');sourceCheck(s);
   await finish(s,{qa,baseline:()=>protectedCheck(s,'refresh'),save,restart:()=>restart(s),ready:async()=>{sourceCheck(s);protectedCheck(s,'one');check(await health(),'HEALTH_FALHOU');}});report(s);
  });}
-module.exports={main,BASE,STARTING_HEADS,FILES,EXTRA,MANIFEST,SELF,TEST,QA,canonical,hash,inventory,oldSpace,heap4096,automaticOff,same,confirmations,restartNeeded,finish};
+module.exports={main,BASE,RELEASE_PARENT,releaseChain,STARTING_HEADS,FILES,EXTRA,MANIFEST,SELF,TEST,QA,canonical,hash,inventory,oldSpace,heap4096,automaticOff,same,confirmations,restartNeeded,finish};
 if(require.main===module||process.argv[1]==='-')main(process.argv[2],process.argv[3]).catch(e=>{console.error(/^COMPRAS_OOM_PROD_[A-Z0-9_]+$/.test(e.message||'')?e.message:'COMPRAS_OOM_PROD_INTERROMPIDO_SEM_SEGREDOS');console.error('Nao repita reinicios nem remova estado ou locks. Envie somente esta saida.');process.exitCode=1;});
