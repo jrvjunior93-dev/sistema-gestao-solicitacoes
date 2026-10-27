@@ -50,7 +50,6 @@ const server=await createServer({root,configFile:false,logLevel:'error',cacheDir
   resolveId(id){if(id==='/fixture.jsx')return '\0qa-titulo-detalhe.jsx'},
   async load(id){if(id==='\0qa-titulo-detalhe.jsx')return transformWithEsbuild(entry,'fixture.jsx',{loader:'jsx',jsx:'transform'})},
   transform(_code,id){if(id.endsWith('/src/services/financeiro.js'))return mocks;
-    if(id.endsWith('/src/modules/fiscal/services/fiscalApi.js'))return [..._code.matchAll(/export (?:async )?function (\w+)/g)].map(m=>`export async function ${m[1]}(){return [];}`).join('\n');
     if(id.endsWith('/src/contexts/AuthContext.jsx'))return "export const useAuth=()=>({user:window.readonly?{id:2,perfil:'USUARIO',area:'OBRA',areas_permissoes_configuradas:true,areas_permissoes:['financeiro.titulos.visualizar']}:{id:1,perfil:'SUPERADMIN',area:'FINANCEIRO'}});";
   },
   configureServer(vite){vite.middlewares.use(async(req,res,next)=>{if(new URL(req.url,'http://localhost').pathname!=='/fixture')return next();res.setHeader('Content-Type','text/html');res.end(await vite.transformIndexHtml('/fixture','<html lang="pt-BR"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module" src="/fixture.jsx"></script></body></html>'))})}

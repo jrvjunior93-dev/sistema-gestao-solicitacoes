@@ -248,19 +248,6 @@ export async function listarSolicitacoesCompra(params = {}, { signal } = {}) {
   return handleJsonResponse(response, 'Erro ao buscar solicitacoes de compra');
 }
 
-// Contrato explicito: nao cair no array legado, que carregaria a lista inteira.
-export async function listarPaginaSolicitacoesCompra(params = {}, { signal } = {}) {
-  const data = await listarSolicitacoesCompra({ ...params, page: params.page || 1, limit: params.limit || 50 }, { signal });
-  const meta = data?.pagination;
-  if (!Array.isArray(data?.data) || !meta || !Number.isInteger(meta.page) || meta.page < 1
-    || !Number.isInteger(meta.limit) || meta.limit < 1 || meta.limit > 100
-    || !Number.isInteger(meta.total) || meta.total < 0 || !Number.isInteger(meta.pages) || meta.pages < 1
-    || data.data.length > meta.limit) {
-    throw new Error('A consulta paginada esta indisponivel. Atualize o backend antes de usar esta tela.');
-  }
-  return data;
-}
-
 export async function obterSolicitacaoCompra(id) {
   const response = await fetch(`${API_URL}/compras/solicitacoes/${id}`, {
     headers: authHeaders()

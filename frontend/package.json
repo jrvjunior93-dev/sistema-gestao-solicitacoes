@@ -4,7 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:fiscal-documentos-paginacao": "node scripts/validarDocumentosFiscaisPaginacao.mjs && node scripts/validarEmissaoFiscal.mjs",
+    "test:fiscal-pagamentos-documentos": "node scripts/validarFiscalPagamentoDocumentosUI.mjs && node scripts/validarArquivosSolicitacaoFila.mjs",
+    "test:pedido-localizacao": "node scripts/validarPedidoLocalizacaoUI.mjs",
+    "test:fiscal-vinculos-pedidos": "node scripts/validarVinculosNfeUI.mjs",
+    "test:fiscal-emissao": "node scripts/validarEmissaoFiscal.mjs",
     "test:fetch-credenciais": "node scripts/validarFetchCredenciais.mjs",
     "test:download-medicao": "node scripts/validarFetchCredenciais.mjs && node scripts/validarDownloadMedicaoUI.mjs",
     "test:retirada-envios": "node scripts/validarRetiradaAutorizacaoUI.mjs && node scripts/validarFilaInstrumentosUI.mjs --retirada",
@@ -78,11 +81,7 @@
     "test:reaproveitamento-compra": "node scripts/validarReaproveitamentoCompra.mjs",
     "provas": "node scripts/provas/acentoNoCodigo.mjs && node scripts/provas/ordemDeDeclaracao.mjs && node scripts/provas/larguraDeColuna.mjs && node scripts/provas/contagemDeLinhas.mjs && node scripts/provas/contrasteDosTokens.mjs && node scripts/provas/regrasMordem.mjs && node scripts/provas/itensDaDoDMordem.mjs && node scripts/provas/itensDoRunnerMordem.mjs && node scripts/provas/tokensExistem.mjs && node scripts/provas/filtrosVisiveisMordem.mjs && node scripts/provas/paginaCabeNoCelular.mjs && node scripts/qa-preview/provaLarguraCabe.mjs && node scripts/qa-preview/provaEtiquetaCabe.mjs && node scripts/qa-preview/provaVisaoAtivaAparece.mjs && node scripts/provas/erroNaoVazaCru.mjs && node scripts/qa-preview/provaCamadasCabem.mjs && node scripts/qa-preview/provaModaisCabem.mjs && node scripts/qa-preview/provaBarraDoTopo.mjs && node scripts/qa-preview/provaTextoInteiroAparece.mjs && node scripts/provas/escSemCliqueFora.mjs && node scripts/provas/modalPortalNaoPropaga.mjs",
     "cancelamento": "node scripts/varreduraCancelamento.mjs",
-    "test:fiscal-pagamentos-documentos": "node scripts/validarFiscalPagamentoDocumentosUI.mjs && node scripts/validarArquivosSolicitacaoFila.mjs",
-    "test:pedido-localizacao": "node scripts/validarPedidoLocalizacaoUI.mjs",
-    "test:fiscal-emissao": "node scripts/validarEmissaoFiscal.mjs",
-    "test:fiscal-nsdocs-sem-sefaz": "node scripts/validarFiscalNsdocsSemSefaz.mjs",
-    "test:fiscal-vinculos-pedidos": "node scripts/validarVinculosNfeUI.mjs"
+    "test:fiscal-documentos-paginacao": "node scripts/validarDocumentosFiscaisPaginacao.mjs && node scripts/validarEmissaoFiscal.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.0",

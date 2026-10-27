@@ -32,16 +32,14 @@ function FiltroAutocomplete({ rotulo, ariaLabel = rotulo, value = '', onChange, 
   const [resultado, setResultado] = useState({ data: [] });
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState('');
-  const [aberto, setAberto] = useState(false);
-  const listarAoAbrir = remoto === 'forma_pagamento_id';
   const escolhida = useRef(null);
   const termo = busca.trim();
   useEffect(() => {
-    if (!remoto || !aberto || disabled) return undefined;
+    if (!remoto) return undefined;
     let vigente = true;
     const abort = new AbortController();
     setResultado({ data: [] }); setErro(''); setCarregando(false);
-    if (!listarAoAbrir && termo.length < 2) return () => { vigente = false; abort.abort(); };
+    if (termo.length < 2) return () => { vigente = false; abort.abort(); };
     setCarregando(true);
     const timer = setTimeout(async () => {
       try {
@@ -50,9 +48,9 @@ function FiltroAutocomplete({ rotulo, ariaLabel = rotulo, value = '', onChange, 
       } catch (error) {
         if (vigente && error.name !== 'AbortError') setErro(error.message);
       } finally { if (vigente) setCarregando(false); }
-    }, listarAoAbrir && !termo ? 0 : 350);
+    }, 350);
     return () => { vigente = false; clearTimeout(timer); abort.abort(); };
-  }, [remoto, status, termo, aberto, disabled]);
+  }, [remoto, status, termo]);
   const atuais = remoto ? (resultado.chave === `${status}|${termo}` ? resultado.data || [] : []) : options;
   const selecionada = atuais.find(o => String(o.id) === String(value))
     || options.find(o => String(o.id) === String(value))
@@ -68,10 +66,9 @@ function FiltroAutocomplete({ rotulo, ariaLabel = rotulo, value = '', onChange, 
         className="min-w-0 flex-1" inputClassName="input input-sm w-full min-w-0"
         ariaLabel={ariaLabel} mostrarConsultaCompleta={false} loading={carregando}
         placeholder={PLACEHOLDERS[rotulo]} selecionarTextoAoFocar
-        abrirAoClicar={listarAoAbrir}
-        emptyText={erro || (remoto && !listarAoAbrir && termo.length < 2 ? 'Digite ao menos 2 caracteres.' : 'Nenhum resultado nesta situação.')}
-        onClose={() => { setAberto(false); setBusca(''); setErro(''); }}
-        onSearch={query => { setAberto(true); setBusca(query === selecionado?.nome ? '' : query); }} onChange={id => {
+        emptyText={erro || (remoto && termo.length < 2 ? 'Digite ao menos 2 caracteres.' : 'Nenhum resultado nesta situação.')}
+        onClose={() => { setBusca(''); setErro(''); }}
+        onSearch={query => setBusca(query === selecionado?.nome ? '' : query)} onChange={id => {
           // Digitar pesquisa sugestoes; so uma escolha ou limpar altera o filtro.
           if (!id) return;
           escolhida.current = opcoes.find(o => String(o.id) === id) || null;
@@ -81,7 +78,7 @@ function FiltroAutocomplete({ rotulo, ariaLabel = rotulo, value = '', onChange, 
         disabled={disabled} onClick={() => { setBusca(''); onChange(''); }}><HiOutlineXMark className="h-4 w-4" /></button>}
     </div>
     {erro && <span role="status" className="mt-1 block text-[var(--c-danger)]">{erro}</span>}
-    {resultado.mais && <span className="mt-1 block text-[var(--c-muted)]">Até {resultado.limite || 20} sugestões; refine a busca.</span>}
+    {resultado.mais && <span className="mt-1 block text-[var(--c-muted)]">Até 20 sugestões; refine a busca.</span>}
   </div>;
 }
 
@@ -168,6 +165,6 @@ export default function FiltrosFilaPagamentos({ status, statusOptions, filtros, 
         onClick={() => { setDatas({ de: '', ate: '' }); setRevisaoDatas(n => n + 1); onSearch(''); onApply(status, '', filtrosFilaVazios()); }}>Limpar filtros dos títulos</button>
     </div>
     {erroDatas && <p role="alert" className="text-xs text-[var(--c-danger)]">{erroDatas}</p>}
-    <p className="text-xs text-[var(--c-muted)]">Clique em Forma de pagamento para ver as opções da fila. Os demais campos permitem pesquisar sugestões. Forma de pagamento considera a prevista no título, não a forma efetiva da baixa.</p>
+    <p className="text-xs text-[var(--c-muted)]">Digite e selecione uma sugestão para filtrar. Forma de pagamento considera a prevista no título, não a forma efetiva da baixa.</p>
   </div>;
 }

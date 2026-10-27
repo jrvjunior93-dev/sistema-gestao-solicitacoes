@@ -40,8 +40,7 @@ const STATUS_OPTIONS = [
 ];
 
 const SOURCE_OPTIONS = [
-  ['sefaz_distribution', 'SEFAZ (legado)'],
-  ['nsdocs_v2_manual', 'NSDOCS'],
+  ['sefaz_distribution', 'SEFAZ'],
   ['manual_upload', 'Upload manual'],
   ['batch_import', 'Importacao em lote']
 ];

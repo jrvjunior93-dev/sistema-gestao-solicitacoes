@@ -1,5 +1,5 @@
 const contaKeys = ['modo_recebimento', 'favorecido_nome', 'favorecido_documento', 'chave_pix', 'banco', 'agencia', 'conta', 'tipo_conta', 'recebimento_personalizado'];
-const linhaKeys = ['vale', 'valor_vale', 'selecionado', 'parcela_40', 'parcela_50', 'parcela_60', 'conferido_dp', 'conferido_obra', 'dias', 'faltas', 'acrescimos', 'descontos', 'observacoes', 'desconto_sem_reembolso', ...contaKeys];
+const linhaKeys = ['selecionado', 'parcela_40', 'parcela_50', 'parcela_60', 'conferido_dp', 'conferido_obra', 'dias', 'faltas', 'acrescimos', 'descontos', 'observacoes', 'desconto_sem_reembolso', ...contaKeys];
 const pick = (obj, keys) => Object.fromEntries(keys.filter(key => Object.hasOwn(obj || {}, key)).map(key => [key, obj[key]]));
 export const contaPagamentoInputs = linha => pick(linha, contaKeys);
 export function pagamentoInputs(form) {

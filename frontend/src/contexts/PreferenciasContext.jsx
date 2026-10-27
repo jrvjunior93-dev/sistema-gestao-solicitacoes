@@ -445,11 +445,6 @@ function agendarEnvio(chave) {
 function enviar(chave, { keepalive }) {
   const entrada = armazem.entradas.get(chave);
   if (!entrada || !entrada.lista) return;
-  // Uma gravacao antiga nao pode terminar depois da nova e vence-la no servidor.
-  // A ultima escolha fica no espelho e segue assim que a anterior terminar.
-  if (entrada.enviando) return;
-  entrada.enviando = true;
-  const revisao = entrada.revisao || 0;
   const tipo = chave.slice(chave.lastIndexOf('|') + 1);
   /*
     Falha de rede aqui NÃO desfaz nada: o valor já está na memória (a tela
@@ -460,15 +455,7 @@ function enviar(chave, { keepalive }) {
   const promessa = entrada.valor === null
     ? resetListaPreferenciaTipo(entrada.lista, tipo)
     : salvarListaPreferenciasTipo(entrada.lista, tipo, entrada.valor, { keepalive });
-  Promise.resolve(promessa).catch(() => {}).finally(() => {
-    if (armazem.entradas.get(chave) !== entrada) return;
-    entrada.enviando = false;
-    if ((entrada.revisao || 0) !== revisao) {
-      clearTimeout(armazem.timers.get(chave));
-      armazem.timers.delete(chave);
-      enviar(chave, { keepalive });
-    }
-  });
+  promessa.catch(() => {});
 }
 
 function gravar(storageKey, tipo, valor) {
@@ -477,8 +464,6 @@ function gravar(storageKey, tipo, valor) {
   const { chave, entrada } = registro;
   const proximo = valor === null || valor === undefined ? null : valor;
   entrada.valor = proximo;
-  entrada.revisao = (entrada.revisao || 0) + 1;
-  entrada.alteradaNaSessao = true;
   entrada.doServidor = false;
   if (proximo === null) ESPELHO[tipo].remover(entrada.base);
   else ESPELHO[tipo].gravar(entrada.base, proximo);
@@ -505,9 +490,6 @@ function aplicarDoServidor(listas) {
       if (!ehObjeto(valor)) return;
       const chave = `${lista}|${tipo}`;
       const anterior = armazem.entradas.get(chave);
-      // A carga inicial pode chegar depois de o usuario marcar/esconder.
-      // Preservar a decisao desta sessao, mesmo se o debounce ja foi enviado.
-      if (anterior?.alteradaNaSessao) return;
       armazem.entradas.set(chave, {
         base: anterior?.base || lista,
         lista,
@@ -598,7 +580,7 @@ async function adotarUmaVez(usuarioId) {
   const candidatos = varrerLocalStorage().filter((item) => {
     const entrada = armazem.entradas.get(`${item.lista}|${item.tipo}`);
     // O banco sempre vence: o que já existe lá não é tocado.
-    return !entrada?.doServidor && !entrada?.alteradaNaSessao;
+    return !entrada?.doServidor;
   });
 
   if (candidatos.length === 0) {
@@ -638,7 +620,6 @@ async function adotarUmaVez(usuarioId) {
     lote.forEach((item) => {
       const chave = `${item.lista}|${item.tipo}`;
       const anterior = armazem.entradas.get(chave);
-      if (anterior?.alteradaNaSessao) return;
       armazem.entradas.set(chave, {
         base: anterior?.base || item.lista,
         lista: item.lista,

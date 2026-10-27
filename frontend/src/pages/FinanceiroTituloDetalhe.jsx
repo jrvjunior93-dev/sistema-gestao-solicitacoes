@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useWorkspaceState, useWorkspaceWork, useWorkspaceTitle } from '../navigation/WorkspaceContext';
 import useWorkspaceRecordDraft from '../navigation/useWorkspaceRecordDraft';
-import useRetornoTitulos from '../navigation/useRetornoTitulos';
 import useQueryRevision from '../navigation/useQueryRevision';
 import useWorkspaceOpenRecord from '../navigation/useWorkspaceOpenRecord';
 import TituloNegociacaoHistorico from '../components/financeiro/TituloNegociacaoHistorico';
@@ -354,7 +353,6 @@ export default function FinanceiroTituloDetalhe() {
   const { id } = useParams();
   const { user } = useAuth();
   const [titulo, setTitulo] = useState(null);
-  const voltarParaLista = useRetornoTitulos(titulo?.tipo);
   const [contasBancarias, setContasBancarias] = useState([]);
   const [cartoes, setCartoes] = useState([]);
   const [chequesTerceiros, setChequesTerceiros] = useState([]);
@@ -787,7 +785,7 @@ export default function FinanceiroTituloDetalhe() {
         <PageHeader
           titulo={`Titulo ${titulo.codigo || `#${titulo.id}`}`}
           descricao={titulo.descricao || undefined}
-          voltar={{ to: voltarParaLista, title: 'Voltar para títulos' }}
+          voltar={{ to: '/financeiro/titulos', title: 'Voltar para títulos' }}
           acaoPrincipal={podeBaixarTitulo ? {
             rotulo: 'Registrar baixa',
             desabilitada: bloqueadoPorRetornoObra

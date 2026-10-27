@@ -11,32 +11,13 @@ export async function validarFiltrosPesquisaFilaUI(page, root) {
   await page.goto('http://127.0.0.1:5308/qa-fila?filtros-pesquisa=1');
   await page.getByText('TIT-00001', { exact: true }).waitFor();
   assert.equal(await page.locator('[data-fila-linha]').count(), 50);
-  assert.equal(await page.evaluate(() => window.__sugestoes?.length || 0), 0, 'Montar filtros nao consulta formas antes de abrir');
-  const formasDisponiveis=page.getByRole('combobox',{name:'Forma de pagamento',exact:true});
-  await formasDisponiveis.click();
-  await page.getByRole('button',{name:'BOLETO FORA DA PÁGINA',exact:true}).waitFor();
-  assert(await page.getByRole('button',{name:'PIX',exact:true}).isVisible());
-  assert.equal(await page.evaluate(()=>window.__sugestoes.at(-1).campo),'forma_pagamento_id');
-  assert.equal(await page.evaluate(()=>window.__sugestoes.at(-1).q),'');
-  await formasDisponiveis.press('Escape');
-  // Reabrir com o campo ainda focado (Escape nao transfere foco).
-  for(const width of [1366,390]){
-    await page.setViewportSize({width,height:900});
-    await formasDisponiveis.click();
-    const boleto=page.getByRole('button',{name:'BOLETO FORA DA PÁGINA',exact:true});await boleto.waitFor();
-    const bounds=await boleto.boundingBox();assert(bounds.x>=0&&bounds.x+bounds.width<=width+1);
-    await page.screenshot({path:path.join(root,'../outputs/fila-formas-disponiveis-'+width+'.png'),fullPage:true});
-    await formasDisponiveis.press('Escape');
-  }
-  await page.setViewportSize({width:1366,height:900});
-  const consultasAbertura=await page.evaluate(()=>window.__sugestoes.length);
   await page.getByLabel('Selecionar TIT-00001', { exact: true }).check();
   const obra = page.getByRole('combobox', { name: 'Obra / Centro de custo', exact: true });
   await obra.fill('s'); await page.waitForTimeout(420);
-  assert.equal(await page.evaluate(() => window.__sugestoes?.length || 0), consultasAbertura, 'Um caractere em outro campo nao consulta API');
+  assert.equal(await page.evaluate(() => window.__sugestoes?.length || 0), 0, 'Um caractere nao consulta API');
   await obra.fill('sao'); await obra.fill('são'); await obra.fill('São João');
   await page.getByRole('button', { name: '3 · Obra São João', exact: true }).waitFor();
-  assert.equal(await page.evaluate(() => window.__sugestoes.length), consultasAbertura+1, 'Debounce evita consulta a cada tecla');
+  assert.equal(await page.evaluate(() => window.__sugestoes.length), 1, 'Debounce evita consulta a cada tecla');
   await obra.press('Enter');
   await page.waitForFunction(() => window.__filterQueries.at(-1).obra_id === '3');
   assert(!(await page.getByLabel('Selecionar TIT-00001', { exact: true }).isChecked()), 'Trocar filtro limpa selecao da baixa');

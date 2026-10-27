@@ -40,7 +40,6 @@ export default function ApropriacaoAutocomplete({
   onSearch,
   onClose,
   selecionarTextoAoFocar = false,
-  abrirAoClicar = false,
   loading = false,
   loadingText = 'Consultando...',
   ariaLabel,
@@ -236,10 +235,6 @@ export default function ApropriacaoAutocomplete({
           onKeyDown={handleKeyDown}
           onClick={event => {
             if (selecionarTextoAoFocar && query === selectedLabel) event.currentTarget.select();
-            if (abrirAoClicar) {
-              setOpen(true);
-              onSearch?.(query);
-            }
           }}
           onBlur={onClose ? fecharPesquisa : undefined}
           placeholder={disabled ? disabledPlaceholder : placeholder}

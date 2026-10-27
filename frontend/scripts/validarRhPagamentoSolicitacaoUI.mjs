@@ -57,26 +57,6 @@ try {
   await page.route('**/*',route=>route.request().url().startsWith(base)?route.continue():route.abort());
   await page.goto(base);
   const modal=page.getByRole('dialog',{name:'Solicitar pagamento',exact:true});
-  for (const width of [1550,390]) {
-    await page.setViewportSize({width,height:920});await page.goto(base);
-    const row=modal.locator('tbody tr').first();
-    await row.getByLabel('Vale: Ana QA',{exact:true}).check();
-    assert.equal(await row.getByLabel('Acréscimos: Ana QA',{exact:true}).count(),0);
-    assert.equal(await row.getByLabel('Descontos: Ana QA',{exact:true}).count(),0);
-    assert.equal(await row.getByLabel('Dias: Ana QA',{exact:true}).count(),0);
-    assert.equal(await row.getByLabel('Faltas: Ana QA',{exact:true}).count(),0);
-    assert.equal(await row.getByLabel('50%: Ana QA',{exact:true}).isDisabled(),true);
-    const valor=row.getByLabel('Valor: Ana QA',{exact:true});await valor.fill('25000');
-    await modal.getByRole('button',{name:'Salvar',exact:true}).click();
-    await page.waitForFunction(()=>window.pedido.dados_json.linhas[0].vale&&window.pedido.dados_json.linhas[0].valor_vale===250);
-    assert.equal(await row.getByText('Pagamento de Vale',{exact:true}).count(),1);
-    await modal.screenshot({path:path.join(output,'vale-'+width+'.png')});
-    await row.getByLabel('Vale: Ana QA',{exact:true}).uncheck();
-    await row.getByLabel('Acréscimos: Ana QA',{exact:true}).waitFor();
-    assert.equal(await row.getByLabel('100%: Ana QA',{exact:true}).isChecked(),true);
-  }
-  await page.setViewportSize({width:1550,height:920});await page.goto(base);
-  console.log('UI Vale desktop/mobile: campos exclusivos, valor, persistencia e retorno ao salario aprovados.');
   if (process.argv.includes('--cadastro')) {
     for (const dp of [false, true]) {
       await page.goto(base);

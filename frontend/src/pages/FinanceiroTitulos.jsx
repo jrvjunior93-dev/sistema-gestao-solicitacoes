@@ -162,7 +162,6 @@ const FILTER_DEFINITIONS = [
   { id: 'vencimento_inicial', rotulo: 'Vencimento início', group: 'basic', span: 'xl:col-span-2' },
   { id: 'vencimento_final', rotulo: 'Vencimento fim', group: 'basic', span: 'xl:col-span-2' },
   { id: 'codigo', rotulo: 'Título', group: 'basic', span: 'xl:col-span-2', padrao: false },
-  { id: 'solicitacao_codigo', rotulo: 'Código da solicitação', group: 'basic', span: 'xl:col-span-2', padrao: false },
   { id: 'numero_documento', rotulo: 'N. documento', group: 'basic', span: 'xl:col-span-2', padrao: false },
   { id: 'parceiro_id', rotulo: 'Cliente/Credor', group: 'basic', span: 'xl:col-span-4', padrao: false },
   { id: 'data_emissao_inicial', rotulo: 'Emissão início', group: 'advanced', span: 'xl:col-span-2', padrao: false },
@@ -309,7 +308,6 @@ function getDefaultFilters(tipo = 'RECEBER') {
     status: 'ABERTO',
     q: '',
     codigo: '',
-    solicitacao_codigo: '',
     obra_id: '',
     parceiro_id: '',
     valor_min: '',
@@ -1149,8 +1147,6 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   */
   const chavePreferencias = `tabela:financeiro-titulos:${fixedTipo ? String(fixedTipo).toLowerCase() : 'geral'}`;
   const [filtroGravado, definirFiltroGravado] = usePreferenciaDeLista(chavePreferencias, TIPO_GERAL);
-  const filtroGravadoRef = useRef(filtroGravado);
-  filtroGravadoRef.current = filtroGravado;
   const filtrosRestaurados = useWorkspaceRestored('titulos:filtros');
   const [advancedOpen, setAdvancedOpen] = useWorkspaceState('titulos:avancados', false);
   const [draftFilters, setDraftFilters] = useWorkspaceState('titulos:filtros', () => {
@@ -1168,7 +1164,6 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
       return getDefaultFilters(fixedTipo || 'RECEBER');
     }
   });
-  const filtrosEditadosRef = useRef(false);
   const [appliedFilters, setAppliedFilters] = useWorkspaceState('titulos:consulta', null);
   /*
     N53 (05/09) — filtro com valor é filtro VISÍVEL, nas DUAS fontes.
@@ -1235,15 +1230,9 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     setPaginationMeta({ total: next.total, total_pages: next.total_pages });
   }, [setPaginaAtual, setLimiteAtual]);
   const [ordenacao, setOrdenacao] = useWorkspaceState('titulos:ordenacao', null);
-  const ordenacaoRef = useRef(ordenacao);
-  ordenacaoRef.current = ordenacao;
   const ordenarTitulos = useCallback((coluna, direcao) => {
     const proxima = coluna && direcao ? { coluna, direcao } : null;
-    // A tabela notifica a ordem tambem ao remontar. Ordem identica nao e
-    // uma nova ordenacao e nao deve apagar a pagina restaurada do workspace.
-    if (ordenacaoRef.current?.coluna === proxima?.coluna && ordenacaoRef.current?.direcao === proxima?.direcao) return;
-    ordenacaoRef.current = proxima;
-    setOrdenacao(proxima);
+    setOrdenacao((atual) => atual?.coluna === proxima?.coluna && atual?.direcao === proxima?.direcao ? atual : proxima);
     setPagination((atual) => atual.page === 1 ? atual : { ...atual, page: 1 });
   }, []);
   const [loading, setLoading] = useState(false);
@@ -1353,7 +1342,6 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
        reagir à visibilidade — esconder um campo apagaria a consulta que a
        pessoa está lendo, o oposto do que a N53 pede. */
     if (filtrosRestaurados) return;
-    filtrosEditadosRef.current = false;
     const defaults = getDefaultFilters(fixedTipo || 'RECEBER');
     let nextFilters = defaults;
 
@@ -1428,7 +1416,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   */
   const filtroGravadoAplicadoRef = useRef(null);
   useEffect(() => {
-    if (appliedFilters || filtrosRestaurados || filtrosEditadosRef.current) return;
+    if (appliedFilters || filtrosRestaurados) return;
     const valores = filtroGravado?.valores;
     if (!valores || typeof valores !== 'object') return;
     const assinatura = `${chavePreferencias}|${JSON.stringify(valores)}`;
@@ -1457,7 +1445,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     const vencendoAte = params.get('vencendo_ate');
     // ?q= chega da busca universal (Ctrl+K): abre a lista já filtrada.
     const buscaUrl = String(params.get('q') || '').trim();
-    const temParamsDiretos = ['status', 'obra_id', 'solicitacao_codigo', 'vencimento_inicial', 'vencimento_final']
+    const temParamsDiretos = ['status', 'obra_id', 'vencimento_inicial', 'vencimento_final']
       .some((chave) => params.get(chave) !== null);
     if (!vencidos && !vencendoAte && !buscaUrl && !temParamsDiretos) return;
 
@@ -1491,7 +1479,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     }
 
     // Parâmetros diretos (resumo por obra do Hub): mesmo recorte da soma.
-    for (const chave of ['status', 'obra_id', 'solicitacao_codigo', 'vencimento_inicial', 'vencimento_final']) {
+    for (const chave of ['status', 'obra_id', 'vencimento_inicial', 'vencimento_final']) {
       const valor = params.get(chave);
       if (valor !== null) sobrescritas[chave] = valor;
     }
@@ -1877,7 +1865,6 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   }
 
   function setFilter(name, value) {
-    filtrosEditadosRef.current = true;
     setDraftFilters((current) => {
       const next = {
         ...current,
@@ -1914,7 +1901,6 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
 
   function submitFilters(event) {
     event.preventDefault();
-    filtrosEditadosRef.current = true;
     const normalized = normalizeFilters(draftFilters, fixedTipo);
     const valorMinimo = normalized.valor_min ? parseCurrencyInput(normalized.valor_min) : null;
     const valorMaximo = normalized.valor_max ? parseCurrencyInput(normalized.valor_max) : null;
@@ -1941,18 +1927,13 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     setPagination((current) => ({ ...current, page: 1, total: 0, total_pages: 0 }));
     /* Banco (viaja com a pessoa) E espelho local (semeia o proximo desenho
        antes da carga unica responder, e e a rede de rollback). */
-    persistirConsulta(normalized);
-  }
-
-  function persistirConsulta(valores) {
-    const proximo = { valores };
-    filtroGravadoRef.current = proximo;
-    definirFiltroGravado(proximo);
-    try { localStorage.setItem(filterStorageKey, JSON.stringify(valores)); } catch { /* espelho indisponivel */ }
+    definirFiltroGravado({ valores: normalized });
+    try {
+      localStorage.setItem(filterStorageKey, JSON.stringify(normalized));
+    } catch { /* sem storage: o banco ja tem */ }
   }
 
   function clearFilters() {
-    filtrosEditadosRef.current = true;
     // N53 (05/09): "Limpar" devolve o padrão, e o padrão respeita o que está
     // escondido — senão o botão faria o filtro invisível voltar a recortar.
     const defaults = limparFiltrosInvisiveis(getDefaultFilters(fixedTipo || 'RECEBER'), escolhidosFiltros);
@@ -1966,7 +1947,6 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     /* "Limpar" apaga o registro nos DOIS, senao a proxima abertura
        ressuscitaria do banco o filtro que a pessoa acabou de limpar. */
     definirFiltroGravado(null);
-    filtroGravadoRef.current = null;
     try { localStorage.removeItem(filterStorageKey); } catch { /* sem storage */ }
   }
 
@@ -2609,7 +2589,6 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     consulta não é refeita.
   */
   function limparValorDoFiltro(filterId) {
-    filtrosEditadosRef.current = true;
     const vazios = Object.fromEntries(chavesDoFiltro(filterId).map((chave) => [chave, '']));
     setDraftFilters((current) => ({ ...current, ...vazios }));
     setAppliedFilters((current) => {
@@ -2617,15 +2596,6 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
       if (!filtroPreenchido(filterId, current)) return current;
       return { ...current, ...vazios };
     });
-    // Esconder tambem limpa o criterio SALVO. Caso contrario ele voltava
-    // preenchido na proxima abertura e revelava o filtro que foi escondido.
-    let valores = filtroGravadoRef.current?.valores;
-    if (!valores) {
-      try { valores = JSON.parse(localStorage.getItem(filterStorageKey)); } catch { /* sem espelho */ }
-    }
-    if (valores && filtroPreenchido(filterId, valores)) {
-      persistirConsulta({ ...normalizeFilters(valores, fixedTipo), ...vazios });
-    }
   }
 
   /*
@@ -2642,15 +2612,6 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     const commonClass = `app-filter-field ${filter.span || ''}`;
 
     switch (filter.id) {
-      case 'solicitacao_codigo':
-        return (
-          <label key={filter.id} className={commonClass}>
-            <span className="app-filter-label">Código da solicitação</span>
-            <input className="input w-full input-sm" value={draftFilters.solicitacao_codigo}
-              maxLength={40} onChange={(event) => setFilter('solicitacao_codigo', event.target.value)}
-              placeholder="SOL-5426 ou 5426" />
-          </label>
-        );
       case 'codigo':
         return (
           <label key={filter.id} className={commonClass}>
