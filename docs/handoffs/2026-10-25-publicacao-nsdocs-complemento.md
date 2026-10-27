@@ -54,3 +54,4 @@ Frontend em commit local separado, reter push ate evidencia backend EC2.
 Proximo comando do usuario:preparar03c91cfeb290ad3d3535185083be011a5b96ae23,
 depois aplicar/conferir com quatro flags e backup/timer/janela conferidos.
 Nao executar complemento antes do backend nem liberar UI main antecipada.
+

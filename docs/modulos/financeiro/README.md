@@ -95,6 +95,42 @@ backend/health e frontend main na Vercel. O caso PIX/cartao/desconto foi provado
 em memoria/DEV; nao repetir a baixa real somente para testar producao.
 [Escopo, evidencias e recuperacao](../../handoffs/2026-10-21-promocao-main-pendencias-dev.md).
 
+## Consulta de NF-e no dossie e arquivos da fila - 2026-10-24
+
+Implementacao local, ainda nao publicada. Detalhe Por obra e historico Por lote
+oferecem `Consultar NF-e vinculadas`, com DANFE/PDF existente e XML. A consulta
+mostra os vinculos atuais, explicitamente separada dos documentos assinados do
+envio. Nao atualiza hashes, decisoes, revisoes, passkeys ou lotes retroativamente.
+Nao exige NF-e para enviar/autorizar/pagar e nao gera DANFE automaticamente.
+
+NF-e aparece tambem em Arquivos da solicitacao na Fila de Pagamentos, junto dos
+boletos. E uma referencia fiscal contextual, sem duplicar Anexo ou objeto S3.
+Nao inclui comprovantes ou anexos comuns nessa lista. Abrir/baixar reconsulta
+vinculo ativo, contexto e obra; assinatura de180s, XML como attachment/octet-stream.
+Consulta nao concede acesso ao modulo Fiscal; usa a politica nominal existente
+do dossie ou acesso a fila, mais escopo financeiro completo do titulo.
+
+QA: `npm run test:fiscal-pagamentos-documentos` em backend e frontend.
+Detalhes, limites e proximo passo:
+[handoff](../../handoffs/2026-10-24-nfe-dossie-arquivos-fila.md).
+
+## Autorizacao individual e coletiva no PWA - 2026-10-24
+
+- Na visao Por obra, `Autorizar selecionados (N)` abrange a selecao de todas
+  as obras/paginas, nao somente o titulo aberto. A acao coletiva e a paginacao
+  ficam fora da rolagem dos artigos, inclusive no PWA instalado.
+- Conferir abre a revisao com foco visivel, quantidade, total e lista dos
+  titulos. So o clique explicito de confirmacao solicita a passkey unica
+  e envia a selecao ao endpoint coletivo existente. Duplo clique, cancelamento,
+  revalidacao dos dados e falha transacional mantem as protecoes anteriores.
+- No detalhe, `Autorizar somente este titulo` e sua confirmacao sao individuais.
+  A selecao externa nao e incorporada nem descartada; apenas o titulo decidido
+  sai da selecao. Para decidir os marcados, retornar a lista.
+- Sem novas permissoes, endpoints, regras financeiras ou migration. Permanecem
+  autorizador nominal, ACL/escopo, pausa, passkey e bloqueios por situacao.
+- QA offline com UI real/biometria simulada; homologacao no aparelho real do
+  proprietario e publicacao DEV dependem de etapa posterior autorizada.
+
 ## Favorecido editavel na medicao e no titulo - 2026-10-23
 
 - Detalhe e pagina de edicao do titulo oferecem Editar favorecido, separado

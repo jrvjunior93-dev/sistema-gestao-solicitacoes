@@ -65,3 +65,4 @@ Testes de acesso, sincronização e build completo da main aprovados. Nenhuma mu
 de migrations, dependências, serviços financeiros/fiscais, endpoints ou variáveis.
 O delta de backend é somente o catálogo de navegação gerado. A atualização do checkout
 de produção e o reinício exclusivo de backend-solicitacoes serão executados pelo usuário.
+

@@ -1,0 +1,40 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "InspectFiscalDevBucket",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetBucketLocation",
+        "s3:GetBucketPublicAccessBlock",
+        "s3:GetBucketPolicyStatus",
+        "s3:GetBucketOwnershipControls",
+        "s3:GetBucketVersioning"
+      ],
+      "Resource": "arn:aws:s3:::fluxy-fiscal-dev",
+      "Condition": {
+        "Bool": { "aws:SecureTransport": "true" },
+        "StringEquals": { "s3:ResourceAccount": "992500432025" }
+      }
+    },
+    {
+      "Sid": "ReadWriteCapturedNfeDev",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject"],
+      "Resource": "arn:aws:s3:::fluxy-fiscal-dev/dev/nsdocs/27123008000100/nfe/*",
+      "Condition": {
+        "Bool": { "aws:SecureTransport": "true" },
+        "StringEquals": { "s3:ResourceAccount": "992500432025" }
+      }
+    },
+    {
+      "Sid": "DenyOtherS3ResourcesInCaptureSession",
+      "Effect": "Deny",
+      "Action": "s3:*",
+      "NotResource": [
+        "arn:aws:s3:::fluxy-fiscal-dev",
+        "arn:aws:s3:::fluxy-fiscal-dev/dev/nsdocs/27123008000100/nfe/*"
+      ]
+    }
+  ]
+}

@@ -52,6 +52,7 @@ yarn-error.log*
 # Credenciais, dumps e arquivos sensiveis locais
 *.pem
 *.key
+*.jwt
 *.p12
 *.pfx
 *.crt
@@ -96,3 +97,6 @@ frontend/__qa_visit_tmp.mjs
 frontend/src/__qaTempMain.jsx
 frontend/src/__qaTemp*.jsx
 frontend/src/**/__Prova*.jsx
+
+# Artefatos sinteticos do QA do cliente de reorganizacao (nunca publicar sessoes).
+/outputs/qa-reorg-client-*/

@@ -482,6 +482,20 @@
   Produto e dependencias conferidos contra2e146629; reserva encerrada,
   ownership liberado para commit/push main autorizados. Roteiro e limites em
   docs/handoffs/2026-10-18-promocao-main-pwa-historico.md.
+
+## Complemento NSDOCS e lista fiscal - publicacao 2026-10-25
+
+- Agente unico, checkout auxiliar local desta mesma tarefa/repositorio.
+- Usuario autorizou push refactor/frontend e promocao main por etapas.
+- Reservar nsdocsHistorical e seus pre-requisitos administrativos/QA; guardas
+  de producao exclusivas, sem invocar esses CLIs no DEV. Preservar nsdocs DEV
+  runtime/credencial/IAM; adaptar apenas parser/paginacao/transporte.
+- Lista fiscal: GET existente,50 por pagina ou scroll, mesmos filtros/ACL/XML.
+- Nenhuma EC2/migration real/servico/segredo alterado nesta publicacao Git.
+- A migration202610240003 ja existe em main e acompanha os testes do historico;
+  nao executar migrations gerais no DEV por causa deste pacote.
+
+
 ## Publicacao DEV: retirada de envios e abas web - 2026-10-23
 
 - Usuario autorizou commit/push exclusivo refactor/frontend e roteiro para
@@ -6537,3 +6551,13 @@ Promocao isolada validada sobre main f429b6f2: testes de acesso/sincronizacao e 
 - Backend primeiro; frontend Vale preparado, publicacao somente apos SC_VALE_BACKEND_PROD_PRONTO fornecido pelo usuario. Nao publicar esses arquivos novamente sem conferir a continuacao deste registro.
 
 - QA de promocao concluido:30testes SC/doctor PROD,7testes do aplicador,servico Vale em memoria,UI desktop/mobile,buildfrontend,16regressoes e documentacao651MD/19canonicos aprovados. Corrigido somente mock de lock no teste antigo de escopo RH. Ownership de implementacao liberado; publicacao backend autorizada, frontend aguarda retorno EC2.
+
+## Publicacao DEV da autorizacao parcial - 2026-10-26
+- Agente desta conversa: reserva pacote de autorizacao parcial copiado de outputs/worktree-autorizacao-valor-parcial, novo schema doctor DEV, operador/manifesto/testes/roteiro em ops/deploy e handoff. Branch codex/autorizacao-valor-dev-20261026 baseada em f05705e3. Dois commits backend/frontend, publicar backend primeiro; nenhuma aplicacao EC2 pelo agente. Validar alias estrutural NSDOCS sem DDL e somente duas novas colunas JSON.
+
+## Publicacao SC reversivel DEV - 2026-10-26
+- Agente desta conversa reserva o pacote de compras reversivel, doctor e aplicador exclusivos DEV, testes, manifesto, roteiro e handoff. Base origin/refactor/frontend ed211fab. Usuario autorizou commit/push para refactor/frontend e comandos para ele executar na EC2 DEV. Proibido agente acessar EC2; sem main/producao, cancelamentos, SQL financeiro ou deploy pelo agente. Sem delegacao.
+
+Ownership codex-publicar-apropriacoes-20261026: reservar frontend/src/App.jsx, frontend/src/navigation/navigationConfig.jsx, backend/src/generated/navegacaoFonteUnica.cjs, frontend/scripts/validarAcessoGestaoApropriacoes.mjs, docs/handoffs/2026-10-26-acesso-gestao-apropriacoes.md e este registro. Integracao isolada autorizada em refactor/frontend e main; sem EC2/banco.
+
+Publicacao de acesso a apropriacoes: integracao sobre refactor/frontend 6618f6ca, matriz de permissoes, sincronizacao da tela e build aprovados. Arquivos limitados a menu/rota/catalogo/teste/handoff e este registro. Ownership de edicao desta etapa liberado para commit/push autorizado; EC2/banco permanecem fora do escopo de execucao do agente.

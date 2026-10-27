@@ -1,0 +1,12 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowKnownDevCredentialToAssumeFiscalRole",
+      "Effect": "Allow",
+      "Principal": { "AWS": "arn:aws:iam::992500432025:user/admin-jose" },
+      "Action": "sts:AssumeRole",
+      "Condition": { "Bool": { "aws:SecureTransport": "true" } }
+    }
+  ]
+}

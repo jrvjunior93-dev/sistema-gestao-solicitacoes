@@ -5,6 +5,8 @@ nao executar na EC2 antes de publicar/conferir o novo backend. Nao usar os
 aplicadores antigos: seus manifestos descrevem releases anteriores e continuam
 imutaveis. Publicacao Git por etapas; este roteiro nao executa deploy ou carga real.
 
+imutaveis. A publicacao Git e tratada por etapas; este roteiro nao executa deploy ou carga real.
+
 ## Problema corrigido
 
 O provedor devolveu cinco linhas e X-Total-Registros=5 tanto no offset 0 como no
@@ -55,6 +57,9 @@ ela permanece no sistema e a cobertura fica pendente de conferencia.
 Manter Nodes isolados, ambiente e PM2; nenhuma migration ou npm install e
 necessario para esta implementacao. Backend antes do frontend. Usar o novo aplicador
 atualizar-prod-nsdocs-complemento-20261025.cjs com inventario/retorno.
+
+necessario para esta implementacao. Backend antes do frontend. Preparar um
+aplicador especifico com inventario/retorno antes de publicar a release.
 
 No terminal Ubuntu, depois desse deploy, definir e GUARDAR um UUID de complemento
 uma unica vez (usar a biblioteca node:crypto do Node PROD). Nao gerar outro ID

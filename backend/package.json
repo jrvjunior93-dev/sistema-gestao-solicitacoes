@@ -15,7 +15,7 @@
     "test:pedido-reabertura": "node scripts/validarPedidoReabertura.js",
     "test:centro-custo-distribuicao": "node scripts/validarDistribuicaoCentroCustoDestinos.js && node scripts/validarAdiantamentoCentroCusto.js",
     "test:rhdp-demissao-conclusao": "node scripts/validarRhDemissaoConclusao.js",
-    "test:cartao-parcelamento-baixa": "node scripts/validarCartaoParcelamentoBaixa.js",
+    "test:cartao-parcelamento-baixa": "node scripts/validarCartaoParcelamentoBaixa.js && node scripts/validarFilaCartaoRepetido.js",
     "test:titulo-cancelamento": "node scripts/validarTituloCancelamento.js",
     "test:fila-multiplas-fontes": "node scripts/validarFilaBaixaComposta.js && node scripts/validarFilaLiquidacaoRateada.js && node scripts/validarPermutasOperacionais.js && node scripts/validarCarteiraChequesBaixaComposta.js",
     "test:deploy-permutas-dev": "node scripts/validarDeployPermutasDev.js",
@@ -179,7 +179,15 @@
     "test:pedido-localizacao": "node --test scripts/validarPedidoLocalizacao.js",
     "test:nsdocs-historico-prod": "node --test scripts/validarNsdocsHistoricoProd.js scripts/validarNsdocsHistoricoProdGuardas.js scripts/validarNsdocsPlanoHistoricoProd.js",
     "test:nsdocs-complemento": "node --test scripts/validarNsdocsComplemento.js scripts/validarNsdocsHistoricoProd.js scripts/validarNsdocsHistoricoProdGuardas.js scripts/validarNsdocsPlanoHistoricoProd.js scripts/validarNsdocsCompactacaoProd.js",
-    "test:fiscal-documentos-paginacao": "node --test scripts/validarFiscalDocumentosPaginacao.js"
+    "test:fiscal-documentos-paginacao": "node --test scripts/validarFiscalDocumentosPaginacao.js",
+    "test:deploy-fiscal-vinculos-dev": "node --test scripts/validarFiscalVinculosDevSchema.js ../ops/deploy/atualizar-dev-fiscal-vinculos-20261024.test.cjs",
+    "test:fiscal-vinculos-pedidos": "node --test scripts/validarVinculosNfePedidos.js && node scripts/validarTitulosPorPedido.js && node scripts/validarPedidoBoletoOpcional.js && node scripts/validarSobreposicaoTitulos.js",
+    "test:nsdocs-captura-dev": "node --test scripts/validarNsdocsCapturaDev.js scripts/validarNsdocsSetupDev.js",
+    "test:deploy-nsdocs-captura-dev": "node --test ../ops/deploy/atualizar-dev-nsdocs-captura-20261024.test.cjs",
+    "test:deploy-nsdocs-manual-dev": "node --test ../ops/deploy/atualizar-dev-nsdocs-manual-20261024.test.cjs",
+    "test:nsdocs-manual-dev": "node scripts/validarNsdocsManualDev.js",
+    "test:nsdocs-v2": "node scripts/validarNsdocsV2.js",
+    "test:deploy-nsdocs-dev": "node --test ../ops/deploy/atualizar-dev-nsdocs-v2-20261024.test.cjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.888.0",

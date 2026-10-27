@@ -74,7 +74,8 @@ async function registrarLiquidacaoFila(req, itens, config, key, transaction, { p
     }
   }
   if (config.tipo === 'CHEQUE') conferirChequesUnicosLote(componentes);
-  else if (new Set(componentes.map(item => Number(item.cartao_id))).size !== componentes.length) erro(400, 'Informe cada cartao apenas uma vez.');
+  // Passagens no mesmo cartao sao compras independentes. O indice do componente
+  // preserva valor/data/parcelas e participa da chave idempotente de cada baixa.
   const grupo = await PagamentoFilaLiquidacao.create({ idempotency_key: key, request_hash: hash,
     status: 'CONFIRMADO', criado_por: req.user.id, dados: {} }, { transaction });
   const movimentos = [];

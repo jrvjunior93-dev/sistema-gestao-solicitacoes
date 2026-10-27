@@ -1,0 +1,17 @@
+{
+  "base": "84b9aef43fe2f3192bdcf0e415dd794289b0f751",
+  "arquivos": [
+    "M\tbackend/package.json",
+    "A\tbackend/scripts/validarDownloadAnexoMedicao.js",
+    "M\tbackend/src/controllers/AnexoController.js",
+    "M\tbackend/src/services/fileAccessService.js",
+    "M\tbackend/src/services/s3.js",
+    "M\tbackend/src/utils/fileName.js",
+    "M\tbackend/src/validators/securityValidators.js",
+    "A\tdocs/handoffs/2026-10-24-fetch-credenciais-download-medicao.md",
+    "M\tdocs/seguranca/anexos.md",
+    "A\tops/deploy/atualizar-dev-download-medicao-backend-20261024.cjs",
+    "A\tops/deploy/atualizar-dev-download-medicao-backend-20261024.test.cjs",
+    "A\tops/deploy/download-medicao-backend-20261024.json"
+  ]
+}
