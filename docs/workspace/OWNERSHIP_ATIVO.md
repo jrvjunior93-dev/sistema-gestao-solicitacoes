@@ -1,5 +1,9 @@
 # Ownership Ativo
 
+## Promocao Compras/Financeiro/OFX para main - 2026-10-27
+- Candidato seletivo aprovado:21 QAs backend,13 testes aplicador, UI Compras/titulos/OFX/cartoes/fila desktop-mobile e3 testes preferencias PASS; build19.49s, docs/sintaxe/diff PASS. Somente9 runtime backend, sem dependencias/schema/fiscal DEV. Pacote PROD fechado; publicar backend primeiro com frontend main46ac identico e manter frontend completo em commit local posterior ate PRONTO do operador. Reserva de implementacao liberada; nenhuma EC2 ou registro real alterado.
+- Agente principal reserva transposicao seletiva da refactor/frontend6701ee7b para base main46ac88de: paginacao/detalhes Compras, cartao repetido, formas da fila, codigo SC em titulos, cache/retorno e natureza OFX; respectivos QAs/docs e pacote PROD novo. Usuario autorizou migracao/main e comandos para operador, preservando heap PROD4096 e DEV, sem EC2 pelo agente, registros reais ou migrations. Captura NSDOCS exclusiva DEV excluida. Backend publicado primeiro e frontend preparado/testado localmente ate PRONTO manual. Sem outros agentes.
+
 ## Chamada real de heap no snapshot - 2026-10-27
 - Agente principal reserva aplicador/testes/manifesto/README e docs para corrigir slice(1) remanescente na chamada real do snapshot. O titulo PM2 era removido antes de validar. Teste deve extrair e executar a expressao real com o /proc sanitizado informado pelo operador. Nao alterar controllers, heap/env/dumps, DEV ou registros. Publicacao main permanece no escopo autorizado; nenhuma EC2 pelo agente.
 - Concluido: slice(1) removido, chamada real e snapshot completo em VM aprovados; 13testes totais do aplicador/inventario, sintaxe e diff aprovados. Controllers/QA funcional identicos ao51e8. Ownership liberado com este commit; executar novo preparar manual com SHA/hash novos, sem remover estado ou repetir aumento de heap.

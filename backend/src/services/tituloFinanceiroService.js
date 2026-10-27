@@ -2398,6 +2398,12 @@ async function listarTitulos(req, filters = {}, { tituloIds = null } = {}) {
   if (filters.solicitacao_id) {
     where.solicitacao_id = Number(filters.solicitacao_id);
   }
+  if (filters.solicitacao_codigo) {
+    where[Op.and] = [
+      ...(Array.isArray(where[Op.and]) ? where[Op.and] : []),
+      require('./tituloSolicitacaoCodigoFiltro').filtroSolicitacaoCodigo(filters.solicitacao_codigo, sequelize)
+    ];
+  }
   const valorMinimo = parseCurrencyFilter(filters.valor_min, 'Valor mínimo');
   const valorMaximo = parseCurrencyFilter(filters.valor_max, 'Valor máximo');
   if (valorMinimo !== null && valorMaximo !== null && valorMinimo > valorMaximo) {

@@ -260,9 +260,9 @@ function validateManualPaymentQueueQuery(payload = {}) {
 function validateManualPaymentQueueOptionsQuery(payload = {}) {
   ensureAllowedKeys(payload, ['status', 'campo', 'q'], 'Sugestoes da fila');
   const consulta = validateManualPaymentQueueQuery({ status: payload.status, q: payload.q });
-  if (!consulta.q || consulta.q.length < 2) throw new ValidationError('Digite ao menos dois caracteres.');
+  if (payload.campo !== 'forma_pagamento_id' && (!consulta.q || consulta.q.length < 2)) throw new ValidationError('Digite ao menos dois caracteres.');
   if (!['obra_id', 'favorecido', 'solicitacao_id', 'titulo_id', 'forma_pagamento_id'].includes(payload.campo)) throw new ValidationError('Filtro invalido.');
-  return { ...consulta, campo: payload.campo };
+  return { ...consulta, ...(payload.campo === 'forma_pagamento_id' ? { q: consulta.q || '' } : {}), campo: payload.campo };
 }
 
 function validateManualPaymentQueueProcessBody(payload = {}) {

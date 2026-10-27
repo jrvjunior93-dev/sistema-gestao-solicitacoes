@@ -1,0 +1,115 @@
+{
+  "base": "46ac88de88957ffc15e8b0db45dfcd6eed7bc34e",
+  "release_parent": "46ac88de88957ffc15e8b0db45dfcd6eed7bc34e",
+  "runtime_files": 9,
+  "database_writes": 0,
+  "migrations": 0,
+  "heap_mib": 4096,
+  "files": [
+    {
+      "path": "backend/src/controllers/SolicitacaoCompraController.js",
+      "sha256": "3ce62f9651067790e6e1fc2c5b7981e3395cebf28717fff5406c8c5d9149f606",
+      "old_sha256": "65e0b195dab63b411c9f47d9f60347f846e9fc89cc1934d835a7dfdcb42e5dcb"
+    },
+    {
+      "path": "backend/src/services/solicitacoesCompraPaginacao.js",
+      "sha256": "4440d6b48eddb9affb58cbddb8f56e4c65e5ea730e079eaa87d92c452deb8b45",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/src/services/pagamentoFilaAutocompleteService.js",
+      "sha256": "3fa72be1e8c2f23b62b701ee66d64c972bb26f0c62e58200e093c2a51fa2993b",
+      "old_sha256": "cc500336602961bb2843a2a51e2729edb98bfdf7faefea692c8a88232c7a9100"
+    },
+    {
+      "path": "backend/src/services/pagamentoFilaLiquidacaoService.js",
+      "sha256": "914f7d6609595e71f1ef1a34ca372ce7e959afea240e77b8e86805ec260320d5",
+      "old_sha256": "86bb3d8e1c5500447f52955c17543cd3c2cab10e7ad7a3906ef2c1c14f08c5c8"
+    },
+    {
+      "path": "backend/src/services/tituloFinanceiroService.js",
+      "sha256": "c4eff65d0e5e1a5cdec4a781146836cbce8a553a76a9993556c4256d8c97674b",
+      "old_sha256": "ecafdbde8152bacf5295da29936aaec8594d2cbd0bf5512cb1d2deed8fc1f852"
+    },
+    {
+      "path": "backend/src/services/tituloSolicitacaoCodigoFiltro.js",
+      "sha256": "21231e3da69245bc9a5b9c67a674d54364790989b42573706ad1097f11f15eab",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/src/services/conciliacaoBancariaService.js",
+      "sha256": "ef3570edc69ee5a6c6dc4150202786a89a5fb02d4f7ddc77d71b838d2a7769af",
+      "old_sha256": "fb23d12ac6d05011c258b6df1be4067e8ed40fcf61c0d3d1489bdfffde2334b5"
+    },
+    {
+      "path": "backend/src/validators/financialValidators.js",
+      "sha256": "70d3da7f50a4f5b7a1ba273677d122ab87532adf7ae9d7da423fe6a46b85b4cb",
+      "old_sha256": "9fc1e344733c49ab4c6e27e7861a6087d0713ac76d3d76b0ad9f155390b2e078"
+    },
+    {
+      "path": "backend/src/validators/paymentValidators.js",
+      "sha256": "fcab4ea7c71942b29cd1aacfb95f28cfe23e69288a093a9a7103d9d84986e9bc",
+      "old_sha256": "c5c65d0712a49cd0a3471d83cc1e4443ad81d15327665288db298c3dc987b9ce"
+    },
+    {
+      "path": "backend/scripts/validarConciliacaoNaturezaFiltro.js",
+      "sha256": "fef42c346927eff088dc00709c778556db3e7b9b6e8281a9947e2ba6a41c6765",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarFilaCartaoRepetido.js",
+      "sha256": "2779e6ca006dc19e508a129a6272e0d0adadaad5cf166878e088ed364ecb16ed",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarFilaFormasDisponiveis.js",
+      "sha256": "b7abca6828da113d9a4138a3bd24cea5b244c2ed57f3f64519b8f43641bf3b56",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarOfxMatchesExclusivos.js",
+      "sha256": "7c553238b5570afc2228fa503bb9c025f129c42d698f61e1bceb607e0aa933de",
+      "old_sha256": "8430e847135da63b59eadf3074411c6ee666ce7894c90e75897913c1d8e65894"
+    },
+    {
+      "path": "backend/scripts/validarSolicitacoesCompraPaginacao.js",
+      "sha256": "81567e6dd617990899efc46bb73cb2440ece1b351fa4889d051b9b9ebdc4a611",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarTitulosSolicitacaoCodigo.js",
+      "sha256": "bb3dde9bd8eb787d62916b54ceea24cb70a2f9769a09b3ee433086541fc48991",
+      "old_sha256": null
+    }
+  ],
+  "extra": [
+    {
+      "path": "ops/deploy/atualizar-prod-compras-financeiro-ofx-20261027.cjs",
+      "sha256": "29f29323d29e5311d42123ff5618514d3c340025d94a5d06f3f53ff8e43c2336"
+    },
+    {
+      "path": "ops/deploy/atualizar-prod-compras-financeiro-ofx-20261027.test.cjs",
+      "sha256": "e97c9466979d347fd5f22de404dc9b16ff246e65e6ab99ae26fcac832b0e7738"
+    },
+    {
+      "path": "ops/deploy/README-compras-financeiro-ofx-prod-20261027.md",
+      "sha256": "96f8adc24f0d5e9e06ef9e454ea24b782699cb6bfa6638064c031a4278af817e"
+    },
+    {
+      "path": "docs/handoffs/2026-10-27-promocao-compras-financeiro-ofx-main.md",
+      "sha256": "e812031380ab2831286b16421f0f27ff5172d12710baa4f86dd9b32a138eba22"
+    },
+    {
+      "path": "docs/workspace/OWNERSHIP_ATIVO.md",
+      "sha256": "8714df7f445cdc2eb2f32780bdf062b9945ef8e7da17a20966968933ba530107"
+    },
+    {
+      "path": "docs/modulos/financeiro/README.md",
+      "sha256": "5b60d04f9e47b22bd6f1f8d7f9ed6c869c0ddfbe317204133e1322b7c318df1f"
+    },
+    {
+      "path": "docs/modulos/compras/README.md",
+      "sha256": "22c08e00746dccd174e5753a6ff3ab01e50df8fd0bd8e5e9905047f755fa7439"
+    }
+  ]
+}

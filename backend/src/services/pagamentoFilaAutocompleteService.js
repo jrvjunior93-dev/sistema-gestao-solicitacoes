@@ -7,14 +7,14 @@ const { filaStatusWhere, rejeicaoWhere, favorecidoSql } = require('./pagamentoFi
 async function listarSugestoesFila(req, filters, db = require('../models'),
   obterEscopo = require('./authorizationService').getFinanceiroObraScopeIds) {
   const { sequelize } = db, escape = value => sequelize.escape(value);
-  const { campo, q, status = 'PENDENTE' } = filters;
+  const { campo, q = '', status = 'PENDENTE' } = filters;
   const campos = {
     obra_id: ["COALESCE(tc.obra_id, titulo.obra_id)", "(SELECT CONCAT_WS(' · ', o.codigo, o.nome) FROM obras o WHERE o.id = COALESCE(tc.obra_id, titulo.obra_id))"],
     solicitacao_id: ["COALESCE(tc.solicitacao_id, titulo.solicitacao_id)", "(SELECT s.codigo FROM solicitacoes s WHERE s.id = COALESCE(tc.solicitacao_id, titulo.solicitacao_id))"],
     titulo_id: ['titulo.id', "CONCAT_WS(' · ', titulo.codigo, titulo.descricao)"],
     favorecido: null, forma_pagamento_id: ['fp.id', 'fp.nome']
   };
-  if (!Object.hasOwn(campos, campo) || typeof q !== 'string' || q.trim().length < 2 || q.length > 120) {
+  if (!Object.hasOwn(campos, campo) || typeof q !== 'string' || (campo !== 'forma_pagamento_id' && q.trim().length < 2) || q.length > 120) {
     throw Object.assign(new Error('Filtro ou busca invalida.'), { statusCode: 400 });
   }
   if (campo === 'favorecido') campos.favorecido = [favorecidoSql(), favorecidoSql()];
@@ -31,7 +31,10 @@ async function listarSugestoesFila(req, filters, db = require('../models'),
   const condRejeitado = `${rejeitadoSql} AND titulo.status IN ('ABERTO','PARCIAL') AND titulo.valor_saldo > 0`;
   const incluirRejeitados = ['NAO_PAGO', 'TODOS'].includes(status);
   const like = escape('%' + q.trim().replace(/[\\%_]/g, '\\$&') + '%');
-  const pesquisa = `CONVERT(${nome} USING utf8mb4) COLLATE utf8mb4_unicode_ci LIKE ${like}`;
+  const pesquisa = q.trim() ? `CONVERT(${nome} USING utf8mb4) COLLATE utf8mb4_unicode_ci LIKE ${like}` : '1 = 1';
+  // Ao abrir o campo, listar apenas formas referenciadas por titulos da fila
+  // autorizada/status. Nao hidratar a fila, nem limitar a pagina atual.
+  const limite = campo === 'forma_pagamento_id' && !q.trim() ? 100 : 20;
   let sql;
   if (campo === 'forma_pagamento_id') {
     sql = `SELECT fp.id AS id, fp.nome AS nome FROM financeiro_formas_pagamento fp
@@ -48,8 +51,8 @@ async function listarSugestoesFila(req, filters, db = require('../models'),
         UNION (${selecionar(rejeitado, condRejeitado)} ORDER BY nome, id LIMIT 21)) opcoes`
       : selecionar(normal, statusSql);
   }
-  const rows = await sequelize.query(`${sql} ORDER BY nome, id LIMIT 21`, { type: QueryTypes.SELECT });
-  return { data: rows.slice(0, 20), mais: rows.length > 20 };
+  const rows = await sequelize.query(`${sql} ORDER BY nome, id LIMIT ${limite + 1}`, { type: QueryTypes.SELECT });
+  return { data: rows.slice(0, limite), mais: rows.length > limite, ...(limite !== 20 ? { limite } : {}) };
 }
 
 module.exports = { listarSugestoesFila };

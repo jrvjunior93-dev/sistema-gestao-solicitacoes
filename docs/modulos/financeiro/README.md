@@ -2212,3 +2212,27 @@ Testes sem banco: `validarSobreposicaoTitulos.js`, `validarTitulosCompartilhados
 `validarTituloRenegociacaoSincronizacao.js`, `validarPedidoBoletoOpcional.js` e
 `validarCompraDiretaFreteFinanceiro.js` em backend/scripts; resumo e UI real do
 card/cancelamento em frontend/scripts, alem de build e teste de documentacao.
+
+## Filtros, cartoes e OFX - promocao 2026-10-27
+
+- Modal de varios cartoes permite passagens do mesmo cartao no mesmo dia ou
+  em dias diferentes, mantendo valor/data/parcelas e idempotencia por componente.
+  Vencimentos/conta vinculada/baixas parciais e cheques unicos preservados.
+- Forma de pagamento da Fila abre as opcoes da fila autorizada mesmo fora da
+  pagina atual, com busca digitada e limite de sugestoes; nao muda instrumento
+  efetivo da baixa. Somente leitura ao filtrar.
+- Contas a Pagar/Receber aceitam codigo de solicitacao, incluindo vinculos
+  diretos/compartilhados/negociados, com mesmo escopo. Retorno de detalhe/edicao
+  preserva carteira, pagina e filtros; preferencias atrasadas nao desfazem
+  escolha recente, inclusive visibilidade de filtros.
+- OFX manual inclui Todos/Credito(entrada)/Debito(saida) por sinal do valor no
+  SQL antes resumo/count/pagina. Aplicar pelo botao Atualizar lancamentos;
+  Limpar retorna Todos. Zero fica somente em Todos. Lote usa natureza aplicada,
+  mesmo com outro filtro em rascunho. Backend anuncia suporte no meta para
+  frontend continuar compativel com versao anterior. Historico de arquivos
+  mantem seus contadores de importacao.
+- [Pacote PROD](../../../ops/deploy/README-compras-financeiro-ofx-prod-20261027.md)
+  instala codigo/QA e reinicia somente producao com heap4096; nao executa SQL,
+  migration, conciliacao, baixa ou gravacao financeira. Frontend novo somente
+  apos backend conferido. Operacoes financeiras normais continuam exigindo
+  permissoes, validacoes e confirmacao existentes quando o usuario as executar.

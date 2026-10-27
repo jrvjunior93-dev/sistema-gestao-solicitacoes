@@ -533,3 +533,17 @@ geral de Pessoas permanece completo. Criar fornecedor e gerar links sao
 bloqueados durante a gravacao do cadastro rapido, evitando concorrencia.
 
 Testar compra normal e direta, destinos iniciais, compatibilidade de registros antigos, credor, itens cadastrados/manuais, importacao, rateio, edicao de apropriacoes, permissoes, cancelamento, cotacao, pedido, relatorios de compras e registros de origem.
+
+## Paginacao no banco e detalhes sob demanda - 2026-10-27
+
+Lista principal solicita paginas de50 SCs; busca/status/obra/escopo e contagem
+sao aplicados antes de limit/offset. Selecoes sao da pagina e confirmacoes
+revalidam estado atual. Respostas obsoletas sao descartadas, consultas em voo
+coalescidas/canceladas; troca de filtro volta a pagina1. Detalhes e colecoes
+sao consultados pelo endpoint existente ao abrir a SC, sem baixar todo o
+historico na lista. Delegacao/consumidores antigos conservam contrato de array.
+Leitura utiliza count/findAll, sem migration ou escrita de registros.
+
+Promocao seletiva sobre main46ac a partir de DEV6701, sem captura NSDOCS DEV.
+Ver [pacote PROD](../../../ops/deploy/README-compras-financeiro-ofx-prod-20261027.md):
+backend primeiro, preservando heap4096 e DEV; frontend apos conferencia manual.

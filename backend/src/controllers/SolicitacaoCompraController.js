@@ -103,6 +103,7 @@ const { resolverRegraCredorCompraDireta } = require('../services/compraDiretaCre
 const { ACAO_ENCAMINHAMENTO_COMPRA, extrairEncaminhamentoCompra } = require('../services/historicoEncaminhamentoCompraService');
 const { validateCompraEnviarBody } = require('../validators/operationalValidators');
 const { publishComprasRealtimeEventSafe } = require('../services/comprasRealtimeService');
+const { listarPagina: listarPaginaSolicitacoesCompra } = require('../services/solicitacoesCompraPaginacao');
 const {
   SOLICITACAO_COMPRA_IMPORT_MAX_ITEMS,
   montarItensSolicitacaoImportados,
@@ -2846,6 +2847,9 @@ module.exports = {
       }
 
       if (obraIdsEscopo && obraIdsEscopo.length === 0) {
+        if (req.query.page !== undefined || req.query.limit !== undefined) {
+          return res.json(await listarPaginaSolicitacoesCompra({query:req.query,obraScope:[],models:{},actor:{}}));
+        }
         return res.json([]);
       }
 
@@ -2863,6 +2867,20 @@ module.exports = {
         { model: User, as: 'compradorResponsavel', attributes: ['id', 'nome', 'email'] },
         { model: Solicitacao, as: 'solicitacaoPrincipal', attributes: ['id', 'codigo', 'area_responsavel', 'status_global'] }
       ];
+
+      // Contrato paginado opt-in da lista principal. Detalhes/colecoes nao sao
+      // carregados aqui; o endpoint show existente os fornece ao abrir a SC.
+      // Delegacao e consumidores legados mantem seu contrato de array.
+      if (req.query.page !== undefined || req.query.limit !== undefined) {
+        if (contextoDelegacao || visaoDelegacao) {
+          return res.status(400).json({error:'Use a listagem principal para consultar paginas de solicitacoes.'});
+        }
+        return res.json(await listarPaginaSolicitacoesCompra({
+          models:{SolicitacaoCompra,SolicitacaoCompraItem,SolicitacaoCompraItemManual,SolicitacaoCompraFornecedor},
+          baseWhere:where,include:includesLista,query:req.query,obraScope:obraIdsEscopo,
+          actor:{userId:usuario.id,superadmin:isSuperadmin(usuario),ehSetorGeo,ehSetorCompras}
+        }));
+      }
 
       if (visaoDelegacao) {
         includesLista.push({
@@ -2971,6 +2989,7 @@ module.exports = {
         return data;
       }));
     } catch (error) {
+      if (error.statusCode === 400) return res.status(400).json({ error: error.message });
       console.error(error);
       return res.status(500).json({ error: 'Erro ao listar solicitacoes de compra' });
     }
