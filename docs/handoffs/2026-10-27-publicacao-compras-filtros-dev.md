@@ -80,6 +80,30 @@ estado de publicacao atualizado; este handoff governa a continuacao.
 
 ## Proximo passo exato
 
+Atualizacao recebida do operador: COMPRAS_FILTROS_BACKEND_DEV_PRONTO para
+c43c2d137de89f36ebf64c77544d1bf6b9bbce6f,20QAs+aplicador aprovados,17runtimes,
+heapPROD4096 e heapDEV/pares/env/dumps preservados,SQL/migrations/escritas/
+integracoes0. Dois JSONs sao aplicar/conferir, um unico restart backend-dev.
+Gate backend satisfeito; nao repetir a atualizacao EC2.
+
+Usuario perguntou pela correcao do cartao. Conferido: backend do pacote e
+identico ao d4c2a104, inclusive permissao de repeticao, e teste dedicado passou
+na execucao manual. Modal frontend antigo ainda rejeitava cartao repetido.
+Transpostos exatamente componente e QA do commit2ff50ef5, anteriormente
+autorizado para publicacao DEV; gate equivalente atende aquela etapa, sem
+precisar executar o aplicador antigo nem acessar EC2. Documentacao registra
+esta equivalencia para nao confundir autorizacao anterior com inferencia.
+
+Frontend4d9bb650 e ajuste do modal/teste sao o pacote final liberado para
+refactor/frontend apos conferir FF sobre c43c2d13. QA nova de cartao desktop/
+mobile:35000 em3passagens/12x, mesmo dia/datas diferentes, lote repetido,
+soma invalida, previa, payload e duplo clique PASS. Backend em memoria de
+cartao/1000rateios PASS. Build final20.63s aprovado; backend/src e manifesto
+do pacote EC2 nao mudaram. Nenhuma baixa ou conexao real executada.
+
+Depois do envio: confirmar ref remoto/estado Vercel DEV e homologar pelas telas.
+Nao promover para main/PROD nem repetir testes com baixa real por conta propria.
+
 Backend publicado e confirmado por ls-remote em refactor/frontend:
 c43c2d137de89f36ebf64c77544d1bf6b9bbce6f. Main remota inalterada46ac88de e ancestral
 da refactor. Inventario conferido pelos bytes do Git desse commit; delta runtime

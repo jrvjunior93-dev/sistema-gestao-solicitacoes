@@ -1,5 +1,20 @@
 # Publicacao de cartao repetido no DEV - 27/10/2026
 
+## Continuidade: backend conferido no pacote Compras/filtros
+
+Operador retornou COMPRAS_FILTROS_BACKEND_DEV_PRONTO c43c2d13, cujo manifesto
+instala pagamentoFilaLiquidacaoService identico ao d4c2a104 e executou
+validarFilaCartaoRepetido com sucesso. Essa conferencia equivalente satisfaz o
+gate backend abaixo, sem repetir o operador antigo. Preservados NodePROD4096,
+DEV/Experience/env/dumps; SQL/migrations/escritas0. Backend confirmado pelo
+usuario; agente nao acessou EC2.
+
+Componente e QA frontend2ff50ef5 transpostos sem delta para o worktree
+compras-paginacao-local-20261027/Fluxy, junto de frontend4d9bb650. Autorizacao
+de commit/push DEV ja consta deste pedido original; retomada nao amplia escopo.
+Teste UI desktop/mobile e build final20.63s PASS. Publicacao final segue handoff
+2026-10-27-publicacao-compras-filtros-dev.md. Main/PROD permanecem intactos.
+
 Usuario autorizou commit/push em refactor/frontend e comandos para atualizar EC2DEV, sem acesso remoto pelo agente. Origem implementada/testada no worktree-cartao-repetido-baixa, base main2f6bd864. Integracao em outputs/worktree-cartao-repetido-dev, branch codex/cartao-repetido-dev-20261027, base origin/refactor/frontend b620379f605620603faf4e5f2bc04be11296bb0f.
 
 ## Escopo

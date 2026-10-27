@@ -1,5 +1,19 @@
 # Modulo FINANCEIRO
 
+## Cartao repetido na fila: frontend liberado apos conferencia DEV - 2026-10-27
+
+Na baixa por cartoes, cada linha e uma compra independente: o mesmo cartao
+pode repetir no mesmo dia ou em dias diferentes, com valor/data/parcelas
+proprios, tanto no titulo individual quanto nos instrumentos da baixa em massa.
+Soma deve fechar o total pago; cheques continuam unicos, e permissoes,
+calendarios, faturas fechadas/pagas, estorno e idempotencia permanecem.
+
+Backend confirmado pelo operador no pacote c43c2d13 (identico ao d4c2a104),
+com QA dedicado aprovado. Frontend do modal/QA2ff50ef5 transposto sem delta,
+agora junto de Compras e filtros. UI desktop/mobile e build aprovados; sem
+baixa real ou acesso EC2 pelo agente. Nao e necessario reaplicar backend.
+[Continuidade e evidencias](../../handoffs/2026-10-27-cartao-repetido-dev.md).
+
 ## Titulos: codigo da solicitacao e retorno dos filtros - 2026-10-27 (local)
 
 Contas a Pagar/Receber oferecem Codigo da solicitacao em Filtros visiveis.

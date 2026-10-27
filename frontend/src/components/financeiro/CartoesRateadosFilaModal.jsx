@@ -26,9 +26,8 @@ export default function CartoesRateadosFilaModal({ label, parcelas, cartoes, tot
     event.preventDefault(); event.stopPropagation();
     if (conflito) return;
     if (!Number(quantidade) || Number(quantidade) !== parcelas.length || soma !== cents(total)
-      || parcelas.some(item => !cartoes.some(card => Number(card.id) === Number(item.cartao_id)) || cents(item.valor_pago) <= 0)
-      || new Set(parcelas.map(item => Number(item.cartao_id))).size !== parcelas.length) {
-      setErro('Confira os cartões: selecione cada cartão uma vez e feche a soma com o total pago.'); return;
+      || parcelas.some(item => !cartoes.some(card => Number(card.id) === Number(item.cartao_id)) || cents(item.valor_pago) <= 0)) {
+      setErro('Confira os cartões e os valores: a soma dos lançamentos deve ser igual ao total pago.'); return;
     }
     try {
       parcelas.forEach((item,index) => {
@@ -48,6 +47,7 @@ export default function CartoesRateadosFilaModal({ label, parcelas, cartoes, tot
     <form id={`cartoes-fila-${label}`} onSubmit={confirmar} className="p-4 space-y-4">
       <p className="text-sm">Total pago: {money(total)} · Soma dos cartões: {money(soma / 100)}</p>
       <p className="text-xs text-[var(--c-muted)]">Cada cartão usa sua conta vinculada. Crédito lança somente essa parte na fatura; débito registra a saída na conta. Reduzir e aumentar a quantidade recupera os campos enquanto este modal estiver aberto.</p>
+      <p className="text-xs text-[var(--c-muted)]">O mesmo cartão pode ser usado em mais de um lançamento, no mesmo dia ou em dias diferentes. Informe o valor, a data e as parcelas de cada compra.</p>
       {conflito && <p role="alert">Os dados mudaram. Feche e confira antes de confirmar.</p>}
       <fieldset disabled={conflito} className="space-y-3">
         <label className="block text-sm">Quantidade de cartões
