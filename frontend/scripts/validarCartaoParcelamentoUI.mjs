@@ -59,6 +59,10 @@ window.__cartoes=[{id:10,nome:'Crédito QA',tipo:'CREDITO',ativo:true,conta_banc
 window.__formas=[{id:1,nome:'Cartão de crédito',tipo:'CARTAO_CREDITO',ativo:true,gera_fatura:true,exige_cartao:true},{id:2,nome:'Cartão de débito',tipo:'CARTAO_DEBITO',ativo:true,exige_cartao:true}];
 window.__titulo={id:1,codigo:'TIT-CARTAO-QA',tipo:'PAGAR',status:'ABERTO',valor_original:2740,valor_saldo:2740,valor_baixado:0,empresa_id:1,obra_id:1,parceiro_id:1,descricao:'Compra QA',movimentos:[],empresa:{id:1,nome:'Empresa QA'},obra:{id:1,nome:'Obra QA'},parceiro:{id:1,nome:'Credor QA'}};
 window.__rows=[{id:1,status:'PENDENTE',valor_previsto:2740,juros:0,multa:0,titulo:window.__titulo}];
+if(new URLSearchParams(location.search).has('repetido')){
+  Object.assign(window.__titulo,{valor_original:35000,valor_saldo:35000});
+  window.__rows[0].valor_previsto=35000;
+}
 if(new URLSearchParams(location.search).has('saldo')){
   Object.assign(window.__titulo,{status:'PARCIAL',valor_original:40810,valor_saldo:35853.30,valor_baixado:4956.70,
     movimentos:[{id:7755,tipo_movimento:'BAIXA',status:'ATIVO',forma_recebimento:'PIX',valor:4956.70,data_movimento:'2026-10-20'}]});
@@ -67,6 +71,51 @@ if(new URLSearchParams(location.search).has('saldo')){
 function Host({children}){const memory=useMemo(()=>createWorkspaceMemory(),[]);return <WorkspacePageContext.Provider value={{key:'cartao-parcelamento-qa',memory,snapshot:true,active:true}}>{children}</WorkspacePageContext.Provider>}
 createRoot(document.getElementById('root')).render(<BrowserRouter><ThemeContext.Provider value={{tema:TEMA_PADRAO}}><main className='layout-main'><Host><Routes><Route path='/fila' element={<Queue/>}/><Route path='/titulo/:id' element={<Detail/>}/></Routes></Host></main></ThemeContext.Provider></BrowserRouter>);`;
 const stub='\0cartao-parcelamento-';
+async function conferirPassagensRepetidas(page, base, width, mesmoDia) {
+  await page.goto(base+'/fila?repetido');
+  await page.getByLabel('Forma de pagamento de TIT-CARTAO-QA',{exact:true}).selectOption('1');
+  await page.getByRole('button',{name:'Mais de um cartão',exact:true}).click();
+  const cards=page.getByRole('dialog',{name:'Cartões do pagamento de TIT-CARTAO-QA',exact:true});
+  await cards.getByLabel('Quantidade de cartões',{exact:true}).fill('3');
+  const dates=mesmoDia?['2026-10-26','2026-10-23','2026-10-23']:['2026-10-26','2026-10-23','2026-10-22'];
+  for (let index=0;index<3;index++) {
+    const n=index+1;
+    await cards.getByLabel(`Cartão ${n}`,{exact:true}).selectOption(index===0?'10':'11');
+    await cards.getByLabel(`Valor no cartão ${n} (R$)`,{exact:true}).fill(index===2?'14999':'10000');
+    await cards.getByLabel(`Parcelas do cartão de TIT-CARTAO-QA, cartão ${n}`,{exact:true}).fill('12');
+    const input=cards.getByLabel(`Data da compra de TIT-CARTAO-QA, cartão ${n}`,{exact:true});
+    await input.fill(dates[index].split('-').reverse().join('/'));await input.blur();
+  }
+  await cards.getByRole('button',{name:'Confirmar cartões',exact:true}).click();
+  assert(await cards.isVisible());assert.match(await cards.getByRole('alert').innerText(),/soma dos lançamentos/);
+  assert.equal(await page.evaluate(()=>window.__writes.length),0);
+  await cards.getByLabel('Valor no cartão 3 (R$)',{exact:true}).fill('15000');
+  await cards.getByRole('button',{name:'Ver parcelas',exact:true}).nth(2).click();
+  const preview=page.getByRole('dialog',{name:'Prévia das parcelas de TIT-CARTAO-QA, cartão 3',exact:true});
+  await preview.waitFor();assert.equal(await preview.locator('tbody tr').count(),12);
+  assert.match(await preview.locator('tfoot').innerText(),/15\.000,00/);
+  await preview.getByRole('button',{name:'Voltar para o pagamento',exact:true}).click();
+  assert.equal(await cards.getByLabel('Valor no cartão 2 (R$)',{exact:true}).inputValue(),'10000');
+  await cards.getByRole('button',{name:'Confirmar cartões',exact:true}).click();
+  await cards.waitFor({state:'hidden'});assert.equal(await page.evaluate(()=>window.__writes.length),0);
+  await page.getByRole('button',{name:'Editar 3 cartão(ões)',exact:true}).click();
+  await cards.waitFor();assert.equal(await cards.getByRole('alert').count(),0);
+  assert.equal(await cards.getByLabel('Cartão 3',{exact:true}).inputValue(),'11');
+  assert.equal(await cards.getByLabel('Valor no cartão 3 (R$)',{exact:true}).inputValue(),'15000');
+  await page.screenshot({path:path.join(out,`mesmo-cartao-${mesmoDia?'mesmo-dia':'dias-diferentes'}-${width}.png`)});
+  await cards.getByRole('button',{name:'Confirmar cartões',exact:true}).click();
+  await cards.waitFor({state:'hidden'});
+  // Duplo clique no envio efetivo continua produzindo apenas uma requisicao.
+  await page.getByRole('button',{name:'Registrar baixa',exact:true}).first().evaluate(el=>{el.click();el.click();});
+  await page.waitForFunction(()=>window.__writes.length===1);
+  const writes=await page.evaluate(()=>window.__writes);
+  assert.equal(writes.length,1);assert(writes[0].key);
+  const parts=writes[0].itens[0].parcelas_cartao;
+  assert.deepEqual(parts.map(p=>p.cartao_id),[10,11,11]);
+  assert.deepEqual(parts.map(p=>p.valor_pago),[10000,10000,15000]);
+  assert.deepEqual(parts.map(p=>p.parcelamento_cartao.data_compra),dates);
+  assert.deepEqual(parts.map(p=>Number(p.parcelamento_cartao.quantidade_parcelas)),[12,12,12]);
+}
 const server=await createServer({root,configFile:false,logLevel:'error',esbuild:{jsx:'automatic'},css:{postcss:{plugins:[tailwindcss(tailwindConfig),autoprefixer()]}},cacheDir:path.join(out,'vite-cache'),server:{host:'127.0.0.1',port:0},plugins:[{
   name:'qa-cartao-parcelamento',enforce:'pre',resolveId(source){
     if(source==='/qa-entry.jsx')return stub+'entry';
@@ -127,7 +176,7 @@ try{
       const cards=page.getByRole('dialog',{name:'Cartões do pagamento de lote selecionado',exact:true});await cards.waitFor();
       await cards.getByLabel('Quantidade de cartões',{exact:true}).fill('2');
       await cards.getByLabel('Cartão 1',{exact:true}).selectOption('10');await cards.getByLabel('Valor no cartão 1 (R$)',{exact:true}).fill('1740');
-      await cards.getByLabel('Cartão 2',{exact:true}).selectOption('11');await cards.getByLabel('Valor no cartão 2 (R$)',{exact:true}).fill('1000');
+      await cards.getByLabel('Cartão 2',{exact:true}).selectOption('10');await cards.getByLabel('Valor no cartão 2 (R$)',{exact:true}).fill('1000');
       await cards.getByLabel('Parcelas do cartão de lote selecionado, cartão 1',{exact:true}).fill('3');
       await cards.getByLabel('Parcelas do cartão de lote selecionado, cartão 2',{exact:true}).fill('2');
       await cards.getByRole('button',{name:'Confirmar cartões',exact:true}).click();await cards.waitFor({state:'hidden'});
@@ -135,7 +184,10 @@ try{
       await page.waitForFunction(()=>window.__writes.length===2);
       const multi=await page.evaluate(()=>window.__writes[1]);
       assert.deepEqual(multi.instrumentos.componentes.map(p=>p.parcelamento_cartao.quantidade_parcelas),['3','2']);
+      assert.deepEqual(multi.instrumentos.componentes.map(p=>p.cartao_id),[10,10]);
     }
+    await conferirPassagensRepetidas(page,base,width,false);
+    await conferirPassagensRepetidas(page,base,width,true);
     await page.goto(base+'/fila?saldo');
     await page.getByLabel('Forma de pagamento de TIT-CARTAO-QA',{exact:true}).selectOption('1');
     await page.getByLabel('Cartão de TIT-CARTAO-QA',{exact:true}).selectOption('10');
@@ -188,6 +240,6 @@ try{
     await page.goto(base+'/titulo/1?readonly');assert.equal(await page.getByRole('button',{name:'Registrar baixa',exact:true}).count(),0);
   }
   assert.deepEqual(errors,[]);
-  console.log('OK: calendarios frontend/backend iguais em UTC/BR/NZ, centavos, fila/detalhe reais, saldo apos PIX com desconto e cartao29000 em6x, modal sobreposto desktop/mobile, Escape/retorno, previa sem baixa, payloads, duplo clique/retry idempotente e permissao de leitura. Sem API/banco externos.');
+  console.log('OK: cartao repetido no mesmo dia/dias diferentes desktop/mobile, 35000 em3passagens/12x, soma invalida, previa/datas/payload e duplo clique; lote mesmo cartao, calendarios UTC/BR/NZ, saldo apos PIX, Escape/retorno, retry e permissao de leitura. Sem API/banco externos.');
 }catch(error){await page?.screenshot({path:path.join(out,'falha.png'),fullPage:true});console.error(await page?.locator('[role="dialog"]').allTextContents());throw error;}
 finally{await browser?.close();await server.close();}
