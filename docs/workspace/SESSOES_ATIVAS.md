@@ -1,5 +1,10 @@
 # Sessoes Ativas
 
+- codex-reabertura-excluidos-main-20261028: implementacao e QA concluidos; reserva liberada para publicacao autorizada, promocao seletiva
+  de reabertura2b1d3e7a sobre main15a86635. Preservar precisao/RH/OOM/filtros,
+  historico/Node4096/DEV. Pacote EC2 manual sem SQL/migration ou registros reais.
+  Ownership limitado a funcao de reabertura, QA, aplicador novo e documentacao.
+
 - codex-promocao-ofx-main-20261022: agente unico, backup cifrado/timer confirmados.
   Pedido ampliado para todos os pendentes DEVbc2c69ed/41219c3a; base MAINb654.
   Historicos integrados, oito runtimes identicos DEV e exclusivos MAIN preservados.

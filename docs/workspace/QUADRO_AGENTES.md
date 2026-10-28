@@ -1,5 +1,13 @@
 # Quadro de Agentes
 
+## Reabertura apos exclusao de titulos - 2026-10-28
+
+- Implementacao e QA concluidos pelo agente principal: promovida somente a validacao que
+  alinha botao/resumo com titulos existentes. Base main15a86635, preservando
+  precisao decimal; deploy seletivo tambem reconhece fonte PROD117e34a4.
+- Sem alteracao de registros reais, SQL/migration/EC2 pelo agente ou frontend.
+  Preservar GEO para titulos existentes, historico, transacao e idempotencia.
+
 ## Promocao MAIN OFX/Receber (todos pendentes) - 2026-10-22
 
 - Usuario homologou OFX e autorizou TODOS pendentes (bc2c69ed/41219c3a).

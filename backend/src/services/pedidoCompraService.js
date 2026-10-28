@@ -3270,20 +3270,15 @@ async function atualizarStatusPedido({ pedidoId, status, motivo, usuarioId, tran
 }
 
 async function assertPedidoPodeReabrirDiretamente(pedidoId, transaction) {
-  const pedidoCompraId = Number(pedidoId);
-  const [vinculosNovos, alocacoesHistoricas, fretesHistoricos] = await Promise.all([
-    PedidoCompraTitulo.count({ where: { pedido_compra_id: pedidoCompraId }, transaction }),
-    SolicitacaoCompraAlocacao.count({
-      where: { pedido_compra_id: pedidoCompraId, titulo_financeiro_id: { [Op.ne]: null } },
-      transaction
-    }),
-    PedidoCompraFrete.count({
-      where: { pedido_compra_id: pedidoCompraId, titulo_financeiro_id: { [Op.ne]: null } },
-      transaction
-    })
-  ]);
+  // Mesma leitura do resumo/botao: vinculo historico sozinho nao e titulo
+  // existente. Mantem defaultScope (deleted_at), legados, frete e projecoes.
+  const { buscarTitulosPedido } = require('./pedidoCompraFinanceiroService');
+  const titulos = await buscarTitulosPedido(Number(pedidoId), {
+    transaction,
+    incluirLegados: true
+  });
 
-  if (vinculosNovos > 0 || alocacoesHistoricas > 0 || fretesHistoricos > 0) {
+  if (titulos.length > 0) {
     const error = new Error('Este pedido possui historico financeiro. Solicite a aprovacao do GEO para reabri-lo.');
     error.statusCode = 409;
     error.code = 'REABERTURA_EXIGE_APROVACAO_GEO';

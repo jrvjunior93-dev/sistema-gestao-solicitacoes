@@ -17,7 +17,7 @@ const statuses = [
   { codigo: 'CANCELADO', ativo: true, bloqueia_edicao: true }
 ];
 
-function fixture() {
+function fixture(consultarTitulos = null) {
   const estado = { pedido: { id: 271, solicitacao_compra_id: 295, fornecedor_compra_id: 10,
     fechamento_id: 3, status: 'FECHADO_FORNECEDOR', encerrado_em: '2026-10-20',
     financeiro_fluxo_versao: 1, status_financeiro: 'AGUARDANDO_PREVISAO', valor_total: 6745.65 },
@@ -71,12 +71,16 @@ function fixture() {
     './comprasDisponibilidadeService': {},
     './setorCapabilityService': { findSetorByCapability: async () => ({}), resolveSetorPersistenciaValue: () => 'COMPRAS' },
     './pedidoEntregaService': { assertPrevisaoConfirmada: async (_, opt) => { assert.equal(opt, tx); if (!options.entrega) throw Error('Confirme a previsao de entrega.'); } },
-    './pedidoCompraFinanceiroService': { sincronizarPedidoFinanceiroAoFechar: async args => {
+    './pedidoCompraFinanceiroService': { buscarTitulosPedido: async (id, opt) => {
+      conferir(opt); assert.equal(id, 271); assert.equal(opt.incluirLegados, true);
+      if (consultarTitulos) return consultarTitulos(id, opt);
+      return Array.from({ length: options.vinculos + options.alocacoesTitulo + options.fretesTitulo }, (_, i) => ({ titulo: { id: i + 1, status: 'ABERTO' } }));
+    }, sincronizarPedidoFinanceiroAoFechar: async args => {
       conferir(args); estado.sincronizacoesFinanceiras++; // Nao cria/recalcula titulo.
     } }
   };
   const module = { exports: {} };
-  deps['../utils/decimalCompras'] = require('../src/utils/decimalCompras');
+  if (fs.existsSync(path.join(raiz, 'src/utils/decimalCompras.js'))) deps['../utils/decimalCompras'] = require('../src/utils/decimalCompras');
   vm.runInNewContext(source + '\nmodule.exports.__qa = { carregarSolicitacaoPedidos, sincronizarStatusSolicitacaoCompraPorSaldo };',
     { module, require(id) { assert(Object.hasOwn(deps, id), id); return deps[id]; } });
   async function transacao(fn) {
@@ -223,7 +227,8 @@ async function validarController() {
   }
 }
 
-(async () => {
+module.exports = { fixture };
+if (require.main === module) (async () => {
   await validarServico(); await validarController();
   const { iniciarOperacaoPedido, classificarErro } = require('../src/observability/pedidoCompraOperacao');
   const logs = [];
