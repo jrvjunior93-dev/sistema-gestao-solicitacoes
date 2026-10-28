@@ -7,6 +7,12 @@ Sem acesso EC2 pelo agente. Base a645d6a31193b5135b0043b20a9b5bb8a4b7be9b;
 main remota2d6af625aff47f1592ae52d2448b9dc86a3c9c7e preservada.
 Backend/schema primeiro; frontend em commit LOCAL ate PRONTO manual.
 
+PRONTO manual recebido do operador: aplicador e conferencia do backend f5f47ecb
+retornaram RH_PRIVACIDADE_BACKEND_DEV_PRONTO, migration aditiva aplicada,
+PROD4096/heapDEV/ambientes preservados, zero escritas financeiras/de negocio
+e nenhuma operacao funcional executada. Liberado push do frontend
+0b89f48090bfa8f5bc339bee255a5d01b9f0cb40, dentro da autorizacao anterior.
+
 Commit backend: f5f47ecbfd43a3d32b52d61bbda0c083ba52d41b. Frontend no
 commit local seguinte, separado para nao disponibilizar tela antes do schema.
 
@@ -44,8 +50,9 @@ aprovados (694 arquivos Markdown e19 canonicos).
 
 ## Proximo passo exato
 
-Publicar somente commit backend f5f47ecb na refactor/frontend. Manter frontend local
-ate operador executar --backend SHA e --conferir SHA e enviar
-RH_PRIVACIDADE_BACKEND_DEV_PRONTO. Depois publicar o frontend ja autorizado e
-conferir Vercel DEV. Nao migrar main ou acessar EC2. Sem PM2 global, install,
-migrations gerais ou escrita financeira. Falha deve preservar estado/locks.
+Publicar frontend0b89f480 e este fechamento documental na refactor/frontend;
+conferir Vercel DEV. Operador ja confirmou backend/schema, sem necessidade
+de outro comando EC2 para esta etapa. Homologar com DP/obra a restricao,
+percentuais/ajustes, documentos de origem autorizada, Financeiro autorizado e
+transferencia/pagamento preparado. Nao migrar main ou acessar EC2. Sem PM2
+global, install, migrations gerais ou escrita financeira pelo agente.
