@@ -93,6 +93,7 @@ function emptyForm() {
     data_nascimento: '',
     status: 'ATIVO',
     salario_base: '',
+    salario_restrito_obra: false,
     salario_vigencia_inicio: '',
     salario_motivo: '',
     valor_contratual: '',
@@ -203,6 +204,7 @@ function toFormData(data) {
     data_nascimento: data?.data_nascimento || '',
     status: data?.status || 'ATIVO',
     salario_base: formatCurrencyInput(data?.salario_base),
+    salario_restrito_obra: Boolean(data?.salario_restrito_obra),
     salario_vigencia_inicio: '',
     salario_motivo: '',
     valor_contratual: formatCurrencyInput(data?.valor_contratual),
@@ -252,6 +254,7 @@ function buildPayload(form) {
     data_nascimento: form.data_nascimento || undefined,
     status: form.status,
     salario_base: form.salario_base === '' ? undefined : form.salario_base,
+    salario_restrito_obra: Boolean(form.salario_restrito_obra),
     salario_vigencia_inicio: form.id && form.salario_vigencia_inicio || undefined,
     salario_motivo: form.id && form.salario_motivo || undefined,
     valor_contratual: form.valor_contratual === '' ? undefined : form.valor_contratual,
@@ -335,6 +338,7 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const podeEditar = canManageRhDpColaboradores(user);
+  const podeGerirSigilo = podeEditar && (isSuperadmin(user) || userBelongsToDpSetor(user));
   const podeAjustarSalario = canAdjustRhDpSalarioCadastro(user);
   const podeGerirDocumentos = canManageRhDpDocumentos(user);
   const podeGerarTicket = canGenerateRhDpTicket(user);
@@ -733,6 +737,7 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
       setSalvando(true);
       const payload = buildPayload(form);
       let salvo;
+      if (!podeGerirSigilo) delete payload.salario_restrito_obra;
 
       if (form.id) {
         salvo = await atualizarRhColaborador(form.id, payload);
@@ -1432,6 +1437,14 @@ export default function RhDpColaboradores({ colaboradorId: editorId, comoEditor 
                   />
                   {form.id && !podeAjustarSalario ? <p className="form-hint">Altere o salário pelo fluxo de solicitação salarial. Edição direta exige DP com Editar colaboradores e Aprovar alteração salarial, ou SUPERADMIN.</p> : null}
                 </CampoForm>
+                {podeGerirSigilo && <div className="form-group">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={form.salario_restrito_obra} disabled={salvando}
+                      onChange={e => setForm(prev => ({ ...prev, salario_restrito_obra: e.target.checked }))} />
+                    <span>Salário restrito aos usuários da obra</span>
+                  </label>
+                  <p className="form-hint">A obra informa percentuais e ajustes; os valores calculados ficam disponíveis ao DP.</p>
+                </div>}
                 {form.id && podeEditar && podeAjustarSalario ? <>
                   <CampoForm label="Vigência do salário">
                     <DateInputBR className="form-control" aria-label="Vigência do salário" value={form.salario_vigencia_inicio}

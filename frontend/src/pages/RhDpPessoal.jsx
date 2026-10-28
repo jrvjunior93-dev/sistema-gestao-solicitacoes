@@ -57,6 +57,7 @@ import RhDpDocumentos from './RhDpDocumentos';
 import RhDpRelatorioOperacional from './RhDpRelatorioOperacional';
 import RhDpColaboradores from './RhDpColaboradores';
 import RhDpPagamentoModal from '../components/rh/RhDpPagamentoModal';
+import RhColaboradorObraModal from '../components/rh/RhColaboradorObraModal';
 import RhColaboradorEnderecos from '../components/rh/RhColaboradorEnderecos';
 import RhColaboradorTelefone from '../components/rh/RhColaboradorTelefone';
 import { erroTelefoneSecundario, erroEnderecoSecundario } from '../utils/rhColaboradorContatos';
@@ -417,7 +418,8 @@ export default function RhDpPessoal() {
   const [parametros, setParametros] = useSearchParams();
   const navigate = useNavigate();
   const [editarColaboradorId, setEditarColaboradorId] = useWorkspaceState('pessoal:editarId', null);
-  const podeEditarCadastro = canManageRhDpColaboradores(user) && canAccessRhDpCadastroColaboradores(user);
+  const podeEditarCadastro = (canManageRhDpColaboradores(user) && canAccessRhDpCadastroColaboradores(user))
+    || (usuarioOperacionalDaObra && hasAnyExplicitPermissao(user, ['rh_dp.solicitacoes.abrir']));
   const podeVerDocumentos = canViewRhDpDocumentos(user);
   const podeVerRelatorios = canAccessRhDpDashboard(user);
   const podeVerApuracao = canViewRhDpApuracao(user);
@@ -1452,7 +1454,7 @@ export default function RhDpPessoal() {
               id: 'salario',
               titulo: 'Salario',
               tipo: 'valor',
-              render: (colaborador) => (colaborador.salario_base
+              render: (colaborador) => colaborador.salario_oculto ? 'Restrito ao DP' : (colaborador.salario_base
                 ? formatCurrencyInput(String(colaborador.salario_base))
                 : '—')
             },
@@ -1575,8 +1577,10 @@ export default function RhDpPessoal() {
       ) : null}
       {abaAtiva === 'documentos' && podeVerDocumentos && localSelecionado ? <RhDpDocumentos key={`docs-${localId}`} obraId={localSelecionado.id} comoAba /> : null}
       {abaAtiva === 'relatorios' && podeVerRelatorios && localSelecionado ? <RhDpRelatorioOperacional key={`rel-${localId}`} obraId={localSelecionado.id} comoAba /> : null}
-      {editarColaboradorId && podeEditarCadastro ? <RhDpColaboradores key={editarColaboradorId} colaboradorId={editarColaboradorId}
-        comoEditor onFecharEditor={() => setEditarColaboradorId(null)} onSalvo={carregar} /> : null}
+      {editarColaboradorId && podeEditarCadastro ? usuarioOperacionalDaObra
+        ? <RhColaboradorObraModal key={editarColaboradorId} id={editarColaboradorId} onFechar={() => setEditarColaboradorId(null)} onSalvo={carregar} />
+        : <RhDpColaboradores key={editarColaboradorId} colaboradorId={editarColaboradorId}
+          comoEditor onFecharEditor={() => setEditarColaboradorId(null)} onSalvo={carregar} /> : null}
       {abaAtiva === 'jornada' ? (
         <RhDpJornada onAbrirApuracao={podeVerApuracao ? abrirApuracaoDaJornada : undefined} />
       ) : null}

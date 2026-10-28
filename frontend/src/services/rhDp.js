@@ -28,6 +28,15 @@ export async function pagamentoRhSolicitacao(path = '', { method = 'GET', data }
   return parseJson(response, 'Erro na solicitação de pagamento');
 }
 
+export async function cadastroRhObra(id, path = '', { method = 'GET', data } = {}) {
+  const multipart = typeof FormData !== 'undefined' && data instanceof FormData;
+  const response = await fetch(`${API_URL}/rh/colaboradores/${Number(id)}/cadastro-obra${path}`, {
+    method, headers: authHeaders(multipart ? {} : { 'Content-Type': 'application/json' }),
+    ...(data ? { body: multipart ? data : JSON.stringify(data) } : {})
+  });
+  return parseJson(response, 'Erro no cadastro do colaborador da obra');
+}
+
 export async function rhTransferencias(path = '', { method = 'GET', data, params } = {}) {
   const query = buildQuery(params);
   const response = await fetch(`${API_URL}/rh/transferencias${path}${query ? `?${query}` : ''}`, {

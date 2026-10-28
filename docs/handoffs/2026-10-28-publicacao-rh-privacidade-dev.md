@@ -7,6 +7,9 @@ Sem acesso EC2 pelo agente. Base a645d6a31193b5135b0043b20a9b5bb8a4b7be9b;
 main remota2d6af625aff47f1592ae52d2448b9dc86a3c9c7e preservada.
 Backend/schema primeiro; frontend em commit LOCAL ate PRONTO manual.
 
+Commit backend: f5f47ecbfd43a3d32b52d61bbda0c083ba52d41b. Frontend no
+commit local seguinte, separado para nao disponibilizar tela antes do schema.
+
 Escopo funcional e testes anteriores registrados nos handoffs
 2026-10-28-rh-salario-restrito-cadastro-obra-local.md e
 2026-10-28-rh-transferencia-pagamento-obra-local.md. Financeiro expressamente
@@ -41,7 +44,7 @@ aprovados (694 arquivos Markdown e19 canonicos).
 
 ## Proximo passo exato
 
-Publicar somente commit backend na refactor/frontend. Manter frontend local
+Publicar somente commit backend f5f47ecb na refactor/frontend. Manter frontend local
 ate operador executar --backend SHA e --conferir SHA e enviar
 RH_PRIVACIDADE_BACKEND_DEV_PRONTO. Depois publicar o frontend ja autorizado e
 conferir Vercel DEV. Nao migrar main ou acessar EC2. Sem PM2 global, install,
