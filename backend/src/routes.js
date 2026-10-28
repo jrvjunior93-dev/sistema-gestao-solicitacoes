@@ -679,6 +679,7 @@ router.use('/contratos', requireEnabledModule('CONTRATOS'));
 router.use('/comercial', requireEnabledModule('COMERCIAL'));
 router.use('/provisoes-financeiras', requireEnabledModule('PROVISOES'));
 router.use('/rh', requireEnabledModule('RH_DP'));
+router.use('/rh', require('./middlewares/rhPrivacidadeObra'));
 router.use('/integracoes/sienge', requireEnabledModule('INTEGRACAO_SIENGE'));
 router.use('/boletos', requireEnabledModule('BOLETOS'));
 router.use('/fiscal', requireEnabledModule('FISCAL'));
@@ -2100,8 +2101,15 @@ router.get('/rh/colaboradores/empresas-consulta', allowRhDpColaboradoresRead, Rh
 router.get('/rh/colaboradores/exportar-xlsx', allowRhDpColaboradoresRead, auditSuccess({ eventType: 'RH_COLABORADORES_EXPORTED', resourceType: 'RH_COLABORADOR', description: 'Cadastro de colaboradores exportado para XLSX' }), RhColaboradorController.exportarPlanilha);
 router.get('/rh/colaboradores/modelo-xlsx', allowRhDpColaboradoresWrite, auditSuccess({ eventType: 'RH_COLABORADORES_EXPORTED', resourceType: 'RH_COLABORADOR', description: 'Modelo preenchido de colaboradores exportado para XLSX' }), RhColaboradorController.modeloPlanilha);
 router.get('/rh/colaboradores/:id', allowRhDpColaboradoresRead, validateRequest({ params: validateNumericIdParam('id', 'Colaborador RH/DP') }), RhColaboradorController.show);
+router.get('/rh/colaboradores/:id/cadastro-obra', allowRhDpColaboradoresRead, require('./controllers/RhColaboradorObraController').mostrar);
+router.patch('/rh/colaboradores/:id/cadastro-obra/observacoes', allowRhDpSolicitacaoAbrir, criticalRateLimit,
+  auditSuccess({ eventType: 'RH_COLABORADOR_UPDATED', resourceType: 'RH_COLABORADOR', description: 'Observacoes atualizadas pela obra' }), require('./controllers/RhColaboradorObraController').salvarObservacoes);
+router.post('/rh/colaboradores/:id/cadastro-obra/documentos', allowRhDpSolicitacaoAbrir, uploadRateLimit, uploadComprovantes.single('file'),
+  auditSuccess({ eventType: 'RH_DOCUMENTO_CREATED', resourceType: 'RH_DOCUMENTO', description: 'Documento enviado pela obra' }), require('./controllers/RhColaboradorObraController').enviarDocumento);
+router.get('/rh/colaboradores/:id/cadastro-obra/documentos/:documentoId/link', allowRhDpColaboradoresRead, require('./controllers/RhColaboradorObraController').linkDocumento);
 router.post('/rh/colaboradores', allowRhDpColaboradoresWrite, criticalRateLimit, validateRequest({ body: validateRhColaboradorCreateBody }), RhColaboradorController.create);
-router.patch('/rh/colaboradores/:id', allowRhDpColaboradoresWrite, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Colaborador RH/DP'), body: validateRhColaboradorUpdateBody }), RhColaboradorController.update);
+router.patch('/rh/colaboradores/:id', allowRhDpColaboradoresWrite, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Colaborador RH/DP'), body: validateRhColaboradorUpdateBody }),
+  auditSuccess({ eventType: 'RH_COLABORADOR_UPDATED', resourceType: 'RH_COLABORADOR', description: 'Cadastro ou privacidade do colaborador atualizado' }), RhColaboradorController.update);
 router.post('/rh/colaboradores/importar-massa', allowRhDpColaboradoresWrite, uploadRateLimit, uploadComprovantes.single('file'), RhColaboradorController.importarMassa);
 
 // --- Pedido de pessoal: a Obra pede, o DP decide (Fase 6 do modulo DP, 26/08) ---

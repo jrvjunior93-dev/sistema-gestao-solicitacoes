@@ -1077,7 +1077,21 @@ async function detalharColaboradorRh(id, options = {}) {
   return colaborador;
 }
 
+async function exigirEdicaoSigiloRh(user) {
+  const auth = require('./authorizationService');
+  const { userBelongsToDpSetor } = require('./setorCapabilityService');
+  if (!auth.isSuperadmin(user) && (Array.isArray(await auth.getRhDpObraScopeIds(user))
+      || !await userBelongsToDpSetor(user) || !await auth.canManageRhDpColaboradores(user))) {
+    throw new ValidationError('Somente DP autorizado ou SUPERADMIN pode alterar a privacidade salarial.', 403);
+  }
+}
+
 async function criarColaboradorRh(data, user) {
+  const authCadastro = require('./authorizationService');
+  if (await authCadastro.isRhDpUsuarioObra(user)) {
+    throw new ValidationError('A obra acessa somente observacoes e documentos no cadastro limitado.', 403);
+  }
+  if (data.salario_restrito_obra !== undefined) await exigirEdicaoSigiloRh(user);
   data = { ...data, ...normalizarContatos(data) };
   return sequelize.transaction(async (transaction) => {
     if (data.forma_calculo_gerencial === 'DIARIA' && !(Number(data.valor_diaria) > 0)) {
@@ -1133,6 +1147,11 @@ async function criarColaboradorRh(data, user) {
 }
 
 async function atualizarColaboradorRh(id, data, user) {
+  const authCadastro = require('./authorizationService');
+  if (await authCadastro.isRhDpUsuarioObra(user)) {
+    throw new ValidationError('A obra acessa somente observacoes e documentos no cadastro limitado.', 403);
+  }
+  if (data.salario_restrito_obra !== undefined) await exigirEdicaoSigiloRh(user);
   return sequelize.transaction(async (transaction) => {
     const colaborador = await RhColaborador.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
     if (!colaborador) {
@@ -1257,6 +1276,7 @@ async function atualizarColaboradorRh(id, data, user) {
         data_nascimento: data.data_nascimento,
         status: data.status,
         salario_base: salarioDireto ? undefined : data.salario_base,
+        salario_restrito_obra: data.salario_restrito_obra,
         valor_contratual: data.valor_contratual,
         forma_calculo_gerencial: data.forma_calculo_gerencial,
         valor_diaria: data.valor_diaria,

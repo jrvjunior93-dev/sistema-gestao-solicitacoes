@@ -32,12 +32,15 @@ async function cadastroAtual(s, dados, transaction) {
   return { ...dados, linhas: dados.linhas.map(l => atualizarLinhaCadastro(l, porId.get(Number(l.colaborador_id)))) };
 }
 
-function exigirCadastroConferido(linha, atual) {
+function exigirCadastroConferido(linha, atual, salarioOculto = false) {
+  // A obra confere percentuais e ajustes; o DP confere a base salarial privada.
+  if (salarioOculto) return;
   if (linha.cadastro_versao ? linha.cadastro_versao !== atual.cadastro_versao : atual.cadastro_atualizado) {
     throw new ValidationError(`O cadastro de ${atual.nome} mudou. Use Atualizar cadastro e confira novamente antes de salvar ou enviar.`, 409);
   }
 }
 async function ehDp(user) {
+  if (await auth.isRhDpUsuarioObra(user)) return false;
   return (auth.isBusinessAdmin(user) || await userBelongsToDpSetor(user))
     && await auth.canEditRhDpApuracao(user);
 }
@@ -71,6 +74,19 @@ async function colaboradores(obraId, transaction) {
       'valor_diaria', 'salario_base', 'banco', 'agencia', 'conta', 'conta_tipo', 'pix_chave'],
     include: [{ model: RhColaboradorPagamento, as: 'pagamento', required: false }],
     order: [['nome', 'ASC']], transaction });
+}
+
+// Somente pessoas ja registradas no pedido autorizado. A transferencia nao muda
+// a obra nem o snapshot desse pagamento; novas selecoes usam colaboradores().
+async function ativosDaSolicitacao(dados, transaction) {
+  const ids = dados.linhas.filter(l => !['ENVIADO', 'CANCELADO'].includes(l.pagamento_estado))
+    .map(l => Number(l.colaborador_id));
+  if (!ids.length) return new Set();
+  const lista = await RhColaborador.findAll({
+    where: { id: { [Op.in]: ids }, status: 'ATIVO' }, attributes: ['id'],
+    transaction, lock: transaction.LOCK.UPDATE
+  });
+  return new Set(lista.map(c => Number(c.id)));
 }
 
 async function historico(s, req, acao, descricao, anterior, transaction) {
@@ -138,10 +154,6 @@ async function iniciar(req, payload, { persistir = true, transactionExterna = nu
   const preparar = async transaction => {
     // Lock do local serializa a criacao/reabertura do rascunho do mesmo usuario.
     const obra = await exigirLocal(req.user, Number(payload.obra_id), transaction, persistir);
-    const lista = await colaboradores(obra.id, transaction);
-    if (escopo && escopo.some(id => !lista.some(c => Number(c.id) === id))) {
-      throw new ValidationError('O colaborador nao esta ativo neste local.', 409);
-    }
     const rascunhos = await RhSolicitacao.findAll({ where: { obra_id: obra.id, criada_por: req.user.id,
       tipo: 'JORNADA', subtipo: FLUXO, situacao: 'RASCUNHO',
       colaborador_id: colaboradorId }, order: [['id', 'DESC']], transaction });
@@ -157,6 +169,10 @@ async function iniciar(req, payload, { persistir = true, transactionExterna = nu
     if (existente) {
       if (novo) throw new ValidationError('Ja existe um rascunho salvo para este grupo. Reabra antes de editar.', 409);
       return existente.id;
+    }
+    const lista = await colaboradores(obra.id, transaction);
+    if (escopo && escopo.some(id => !lista.some(c => Number(c.id) === id))) {
+      throw new ValidationError('O colaborador nao esta ativo neste local.', 409);
     }
     const hoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
     const plano = { tipo: 'JORNADA', subtipo: FLUXO, obra_id: obra.id,
@@ -210,19 +226,19 @@ async function salvar(req, id, payload, transactionExterna = null) {
     if (porId.size !== anterior.linhas.length) throw new ValidationError('Colaborador repetido.');
     const atuais = await cadastroAtual(s, anterior, transaction);
     const cadastroPorId = new Map(atuais.linhas.map(l => [Number(l.colaborador_id), l]));
-    const vigentes = s.situacao === 'RASCUNHO' ? await colaboradores(s.obra_id, transaction) : null;
-    const ativos = vigentes && new Set(vigentes.map(c => Number(c.id)));
+    const ativos = s.situacao === 'RASCUNHO' ? await ativosDaSolicitacao(anterior, transaction) : null;
     const responsaveisIds = new Set((await responsaveis(s.obra_id, transaction)).map(r => Number(r.id)));
     const linhas = anterior.linhas.map(original => {
       const l = porId.get(Number(original.colaborador_id));
       if (!l) throw new ValidationError('Colaborador nao pertence a esta solicitacao.');
       if (['ENVIADO', 'CANCELADO'].includes(original.pagamento_estado)) return original;
       const atualizada = cadastroPorId.get(Number(original.colaborador_id));
-      exigirCadastroConferido(l, atualizada);
+      exigirCadastroConferido(l, atualizada, !dp && req.rhPrivacidadeObra?.restritos.has(Number(original.colaborador_id)));
       if (l.selecionado && ativos && !ativos.has(Number(original.colaborador_id))) {
-        throw new ValidationError(`${original.nome} nao esta mais ativo neste local. Desmarque-o.`, 409);
+        throw new ValidationError(`${original.nome} nao esta mais ativo. Desmarque-o.`, 409);
       }
-      const calculo = calcularLinha(l, atualizada);
+      const conferenciaFinanceiraPendente = !dp && Boolean(req.rhPrivacidadeObra?.restritos.has(Number(original.colaborador_id)));
+      const calculo = calcularLinha(l, atualizada, { adiarConferenciaFinanceira: conferenciaFinanceiraPendente });
       const dadosConta = recebimento(l, atualizada);
       let reembolso = null;
       if (l.reembolso && calculo.descontos > 0) {
@@ -243,6 +259,7 @@ async function salvar(req, id, payload, transactionExterna = null) {
         !== JSON.stringify((k === 'parcela_50' ? Boolean(original[k]) : original[k]) ?? null));
       // Alterar dados invalida a conferencia anterior. A marcacao explicita pode conferir a nova versao.
       return { ...atualizada, ...campos, ...calculo, cadastro_atualizado: false,
+        conferencia_financeira_pendente: conferenciaFinanceiraPendente,
         conferido_obra: dp ? atualizada.conferido_obra : Boolean(l.conferido_obra),
         conferido_dp: dp ? Boolean(l.conferido_dp) && (!mudou || l.conferir_alteracoes === true) : false };
     });
@@ -315,13 +332,14 @@ async function enviar(req, id, payload) {
     const selecionados = d.linhas.filter(l => l.selecionado && ['PENDENTE', 'EM_EDICAO'].includes(l.pagamento_estado));
     if (!selecionados.length || selecionados.length > 100) throw new ValidationError('Selecione entre 1 e 100 colaboradores.');
     const atuais = await cadastroAtual(s, d, transaction);
-    for (const l of selecionados) exigirCadastroConferido(l, atuais.linhas.find(a => Number(a.colaborador_id) === Number(l.colaborador_id)));
+    for (const l of selecionados) exigirCadastroConferido(l, atuais.linhas.find(a => Number(a.colaborador_id) === Number(l.colaborador_id)),
+      !dp && req.rhPrivacidadeObra?.restritos.has(Number(l.colaborador_id)));
     if (selecionados.some(l => !l[dp ? 'conferido_dp' : 'conferido_obra'])) throw new ValidationError('Marque os colaboradores selecionados como conferidos.');
     await require('../modules/custosRecebiveis/services/bloqueioObraService')
       .assertObrasSemTrava([s.obra_id], 'Pagamento DP por solicitacao');
     if (!dp) {
-      const ativos = new Set((await colaboradores(s.obra_id, transaction)).map(c => Number(c.id)));
-      if (selecionados.some(l => !ativos.has(Number(l.colaborador_id)))) throw new ValidationError('Um colaborador nao esta mais ativo neste local.', 409);
+      const ativos = await ativosDaSolicitacao(d, transaction);
+      if (selecionados.some(l => !ativos.has(Number(l.colaborador_id)))) throw new ValidationError('Um colaborador nao esta mais ativo.', 409);
       await s.update({ situacao: 'ABERTA', dados_json: { ...d, revisao: d.revisao + 1,
         linhas: d.linhas.filter(l => l.selecionado),
         total_colaboradores: selecionados.length, enviado_em: new Date().toISOString() } }, { transaction });

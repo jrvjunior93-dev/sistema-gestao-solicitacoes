@@ -1,5 +1,60 @@
 # Modulo RH/DP
 
+## Salario restrito e cadastro limitado da obra - 2026-10-28
+
+- DP autorizado a editar colaboradores e SUPERADMIN podem marcar
+  `salario_restrito_obra` no cadastro. Padrao falso preserva os demais cadastros.
+  O usuario confirmou que permissoes expressas do Financeiro continuam mostrando
+  os valores; esta politica aplica-se a Pessoal/RH.
+- Para usuario operacional OBRA, inclusive se acumular DP, a API nao devolve
+  salario/base/diaria, bruto/liquido, valores financeiros derivados, hashes de
+  calculo nem totais que permitam deducao. A tela mostra Restrito ao DP. A obra
+  continua informando percentuais e ajustes; cadastro completo e conferencia
+  financeira permanecem no DP. Dados enviados pelo navegador nao escolhem o sigilo.
+- No pagamento restrito, a validacao de desconto contra o liquido fica para a
+  conferencia DP, evitando inferencia por tentativas. A obra nao gera titulos;
+  DP valida o calculo integralmente antes de gerar/enfileirar qualquer valor.
+  Demais pagamentos conservam a validacao anterior. Titulos antigos nao mudam.
+- Historico salarial, anexos internos e exportacoes RH que exponham esses dados
+  sao bloqueados para OBRA; calculos/relatorios legados com restritos no recorte
+  ficam no DP. Leituras usam no-store e consulta indexada de IDs/obra para a
+  regra vigente, sem cache compartilhado ou salario nessa consulta auxiliar.
+- O botao Editar cadastro na lista de Pessoal abre para OBRA apenas observacoes
+  e documentos enviados pela propria obra. Exige permissao de abrir solicitacoes
+  e vinculo com o local atual; nao habilita edicao geral, salario, empresa, CPF,
+  banco ou lotacao. APIs de cadastro geral continuam negadas a OBRA.
+- Documentos novos enviados por essa porta registram obra de origem e chave
+  idempotente; uploads concorrentes/repetidos com mesma chave sao replay, e corpo
+  diferente com a mesma chave e409. Links conferem colaborador, obra de origem,
+  usuario/escopo e ativo antes do presign. Documentos internos/legados sem origem
+  registrada nao passam a ser visiveis. Nao ha backfill nem alteracao de arquivos.
+- Migration local `202610280001_rh_privacidade_obra.js`: uma coluna booleana em
+  colaboradores, duas colunas opcionais em documentos e dois indices. Somente
+  estrutura aditiva; down recusa remocao automatica. Precisa ser homologada e
+  executada pelo operador antes do backend/frontend novos; nao foi aplicada.
+
+## Transferencia operacional e obra do pagamento - 2026-10-28
+
+- Transferencias de colaboradores ATIVOS mantem ACL, aprovacoes, justificativa,
+  lock/transacao e auditoria. Divergencias de obra no vinculo aberto, ausencia
+  dele, inicio/admissao futuros ou data de desligamento anterior nao impedem a
+  transferencia operacional. O cadastro passa ao destino na aprovacao.
+- Nesses casos os periodos legados nao sao corrigidos automaticamente: a
+  solicitacao registra `lotacao_historica_preservada` e o evento
+  `LOTACAO_HISTORICA_PRESERVADA`, com origem/destino/data/motivos. Datas de
+  admissao/desligamento e periodos existentes permanecem intactos. Historico
+  consistente segue o registro normal, inclusive duas trocas no mesmo dia.
+- No fluxo PAGAMENTO_POR_SOLICITACAO, rascunho salvo reabre, salva e envia apos
+  transferencia, mantendo obra e dados ja registrados no pedido. Usuario da
+  origem nao recebe salario/conta atualizados da nova obra. Continuam exigidos
+  acesso ao local, autor do rascunho, colaborador ativo, conferencia e permissoes
+  financeiras do DP; novas selecoes continuam limitadas aos ativos do local.
+- Titulos usam a obra da propria solicitacao, sem rateio automatico por periodo
+  de lotacao. Pagamentos/titulos anteriores nao mudam; revisao, fila, baixas,
+  idempotencia e governanca seguem as regras existentes. Apuracoes/jornadas
+  legadas por periodo nao foram alteradas.
+- Implementacao local sem migration, acesso EC2 ou operacoes em registros reais.
+
 ## Promocao MAIN RH, centros e pedidos - 2026-10-21
 
 Usuario autorizou os tres commits pendentes2d161b85/ba4a41b2/a00a15f6 e confirmou

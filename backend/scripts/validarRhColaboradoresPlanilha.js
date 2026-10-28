@@ -86,6 +86,7 @@ function load(relative, overrides = {}) {
 }
 const historicoService = load('services/rhCalculoHistoricoService.js');
 const service = load('services/rhService.js', {
+  './authorizationService': { isRhDpUsuarioObra: async () => false },
   './rhCalculoHistoricoService': historicoService,
   './rhVinculoObraService': { registrarVinculo: async () => {}, encerrarVinculo: async () => {} }
 });

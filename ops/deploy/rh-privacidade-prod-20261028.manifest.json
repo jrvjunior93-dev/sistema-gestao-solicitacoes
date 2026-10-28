@@ -1,0 +1,156 @@
+{
+  "base": "2d6af625aff47f1592ae52d2448b9dc86a3c9c7e",
+  "release_parent": "2d6af625aff47f1592ae52d2448b9dc86a3c9c7e",
+  "runtime_files": 13,
+  "business_data_writes": 0,
+  "migration": "202610280001_rh_privacidade_obra.js",
+  "heap_mib": 4096,
+  "files": [
+    {
+      "path": "backend/migrations/202610280001_rh_privacidade_obra.js",
+      "sha256": "e5540dd83d8b5da2569d93a2e314313277554ed1f28a54582ca45b5063e81b69",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarRhColaboradoresPlanilha.js",
+      "sha256": "ff98e7b597b30301d125c13271cd6c9b0ea4664710a6f696c13d9eaf4368d2c5",
+      "old_sha256": "783a57e8d55baa68588efaba6780bd47b3c00d07fb7dda4484a1ae00c14edbf9"
+    },
+    {
+      "path": "backend/scripts/validarRhConsultaSalario.js",
+      "sha256": "2b1ccf60ca72a49557c054f71dce0f2c2a2fa000c0ba8162f2c6e8d74ea26d68",
+      "old_sha256": "2a6bfe5680ce55e19babf03904f86d7138dc1381fa9237adc97d62b21840237a"
+    },
+    {
+      "path": "backend/scripts/validarRhLotacaoCadastro.js",
+      "sha256": "9a5e52148d63e1fc86387e539aa1a99df4d8dbd9256f0f96ae34d139ff7fc274",
+      "old_sha256": "218004d14bb341ed80f3a63820e34c5a1149059049aca00f6d7a5ae8b70b8499"
+    },
+    {
+      "path": "backend/scripts/validarRhPagamentoEnvioParcial.js",
+      "sha256": "79a0fc8086d82e78a214e6758f6c748de85cc5fae5a83471e905a506e18f1658",
+      "old_sha256": "0339853dd0894242fdbd030fa78aa14de6566c18c33388677796c910f9047096"
+    },
+    {
+      "path": "backend/scripts/validarRhPagamentoSolicitacao.js",
+      "sha256": "08b2c06d792298cb0f31d5368d547e09a51d7d2fcb4c75c54b2f2152d85958cb",
+      "old_sha256": "53f357a6841aa0c5fe7b6711ad996ab2b6f8ca1af6093b065520622e8848923a"
+    },
+    {
+      "path": "backend/scripts/validarRhPessoalFluxo.js",
+      "sha256": "e3dff950b7625d4d008e483de46d348d290ed44df706f6dd3dcee3472683d0dd",
+      "old_sha256": "0ba27bbc20dda7e398f491a67e1b0bafacdbbd6ff2a1fbdb91ec84884a5bfa2d"
+    },
+    {
+      "path": "backend/scripts/validarRhPrivacidadeObra.js",
+      "sha256": "57f1b52ab2c3155ebe09b41a1068f3cfd009720c699e8e2c039a5565cc5fe1f7",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/src/controllers/RhColaboradorObraController.js",
+      "sha256": "ea914e219e307d0fb73ecac2cca2de94ca391a317c1793759e661bfaecb7974d",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/src/middlewares/rhPrivacidadeObra.js",
+      "sha256": "dd6aae90846f5a1978c7e87a579b67d152db7692831be67c2f7fbe15bffb9122",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/src/models/RhColaborador.js",
+      "sha256": "1406c7b01b0208f615f15249b3bbf5a8efaf2163a440657d52dc308c8f934a34",
+      "old_sha256": "f327672cb90f9c268a0095eb5215127188a442300881f4ff3b72e01e54a3ef41"
+    },
+    {
+      "path": "backend/src/models/RhDocumento.js",
+      "sha256": "425babef9ad7a3b754e534f01bfd97698dcf29972e1999a58c7ec8abec57f416",
+      "old_sha256": "856c8c1ff8571b40ff755967e50a4ef8a6b75e595f94f169f1b96ea0306c9a76"
+    },
+    {
+      "path": "backend/src/routes.js",
+      "sha256": "56c14ca059e0e608a2e769e31c86e050c796e337cca5a6aec7f7dfe46e21edd1",
+      "old_sha256": "8398c2b42df05463412352eb36f36b3b4c281d9d734233ad359d7a1c46f57a82"
+    },
+    {
+      "path": "backend/src/services/rhColaboradorObraService.js",
+      "sha256": "80cda58a685277ce3404a762e9c0707fd3b65abaf2928f2d74b3cf4f22488220",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/src/services/rhPagamentoSolicitacaoDomain.js",
+      "sha256": "0edbd3a32ebbacf008b4611adc3702163e55a405dd9bc96972c407899e8ce312",
+      "old_sha256": "64c7ca5fa1c762ff26b34099cd8b5aff0e24d20efef115c7f767d2739426316b"
+    },
+    {
+      "path": "backend/src/services/rhPagamentoSolicitacaoService.js",
+      "sha256": "4e24f972c064cf7854701f5c99e6a2be0cb670057fd6c19ec2c81abb8e135957",
+      "old_sha256": "d1ca4dfe49b39402156d3dc6fbbd3dac78fd5d21c46acb1021b7d7f8404c1e56"
+    },
+    {
+      "path": "backend/src/services/rhPrivacidadeObraDomain.js",
+      "sha256": "65bc2b97199a6529474fd4272ef8c518f12f83efe1cf5ed205ecc729694d432e",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/src/services/rhService.js",
+      "sha256": "ab106476777d5d2276a5fd2e666789063b5af96b54c613aee5813661e493649e",
+      "old_sha256": "9c16877c03626820572458281316793c699bbf7c48bd3bc1493ac4ddfe20e45e"
+    },
+    {
+      "path": "backend/src/services/rhTransferenciaService.js",
+      "sha256": "e5432a104a22dd0a4de560c14ccc641a4ec3f48a5f26e23e07da040be277c931",
+      "old_sha256": "bdec34bc110ce18ebe0248ae297a710cf7feb93e4acd5e943b77de4735f03e9b"
+    },
+    {
+      "path": "backend/src/validators/rhValidators.js",
+      "sha256": "62493736feba6bd59b3f151f5d6e96e8431f77be56a3961cfb2a6bc60b04b139",
+      "old_sha256": "170536f47d6398f2b7a8ac1ee54f3f4b2aaa1d3c9ae04cd2569972093a999e20"
+    },
+    {
+      "path": "backend/scripts/rhPrivacidadeObraProdSchema.js",
+      "sha256": "29b4ea5c4931623d37af086f52a39b605b8376e3c5b18cfb8b30bddad0223a11",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarRhPrivacidadeObraProdSchema.js",
+      "sha256": "a8678e86e845874d39d27975b6dd515b2cc1428e8210f99e74a705452e838e6f",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/src/validators/operationalValidators.js",
+      "sha256": "364277ae7d5b981e990945131ef067f028be0d33ab8fb513f0c43cd4ce393ee4",
+      "old_sha256": "364277ae7d5b981e990945131ef067f028be0d33ab8fb513f0c43cd4ce393ee4"
+    },
+    {
+      "path": "backend/scripts/validarSolicitacoesCompraPaginacao.js",
+      "sha256": "af95345f3bff9504dfb15dcd4ca69e1a04ae365de21a7ce7729c60f04e6d662f",
+      "old_sha256": "af95345f3bff9504dfb15dcd4ca69e1a04ae365de21a7ce7729c60f04e6d662f"
+    }
+  ],
+  "extra": [
+    {
+      "path": "ops/deploy/atualizar-prod-rh-privacidade-20261028.cjs",
+      "sha256": "ca6633085df4dab195db0870af9087fe00ecb8f126ffa3388063155cf215eac7"
+    },
+    {
+      "path": "ops/deploy/atualizar-prod-rh-privacidade-20261028.test.cjs",
+      "sha256": "bd4dba751242d0dd056fd49d24a5b37cc713155e2e9b9d880bd3598fd231e397"
+    },
+    {
+      "path": "ops/deploy/README-rh-privacidade-prod-20261028.md",
+      "sha256": "deb932f967830ba44fccb870e3c54787334144f31809ec4910092bd820f1f918"
+    },
+    {
+      "path": "docs/handoffs/2026-10-28-promocao-rh-privacidade-main.md",
+      "sha256": "224040e5d76fb2db102a32e9a8835d768e13e4047ed395ec13d85cb26f1f0454"
+    },
+    {
+      "path": "docs/workspace/OWNERSHIP_ATIVO.md",
+      "sha256": "67cb7221a74c921aed870757e2b4c8d9fe23d93cbd9b69cefbcd5cb1e06a0818"
+    },
+    {
+      "path": "docs/modulos/rh-dp/README.md",
+      "sha256": "b810341179077bb6d398b30951017561417e86f6e362e6e4035181995929e07d"
+    }
+  ]
+}

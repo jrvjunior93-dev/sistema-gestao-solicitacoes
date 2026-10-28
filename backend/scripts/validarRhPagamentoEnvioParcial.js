@@ -47,7 +47,7 @@ const models = { sequelize: { async transaction(fn) {
   RhColaborador: { findAll: async () => cadastros }, RhColaboradorPagamento: {},
   CrResponsavelObra: { findAll: async () => [{ user_id: 77 }] }, User: { findAll: async () => [{ id: 77, nome: 'Responsavel' }] },
   FormaPagamentoFinanceira: { findOne: async o => ({ id: o.where.tipo === 'PIX' ? 4 : 5 }) } };
-const auth = { isBusinessAdmin: () => false, canEditRhDpApuracao: async u => u.dp,
+const auth = { isBusinessAdmin: () => false, isRhDpUsuarioObra: async u => Boolean(u.obra), canEditRhDpApuracao: async u => u.dp,
   canExecuteRhDpFechamento: async u => u.dp && permissao, getRhDpObraScopeIds: async () => scope,
   userHasAreaPermission: async () => true, getUserObraIds: async () => [7], userHasNominalAreaPermission: async () => permissao };
 function load(nome, extras = {}) {

@@ -11,7 +11,7 @@ function numero(v, campo, max = 999999999) {
   return dinheiro(n);
 }
 
-function calcularLinha(linha, cadastro) {
+function calcularLinha(linha, cadastro, { adiarConferenciaFinanceira = false } = {}) {
   const diaria = cadastro.forma_calculo_gerencial === 'DIARIA';
   if (linha.vale != null && typeof linha.vale !== 'boolean') throw new ValidationError('Opcao Vale invalida.');
   if (linha.vale) {
@@ -33,7 +33,7 @@ function calcularLinha(linha, cadastro) {
   // Faltas sao informativas. Dias afetam apenas diaristas; ajustes nao sao rateados.
   const bruto = dinheiro(diaria ? base * dias : base * percentual / 100);
   const liquido = dinheiro(bruto + acrescimos - descontos);
-  if (liquido < 0) throw new ValidationError(`Descontos maiores que o pagamento de ${cadastro.nome}.`);
+  if (liquido < 0 && !adiarConferenciaFinanceira) throw new ValidationError(`Descontos maiores que o pagamento de ${cadastro.nome}.`);
   return { percentual, dias, faltas, acrescimos, descontos, bruto, liquido, diaria, base };
 }
 

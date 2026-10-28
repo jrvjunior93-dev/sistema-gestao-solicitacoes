@@ -10,6 +10,8 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: false
     },
+    obra_origem_id: { type: DataTypes.INTEGER, allowNull: true },
+    chave_envio_obra: { type: DataTypes.STRING(140), allowNull: true },
     documento_tipo_id: {
       type: DataTypes.INTEGER,
       allowNull: false

@@ -31,7 +31,7 @@ const models = {
 const vinculo = load('rhVinculoObraService.js', { sequelize: { Op }, '../models': models, '../middlewares/validation': validation, './rhPessoalDomain': domain });
 const service = load('rhService.js', { sequelize: { Op }, '../models': models, '../utils/pix': require('../src/utils/pix'),
   '../middlewares/validation': validation, './rhColaboradorContatosDomain': require('../src/services/rhColaboradorContatosDomain'),
-  './authorizationService': { isSuperadmin: u => u.perfil === 'SUPERADMIN' }, './rhVinculoObraService': vinculo,
+  './authorizationService': { isSuperadmin: u => u.perfil === 'SUPERADMIN', isRhDpUsuarioObra: async u => Boolean(u.obra) && u.perfil !== 'SUPERADMIN' }, './rhVinculoObraService': vinculo,
   './rhCalculoHistoricoService': {}, './s3': {}, '../utils/fileName': {}, '../constants/empresaGrupo': {}, '../utils/excelWorkbook': {} });
 (async () => {
   const admin = { id: 1, perfil: 'SUPERADMIN' };

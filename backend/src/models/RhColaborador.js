@@ -97,6 +97,11 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       type: DataTypes.DECIMAL(14, 2),
       allowNull: true
     },
+    salario_restrito_obra: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
+    },
     valor_contratual: {
       type: DataTypes.DECIMAL(14, 2),
       allowNull: true
