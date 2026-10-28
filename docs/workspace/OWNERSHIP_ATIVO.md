@@ -1,5 +1,10 @@
 # Ownership Ativo
 
+## Compra Direta: favorecido e PIX lado a lado - 2026-10-28
+- Publicacao autorizada pelo usuario: agente reserva somente fechamento documental e commit/push do layout/teste/docs na refactor/frontend sobre79531e10. QA e build13.92s aprovados, sem nova alteracao funcional. Nenhum pacote EC2 necessario: backend cfe6 ja aplicado em DEV. Main2d6af625, producao4096 e ambientes preservados; acompanhar Vercel apos envio.
+- Concluido localmente: UI real1366/390, troca de favorecido/limpeza da chave, totais/rateio/payload/credor/rascunho PASS; capturas inspecionadas, build/diff aprovados. Handoff2026-10-28-compra-direta-layout-favorecido-pix-local.md registra continuidade. Reserva liberada; sem commit/push/deploy/EC2/banco real. Main/producao intactas.
+- Agente principal reserva NovaSolicitacaoCompra.jsx somente layout das formas de pagamento, QA UI validarCompraDiretaCredorObrigatorio.mjs e handoff correspondente. Remover texto do valor calculado e alinhar favorecido/chave PIX na forma unica. Manter divisao de valores para varias formas, boleto/upload, selecao de credor/favorecido, limpeza de chave, validacao/payload/rascunho e permissoes. Somente local, sem EC2, registros reais, commit/push ou deploy nesta etapa; sem outros agentes.
+
 ## Publicacao DEV dos totais de Compras - 2026-10-28
 - Usuario confirmou PRONTO manual cfe6c1cf com PROD4096/DEV/env preservados e nenhuma operacao de dados. Agente reserva somente metadados deste fechamento e libera publicacao do frontend ja commitado/testado; delta somente frontend/docs, sem novo backend/reinicio/EC2. Atualizar Vercel e informar homologacao apos deploy. Main2d6af625 preservada.
 - Backend publicado cfe6c1cfd5620537815829012e3b11b3b831677c; frontend final em commit LOCAL seguinte aguardando PRONTO do usuario, conforme handoff de publicacao. Nenhum push frontend antes da conferencia manual; proximo push ja autorizado apos PRONTO. Main2d6af625 intacta. Implementacao/QA fechados e ownership funcional liberado.

@@ -2270,8 +2270,8 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
           {modoCompraDireta && formasPagamentoSelecionadas.length > 0 && (
             <div className="form-campo--linha overflow-hidden rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]">
               <div className="hidden grid-cols-2 gap-4 border-b border-[var(--c-border)] bg-[var(--ui-surface-2)] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)] md:grid">
-                <span>{formasPagamentoSelecionadas.length > 1 ? 'Forma e valor' : 'Forma de pagamento'}</span>
-                <span>Como realizar o pagamento</span>
+                <span className={formasPagamentoSelecionadas.length === 1 ? 'col-span-2' : ''}>{formasPagamentoSelecionadas.length > 1 ? 'Forma e valor' : 'Forma de pagamento'}</span>
+                {formasPagamentoSelecionadas.length > 1 && <span>Como realizar o pagamento</span>}
               </div>
               <div className="divide-y divide-[var(--c-border)]">
                 {formasPagamentoSelecionadas.map((forma) => {
@@ -2281,7 +2281,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                   const pix = formaPagamentoEhPix(forma);
                   return (
                     <section key={forma.id} className="grid gap-4 px-4 py-4 md:grid-cols-2">
-                      <div className="min-w-0 space-y-2">
+                      <div className={`min-w-0 space-y-2 ${formasPagamentoSelecionadas.length === 1 ? 'md:col-span-2' : ''}`}>
                         <div>
                           <span className="block text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)] md:hidden">{formasPagamentoSelecionadas.length > 1 ? 'Forma e valor' : 'Forma de pagamento'}</span>
                           <strong className="text-sm text-[var(--c-text)]">{formatarFormaPagamento(forma)}</strong>
@@ -2297,14 +2297,11 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                               limparErroCampo('valores_forma_pagamento');
                             }}
                           />
-                        </CampoForm> : <>
-                          <p className="text-xs text-[var(--c-muted)]">O valor é calculado nos itens da solicitação.</p>
-                          <ErroCampo mensagem={errosCampo.valores_forma_pagamento} />
-                        </>}
+                        </CampoForm> : <ErroCampo mensagem={errosCampo.valores_forma_pagamento} />}
                       </div>
 
-                      <div className="min-w-0 space-y-3">
-                        <span className="block text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)] md:hidden">Como realizar o pagamento</span>
+                      <div className={formasPagamentoSelecionadas.length === 1 && !boleto ? 'grid min-w-0 items-start gap-3 md:col-span-2 md:grid-cols-2' : `min-w-0 space-y-3 ${formasPagamentoSelecionadas.length === 1 ? 'md:col-span-2' : ''}`}>
+                        {formasPagamentoSelecionadas.length > 1 && <span className="block text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)] md:hidden">Como realizar o pagamento</span>}
                         {boleto ? (
                           <div className="space-y-2">
                             <p className="text-sm text-[var(--c-muted)]">Anexe o boleto que será usado nesta compra.</p>
@@ -2329,7 +2326,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                           </div>
                         ) : (
                           <>
-                            <label className="flex items-center gap-2 text-sm text-[var(--c-text)]">
+                            <label className={`flex items-center gap-2 text-sm text-[var(--c-text)] ${formasPagamentoSelecionadas.length === 1 ? 'md:col-span-2' : ''}`}>
                               <input
                                 type="checkbox"
                                 checked={detalhe.usar_credor_como_favorecido}
@@ -2388,7 +2385,9 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                                 />
                               </CampoForm>
                             )}
-                            <ErroCampo mensagem={errosCampo[`pagamento_forma_${formaId}`]} />
+                            <div className={formasPagamentoSelecionadas.length === 1 ? 'md:col-span-2' : ''}>
+                              <ErroCampo mensagem={errosCampo[`pagamento_forma_${formaId}`]} />
+                            </div>
                           </>
                         )}
                       </div>

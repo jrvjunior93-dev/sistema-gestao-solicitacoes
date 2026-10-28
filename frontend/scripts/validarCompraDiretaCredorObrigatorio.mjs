@@ -95,6 +95,27 @@ try {
     const page = await abrir({ width, credor: 8 });
     const resumo = page.locator('dl[aria-label="Totais da compra direta"]');
     await resumo.waitFor();
+    assert.equal(await page.getByText('O valor é calculado nos itens da solicitação.', { exact: true }).count(), 0);
+    const favorecidoInput = page.getByRole('combobox', { name: 'Favorecido do pagamento' });
+    const chaveInput = page.getByLabel('Chave PIX', { exact: false }).first();
+    await favorecidoInput.scrollIntoViewIfNeeded();
+    const favorecidoBox = await favorecidoInput.boundingBox();
+    const chaveBox = await chaveInput.boundingBox();
+    if (width >= 768) {
+      assert.ok(favorecidoBox.x < chaveBox.x, 'Favorecido a esquerda da chave PIX');
+      assert.ok(Math.abs(favorecidoBox.y - chaveBox.y) < 8, 'Campos alinhados na mesma linha');
+    } else {
+      assert.ok(chaveBox.y > favorecidoBox.y, 'PIX abaixo do favorecido no celular');
+    }
+    await favorecidoInput.locator('xpath=ancestor::section[1]').screenshot({ path: path.join(output, `favorecido-pix-${width}.png`) });
+    await chaveInput.fill('chave-qa-layout');
+    const usarCredor = page.getByRole('checkbox', { name: 'Usar o credor como favorecido', exact: true }).first();
+    await usarCredor.check();
+    assert.equal(await favorecidoInput.count(), 0);
+    assert.equal(await chaveInput.inputValue(), '', 'Troca de favorecido limpa a chave anterior');
+    await page.getByText('Favorecido: Credor QA', { exact: true }).waitFor();
+    await usarCredor.uncheck();
+    assert.equal(await favorecidoInput.inputValue(), '');
     assert.equal(await page.getByLabel('Valor para PIX', { exact: true }).count(), 0, 'Forma unica nao tem campo de valor');
     assert.equal(await resumo.locator('xpath=ancestor::section[1]').getByRole('heading', { name: 'Itens da solicitação', exact: true }).count(), 1);
     assert.match(await total(page, 'Total dos itens').innerText(), /100,00/);
