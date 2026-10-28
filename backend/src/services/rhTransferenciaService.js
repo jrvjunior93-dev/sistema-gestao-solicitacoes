@@ -337,12 +337,32 @@ async function efetivarTransferencia(s, user, transaction) {
   }
   const aberto = await vinculoAberto(colaborador.id, transaction);
   const hoje = hojeLocal();
-  if ((s.obra_id && !aberto) || (aberto && (Number(aberto.obra_id) !== Number(s.obra_id) || dataIso(aberto.vigencia_inicio) > hoje))
-      || dataIso(colaborador.data_admissao || colaborador.data_inicio) > hoje
-      || (colaborador.data_demissao && dataIso(colaborador.data_demissao) < hoje)) {
-    throw new ValidationError('O vinculo atual nao permite transferencia hoje. Confira a admissao e o historico de lotacao.', 409);
-  }
-  if (aberto && dataIso(aberto.vigencia_inicio) === hoje) {
+  const divergencias = [];
+  if (s.obra_id && !aberto) divergencias.push('SEM_VINCULO_ABERTO');
+  if (aberto && Number(aberto.obra_id) !== Number(s.obra_id)) divergencias.push('OBRA_DO_VINCULO_DIVERGENTE');
+  if (aberto && dataIso(aberto.vigencia_inicio) > hoje) divergencias.push('VINCULO_COM_INICIO_FUTURO');
+  if (dataIso(colaborador.data_admissao || colaborador.data_inicio) > hoje) divergencias.push('ADMISSAO_FUTURA');
+  if (colaborador.data_demissao && dataIso(colaborador.data_demissao) < hoje) divergencias.push('DATA_DESLIGAMENTO_ANTERIOR');
+  if (divergencias.length) {
+    // A lotacao operacional nao depende dos periodos legados. Nao corrigir esses
+    // periodos aqui: isso poderia deslocar custos antigos ou criar intervalo negativo.
+    d.lotacao_historica_preservada = {
+      motivos: divergencias, vinculo_id: aberto?.id || null,
+      obra_vinculo_id: aberto?.obra_id ?? null,
+      vigencia_inicio: dataIso(aberto?.vigencia_inicio),
+      obra_origem_id: s.obra_id, obra_destino_id: destino.id, data_transferencia: hoje
+    };
+    const motivosHistorico = {
+      SEM_VINCULO_ABERTO: 'sem vinculo de lotacao aberto',
+      OBRA_DO_VINCULO_DIVERGENTE: 'obra do vinculo diferente do cadastro atual',
+      VINCULO_COM_INICIO_FUTURO: 'inicio futuro do vinculo',
+      ADMISSAO_FUTURA: 'data de admissao futura',
+      DATA_DESLIGAMENTO_ANTERIOR: 'data de desligamento anterior para colaborador ativo'
+    };
+    await historico(s, user, 'LOTACAO_HISTORICA_PRESERVADA',
+      `Transferencia operacional da obra/centro de custo ${s.obra_id || 'sem local'} para ${destino.id} em ${hoje}. `
+      + `Periodos de lotacao preservados: ${divergencias.map(m => motivosHistorico[m]).join('; ')}. Pagamentos permanecem na obra da propria solicitacao.`, transaction);
+  } else if (aberto && dataIso(aberto.vigencia_inicio) === hoje) {
     // Não gerar intervalo negativo quando ocorrerem duas mudanças no mesmo dia.
     // A trajetória intradiária fica auditada no histórico das solicitações.
     await aberto.update({ obra_id: destino.id, motivo: 'TROCA_OBRA', solicitacao_id: s.id }, { transaction });

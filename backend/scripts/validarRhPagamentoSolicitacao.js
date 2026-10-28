@@ -6,6 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { Op } = require('sequelize');
 const domain = require('../src/services/rhPagamentoSolicitacaoDomain');
+const { projetarPrivacidadeRh } = require('../src/services/rhPrivacidadeObraDomain');
 const { ValidationError } = require('../src/middlewares/validation');
 const cadastro = { id: 11, nome: 'Ana QA', cpf: '52998224725', obra_id: 7, status: 'ATIVO', empresa_grupo_id: 3,
   forma_calculo_gerencial: 'MENSAL', salario_base: 3000, pix_chave: 'ana@example.test' };
@@ -73,9 +74,17 @@ const models = {
     } catch (e) { store = JSON.parse(snapshot); hydrate(); throw e; } finally { release(); }
   } },
   Obra: { findByPk: async id => Number(id) === 7 ? { id: 7 } : null },
-  RhColaborador: { findAll: async o => ativo ? cadastros.filter(c => Number(c.obra_id) === Number(o.where.obra_id)
+  RhColaborador: { findAll: async o => {
+    if (o.where.obra_id === undefined) {
+      assert.ok(o.where.id[Op.in].length, 'Consulta fora do local so para IDs do pedido');
+      assert.equal(o.where.status, 'ATIVO'); assert.deepEqual(Array.from(o.attributes), ['id']);
+      assert.equal(o.lock, 'UPDATE'); assert.ok(o.transaction);
+    }
+    return ativo ? cadastros.filter(c => (o.where.obra_id === undefined || Number(c.obra_id) === Number(o.where.obra_id))
+    && (!o.where.status || (c.status || 'ATIVO') === o.where.status)
     && (!o.where.id || o.where.id[Op.in].includes(Number(c.id))))
-    .map(c => instance({ ...c, pagamento: c.pagamento || contaSalario })) : [] },
+    .map(c => instance({ ...c, pagamento: c.pagamento || contaSalario })) : [];
+  } },
   RhColaboradorPagamento: {},
   RhSolicitacao: {
     findOne: async o => store.requests.find(r => Object.entries(o.where).every(([k, v]) => r[k] === v)),
@@ -101,6 +110,7 @@ const deps = {
   '../utils/codigoDoSetor': { codigoDoSetor: u => u.dp ? 'DP' : 'OBRA' },
   './setorCapabilityService': { userBelongsToDpSetor: async u => u.dp },
   './authorizationService': { isBusinessAdmin: () => false, canEditRhDpApuracao: async u => u.dp,
+    isRhDpUsuarioObra: async u => Boolean(u.obra),
     canExecuteRhDpFechamento: async u => u.dp, getRhDpObraScopeIds: async () => scope,
     getUserObraIds: async () => [7], userHasAreaPermission: async () => true,
     userHasNominalAreaPermission: async () => podeFila },
@@ -257,7 +267,109 @@ async function validarCadastroAtual() {
     console.log('Cadastro: autor/DP atualizados, GET sem escrita, nova conferencia, corpo forjado, envio obsoleto e titulos historicos aprovados.');
   } finally { store = JSON.parse(snapshot); hydrate(); cadastros = antes; }
 }
+async function validarPagamentoAposTransferencia() {
+  const snapshot = JSON.stringify(store), cadastrosAntes = cadastros, scopeAntes = scope;
+  const antigos = JSON.stringify(store.titles);
+  try {
+    cadastros = [{ ...cadastro }]; scope = [7];
+    let p = await service.iniciar(obra, { obra_id: 7, colaborador_id: 11 });
+    const id = p.solicitacao.id;
+    p = await service.salvar(obra, id, { ...p.solicitacao.dados_json,
+      linhas: p.solicitacao.dados_json.linhas.map(l => ({ ...l, parcela_50: true, conferido_obra: true })) });
+    const linhaAntes = JSON.stringify(p.solicitacao.dados_json.linhas[0]);
+    // A obra atual e os dados atuais passam a pertencer a outro local. O pedido
+    // antigo conserva seus dados autorizados, sem expor o novo cadastro a origem.
+    cadastros[0] = { ...cadastro, obra_id: 8, salario_base: 90000, pix_chave: 'outra-obra@example.test' };
+    const antesLeitura = JSON.stringify(store);
+    p = await service.preparar(obra, { obra_id: 7, colaborador_id: 11 });
+    assert.equal(p.solicitacao.id, id, 'Reabre rascunho salvo apesar da transferencia');
+    assert.equal(JSON.stringify(p.solicitacao.dados_json.linhas[0]), linhaAntes);
+    assert.equal(JSON.stringify(store), antesLeitura, 'Reabertura sem escrita');
+    await assert.rejects(service.iniciar(obra, { obra_id: 7, colaborador_id: 11 }, { novo: true }), /Ja existe/);
+    await assert.rejects(service.iniciar(obra, { obra_id: 7, colaborador_id: 999 }), /nao esta ativo neste local/);
+    scope = [];
+    await assert.rejects(service.mostrar(obra, id), /Acesso negado/);
+    scope = [7];
+    await assert.rejects(service.mostrar({ user: { id: 88 } }, id), /outro usuario/);
+    const dadosPedido = p.solicitacao.dados_json;
+    await assert.rejects(service.salvar(obra, id, { ...dadosPedido,
+      linhas: [{ ...dadosPedido.linhas[0], colaborador_id: 999 }] }), /nao pertence/);
+    cadastros[0].status = 'DEMITIDO';
+    await assert.rejects(service.salvar(obra, id, dadosPedido), /mais ativo/);
+    await assert.rejects(service.enviar(obra, id, { revisao: dadosPedido.revisao }), /mais ativo/);
+    cadastros[0].status = 'ATIVO';
+    p = await service.salvar(obra, id, { ...dadosPedido,
+      obra_id: 8, linhas: dadosPedido.linhas.map(l => ({ ...l, salario_base: 999999, conferido_obra: true })) });
+    assert.equal(p.solicitacao.obra_id, 7);
+    assert.equal(p.solicitacao.dados_json.linhas[0].liquido, 1500, 'Usa snapshot do pedido, nao salario forjado ou da nova obra');
+    await service.enviar(obra, id, { revisao: p.solicitacao.dados_json.revisao });
+    assert.equal(JSON.stringify(store.titles), antigos, 'Envio ao DP nao altera titulos');
+    p = await service.mostrar(dp, id);
+    p = await service.salvar(dp, id, { ...p.solicitacao.dados_json,
+      linhas: p.solicitacao.dados_json.linhas.map(l => ({ ...l, conferido_dp: true, conferir_alteracoes: true })) });
+    const revisao = p.solicitacao.dados_json.revisao;
+    await Promise.all([service.enviar(dp, id, { revisao }), service.enviar(dp, id, { revisao })]);
+    assert.equal(store.titles.length, JSON.parse(antigos).length + 1);
+    const novo = store.titles.at(-1);
+    assert.equal(novo.obra_id, 7); assert.equal(novo.valor_original, 1500);
+    assert.equal(novo.valor_saldo, 1500); assert.ok(store.filas.includes(novo.id));
+    assert.equal(JSON.stringify(store.titles.slice(0, -1)), antigos, 'Pagamentos anteriores intocados');
+    assert.equal(store.historicos.filter(h => h.solicitacao_id === id && h.acao === 'ENVIO').length, 1);
+    assert.equal(store.requests.find(s => s.id === id).obra_id, 7);
+    console.log('Transferencia: rascunho reaberto/salvo/enviado e titulo na obra original, snapshot/ACL/inativos/novas selecoes/replay/historico preservados.');
+  } finally { store = JSON.parse(snapshot); hydrate(); cadastros = cadastrosAntes; scope = scopeAntes; }
+}
+
+async function validarPagamentoSalarioRestrito() {
+  const snapshot = JSON.stringify(store), cadastrosAntes = cadastros;
+  const privado = { ...obra, rhPrivacidadeObra: { restritos: new Set([11]) } };
+  const api = p => projetarPrivacidadeRh(p, privado.rhPrivacidadeObra.restritos);
+  try {
+    assert.equal(await service.ehDp({ id: 3, dp: true, obra: true }), false, 'Usuario OBRA+DP mantem conferencia da obra');
+    cadastros = [{ ...cadastro }];
+    let p = api(await service.preparar(privado, { obra_id: 7, colaborador_id: 11 }));
+    assert.equal(p.solicitacao.dados_json.linhas[0].salario_base, null);
+    const dadosPrivados = { ...p.solicitacao.dados_json,
+      linhas: p.solicitacao.dados_json.linhas.map(l => ({ ...l, parcela_40: true, parcela_60: false, selecionado: true, acrescimos: 80, descontos: 30, conferido_obra: true })) };
+    p = api(await service.salvarNovo(privado, { obra_id: 7, colaborador_id: 11, chave_idempotencia: 'salario-restrito-qa-001', dados: dadosPrivados }));
+    const id = p.solicitacao.id;
+    assert.equal(p.solicitacao.dados_json.linhas[0].base, null);
+    assert.equal(store.requests.find(s => s.id === id).dados_json.linhas[0].liquido, 1250, 'Calculo privado preservado');
+    // Mudar o cadastro exige conferencia do DP, sem fornecer hash/base a obra.
+    cadastros[0].salario_base = 6000;
+    p = api(await service.mostrar(privado, id));
+    assert.equal(p.solicitacao.dados_json.linhas[0].cadastro_versao, undefined);
+    p = api(await service.salvar(privado, id, { ...p.solicitacao.dados_json,
+      linhas: p.solicitacao.dados_json.linhas.map(l => ({ ...l, parcela_40: false, parcela_60: true, conferido_obra: true })) }));
+    assert.equal(p.solicitacao.dados_json.linhas[0].liquido, null);
+    assert.equal(store.requests.find(s => s.id === id).dados_json.linhas[0].liquido, 3650);
+    // Desconto acima da base nao pode virar um oraculo de salario para OBRA.
+    p = api(await service.salvar(privado, id, { ...p.solicitacao.dados_json,
+      linhas: p.solicitacao.dados_json.linhas.map(l => ({ ...l, descontos: 999999, conferido_obra: true })) }));
+    assert.equal(p.solicitacao.dados_json.linhas[0].liquido, null);
+    assert.equal(p.solicitacao.dados_json.linhas[0].conferencia_financeira_pendente, true);
+    const antes = store.titles.length;
+    await service.enviar(privado, id, { revisao: p.solicitacao.dados_json.revisao });
+    p = await service.mostrar(dp, id);
+    assert.equal(p.solicitacao.dados_json.linhas[0].salario_base, 6000, 'DP ve a base real');
+    await assert.rejects(service.enviar(dp, id, { revisao: p.solicitacao.dados_json.revisao }), /conferidos/);
+    await assert.rejects(service.salvar(dp, id, { ...p.solicitacao.dados_json,
+      linhas: p.solicitacao.dados_json.linhas.map(l => ({ ...l, conferido_dp: true })) }), /Descontos maiores/);
+    assert.equal(store.titles.length, antes, 'Nenhum titulo antes da conferencia financeira');
+    p = await service.salvar(dp, id, { ...p.solicitacao.dados_json,
+      linhas: p.solicitacao.dados_json.linhas.map(l => ({ ...l, descontos: 30, conferido_dp: true, conferir_alteracoes: true })) });
+    await service.enviar(dp, id, { revisao: p.solicitacao.dados_json.revisao });
+    assert.equal(store.titles.at(-1).valor_original, 3650);
+    const finalObra = api(await service.mostrar(privado, id));
+    assert.equal(finalObra.solicitacao.dados_json.linhas[0].liquido, null);
+    assert.ok(!JSON.stringify(finalObra).includes('3650'));
+    console.log('Salario restrito: 40/60 e ajustes pela obra sem salario/base/hash/total; validacao privada adiada sem oraculo, DP confere e gera valor correto.');
+  } finally { store = JSON.parse(snapshot); hydrate(); cadastros = cadastrosAntes; }
+}
+
 (async () => {
+  await validarPagamentoSalarioRestrito();
+  await validarPagamentoAposTransferencia();
   await validarCadastroAtual();
   await validarPreviaRascunho();
   await filaCanonicaTransacaoExterna();

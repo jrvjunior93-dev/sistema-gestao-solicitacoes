@@ -1,0 +1,130 @@
+{
+  "base": "a645d6a31193b5135b0043b20a9b5bb8a4b7be9b",
+  "main": "46ac88de88957ffc15e8b0db45dfcd6eed7bc34e",
+  "files": [
+    {
+      "path": "backend/migrations/202610280001_rh_privacidade_obra.js",
+      "sha256": "e5540dd83d8b5da2569d93a2e314313277554ed1f28a54582ca45b5063e81b69"
+    },
+    {
+      "path": "backend/scripts/rhPrivacidadeObraDevSchema.js",
+      "sha256": "18d17cdd249b1b8e2967c644fdbd666595c268a639e3ef80bb46397dba7d8281"
+    },
+    {
+      "path": "backend/scripts/validarRhPessoalFluxo.js",
+      "sha256": "e3dff950b7625d4d008e483de46d348d290ed44df706f6dd3dcee3472683d0dd"
+    },
+    {
+      "path": "backend/package.json",
+      "sha256": "99a56fd6f635372e0ece01b6bd86ad3267235fd7042b65e8eaf79f4a5c70d56a"
+    },
+    {
+      "path": "backend/src/models/RhColaborador.js",
+      "sha256": "1406c7b01b0208f615f15249b3bbf5a8efaf2163a440657d52dc308c8f934a34"
+    },
+    {
+      "path": "backend/src/models/RhDocumento.js",
+      "sha256": "425babef9ad7a3b754e534f01bfd97698dcf29972e1999a58c7ec8abec57f416"
+    },
+    {
+      "path": "backend/src/routes.js",
+      "sha256": "56c14ca059e0e608a2e769e31c86e050c796e337cca5a6aec7f7dfe46e21edd1"
+    },
+    {
+      "path": "backend/src/services/rhPagamentoSolicitacaoDomain.js",
+      "sha256": "0edbd3a32ebbacf008b4611adc3702163e55a405dd9bc96972c407899e8ce312"
+    },
+    {
+      "path": "backend/src/services/rhPagamentoSolicitacaoService.js",
+      "sha256": "4e24f972c064cf7854701f5c99e6a2be0cb670057fd6c19ec2c81abb8e135957"
+    },
+    {
+      "path": "backend/src/services/rhService.js",
+      "sha256": "ab106476777d5d2276a5fd2e666789063b5af96b54c613aee5813661e493649e"
+    },
+    {
+      "path": "backend/src/services/rhTransferenciaService.js",
+      "sha256": "e5432a104a22dd0a4de560c14ccc641a4ec3f48a5f26e23e07da040be277c931"
+    },
+    {
+      "path": "backend/src/validators/rhValidators.js",
+      "sha256": "62493736feba6bd59b3f151f5d6e96e8431f77be56a3961cfb2a6bc60b04b139"
+    },
+    {
+      "path": "backend/src/controllers/RhColaboradorObraController.js",
+      "sha256": "ea914e219e307d0fb73ecac2cca2de94ca391a317c1793759e661bfaecb7974d"
+    },
+    {
+      "path": "backend/src/middlewares/rhPrivacidadeObra.js",
+      "sha256": "dd6aae90846f5a1978c7e87a579b67d152db7692831be67c2f7fbe15bffb9122"
+    },
+    {
+      "path": "backend/src/services/rhColaboradorObraService.js",
+      "sha256": "80cda58a685277ce3404a762e9c0707fd3b65abaf2928f2d74b3cf4f22488220"
+    },
+    {
+      "path": "backend/src/services/rhPrivacidadeObraDomain.js",
+      "sha256": "65bc2b97199a6529474fd4272ef8c518f12f83efe1cf5ed205ecc729694d432e"
+    },
+    {
+      "path": "backend/scripts/helpers/semRedeQa.js",
+      "sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf"
+    },
+    {
+      "path": "backend/scripts/validarRhPrivacidadeObra.js",
+      "sha256": "57f1b52ab2c3155ebe09b41a1068f3cfd009720c699e8e2c039a5565cc5fe1f7"
+    },
+    {
+      "path": "backend/scripts/validarRhPrivacidadeObraDevSchema.js",
+      "sha256": "da6da18fb12db92fd5b85e6bb92ffd85db938a29667377bda6ff6f4a92b665a7"
+    },
+    {
+      "path": "backend/scripts/validarRhPagamentoSolicitacao.js",
+      "sha256": "08b2c06d792298cb0f31d5368d547e09a51d7d2fcb4c75c54b2f2152d85958cb"
+    },
+    {
+      "path": "backend/scripts/validarRhConsultaSalario.js",
+      "sha256": "2b1ccf60ca72a49557c054f71dce0f2c2a2fa000c0ba8162f2c6e8d74ea26d68"
+    },
+    {
+      "path": "backend/scripts/validarRhColaboradoresPlanilha.js",
+      "sha256": "ff98e7b597b30301d125c13271cd6c9b0ea4664710a6f696c13d9eaf4368d2c5"
+    },
+    {
+      "path": "backend/scripts/validarRhColaboradorContatos.js",
+      "sha256": "f1b541ee74b60ee219659bf93a1c01e594f3656f32290056b0ea966f76b0130a"
+    },
+    {
+      "path": "backend/scripts/validarRhPagamentoEnvioParcial.js",
+      "sha256": "79a0fc8086d82e78a214e6758f6c748de85cc5fae5a83471e905a506e18f1658"
+    },
+    {
+      "path": "backend/scripts/validarRhLotacaoCadastro.js",
+      "sha256": "9a5e52148d63e1fc86387e539aa1a99df4d8dbd9256f0f96ae34d139ff7fc274"
+    },
+    {
+      "path": "backend/scripts/validarEscopoRhDpUsuarioObra.js",
+      "sha256": "eec7f1faae6b856a3726c93274bd9d05b462c2f87fa24078ae65aa15d2f18b2d"
+    },
+    {
+      "path": "backend/scripts/validarColaboradoresLocaisEscopos.js",
+      "sha256": "32561094c9696ec06c301c937e62c6aba82a7e79c8266b91db8b61016b916002"
+    },
+    {
+      "path": "backend/scripts/validarRhPagamentoGerencial.js",
+      "sha256": "ecd4ce6100838f54e87e62f2f15a88af2e720f167e981ee80d19e6621692ea2f"
+    },
+    {
+      "path": "backend/scripts/auditarPermissoesGranulares.js",
+      "sha256": "6e09e782c5a952d0ef403fff7ddcdff6a2311878b3f174308abf0fdbe4092279"
+    },
+    {
+      "path": "ops/deploy/atualizar-dev-rh-privacidade-20261028.cjs",
+      "sha256": "2ded9a8a8f6a80110e895766566f0552ecc45e8a7cf67cc7a074c6a305aa582f"
+    },
+    {
+      "path": "ops/deploy/atualizar-dev-rh-privacidade-20261028.test.cjs",
+      "sha256": "fd19a64b07f711efa783af55307617f9ee0bfb2a6c9b61ed800bf1ee840b3e5f"
+    }
+  ]
+}

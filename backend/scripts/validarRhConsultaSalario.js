@@ -131,10 +131,29 @@ async function salarios() {
     '../utils/pix': require('../src/utils/pix'), '../middlewares/validation': validation,
     './rhColaboradorContatosDomain': require('../src/services/rhColaboradorContatosDomain'),
     './rhSalarioService': salarioService, './authorizationService': { isSuperadmin: u => u.perfil === 'SUPERADMIN',
+      isRhDpUsuarioObra: async u => Boolean(u.obra) && u.perfil !== 'SUPERADMIN',
+      getRhDpObraScopeIds: async u => u.obra ? [14] : null,
+      canManageRhDpColaboradores: async u => (u.permissoes || []).includes('rh_dp.colaboradores.editar'),
       userHasNominalAreaPermission: async (u, keys) => keys.every(k => (u.permissoes || []).includes(k)) },
     './setorCapabilityService': { userBelongsToDpSetor: async u => u.area === 'DP', userHasSetorCapability: async u => Boolean(u.obra) },
     './rhVinculoObraService': {}, './rhCalculoHistoricoService': {}, './s3': {},
     '../utils/fileName': {}, '../constants/empresaGrupo': {}, '../utils/excelWorkbook': {} });
+  for (const user of [{ perfil: 'USUARIO', area: 'OBRA', obra: true },
+    { perfil: 'USUARIO', area: 'DP', obra: true, permissoes: ['rh_dp.colaboradores.editar'] },
+    { perfil: 'ADMINISTRADOR' }, { perfil: 'USUARIO', area: 'DP' }]) {
+    await assert.rejects(service.atualizarColaboradorRh(218, { salario_restrito_obra: true }, user), /privacidade salarial|somente observacoes/);
+  }
+  for (const data of [{ salario_base: 1 }, { cpf: '52998224725' }, { obra_id: 99 }, { pagamento: { conta: '123' } }, { observacoes: 'Porta geral' }]) {
+    await assert.rejects(service.atualizarColaboradorRh(218, data, { id: 41, perfil: 'USUARIO', area: 'OBRA', obra: true }), /cadastro limitado/);
+  }
+  assert.equal(person.salario_base, '1000.00'); assert.equal(person.obra_id, 14);
+  const sigilo = validators.validateRhColaboradorUpdateBody({ salario_restrito_obra: true });
+  assert.deepEqual(plain(sigilo), { salario_restrito_obra: true });
+  await service.atualizarColaboradorRh(218, sigilo, { id: 65, perfil: 'USUARIO', area: 'DP', permissoes: ['rh_dp.colaboradores.editar'] });
+  assert.equal(person.salario_restrito_obra, true); assert.equal(person.salario_base, '1000.00'); assert.equal(history.length, 1);
+  await service.atualizarColaboradorRh(218, { salario_restrito_obra: false }, { id: 1, perfil: 'SUPERADMIN' });
+  assert.equal(person.salario_restrito_obra, false); assert.equal(history.length, 1);
+  assert.throws(() => validators.validateRhColaboradorUpdateBody({ salario_restrito_obra: 'maybe' }));
   const body = { salario_base: 'R$ 1.881,00', salario_vigencia_inicio: '2020-06-01', salario_motivo: 'Correcao cadastral' };
   const payload = validators.validateRhColaboradorUpdateBody(body);
   assert.equal(payload.salario_base, 1881);
@@ -158,7 +177,7 @@ async function salarios() {
   const dp = { id: 2, perfil: 'USUARIO', area: 'DP', permissoes: ['rh_dp.colaboradores.editar', 'rh_dp.salario.aprovar'] };
   for (const negado of [{ ...dp, permissoes: ['rh_dp.colaboradores.editar'] }, { ...dp, area: 'COMPRAS' },
     { ...dp, obra: true }, { ...dp, perfil: 'ADMINISTRADOR', permissoes: [] }]) {
-    await assert.rejects(service.atualizarColaboradorRh(218, { ...payload, salario_base: 2000 }, negado), /Diretoria/);
+    await assert.rejects(service.atualizarColaboradorRh(218, { ...payload, salario_base: 2000 }, negado), negado.obra ? /cadastro limitado/ : /Diretoria/);
   }
   await service.atualizarColaboradorRh(218, { ...payload, salario_base: 2000 }, dp);
   assert.equal(history.length, 2, 'Ajuste DP na mesma vigencia nao gera intervalo negativo');

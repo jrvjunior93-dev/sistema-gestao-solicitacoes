@@ -421,6 +421,7 @@ function validateRhColaboradorCreateBody(body = {}) {
       'data_nascimento',
       'status',
       'salario_base',
+      'salario_restrito_obra',
       'valor_contratual',
       'forma_calculo_gerencial',
       'valor_diaria',
@@ -452,6 +453,7 @@ function validateRhColaboradorCreateBody(body = {}) {
     data_nascimento: parseDateOnly(body.data_nascimento, 'Data de nascimento'),
     status: parseEnum(body.status, 'Status', RH_STATUS_COLABORADOR) || 'ATIVO',
     salario_base: parseDecimal(body.salario_base, 'Salario base', { min: 0 }),
+    salario_restrito_obra: parseBoolean(body.salario_restrito_obra, 'Salario restrito a obra'),
     valor_contratual: parseDecimal(body.valor_contratual, 'Valor contratual', { min: 0 }),
     forma_calculo_gerencial: parseEnum(
       body.forma_calculo_gerencial,
@@ -490,6 +492,7 @@ function validateRhColaboradorUpdateBody(body = {}) {
       'data_nascimento',
       'status',
       'salario_base',
+      'salario_restrito_obra',
       'valor_contratual',
       'forma_calculo_gerencial',
       'valor_diaria',
@@ -526,6 +529,7 @@ function validateRhColaboradorUpdateBody(body = {}) {
     data_nascimento: parseDateOnly(body.data_nascimento, 'Data de nascimento'),
     status: parseEnum(body.status, 'Status', RH_STATUS_COLABORADOR),
     salario_base: parseDecimal(body.salario_base, 'Salario base', { min: 0 }),
+    salario_restrito_obra: parseBoolean(body.salario_restrito_obra, 'Salario restrito a obra'),
     valor_contratual: parseDecimal(body.valor_contratual, 'Valor contratual', { min: 0 }),
     forma_calculo_gerencial: parseEnum(
       body.forma_calculo_gerencial,

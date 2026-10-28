@@ -34,12 +34,12 @@ assert.equal(domain.ehTransferencia({ tipo: 'TROCA_OBRA', obra_id: 1, dados_json
 const hoje = '2026-09-18';
 const usuarios = [{ id: 11 }, { id: 22 }, { id: 33 }, { id: 44 }];
 let requests = [], history = [], responsabilidades = [], colaborador, aberto, atualizacoes, ultimaConsulta;
-let proximoId = 1;
+let proximoId = 1, falharHistorico = false, filaTransacoes = Promise.resolve();
 const obras = [1, 2, 3].map(id => ({ id, nome: `Obra ${id}`, codigo: String(id), ativo: true, tipo_centro_custo: 'OBRA',
   get() { return { id: this.id, nome: this.nome, codigo: this.codigo }; } }));
 function instancia(d) { return { ...d, async update(p) { Object.assign(this, p); return this; }, get() { return { ...this }; } }; }
 function reset() {
-  requests = []; history = []; atualizacoes = 0;
+  requests = []; history = []; atualizacoes = 0; falharHistorico = false;
   responsabilidades = [{ obra_id: 1, user_id: 11 }, { obra_id: 2, user_id: 22 }];
   colaborador = instancia({ id: 7, nome: 'Ana', matricula: 'M7', cargo: 'Pedreira', status: 'ATIVO',
     obra_id: 1, setor_id: 2, salario_base: 9876, cpf: 'SECRETO', data_admissao: '2026-09-01' });
@@ -47,13 +47,17 @@ function reset() {
 }
 const db = {
   sequelize: { transaction: async fn => {
+    const anteriorNaFila = filaTransacoes;
+    let liberar;
+    filaTransacoes = new Promise(resolve => { liberar = resolve; });
+    await anteriorNaFila;
     const anterior = plain({ requests, history, colaborador, aberto, atualizacoes, proximoId });
     try { return await fn({ LOCK: { UPDATE: 'UPDATE' } }); }
     catch (e) {
       requests = anterior.requests.map(instancia); history = anterior.history;
       colaborador = instancia(anterior.colaborador); aberto = anterior.aberto ? instancia(anterior.aberto) : null;
       atualizacoes = anterior.atualizacoes; proximoId = anterior.proximoId; throw e;
-    }
+    } finally { liberar(); }
   },
     where: (campo, valor) => ({ comparacao: { campo, valor } }), cast: campo => ({ cast: campo }), json: caminho => ({ json: caminho }) },
   RhColaborador: {
@@ -75,7 +79,10 @@ const db = {
     findByPk: async id => requests.find(s => s.id === Number(id)),
     findAll: async () => requests
   },
-  RhSolicitacaoHistorico: { create: async d => { const h = { ...d, id: history.length + 1 }; history.push(h); return h; }, findAll: async () => history },
+  RhSolicitacaoHistorico: { create: async d => {
+    if (falharHistorico && ['APROVAR', 'APROVACAO_AUTOMATICA'].includes(d.acao)) throw new Error('Falha QA historico');
+    const h = { ...d, id: history.length + 1 }; history.push(h); return h;
+  }, findAll: async () => history },
   CrResponsavelObra: { findAll: async ({ where }) => {
     assert.equal(where.ativo, true); assert.equal(where.vigencia_inicio[Op.lte], hoje);
     assert.equal(where[Op.or][1].vigencia_fim[Op.gte], hoje);
@@ -121,6 +128,66 @@ const service = carregar('rhTransferenciaService.js', {
 async function validarTransferencias() {
   reset();
   const payload = { colaborador_id: 7, obra_destino_id: 2, obra_solicitante_id: 1, justificativa: 'Enviar para outra obra', data_vigencia: '2000-01-01' };
+  const divergentes = [
+    ['SEM_VINCULO_ABERTO', () => { aberto = null; }],
+    ['OBRA_DO_VINCULO_DIVERGENTE', () => { aberto.obra_id = 3; }],
+    ['VINCULO_COM_INICIO_FUTURO', () => { aberto.vigencia_inicio = '2026-12-01'; }],
+    ['ADMISSAO_FUTURA', () => { colaborador.data_admissao = '2026-12-01'; }],
+    ['ADMISSAO_FUTURA', () => { colaborador.data_admissao = null; colaborador.data_inicio = '2026-12-01'; }],
+    ['DATA_DESLIGAMENTO_ANTERIOR', () => { colaborador.data_demissao = '2026-09-01'; }]
+  ];
+  for (const [motivo, preparar] of divergentes) for (const administrativa of [false, true]) {
+    reset(); preparar();
+    const vinculoAntes = plain(aberto), cadastroAntes = plain(colaborador);
+    const pedido = await service.abrir(administrativa ? { id: 66 } : usuarios[0], payload);
+    if (!administrativa) {
+      assert.equal(colaborador.obra_id, 1, 'Solicitar continua sem efetivar');
+      await Promise.all([service.agir(usuarios[1], pedido.id, 'aprovar'), service.agir(usuarios[1], pedido.id, 'aprovar')]);
+    }
+    assert.equal(colaborador.obra_id, 2);
+    assert.equal(requests[0].situacao, 'APROVADA');
+    assert.equal(requests[0].dados_json.data_vigencia, hoje);
+    assert.ok(requests[0].dados_json.lotacao_historica_preservada.motivos.includes(motivo));
+    assert.deepEqual(plain(aberto), vinculoAntes, 'Nao reescrever periodos divergentes');
+    assert.equal(colaborador.data_admissao, cadastroAntes.data_admissao);
+    assert.equal(colaborador.data_demissao, cadastroAntes.data_demissao);
+    const semLocalAtual = p => { const { obra_id, atualizado_por, ...demais } = p; return demais; };
+    assert.deepEqual(semLocalAtual(plain(colaborador)), semLocalAtual(cadastroAntes), 'Nenhum outro dado do colaborador muda');
+    assert.equal(atualizacoes, 0, 'Nao criar periodo sobre historico divergente');
+    assert.equal(history.filter(h => h.acao === 'LOTACAO_HISTORICA_PRESERVADA').length, 1);
+    assert.match(history.find(h => h.acao === 'LOTACAO_HISTORICA_PRESERVADA').descricao, /Pagamentos permanecem/);
+  }
+  for (const administrativa of [false, true]) {
+    reset(); aberto = null;
+    if (administrativa) {
+      falharHistorico = true;
+      await assert.rejects(service.abrir({ id: 66 }, payload), /Falha QA/);
+      assert.equal(requests.length, 0); assert.equal(history.length, 0);
+    } else {
+      const pedido = await service.abrir(usuarios[0], payload);
+      falharHistorico = true;
+      await assert.rejects(service.agir(usuarios[1], pedido.id, 'aprovar'), /Falha QA/);
+      assert.equal(requests[0].situacao, 'ABERTA'); assert.equal(history.length, 1);
+    }
+    assert.equal(colaborador.obra_id, 1, 'Falha posterior reverte mudanca e auditoria');
+    assert.equal(aberto, null);
+  }
+  reset(); colaborador.status = 'DEMITIDO'; aberto = null;
+  await assert.rejects(service.abrir({ id: 66 }, payload), /ativo/);
+  assert.equal(requests.length, 0);
+  reset();
+  const antesDoDesligamento = await service.abrir(usuarios[0], payload);
+  colaborador.status = 'DEMITIDO';
+  await assert.rejects(service.agir(usuarios[1], antesDoDesligamento.id, 'aprovar'), /nao esta ativo/);
+  assert.equal(requests[0].situacao, 'ABERTA'); assert.equal(colaborador.obra_id, 1);
+  reset();
+  await service.abrir({ id: 66 }, payload);
+  const vinculoDoDia = aberto;
+  await service.abrir({ id: 66 }, { ...payload, obra_destino_id: 3 });
+  assert.equal(aberto, vinculoDoDia, 'Segunda troca no dia reutiliza o vinculo do dia');
+  assert.equal(aberto.vigencia_inicio, hoje); assert.equal(aberto.obra_id, 3);
+  assert.equal(atualizacoes, 1); assert.equal(requests.length, 2); assert.equal(history.length, 4);
+  reset();
   await assert.rejects(service.abrir(usuarios[2], payload), /vinculado/);
   const p = await service.abrir(usuarios[0], payload);
   assert.equal(colaborador.obra_id, 1, 'Abrir nao transfere');
@@ -309,10 +376,11 @@ async function validarTransferencias() {
   const forjada = await service.abrir({ id: 67 }, { ...payload, transferencia_administrativa: true, aprovacao_automatica: true });
   assert.equal(forjada.aprovacao_automatica, false); assert.equal(colaborador.obra_id, 1);
   reset(); colaborador.data_admissao = '2099-01-01';
-  await assert.rejects(service.abrir({ id: 66 }, payload), /vinculo atual/);
-  assert.equal(requests.length, 0); assert.equal(history.length, 0);
-  assert.equal(colaborador.obra_id, 1); assert.equal(aberto.obra_id, 1);
-  assert.equal(atualizacoes, 0, 'Falha administrativa reverte pedido/historico/lotacao');
+  await service.abrir({ id: 66 }, payload);
+  assert.equal(requests[0].situacao, 'APROVADA');
+  assert.equal(colaborador.obra_id, 2); assert.equal(aberto.obra_id, 1);
+  assert.equal(colaborador.data_admissao, '2099-01-01');
+  assert.equal(atualizacoes, 0, 'Transferencia nao altera admissao nem periodos legados');
   reset();
   requests = Array.from({ length: 43 }, (_, i) => instancia({
     id: i + 1, tipo: 'MOVIMENTACAO', subtipo: 'TRANSFERENCIA_OBRA',
