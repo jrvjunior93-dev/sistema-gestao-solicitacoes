@@ -1,5 +1,19 @@
 # Modulo COMPRAS
 
+## Validador da consulta paginada: promocao MAIN - 28/10/2026
+
+Usuario homologou o patch DEV6a1ebe6c e autorizou esta promocao seletiva.
+validateCompraQuery passa a aceitar page/limit/q/status usando o parser estrito
+do servico SQL existente. A rota deixava de executar a lista com erro400
+antes do controller. Um arquivo runtime; nenhum controller/frontend alterado.
+Mantidos limite50/max100, filtros/ACL antes de COUNT/LIMIT, colecoes separadas
+e detalhes sob demanda; nenhum fallback de lista completa ou mudanca de schema.
+Novo QA passa pelo middleware real e testa SQL em memoria. Aplicador PROD
+fechado com backup de codigo, preflight de heap4096/ambientes/planos e restart
+somente backend-solicitacoes. Nenhum registro real alterado ou acesso EC2 pelo
+agente. Correcao de reabertura/favorecido do DEV nao incluida neste patch.
+[Pacote e validacoes](../../handoffs/2026-10-28-promocao-compras-query-main.md).
+
 ## Promocao MAIN Compra Direta e pendencias financeiras - 2026-10-23
 
 Credor configurado como obrigatorio passa a ser exigido na nova tela e no

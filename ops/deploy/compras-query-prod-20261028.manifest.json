@@ -1,0 +1,46 @@
+{
+  "base": "ece109c93f62268bb3f4108d658e9a817bff80f5",
+  "release_parent": "ece109c93f62268bb3f4108d658e9a817bff80f5",
+  "runtime_files": 1,
+  "database_writes": 0,
+  "migrations": 0,
+  "heap_mib": 4096,
+  "files": [
+    {
+      "path": "backend/src/validators/operationalValidators.js",
+      "sha256": "364277ae7d5b981e990945131ef067f028be0d33ab8fb513f0c43cd4ce393ee4",
+      "old_sha256": "f87163152f6731d04ad129f9aa236c06e58c4f1c4fc46e4968a3688a8439e96e"
+    },
+    {
+      "path": "backend/scripts/validarSolicitacoesCompraPaginacao.js",
+      "sha256": "af95345f3bff9504dfb15dcd4ca69e1a04ae365de21a7ce7729c60f04e6d662f",
+      "old_sha256": "81567e6dd617990899efc46bb73cb2440ece1b351fa4889d051b9b9ebdc4a611"
+    }
+  ],
+  "extra": [
+    {
+      "path": "ops/deploy/atualizar-prod-compras-query-20261028.cjs",
+      "sha256": "f84b7e8185a82d9874f232e4d9b1b12b79fa1c5fe010e4ab5a6dbd5a08be80cf"
+    },
+    {
+      "path": "ops/deploy/atualizar-prod-compras-query-20261028.test.cjs",
+      "sha256": "ab0c8ac3f1fd8f917997ec7d77bf4a3eca9f322d0636545567e6a6d1adea159d"
+    },
+    {
+      "path": "ops/deploy/README-compras-query-prod-20261028.md",
+      "sha256": "c5e806b3440ce7024d8881d3eb8d5878a1a2e99604044c5b65c51410d5dcd620"
+    },
+    {
+      "path": "docs/handoffs/2026-10-28-promocao-compras-query-main.md",
+      "sha256": "e2da80002ca0132fdbe710c06bd2fc0d3a0a015b403cc797b9aa2532b0244b77"
+    },
+    {
+      "path": "docs/workspace/OWNERSHIP_ATIVO.md",
+      "sha256": "d2432ff6de113681de059c976756b8528c0d7444dd99035aca62d21065e3dbc2"
+    },
+    {
+      "path": "docs/modulos/compras/README.md",
+      "sha256": "bb97284367afd41a0dad4d12d8a79b68fcc57812a80eb311e695374bb87c687b"
+    }
+  ]
+}

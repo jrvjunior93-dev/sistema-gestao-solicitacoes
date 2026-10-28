@@ -1,6 +1,8 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),cp=require('node:child_process');
 const {Sequelize,DataTypes,Op,fn,col}=require('sequelize'),P=require('../src/services/solicitacoesCompraPaginacao');
+const {validateRequest}=require('../src/middlewares/validation');
+const {validateCompraQuery}=require('../src/validators/operationalValidators');
 const sqlite=require('./helpers/sqliteSequelizeMemory');
 class MemoryDb extends sqlite.Database{constructor(...args){super(...args);this.db.function('UPPER',v=>String(v??'').toUpperCase());this.db.function('REGEXP_REPLACE',(s,p,r)=>String(s).replace(new RegExp(p.replaceAll('[[:space:]]','\\s').replaceAll('[:space:]','\\s'),'gu'),r));}}
 const BASE='46ac88de88957ffc15e8b0db45dfcd6eed7bc34e';
@@ -30,8 +32,45 @@ async function fixture(){
  }
  const old=controller(oldSource),current=controller(newSource);
  async function call(query,user={id:7,superadmin:true},scope=null,legacy=false){let status=200,body;const res={status:n=>{status=n;return res;},json:x=>{body=x;return x;}};await(legacy?old:current)({query:{visao:'resumo',...query},user,compraScopeObraIds:scope},res);return{status,body};}
- return{models,sql,db,call,close:()=>db.close()};
+ const routeLine=fs.readFileSync(__dirname+'/../src/routes.js','utf8').split(/\r?\n/).find(s=>s.startsWith("router.get('/compras/solicitacoes',"));
+ assert(routeLine,'Rota de producao deve ser exercitada com seu validador real.');
+ let handlers;
+ new Function('router','allowCompraSolicitacoesOrDelegacaoRead','validateRequest','validateCompraQuery','scopeCompraListAccess','SolicitacaoCompraController',routeLine)(
+  {get(url,...steps){assert.equal(url,'/compras/solicitacoes');handlers=steps;}},
+  (req,res,next)=>req.user?.denied?res.status(403).json({error:'Acesso negado QA'}):next(),
+  validateRequest,validateCompraQuery,(req,res,next)=>next(),{index:current});
+ assert.equal(handlers.length,4);
+ async function route(query,user={id:7,superadmin:true},scope=null){
+  let status=200,body;const req={query:{visao:'resumo',...query},user,compraScopeObraIds:scope};
+  const res={status(n){status=n;return this},json(x){body=x;return x}};
+  for(const fn of handlers){let advance=false;await fn(req,res,()=>{advance=true});if(!advance)break}
+  return{status,body,query:req.query};
+ }
+ return{models,sql,db,call,route,close:()=>db.close()};
 }
+test('rota REAL: middleware aceita contrato do frontend antes do controller e limita no SQL',async()=>{
+ const f=await fixture();try{
+  await f.models.SolicitacaoCompra.bulkCreate(Array.from({length:121},(_,i)=>({id:300000+i,origem:'NORMAL',status:'LIBERADO',solicitante_id:7,obra_id:1,createdAt:new Date(2026,2,i%28+1)})));
+  const start=f.sql.length;
+  const r=await f.route({page:'1',limit:'50',q:'',status:'',visao:'resumo'});
+  assert.equal(r.status,200,JSON.stringify(r.body));assert.equal(r.body.data.length,50);assert.equal(r.body.pagination.limit,50);
+  assert(r.body.pagination.total>100);assert.equal(r.query.page,1);
+  assert(f.sql.slice(start).some(s=>/\bLIMIT\b/.test(s)));
+  assert(!f.sql.slice(start).some(s=>/DADO_PESADO_NAO_DEVE_VIR|NAO_DEVE_VIR/.test(s)));
+  const next=await f.route({page:'2',limit:'50'});assert.equal(next.status,200);assert.equal(next.body.data.length,50);
+  assert(!next.body.data.some(t=>r.body.data.some(p=>p.id===t.id)));
+  const scoped=await f.route({page:'1',limit:'50',q:'',status:'CANCELADA'},{id:7,superadmin:true},[1]);
+  assert.equal(scoped.status,200);assert.deepEqual(scoped.body.data.map(t=>t.id),[7]);assert.equal(scoped.query.status,'CANCELADO');
+  const search=await f.route({q:'SC-100001'});assert.equal(search.status,200);assert.equal(search.body.data[0].id,100001);
+  assert.equal(search.body.pagination.limit,50,'Filtro novo sem pagina explicita continua limitado');
+  assert(Array.isArray((await f.route({})).body),'Contrato legado continua array sem parametros novos');
+  for(const query of [{page:'0'},{limit:'101'},{page:['1','2']},{q:{}},{q:'x'.repeat(201)},{status:['ABERTO']},{page:'1',sort:'sql'}, {page:'1',contexto:'delegacao'},{q:'x',visao:'delegacao'}]){
+   const before=f.sql.length,bad=await f.route(query);assert.equal(bad.status,400,JSON.stringify(query));assert.equal(f.sql.length,before,'Invalido deve parar antes do banco');
+  }
+  const before=f.sql.length,denied=await f.route({page:'1'},{denied:true});
+  assert.equal(denied.status,403);assert.equal(f.sql.length,before);
+ }finally{await f.close()}
+});
 test('validacao estrita de pagina/limite/busca/status, sem truncar silenciosamente',()=>{
  assert.equal(P.parseQuery({}).limit,50);assert.equal(P.parseQuery({status:'cancelada,recusada'}).statuses.join(','),'CANCELADO,RECUSADO');
  for(const q of [{page:'0'},{page:'1.5'},{page:['1']},{limit:'101'},{q:'x'.repeat(201)},{status:['CANCELADO']},{obra_id:'1 OR 1=1'}])assert.throws(()=>P.parseQuery(q),e=>e.statusCode===400);
