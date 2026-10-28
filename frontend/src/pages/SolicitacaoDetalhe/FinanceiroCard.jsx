@@ -1092,6 +1092,8 @@ export default function FinanceiroCard({
   const [titulosSelecionados, setTitulosSelecionados] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const envioTitulosRef = useRef(false);
+  const chaveTitulosRef = useRef(null);
   /*
     R19/R28 — o `erro` de string solta e os tres `alert()` do navegador viraram
     UM canal so: `useAvisos`. Erro e sucesso passam pela mesma faixa semantica
@@ -1197,6 +1199,7 @@ export default function FinanceiroCard({
     : 'Os titulos do contrato do fluxo novo sao criados automaticamente pelo cronograma.';
 
   function resetModalState(baseSolicitacao = solicitacao) {
+    chaveTitulosRef.current = null;
     setForm(buildDefaultForm(baseSolicitacao, titulos));
     setGeracaoMultiplaTitulos(exigeTitulosSeparadosCompraDireta(baseSolicitacao));
     setSelectedPartner(baseSolicitacao?.parceiro || null);
@@ -2197,6 +2200,7 @@ export default function FinanceiroCard({
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (envioTitulosRef.current) return;
     const erroValidacao = validarGeracaoConta();
     if (erroValidacao) {
       avisar.erro(erroValidacao);
@@ -2204,6 +2208,8 @@ export default function FinanceiroCard({
     }
 
     try {
+      envioTitulosRef.current = true;
+      chaveTitulosRef.current ||= crypto.randomUUID();
       setSaving(true);
       limparAvisos();
       // Validar antes de salvar favorecidos; preservar instrucoes por forma/parcela.
@@ -2276,7 +2282,7 @@ export default function FinanceiroCard({
             parcelas: usaDetalhe ? pagamento.parcelas : undefined
           };
         })
-      });
+      }, chaveTitulosRef.current);
 
       setModalOpen(false);
       resetModalState(solicitacao);
@@ -2288,6 +2294,7 @@ export default function FinanceiroCard({
     } catch (error) {
       avisar.erro(error?.message || 'Erro ao criar título');
     } finally {
+      envioTitulosRef.current = false;
       setSaving(false);
     }
   }

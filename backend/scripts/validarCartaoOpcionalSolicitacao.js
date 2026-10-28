@@ -125,6 +125,7 @@ const faturaMocks = dependencies['./faturaCartaoFinanceiroService'];
 dependencies['./faturaCartaoFinanceiroService'] = Object.fromEntries(Object.keys(faturaMocks)
   .map(key => [key, (...args) => faturaMocks[key](...args)]));
 const saldoModule = { exports: {} };
+dependencies['./pagamentoAutorizacaoValorDomain'] = require('../src/services/pagamentoAutorizacaoValorDomain');
 vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/pagamentoFilaSaldoService.js'), 'utf8'), {
   module: saldoModule, require(id) { if (!(id in dependencies)) throw Error(`Dependencia nao isolada: ${id}`); return dependencies[id]; }
 });

@@ -759,12 +759,12 @@ export async function adotarFinanceiroPedidoCompra(id) {
   return handleJsonResponse(response, 'Erro ao iniciar a gestao financeira do pedido');
 }
 
-export async function criarPrevisoesPedidoCompra(id, data) {
+export async function criarPrevisoesPedidoCompra(id, data, idempotencyKey) {
   const response = await fetch(`${API_URL}/compras/pedidos/${id}/financeiro/previsoes`, {
     method: 'POST',
     headers: authHeaders({
       'Content-Type': 'application/json',
-      'Idempotency-Key': pedidoFinanceiroIdempotencyKey('previsao', id)
+      'Idempotency-Key': idempotencyKey || pedidoFinanceiroIdempotencyKey('previsao', id)
     }),
     body: JSON.stringify(data)
   });

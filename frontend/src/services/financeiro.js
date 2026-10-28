@@ -1250,10 +1250,10 @@ export async function getTitulosFinanceirosPorSolicitacao(solicitacaoId) {
   return parseJson(response, 'Erro ao buscar titulos financeiros da solicitacao');
 }
 
-export async function gerarContaPorSolicitacao(solicitacaoId, data) {
+export async function gerarContaPorSolicitacao(solicitacaoId, data, idempotencyKey) {
   const response = await fetch(`${API_URL}/solicitacoes/${solicitacaoId}/gerar-conta`, {
     method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    headers: authHeaders({ 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey || crypto.randomUUID() }),
     body: JSON.stringify(data)
   });
 

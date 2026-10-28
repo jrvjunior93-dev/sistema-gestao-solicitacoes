@@ -714,11 +714,9 @@ async function criarPrevisoesPedido({ req, pedidoId, payload, idempotencyKey, tr
   });
   if (existenteChave) return obterResumoFinanceiroPedido(pedido, { transaction, incluirDetalhes: true });
 
-  await require('./tituloSobreposicaoService').assertSemAvulsosCompra(pedido.solicitacao.solicitacao_principal_id, transaction);
-  const existentes = await buscarTitulosPedido(pedido.id, { transaction, incluirLegados: true });
-  if (existentes.some((item) => item.origem !== 'FRETE_TERCEIRO' && !STATUS_TITULO_ENCERRADO.has(normalize(item.titulo?.status)))) {
-    throw httpError(409, 'Este pedido ja possui titulo financeiro ativo.', 'PEDIDO_JA_POSSUI_TITULO');
-  }
+  // Reorganizacao autorizada: cada chave nova cria uma nova obrigacao, mesmo
+  // havendo titulos suficientes/quitados ou avulsos na solicitacao. A chave
+  // repetida acima continua devolvendo a operacao anterior sem nova criacao.
 
   const valorPedido = roundMoney(pedido.valor_total_fornecedor ?? pedido.valor_total);
   const parcelas = normalizarParcelas(payload?.parcelas, valorPedido);
@@ -887,6 +885,7 @@ async function criarPrevisoesPedido({ req, pedidoId, payload, idempotencyKey, tr
     acao: 'PEDIDO_COMPRA_TITULOS_CRIADOS_COMPRAS',
     descricao: `${titulosCriados.length} titulo(s) financeiro(s) criado(s) por Compras para ${buildPedidoCodigo(pedido.id)}.`,
     metadata: {
+      criacao_independente: true,
       titulos_ids: titulosCriados.map((titulo) => titulo.id),
       valor_total: valorPedido,
       fretes_titulos_ids: titulosFrete.map((titulo) => titulo.id),

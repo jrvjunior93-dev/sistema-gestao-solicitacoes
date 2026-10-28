@@ -213,6 +213,8 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
   const [pagamento, setPagamento] = useState(() => criarConfigPagamento(totalPedido, credorPedido));
   const [pagamentosFrete, setPagamentosFrete] = useState({});
   const [editandoParcelas, setEditandoParcelas] = useState(false);
+  const [criandoNovos, setCriandoNovos] = useState(false);
+  const chaveCriacaoRef = useRef(null);
   const [documento, setDocumento] = useState({ tipo: 'NOTA_FISCAL', numero_documento: '', observacoes: '' });
   const [arquivo, setArquivo] = useState(null);
   const [motivoDecisao, setMotivoDecisao] = useState('');
@@ -228,6 +230,7 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
     })));
     setDescricao(`Pedido PC-${String(pedido?.id || '').padStart(5, '0')} - ${pedido?.fornecedor?.nome || 'Fornecedor'}`);
     setEditandoParcelas(false);
+    setCriandoNovos(false); chaveCriacaoRef.current = null;
   }, [pedido?.id, pedido?.fornecedor?.nome, pedido?.fornecedor?.parceiro_id, totalPedido, fretesPagamentoKey]);
 
   useEffect(() => {
@@ -240,11 +243,11 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
   const pedidoFechado = ['FECHADO_FORNECEDOR', 'ENCERRADO'].includes(String(pedido?.status || '').toUpperCase());
   const idsFreteTerceiro = new Set((pedido?.fretes || []).filter(f => f.tipo === 'TERCEIRO').map(f => Number(f.titulo_financeiro_id)));
   const titulosCompraAtivos = titulosAtivos.filter(item => item.origem !== 'FRETE_TERCEIRO' && !idsFreteTerceiro.has(Number(item.titulo?.id)));
-  const podeCriarPrevisao = podePrever && !financeiro?.legado && titulosCompraAtivos.length === 0 && pedidoFechado;
+  const podeCriarPrevisao = podePrever && !financeiro?.legado && pedidoFechado;
   const podeCriarCompartilhado = podePrever && !financeiro?.legado && pedidoFechado
     && !titulosAtivos.some(item => item.origem !== 'FRETE_TERCEIRO' && !idsFreteTerceiro.has(Number(item.titulo?.id)));
   const podeReparcelarPrevisao = podePrever && !financeiro?.legado && pedidoFechado && previsoes.length > 0 && previsoes.length === titulosAtivos.length;
-  const exibirFormularioParcelas = podeCriarPrevisao || (podeReparcelarPrevisao && editandoParcelas);
+  const exibirFormularioParcelas = (podeCriarPrevisao && (!titulosCompraAtivos.length || criandoNovos)) || (podeReparcelarPrevisao && editandoParcelas);
   const reabertura = financeiro?.reabertura;
   const formasPagamento = financeiro?.opcoes?.formas_pagamento || [];
   const cartoesPagamento = financeiro?.opcoes?.cartoes || [];
@@ -332,10 +335,12 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
       const observacoes = documento.observacoes.trim();
       const temComprovacao = Boolean(arquivo || numeroDocumento || observacoes);
       const upload = arquivo ? await uploadAnexoTemporarioCompra(arquivo) : null;
+      chaveCriacaoRef.current ||= crypto.randomUUID();
       await criarPrevisoesPedidoCompra(pedido.id, { ...payload, comprovacao: temComprovacao ? {
         ...documento, numero_documento: numeroDocumento || undefined, observacoes: observacoes || undefined,
         arquivo_url: upload?.arquivo_url, arquivo_nome: upload?.arquivo_nome_original
-      } : undefined });
+      } : undefined }, chaveCriacaoRef.current);
+      chaveCriacaoRef.current = null; setCriandoNovos(false);
       setArquivo(null); setDocumento({ tipo: 'NOTA_FISCAL', numero_documento: '', observacoes: '' });
       if (arquivoInputRef.current) arquivoInputRef.current.value = '';
     }, reparcelando ? 'Parcelas atualizadas para este pedido.' : 'Títulos da compra e dos fretes registrados para este pedido.');
@@ -370,6 +375,7 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
       <fieldset disabled={Boolean(processando)} className="min-w-0">
         {financeiro.legado ? <div className="app-alert"><p className="font-semibold">Pedido anterior ao novo fluxo</p><p className="mt-1">{pedidoFechado ? 'Os vínculos existentes foram apenas identificados. A adoção abaixo não altera nem recria títulos legados.' : 'Este pedido entrará na gestão financeira quando Compras concluir o fechamento com o fornecedor.'}</p>{podePrever && pedidoFechado ? <button type="button" className="btn btn-outline mt-3" disabled={Boolean(processando)} onClick={() => executar('adotar', () => adotarFinanceiroPedidoCompra(pedido.id), 'Pedido legado incorporado à gestão de títulos de Compras.')}>Revisar e adotar pedido legado</button> : null}</div> : null}
 
+        {podeCriarPrevisao && titulosCompraAtivos.length > 0 && !exibirFormularioParcelas ? <button type="button" className="btn btn-outline btn-sm mt-3" disabled={Boolean(processando)} onClick={() => { setCriandoNovos(true); }}>Criar novos títulos</button> : null}
         {exibirFormularioParcelas ? <div className="mt-4 border-t border-[var(--c-border)] pt-4">
           <h3 className="font-semibold text-[var(--c-text)]">{editandoParcelas ? 'Editar parcelas legadas' : 'Criar títulos do pedido'}</h3>
           <dl className="my-3 grid gap-3 text-sm sm:grid-cols-3"><div><dt className="text-[var(--c-muted)]">Credor</dt><dd className="break-words font-semibold">{pedido.fornecedor?.nome || 'Não vinculado'}</dd></div><div><dt className="text-[var(--c-muted)]">Obra</dt><dd className="break-words font-semibold">{pedido.obra?.nome || 'Não vinculada'}</dd></div><div><dt className="text-[var(--c-muted)]">Valor ao fornecedor</dt><dd className="font-semibold">{moeda(totalPedido)}</dd></div></dl>
