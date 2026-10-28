@@ -1,0 +1,163 @@
+{
+  "base": "ade6e6dcb9f9b270bcaed7388ad84aeeef8b8b0d",
+  "runtime_files": 3,
+  "sql": 0,
+  "migrations": 0,
+  "heap_mib": 4096,
+  "files": [
+    {
+      "path": "backend/src/services/pedidoCompraFinanceiroService.js",
+      "sha256": "de8e4a47e3031a3ce86228fc4e57d36d74224515d138158bca4bbf892a69133c",
+      "old_sha256": "10dca44674edfc2085e1d5da8d899c83626bb2be856a8eb24c55da17edac9913"
+    },
+    {
+      "path": "backend/src/services/tituloFinanceiroService.js",
+      "sha256": "42dd680a59c7907ea07cd7973a49b95f099d8651b672f36dcd1ebc29484391d6",
+      "old_sha256": "c4eff65d0e5e1a5cdec4a781146836cbce8a553a76a9993556c4256d8c97674b"
+    },
+    {
+      "path": "backend/src/services/compraTitulosAdicionaisService.js",
+      "sha256": "922ed26be5ffdae4b55634678f115e55c7b45e20304ecc54e7da87ed70096672",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarCompraTitulosAdicionais.js",
+      "sha256": "5585789134c8bb20bcbd1185fd4f681f95b418b70498fa8860daa00b96ae1413",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarCompraTitulosAdicionaisSql.js",
+      "sha256": "f40a97c0169438aa893c53c9caa435006751cb8d2a05944882573180c011628d",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarCartaoOpcionalSolicitacao.js",
+      "sha256": "cd145c96788030dd33ea01e8d5fe2e4b3fd00139aaa38b7cc0cca04fc484bf3b",
+      "old_sha256": "cf99d541c8d19660d828be36f85068935035dba277d681b7b7e8f8727904eb18"
+    },
+    {
+      "path": "backend/scripts/validarTitulosPorPedido.js",
+      "sha256": "cd35f65522c36e36e9b71ea6a856fabfbadff40ab8f05e6dc5ffeac0e3a0d155",
+      "old_sha256": "a8c7c3453fbbb0d20fdac7b0ddce0c43e7975fe52dcda75208c66ee527a214a2"
+    },
+    {
+      "path": "backend/scripts/validarPedidoCompraFinanceiroGeo.js",
+      "sha256": "8ca675e3f64848dee6a137a487ccb61a59fe108d5c4d929705557f2e382bef27",
+      "old_sha256": "8ca675e3f64848dee6a137a487ccb61a59fe108d5c4d929705557f2e382bef27"
+    },
+    {
+      "path": "backend/scripts/validarSobreposicaoTitulos.js",
+      "sha256": "081a5e442fc91673b8609202074b8beffeebedc67a37a64cea8193cd4ad8f072",
+      "old_sha256": "081a5e442fc91673b8609202074b8beffeebedc67a37a64cea8193cd4ad8f072"
+    },
+    {
+      "path": "backend/scripts/validarTitulosCompartilhados.js",
+      "sha256": "f98cc83f32401843becf8615221aa8c46d8f2f4b00e31ebbe25581de8f8f6d2b",
+      "old_sha256": "f98cc83f32401843becf8615221aa8c46d8f2f4b00e31ebbe25581de8f8f6d2b"
+    },
+    {
+      "path": "backend/scripts/validarPedidoReabertura.js",
+      "sha256": "91c900412e5509d9ab5e9509af967c9dee217fd36b01c9623939251a10a54994",
+      "old_sha256": "91c900412e5509d9ab5e9509af967c9dee217fd36b01c9623939251a10a54994"
+    },
+    {
+      "path": "backend/scripts/validarPedidoReaberturaTitulosExcluidos.js",
+      "sha256": "f8407885c5e5d32bf988326dbf654967be7cb2f89d27b32cc239092713d9a624",
+      "old_sha256": "f8407885c5e5d32bf988326dbf654967be7cb2f89d27b32cc239092713d9a624"
+    },
+    {
+      "path": "backend/scripts/validarTituloRenegociacaoVinculos.js",
+      "sha256": "f0672f5bd7861910066aa53555c5d84ae60f3d20a6efe86265eef65026f3a052",
+      "old_sha256": "f0672f5bd7861910066aa53555c5d84ae60f3d20a6efe86265eef65026f3a052"
+    },
+    {
+      "path": "backend/scripts/validarComprasCarregamentoSemProduto.js",
+      "sha256": "5c13436fef74b3e322fbafd624fb100962d6025bd9e88ed8c98f15059ee337e7",
+      "old_sha256": "5c13436fef74b3e322fbafd624fb100962d6025bd9e88ed8c98f15059ee337e7"
+    },
+    {
+      "path": "backend/scripts/validarSolicitacoesCompraPaginacao.js",
+      "sha256": "af95345f3bff9504dfb15dcd4ca69e1a04ae365de21a7ce7729c60f04e6d662f",
+      "old_sha256": "af95345f3bff9504dfb15dcd4ca69e1a04ae365de21a7ce7729c60f04e6d662f"
+    },
+    {
+      "path": "backend/scripts/validarPrecisaoCompras.cjs",
+      "sha256": "3db4d72f1c3116b0fcada88fec97e7d4d0da8d6af42d19973c39a038370f9f02",
+      "old_sha256": "3db4d72f1c3116b0fcada88fec97e7d4d0da8d6af42d19973c39a038370f9f02"
+    },
+    {
+      "path": "backend/scripts/validarFilaBaixaComposta.js",
+      "sha256": "02bb0514d36cde68687c52faf0920c72f05828533ff2e044548cdb732cc2227f",
+      "old_sha256": "02bb0514d36cde68687c52faf0920c72f05828533ff2e044548cdb732cc2227f"
+    },
+    {
+      "path": "backend/scripts/validarAnaliseProprietario.js",
+      "sha256": "5a27f23804dde84a7c74b6bec7a949db32e704ad8e2205a503524b26ee441d3f",
+      "old_sha256": "5a27f23804dde84a7c74b6bec7a949db32e704ad8e2205a503524b26ee441d3f"
+    },
+    {
+      "path": "backend/scripts/helpers/semRedeQa.js",
+      "sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf",
+      "old_sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf"
+    },
+    {
+      "path": "backend/scripts/helpers/sqliteSequelizeMemory.js",
+      "sha256": "36d69c26ce2cfcc50808e3763fa0ec528d6cb181a31b7b4b759cea7db0797c9d",
+      "old_sha256": "36d69c26ce2cfcc50808e3763fa0ec528d6cb181a31b7b4b759cea7db0797c9d"
+    }
+  ],
+  "extra": [
+    {
+      "path": "ops/deploy/atualizar-prod-titulos-adicionais-20261028.cjs",
+      "sha256": "ef19173d58704efcab26b58ed8b718ded4c33859d6db16f0637cfd3841830961"
+    },
+    {
+      "path": "ops/deploy/atualizar-prod-titulos-adicionais-20261028.test.cjs",
+      "sha256": "1a75bd965bc2fc36741a3df8e4a726d7210cf7fb5c2c6e9a78df99c217d76aa8"
+    },
+    {
+      "path": "ops/deploy/README-titulos-adicionais-prod-20261028.md",
+      "sha256": "57036f8beebd5bc75065ad879a060c0f80359e94f8c7ac4fa640060da0bb83fe"
+    },
+    {
+      "path": "docs/handoffs/2026-10-28-promocao-titulos-adicionais-main.md",
+      "sha256": "449c7e465d9df9e335dc198357bb13221f79f42eba75f6948be91978da7e8fef"
+    },
+    {
+      "path": "docs/handoffs/2026-10-28-criacao-adicional-titulos-compras-local.md",
+      "sha256": "df9e7b962adb41831d334a2e97738153edf5b11fb3d789195053f433d6c1d37f"
+    },
+    {
+      "path": "docs/workspace/OWNERSHIP_ATIVO.md",
+      "sha256": "fc39a8b29292fdf4b412c5441ed1788c53fa6d475dfb28768ad1e2a154d79436"
+    },
+    {
+      "path": "frontend/src/modules/solicitacao-compra/components/PedidoCompraFinanceiro.jsx",
+      "sha256": "78d0b3fd869fd2dc91b110af2cd692907adc80a8dc31a873bb52823b8442fc65"
+    },
+    {
+      "path": "frontend/src/pages/SolicitacaoDetalhe/FinanceiroCard.jsx",
+      "sha256": "12eb3f836be2a361f1c9e19eeb4a83fc145ca037b5f96a0e74f8b5959c80ced9"
+    },
+    {
+      "path": "frontend/src/services/compras.js",
+      "sha256": "075d637ec088760da92c2bb0dc1b631673a1f483609d07c00cfc499403fa1096"
+    },
+    {
+      "path": "frontend/src/services/financeiro.js",
+      "sha256": "0372d064a156f2f19afd3f191a60c728a0cfa3660c8a29355202f248e95b68bc"
+    },
+    {
+      "path": "frontend/scripts/validarCompraTitulosAdicionaisUI.mjs",
+      "sha256": "8449a6112575b7575aff186750f07be49554fec8befcc67c65641bd872d52be6"
+    },
+    {
+      "path": "frontend/scripts/fixtures/compraTitulosAdicionais.html",
+      "sha256": "5d8e1d71236fcf72e6182a08bdb622af69ff6fbdacaf56dd36263015ee79a048"
+    },
+    {
+      "path": "frontend/scripts/fixtures/compraTitulosAdicionais.jsx",
+      "sha256": "beeac5ec32fe008ff97bc281d4342e67cf9be209b9408bc4b6e335b14c0c29d9"
+    }
+  ]
+}

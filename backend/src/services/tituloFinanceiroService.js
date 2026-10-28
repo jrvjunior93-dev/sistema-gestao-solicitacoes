@@ -2976,13 +2976,26 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
     await freteCompraService.validarGeracao(solicitacao.id, contextoCompraDireta, transaction);
     const origemAtual = await Solicitacao.findByPk(solicitacao.id, { transaction, lock: transaction.LOCK.UPDATE });
     if (!origemAtual || origemAtual.cancelada) throw createHttpError(409, 'Solicitação alterada ou cancelada. Atualize antes de gerar títulos.');
-    // Compra direta possui validação própria de fornecedor/frete e idempotência.
-    // Somente esse contexto, calculado no servidor, mantém a geração pela origem.
-    if (tipo === 'PAGAR' && !contextoCompraDireta) await require('./tituloSobreposicaoService').assertFluxoCompra(solicitacao.id, transaction);
+    // A solicitacao de compra tambem pode gerar novas obrigacoes durante a
+    // reorganizacao. A existencia de pedidos/titulos nao e uma duplicidade
+    // automatica; somente o replay da mesma chave e impedido.
+    const compraAdicional = tipo === 'PAGAR' && !contextoCompraDireta
+      && await SolicitacaoCompra.findOne({ where: { solicitacao_principal_id: solicitacao.id }, attributes: ['id'], transaction });
+    const criacaoCompra = compraAdicional ? require('./compraTitulosAdicionaisService') : null;
+    const operacaoCompra = criacaoCompra?.preparar(req, payload);
+    if (operacaoCompra) {
+      const replay = await criacaoCompra.buscarReplay({ solicitacaoId: solicitacao.id, usuarioId: req.user.id, operacao: operacaoCompra, transaction });
+      if (replay) {
+        await transaction.commit();
+        const titulo = await carregarTituloPorId(req, replay[0]);
+        if (replay.length > 1) titulo.setDataValue('parcelas_geradas', replay);
+        return titulo;
+      }
+    }
     const compartilhado = await require('../models').TituloCompartilhadoOrigem.findOne({ where: { solicitacao_id: solicitacao.id },
       include: [{ model: TituloFinanceiro, as: 'titulo', required: true, attributes: ['id'], where: { status: { [Op.notIn]: ['CANCELADO', 'ESTORNADO'] } } }],
       transaction, lock: transaction.LOCK.UPDATE });
-    if (compartilhado) throw createHttpError(409, 'A solicitação já participa de um lote compartilhado. Não gere títulos novamente pelo fluxo individual.');
+    if (compartilhado && !compraAdicional) throw createHttpError(409, 'A solicitação já participa de um lote compartilhado. Não gere títulos novamente pelo fluxo individual.');
     if (partesSolicitadas.length) {
       const principal = await Solicitacao.findByPk(solicitacao.id, { transaction, lock: transaction.LOCK.UPDATE });
       if (!principal || Number(principal.valor) !== valorOriginal) throw createHttpError(409, 'Solicitacao alterada; atualize a divisao.');
@@ -3129,7 +3142,8 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
       usuario_responsavel_id: req.user?.id || null,
       setor: getSetorUsuario(req),
       acao: 'TITULO_FINANCEIRO_CRIADO',
-      observacao: `${titulosCriados.length} titulo(s) ${tipo} gerado(s) no valor de ${formatCurrency(valorOriginal)}`
+      observacao: `${titulosCriados.length} titulo(s) ${tipo} gerado(s) no valor de ${formatCurrency(valorOriginal)}`,
+      ...(operacaoCompra ? { metadata: JSON.stringify({ ...operacaoCompra, titulos_ids: titulosCriados.map(t => Number(t.id)), criacao_adicional_compra: true }) } : {})
     }, { transaction });
 
     await marcarSolicitacaoComTituloCadastrado({
