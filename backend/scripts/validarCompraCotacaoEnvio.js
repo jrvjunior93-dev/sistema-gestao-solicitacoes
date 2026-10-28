@@ -108,14 +108,21 @@ function validarRotasDeDecisaoERecebimentoPorItem() {
 }
 
 function validarBaseFinanceiraDaCotacao() {
+  for (const quantidade of [0, 2.5, 4, 50]) {
+    assert.strictEqual(calcularValorMercadoriasCotacao({ quantidadeSolicitada: 10,
+      quantidadeDisponivel: quantidade, precoUnitario: 20 }), quantidade * 20);
+  }
+  assert.strictEqual(obterQuantidadeBaseFinanceiraCotacao({ quantidadeSolicitada: 10,
+    quantidadeDisponivel: 4, escopoDisponibilidade: 'ACUMULADA' }), 10,
+  'A mudanca da exibicao da oferta nao altera a base de rateio de pedidos existentes.');
   assert.strictEqual(
     calcularValorMercadoriasCotacao({
       quantidadeSolicitada: 10,
       quantidadeDisponivel: 50,
       precoUnitario: 20
     }),
-    200,
-    'Quantidade disponivel nao pode alterar o valor das mercadorias cotadas.'
+    1000,
+    'Total da oferta usa quantidade disponivel x preco, sem limitar a quantidade solicitada.'
   );
   assert.strictEqual(
     obterQuantidadeBaseFinanceiraCotacao({
@@ -127,22 +134,37 @@ function validarBaseFinanceiraDaCotacao() {
     'Oferta adicional para saldo deve manter como base somente a quantidade da nova oferta.'
   );
 
-  const publicPageSource = fs.readFileSync(
-    path.join(__dirname, '../../frontend/src/modules/solicitacao-compra/pages/CotacaoFornecedorPublica.jsx'),
-    'utf8'
-  );
-  const internalPageSource = fs.readFileSync(
-    path.join(__dirname, '../../frontend/src/modules/solicitacao-compra/pages/GerenciarCotacaoSolicitacao.jsx'),
-    'utf8'
-  );
-  assert(
-    publicPageSource.includes('numeroCotacao(item?.preco) * numeroCotacao(item?.quantidade)'),
-    'Cotacao publica deve calcular mercadorias pela quantidade solicitada.'
-  );
-  assert(
-    internalPageSource.includes(': parseNumeroCompraDigitado(item?.quantidade_solicitada);'),
-    'Edicao interna deve calcular mercadorias pela quantidade solicitada.'
-  );
+  // As duas telas sao verificadas pelo teste real de navegador
+  // validarCotacaoTotalDisponivel.mjs. O QA backend funciona tambem na
+  // etapa anterior a publicacao do frontend, sem depender de texto JSX.
+}
+
+function validarTotalComparativoPelaOferta() {
+  const source = fs.readFileSync(path.join(__dirname, '../src/controllers/SolicitacaoCompraController.js'), 'utf8');
+  const helpers = source.slice(source.indexOf('function buildRespostaItemKey('), source.indexOf('function normalizarItensSelecionadosCotacao('));
+  const comparativo = source.slice(source.indexOf('function montarComparativoSolicitacao('), source.indexOf('function desenharCabecalhoFicha('));
+  const cotacao = require('../src/services/comprasCotacao');
+  const ctx = { ...cotacao, ...require('../src/services/comprasDisponibilidadeService'),
+    normalizeTextCompra: cotacao.normalizeText, arredondarMoeda: v => Math.round((Number(v) + Number.EPSILON) * 100) / 100 };
+  const montar = new Function(...Object.keys(ctx), helpers + comparativo + ';return montarComparativoSolicitacao;')(...Object.values(ctx));
+  const compra = { id: 666, status: 'LIBERADO', itens: [], alocacoes: [],
+    itensManuais: [{ id: 10, nome_manual: 'Material QA', quantidade: 10, apropriacoes: [] }],
+    fornecedores: [{ id: 313, fornecedor_compra_id: 8, status: 'RESPONDIDO', frete_modo: 'POR_ITEM',
+      fornecedor: { id: 8, nome: 'Fornecedor QA' }, itensSelecionados: [], respostas: [{ id: 77,
+        item_tipo: 'MANUAL', solicitacao_compra_item_manual_id: 10, disponivel: true,
+        quantidade_disponivel: 4, preco: 20, ipi_valor: 3, icms_valor: 2, st_valor: 1, frete_valor: 5 }] }] };
+  for (const quantidade of [2.5, 4, 50]) {
+    compra.fornecedores[0].respostas[0].quantidade_disponivel = quantidade;
+    const item = montar(compra).itens[0];
+    assert.equal(item.respostas[0].valor_total_cotado, quantidade * 20 + 11);
+    assert.equal(item.quantidade_atual, 10, 'Quantidade solicitada nao muda com a disponibilidade.');
+    assert.equal(item.respostas[0].resposta_item_id, 77);
+  }
+  compra.fornecedores[0].respostas[0].quantidade_disponivel = 0;
+  assert.deepEqual(montar(compra).itens[0].respostas, [], 'Sem oferta positiva nao habilita pedido.');
+  compra.fornecedores[0].respostas[0].quantidade_disponivel = null;
+  assert.equal(montar(compra).itens[0].respostas[0].valor_total_cotado, 211,
+    'Resposta legada usa a mesma disponibilidade efetiva exibida, sem inventar estoque para zero explicito.');
 }
 
 function itemSelecionado() {
@@ -604,6 +626,7 @@ validarAprovacaoGeoDosItensCotaveis();
 validarDecisaoGeoEmLoteEEncaminhamento();
 validarRotasDeDecisaoERecebimentoPorItem();
 validarBaseFinanceiraDaCotacao();
+validarTotalComparativoPelaOferta();
 validarItensGlobaisLegados();
 validarFechamentoParcial();
 validarFechamentoExcedenteAuditavel();

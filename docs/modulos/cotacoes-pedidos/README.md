@@ -1,5 +1,20 @@
 # Modulo COTACOES E PEDIDOS
 
+## Total da oferta pela disponibilidade - ajuste local 28/10/2026
+
+O usuario solicitou quantidade disponivel x preco unitario no total da resposta
+e do comparativo. Formularios interno/publico usam essa base nas mercadorias e
+nos totais dos itens, mantendo os acrescimos gerenciais existentes. O comparativo
+usa a disponibilidade efetiva exibida; ofertas antigas sem quantidade explicita
+mantem o fallback legado, enquanto zero informado continua sem oferta elegivel.
+Quantidade solicitada e quantidade comprada permanecem independentes.
+Rateios/geracao de pedido e snapshots existentes nao mudam.
+
+PDF de cotacao e modelo em branco para preenchimento; PDF de solicitacao mostra
+demanda e PDF de pedido usa compra efetiva. Nenhum PDF precisa mudar neste ajuste,
+nem os arquivos anexados pelo fornecedor. Alteracao ainda local, sem publicacao
+ou EC2. [Escopo, limites e testes](../../handoffs/2026-10-28-cotacao-total-disponivel-local.md).
+
 ## Papel
 
 O modulo administra fornecedores convidados, escopo de itens por fornecedor, tokens publicos, respostas, comparativo, escolha de vencedor e pedidos de compra. Ele depende de uma solicitacao aprovada/liberada pelo fluxo interno de Compras.

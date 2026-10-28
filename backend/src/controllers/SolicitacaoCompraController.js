@@ -1492,7 +1492,7 @@ function montarComparativoSolicitacao(solicitacao) {
           ? arredondarMoeda(
               calcularValorMercadoriasCotacao({
                 quantidadeSolicitada: item.quantidade,
-                quantidadeDisponivel: resposta.quantidade_disponivel,
+                quantidadeDisponivel,
                 escopoDisponibilidade: resposta.escopo_disponibilidade,
                 precoUnitario: resposta.preco
               })

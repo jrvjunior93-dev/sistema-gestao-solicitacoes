@@ -1,0 +1,54 @@
+{
+  "base": "6a1ebe6cfd52485ec1078975cd32274c9c95932b",
+  "main": "46ac88de88957ffc15e8b0db45dfcd6eed7bc34e",
+  "files": [
+    {
+      "path": "backend/package.json",
+      "sha256": "99a56fd6f635372e0ece01b6bd86ad3267235fd7042b65e8eaf79f4a5c70d56a"
+    },
+    {
+      "path": "backend/src/controllers/SolicitacaoCompraController.js",
+      "sha256": "fcf48f020aca5c3697d37850707bc5d10461473558e7a913d382633f69be0cab"
+    },
+    {
+      "path": "backend/src/services/comprasCotacao.js",
+      "sha256": "c00b086b865be3b98f0a755fa5392a94764c1dea05d0c2384ca75c00a3ba05fc"
+    },
+    {
+      "path": "backend/scripts/helpers/semRedeQa.js",
+      "sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf"
+    },
+    {
+      "path": "backend/scripts/validarCompraCotacaoEnvio.js",
+      "sha256": "def383b9c06a41e60566496a32b739733859bc0c6eed234bf264138852f6b4ca"
+    },
+    {
+      "path": "backend/scripts/validarCompraRemanejamento.js",
+      "sha256": "b2c429482c9178f803f6b9aa851e0c412c5d3cb8e3daf4da47ed13181196b5de"
+    },
+    {
+      "path": "backend/scripts/validarPrevisaoEntregaCotacao.js",
+      "sha256": "51b008163579ead3102227a8c1702d90e9345182d0e701336e9d01aeb88105de"
+    },
+    {
+      "path": "backend/scripts/validarPedidoEntregas.js",
+      "sha256": "c11fb43a9957b640bf66a685f9786f29fc37ef2c7d6e2063ac13bb7fc0758ddc"
+    },
+    {
+      "path": "backend/scripts/validarComprasCarregamentoSemProduto.js",
+      "sha256": "5c13436fef74b3e322fbafd624fb100962d6025bd9e88ed8c98f15059ee337e7"
+    },
+    {
+      "path": "backend/scripts/validarSolicitacoesCompraPaginacao.js",
+      "sha256": "af95345f3bff9504dfb15dcd4ca69e1a04ae365de21a7ce7729c60f04e6d662f"
+    },
+    {
+      "path": "ops/deploy/atualizar-dev-compras-totais-20261028.cjs",
+      "sha256": "ad999f3ba02998b31358aa0a4a78a315d323c4adc70e03b23902ca48b3fd051c"
+    },
+    {
+      "path": "ops/deploy/atualizar-dev-compras-totais-20261028.test.cjs",
+      "sha256": "227ab1c772d045b60fbed52a7e47d3af903093002990b4c44dfb9bd7c01bf2df"
+    }
+  ]
+}

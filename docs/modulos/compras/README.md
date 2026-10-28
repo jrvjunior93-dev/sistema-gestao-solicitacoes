@@ -1,5 +1,16 @@
 # Modulo COMPRAS
 
+## Compra Direta: total no bloco de itens - ajuste local 28/10/2026
+
+Com uma forma de pagamento, o campo de valor somente para leitura foi retirado.
+A forma e os dados do favorecido permanecem; o valor continua calculado pelos
+itens. No bloco Itens da solicitacao, uma faixa compacta mostra total dos itens,
+desconto e frete quando aplicaveis, total do credor para frete a terceiro e total
+da compra. Varias formas conservam campos de divisao e validacao da soma.
+Calculos, payload, rascunho, apropriacao, anexos, revisao e RH nao mudam.
+Teste da tela real em1366/390 com API ficticia e build aprovados. Sem EC2,
+registro real, commit/push ou deploy. [Escopo e testes](../../handoffs/2026-10-28-compra-direta-total-itens-local.md).
+
 ## Correcao local do validador da lista paginada - 28/10/2026
 
 O middleware de GET /compras/solicitacoes rejeitava page/limit/q/status antes

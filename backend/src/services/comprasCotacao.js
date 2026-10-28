@@ -39,16 +39,12 @@ function obterQuantidadeBaseFinanceiraCotacao({
 }
 
 function calcularValorMercadoriasCotacao({
-  quantidadeSolicitada,
   quantidadeDisponivel,
-  escopoDisponibilidade,
   precoUnitario
 }) {
-  return obterQuantidadeBaseFinanceiraCotacao({
-    quantidadeSolicitada,
-    quantidadeDisponivel,
-    escopoDisponibilidade
-  }) * Math.max(0, numeroCotacao(precoUnitario));
+  // Total da oferta no comparativo. A base de rateio dos pedidos permanece
+  // em obterQuantidadeBaseFinanceiraCotacao e nao muda com esta exibicao.
+  return Math.max(0, numeroCotacao(quantidadeDisponivel)) * Math.max(0, numeroCotacao(precoUnitario));
 }
 
 const STATUS_SOLICITACAO_COMPRA_TERMINAIS = new Set([
