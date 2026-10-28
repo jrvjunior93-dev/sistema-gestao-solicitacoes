@@ -1,6 +1,6 @@
 {
   "base": "2d6af625aff47f1592ae52d2448b9dc86a3c9c7e",
-  "release_parent": "2d6af625aff47f1592ae52d2448b9dc86a3c9c7e",
+  "release_parent": "dea03adf61bdf8f188ef0b29fd2e1e4d0a0a4a34",
   "runtime_files": 13,
   "business_data_writes": 0,
   "migration": "202610280001_rh_privacidade_obra.js",
@@ -130,15 +130,15 @@
   "extra": [
     {
       "path": "ops/deploy/atualizar-prod-rh-privacidade-20261028.cjs",
-      "sha256": "ca6633085df4dab195db0870af9087fe00ecb8f126ffa3388063155cf215eac7"
+      "sha256": "c9961a9f093af6514ff338c8d936a7c003a154eda15252442aeb834de536763d"
     },
     {
       "path": "ops/deploy/atualizar-prod-rh-privacidade-20261028.test.cjs",
-      "sha256": "bd4dba751242d0dd056fd49d24a5b37cc713155e2e9b9d880bd3598fd231e397"
+      "sha256": "82a58688a24d888c5e90270e11c2a525583f766255f6510418fda4c51377969f"
     },
     {
       "path": "ops/deploy/README-rh-privacidade-prod-20261028.md",
-      "sha256": "deb932f967830ba44fccb870e3c54787334144f31809ec4910092bd820f1f918"
+      "sha256": "027955bb323230b964bafe7c367b36d6c66d9bc6c33404081be637caa4858420"
     },
     {
       "path": "docs/handoffs/2026-10-28-promocao-rh-privacidade-main.md",
@@ -146,11 +146,19 @@
     },
     {
       "path": "docs/workspace/OWNERSHIP_ATIVO.md",
-      "sha256": "67cb7221a74c921aed870757e2b4c8d9fe23d93cbd9b69cefbcd5cb1e06a0818"
+      "sha256": "a997cd93c307a38807d297aadcda70db967433bf013e2f108b15a7bc65df40e9"
     },
     {
       "path": "docs/modulos/rh-dp/README.md",
       "sha256": "b810341179077bb6d398b30951017561417e86f6e362e6e4035181995929e07d"
+    },
+    {
+      "path": "docs/handoffs/2026-10-28-diagnostico-preparacao-rh-prod.md",
+      "sha256": "bb9f48b773e51b66fd2c80c2536b8c43f4f8658de184632a635f10e2ac579c53"
+    },
+    {
+      "path": "docs/handoffs/2026-10-28-rh-preflight-processo-filho-prod.md",
+      "sha256": "fedb8b7db6e6984600476b3268c8636b21a3c9f1348e288313b6fad5ef541dc0"
     }
   ]
 }

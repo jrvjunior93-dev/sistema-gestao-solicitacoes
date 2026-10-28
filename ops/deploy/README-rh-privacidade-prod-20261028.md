@@ -5,6 +5,14 @@ comandos EC2; agente nao acessa o servidor. Backend/schema antes do frontend.
 
 ## Escopo
 
+Correcao de preflight posterior a dea03adf: filhos CLI nao herdam os3 campos
+de IPC/cluster do PM2 lidos de /proc. Somente copia de ambiente do auxiliar;
+snapshot bruto e ambiente do backend/PM2/env/dumps/heap permanecem intactos.
+Preflight e runner de schema continuam com as mesmas guardas. Em falha nativa,
+retorna codigo do SO/sinal sanitizado, sem stderr/argumentos/segredos brutos.
+Usar o novo SHA/hash publicado para preparar; nao reutilizar o hash anterior.
+
+
 Salario restrito por colaborador, valores calculados ocultos da obra em RH,
 percentuais/ajustes preservados e conferencia financeira pelo DP. Edicao da obra
 somente observacoes e documentos de origem de obra autorizada. Financeiro com

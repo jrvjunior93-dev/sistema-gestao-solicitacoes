@@ -50,8 +50,54 @@ test('caso real: titulo PM2 oculta argv, mas configuracao e metadado do filho ma
  assert.throws(()=>op.heap4096(['--max-old-space-size=4096'],['--max-old-space-size=2304'],{node_args:'--max-old-space-size=4096'}));
  assert.throws(()=>op.heap4096(['--max-old-space-size=4096'],['--max-old-space-size=4096'],{node_args:'--max-old-space-size=2304'}));
 });
-test('promocao e filha direta da main revisada, sem mistura de historico DEV',()=>{
- op.releaseChain(op.BASE);assert.throws(()=>op.releaseChain('other'));
+test('correcao e filha direta do backend MAIN publicado, sem mistura de historico DEV',()=>{
+ op.releaseChain(op.RELEASE_PARENT);assert.throws(()=>op.releaseChain('other'));assert.throws(()=>op.releaseChain(op.BASE));
+});
+
+test('env auxiliar remove somente IPC/cluster do PM2 e conserva todas as configuracoes da aplicacao',()=>{
+ const initial={NODE_CHANNEL_FD:'3',NODE_CHANNEL_SERIALIZATION_MODE:'json',NODE_UNIQUE_ID:'1',
+  DB_PASSWORD:'VALOR_PRIVADO_QA',PORT:'8000',DEPLOYMENT_ENV:'production',NODE_OPTIONS:'--inspect',node_args:'--max-old-space-size=4096'};
+ const before=structuredClone(initial),clean=op.childEnv(initial);
+ for(const key of ['NODE_CHANNEL_FD','NODE_CHANNEL_SERIALIZATION_MODE','NODE_UNIQUE_ID'])assert(!Object.hasOwn(clean,key));
+ for(const key of ['DB_PASSWORD','PORT','DEPLOYMENT_ENV','NODE_OPTIONS','node_args'])assert.equal(clean[key],initial[key]);
+ assert.deepEqual(initial,before);assert.notEqual(clean,initial);
+});
+
+test('Node auxiliar real inicia com env saneado sem IPC invalido; nenhum banco ou arquivo de aplicacao',()=>{
+ const initial={PATH:process.env.PATH,...(process.env.SystemRoot?{SystemRoot:process.env.SystemRoot}:{}),NODE_CHANNEL_FD:'99999',NODE_CHANNEL_SERIALIZATION_MODE:'json',NODE_UNIQUE_ID:'7',QA_MARKER:'AUXILIAR_OK'};
+ const r=cp.spawnSync(process.execPath,['-e',"process.stdout.write(process.env.QA_MARKER);"],{env:op.childEnv(initial),encoding:'utf8',timeout:5000,stdio:['ignore','pipe','pipe']});
+ assert.equal(r.error,undefined);assert.equal(r.status,0);assert.equal(r.stdout,'AUXILIAR_OK');assert.equal(initial.NODE_CHANNEL_FD,'99999');
+});
+
+test('chamadas REAIS de preflight e schema nao herdam IPC; leitura/snapshot continua bruta',()=>{
+ const vm=require('node:vm'),source=fs.readFileSync(__dirname+'/atualizar-prod-rh-privacidade-20261028.cjs','utf8');
+ const daemon='/opt/fluxy-node24-pm2/node-v24.22.1-linux-x64/bin/node',node='/home/ubuntu/fluxy-node24-prod/node-v24.22.1-linux-x64/bin/node';
+ const envText='NODE_CHANNEL_FD=3\0NODE_CHANNEL_SERIALIZATION_MODE=json\0NODE_UNIQUE_ID=1\0DB_PASSWORD=PRIVADO_QA\0PORT=8000\0node_args=--max-old-space-size=4096\0';
+ const children=[];const sandbox={module:{exports:{}},process:{argv:['node','qa'],env:{CONFIRM_PROD_BACKUP:'SIM',CONFIRM_PROD_BACKUP_TIMER:'SIM',CONFIRM_PROD_MAINTENANCE:'SIM',CONFIRM_RH_PRIVACIDADE_PROD_SCHEMA:'SIM'}},Buffer,console,require:name=>{
+  if(name==='node:fs')return{readFileSync:p=>p.endsWith('/pm2.pid')?'42':p==='/proc/50/environ'?envText:(()=>{throw Error('FS_FORA_FIXTURE');})(),readlinkSync:()=>daemon};
+  if(name==='node:child_process')return{spawnSync:(bin,args,options)=>{
+   if(bin===daemon)return{status:0,stdout:JSON.stringify([{name:'backend-solicitacoes',pid:50}])};
+   assert.equal(bin,node);children.push({args:Array.from(args),env:options.env});
+   for(const key of ['NODE_CHANNEL_FD','NODE_CHANNEL_SERIALIZATION_MODE','NODE_UNIQUE_ID'])assert(!Object.hasOwn(options.env,key));
+   assert.equal(options.env.DB_PASSWORD,'PRIVADO_QA');assert.equal(options.env.node_args,'--max-old-space-size=4096');
+   if(args[0]==='-e')return{status:0,stdout:''};
+   return{status:0,stdout:JSON.stringify({outcome:'RH_PRIVACIDADE_SCHEMA_PROD',applied:true,structure_ok:true,pending:[],business_data_writes:0,financial_data_writes:0,external_calls:0})};
+  }};
+  if(name==='node:crypto')return require(name);if(name==='node:http')return{};throw Error('IMPORT_FORA_FIXTURE');
+ }};
+ vm.runInNewContext(source+'\nmodule.exports.preflightQa=preflightEnvironment;module.exports.schemaQa=schema;module.exports.procEnvQa=procEnv;',sandbox);
+ const app=sandbox.module.exports;assert.equal(app.procEnvQa(50).NODE_CHANNEL_FD,'3');
+ app.preflightQa();app.schemaQa('--aplicar');app.schemaQa('--conferir');assert.equal(children.length,3);
+ assert.equal(children[1].env.CONFIRM_RH_PRIVACIDADE_PROD_SCHEMA,'SIM');
+ assert.equal(app.procEnvQa(50).NODE_CHANNEL_FD,'3','Nao alterar ambiente lido do processo real');
+});
+
+test('falhas de criacao/sinal possuem codigo sanitizado sem erro, args ou stderr bruto',()=>{
+ const secret='SEGREDO_QA_NAO_IMPRIMIR';
+ assert.equal(op.spawnFailure({error:{code:'E2BIG',message:secret}}),'SUBPROCESSO_E2BIG');
+ assert.equal(op.spawnFailure({status:null,signal:'SIGABRT',stderr:secret}),'SUBPROCESSO_SIGABRT');
+ assert.equal(op.spawnFailure({status:1,stderr:secret}),'COMANDO_EXIT_1');
+ assert.equal(op.spawnFailure({error:{code:secret,message:secret},signal:secret}),'COMANDO_FALHOU');
 });
 test('heap4096 deve estar configurado e presente no processo real, sem conflitos',()=>{
  op.heap4096(['--max-old-space-size=4096'],['--max-old-space-size=4096','script.js'],{});

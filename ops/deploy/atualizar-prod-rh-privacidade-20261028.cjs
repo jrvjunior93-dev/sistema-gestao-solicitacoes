@@ -4,7 +4,7 @@
 const fs=require('node:fs'),cp=require('node:child_process'),crypto=require('node:crypto'),http=require('node:http');
 const ROOT='/home/ubuntu/sistema-gestao-solicitacoes-main',BACKEND=ROOT+'/backend';
 const BASE='2d6af625aff47f1592ae52d2448b9dc86a3c9c7e';
-const RELEASE_PARENT=BASE;
+const RELEASE_PARENT='dea03adf61bdf8f188ef0b29fd2e1e4d0a0a4a34';
 const STARTING_HEADS=[BASE,'ece109c93f62268bb3f4108d658e9a817bff80f5','ceaf8da7d69a933bd033fb623642d1e6baff1926'];
 const COMPAT=['backend/src/validators/operationalValidators.js','backend/scripts/validarSolicitacoesCompraPaginacao.js'];
 const MIGRATION='202610280001_rh_privacidade_obra.js';
@@ -16,7 +16,7 @@ const MANIFEST='ops/deploy/rh-privacidade-prod-20261028.manifest.json';
 const SELF='ops/deploy/atualizar-prod-rh-privacidade-20261028.cjs';
 const TEST='ops/deploy/atualizar-prod-rh-privacidade-20261028.test.cjs';
 const FILES=["backend/migrations/202610280001_rh_privacidade_obra.js", "backend/scripts/validarRhColaboradoresPlanilha.js", "backend/scripts/validarRhConsultaSalario.js", "backend/scripts/validarRhLotacaoCadastro.js", "backend/scripts/validarRhPagamentoEnvioParcial.js", "backend/scripts/validarRhPagamentoSolicitacao.js", "backend/scripts/validarRhPessoalFluxo.js", "backend/scripts/validarRhPrivacidadeObra.js", "backend/src/controllers/RhColaboradorObraController.js", "backend/src/middlewares/rhPrivacidadeObra.js", "backend/src/models/RhColaborador.js", "backend/src/models/RhDocumento.js", "backend/src/routes.js", "backend/src/services/rhColaboradorObraService.js", "backend/src/services/rhPagamentoSolicitacaoDomain.js", "backend/src/services/rhPagamentoSolicitacaoService.js", "backend/src/services/rhPrivacidadeObraDomain.js", "backend/src/services/rhService.js", "backend/src/services/rhTransferenciaService.js", "backend/src/validators/rhValidators.js", "backend/scripts/rhPrivacidadeObraProdSchema.js", "backend/scripts/validarRhPrivacidadeObraProdSchema.js", "backend/src/validators/operationalValidators.js", "backend/scripts/validarSolicitacoesCompraPaginacao.js"];
-const EXTRA=["ops/deploy/atualizar-prod-rh-privacidade-20261028.cjs", "ops/deploy/atualizar-prod-rh-privacidade-20261028.test.cjs", "ops/deploy/README-rh-privacidade-prod-20261028.md", "docs/handoffs/2026-10-28-promocao-rh-privacidade-main.md", "docs/workspace/OWNERSHIP_ATIVO.md", "docs/modulos/rh-dp/README.md"];
+const EXTRA=["ops/deploy/atualizar-prod-rh-privacidade-20261028.cjs", "ops/deploy/atualizar-prod-rh-privacidade-20261028.test.cjs", "ops/deploy/README-rh-privacidade-prod-20261028.md", "docs/handoffs/2026-10-28-promocao-rh-privacidade-main.md", "docs/workspace/OWNERSHIP_ATIVO.md", "docs/modulos/rh-dp/README.md", "docs/handoffs/2026-10-28-diagnostico-preparacao-rh-prod.md", "docs/handoffs/2026-10-28-rh-preflight-processo-filho-prod.md"];
 const QA=["validarRhPrivacidadeObra.js", "validarRhPrivacidadeObraProdSchema.js", "validarRhPagamentoSolicitacao.js", "validarRhConsultaSalario.js", "validarRhColaboradoresPlanilha.js", "validarRhColaboradorContatos.js", "validarRhPagamentoEnvioParcial.js", "validarRhLotacaoCadastro.js", "validarEscopoRhDpUsuarioObra.js", "validarColaboradoresLocaisEscopos.js", "validarRhPagamentoGerencial.js", "validarSolicitacoesCompraPaginacao.js", "validarComprasCarregamentoSemProduto.js", "validarCompraCotacaoEnvio.js", "validarFilaBaixaComposta.js", "validarAnaliseProprietario.js", "auditarPermissoesGranulares.js"];
 const PRIVATE='/home/ubuntu/.config/fluxy-nsdocs-prod',SOURCE='8e0a4179-506a-4670-88a2-d9079728e263',COMPLEMENT='c456781c-4393-468b-858f-dbf220d8f215';
 const CLEAN={PATH:'/usr/sbin:/usr/bin:/sbin:/bin',HOME:'/home/ubuntu',USER:'ubuntu',LOGNAME:'ubuntu',PM2_HOME:'/home/ubuntu/.pm2',LANG:'C'};
@@ -24,7 +24,14 @@ const check=(ok,code)=>{if(!ok)throw Error('RH_PRIV_PROD_'+code);};
 const canonical=v=>Array.isArray(v)?'['+v.map(canonical).join(',')+']':v&&typeof v==='object'?'{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+canonical(v[k])).join(',')+'}':JSON.stringify(v);
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
 function run(bin,args,options={}){const r=cp.spawnSync(bin,args,{cwd:ROOT,env:CLEAN,encoding:'utf8',timeout:30000,maxBuffer:16*1024*1024,stdio:['ignore','pipe','pipe'],...options});
- if(r.error||r.status!==0){const safe=String(r.stderr||'').split(/\r?\n/).find(v=>/^RH_PRIV_PROD_[A-Z0-9_]+$/.test(v));if(safe)throw Error(safe);check(false,'COMANDO_FALHOU');}return Buffer.isBuffer(r.stdout)?r.stdout:r.stdout.trim();}
+ if(r.error||r.status!==0){const safe=String(r.stderr||'').split(/\r?\n/).find(v=>/^RH_PRIV_PROD_[A-Z0-9_]+$/.test(v));if(safe)throw Error(safe);check(false,spawnFailure(r));}return Buffer.isBuffer(r.stdout)?r.stdout:r.stdout.trim();}
+function spawnFailure(r){
+ const errors=['ENOENT','EACCES','EPERM','E2BIG','EAGAIN','ENOMEM','ENOBUFS','ETIMEDOUT','EINVAL'];
+ if(errors.includes(r.error?.code))return'SUBPROCESSO_'+r.error.code;
+ if(['SIGABRT','SIGKILL','SIGSEGV','SIGTERM','SIGBUS'].includes(r.signal))return'SUBPROCESSO_'+r.signal;
+ if(Number.isInteger(r.status)&&r.status>=0&&r.status<=255)return'COMANDO_EXIT_'+r.status;
+ return'COMANDO_FALHOU';
+}
 const git=args=>run('/usr/bin/git',['--no-pager','--no-optional-locks','-c','core.fsmonitor=false',...args]);
 function regular(file){const s=fs.lstatSync(file);check(s.isFile()&&!s.isSymbolicLink()&&s.nlink===1,'ARQUIVO_NAO_REGULAR');return s;}
 function privateStat(file,dir=false){const s=fs.lstatSync(file);check(!s.isSymbolicLink()&&s.uid===1000&&(s.mode&0o777)===(dir?0o700:0o600)&&(dir?s.isDirectory():s.isFile()&&s.nlink===1),'PRIVADO_INVALIDO');return s;}
@@ -33,6 +40,14 @@ function state(){privateStat(STATE,true);privateStat(STATE+'/estado.json');retur
 function save(s,phase){s.phase=phase;atomic(STATE+'/estado.json',JSON.stringify(s));}
 const upper=e=>Object.fromEntries(Object.entries(e||{}).filter(([k,v])=>/^[A-Z][A-Z0-9_]*$/.test(k)&&!k.startsWith('CONFIRM_')&&v!==undefined));
 function procEnv(pid){return Object.fromEntries(fs.readFileSync(`/proc/${pid}/environ`,'utf8').split('\0').filter(Boolean).map(s=>{const i=s.indexOf('=');return[s.slice(0,i),s.slice(i+1)];}));}
+function childEnv(initial){
+ // /proc conserva o ambiente inicial, inclusive os descritores IPC que o Node
+ // ja removeu de process.env no bootstrap. Um filho CLI nao herda esse canal.
+ // Copia independente: ambiente/snapshot do backend original nao sao alterados.
+ const result={...initial};
+ for(const key of ['NODE_CHANNEL_FD','NODE_CHANNEL_SERIALIZATION_MODE','NODE_UNIQUE_ID'])delete result[key];
+ return result;
+}
 function nodeArgs(value){if(Array.isArray(value))return value;if(typeof value==='string'&&value.trim().startsWith('[')){try{const v=JSON.parse(value);check(Array.isArray(v),'HEAP_INVALIDO');return v;}catch{check(false,'HEAP_INVALIDO');}}return String(value||'').trim().split(/\s+/).filter(Boolean);}
 function oldSpace(value){const args=nodeArgs(value);let result=null;
  for(let i=0;i<args.length;i++){const flag=args[i].replace(/_/g,'-');check(!/^--max-(?:old-space-size-percentage|heap-size)(?:=|$)/.test(flag),'HEAP_CONFLITANTE');
@@ -85,7 +100,7 @@ function inventory(m,names,read,oldRead){check(m.base===BASE&&m.release_parent==
  check(canonical([...names].sort())===canonical([...m.files.filter(f=>f.sha256!==f.old_sha256).map(f=>f.path),...EXTRA,MANIFEST].sort()),'ARQUIVOS_EXTRAS');
  for(const f of [...m.files,...m.extra])check(hash(read(f.path))===f.sha256,'HASH_DIVERGENTE');
  for(const f of m.files){const old=oldRead(f.path);check((old===null?null:hash(old))===f.old_sha256,'BASE_HASH_DIVERGENTE');}}
-function releaseChain(parent){check(parent===BASE,'BASE_DIVERGENTE');}
+function releaseChain(parent){check(parent===RELEASE_PARENT,'BASE_DIVERGENTE');}
 function verify(version){check(/^[a-f0-9]{40}$/.test(version||''),'SHA_INVALIDO');git(['fetch','origin','main']);git(['merge-base','--is-ancestor',version,'origin/main']);releaseChain(git(['rev-parse',version+'^']));
  const read=p=>{const bytes=blob(version,p);check(bytes!==null,'ARQUIVO_AUSENTE');return bytes;},m=JSON.parse(read(MANIFEST));
  inventory(m,git(['diff','--name-only',BASE,version]).split(/\r?\n/).filter(Boolean),read,p=>blob(BASE,p));
@@ -107,7 +122,7 @@ async function restart(s,allowStart=false){const now=protectedCheck(s,'one'),ini
  check(false,'BACKEND_NAO_ESTABILIZOU');}
 function schema(mode){
  const p=list().find(p=>p.name===NAME);check(p&&p.pid>1,'APP_AUSENTE');
- const env=procEnv(p.pid);
+ const env=childEnv(procEnv(p.pid));
  if(mode==='--aplicar')for(const k of ['CONFIRM_PROD_BACKUP','CONFIRM_PROD_BACKUP_TIMER','CONFIRM_PROD_MAINTENANCE','CONFIRM_RH_PRIVACIDADE_PROD_SCHEMA'])env[k]=process.env[k];
  const out=run(NODE,['scripts/rhPrivacidadeObraProdSchema.js',mode],{cwd:BACKEND,env,timeout:120000});
  let result;try{result=JSON.parse(out.split(/\r?\n/).at(-1));}catch{check(false,'SCHEMA_RESPOSTA_INVALIDA');}
@@ -121,7 +136,7 @@ function startingHead(head,changes){
 function preflightEnvironment(){
  const p=list().find(p=>p.name===NAME);check(p&&p.pid>1,'APP_AUSENTE');
  const code="require('dotenv').config({quiet:true,override:false});const {validateRequiredEnv}=require('./src/config/env');validateRequiredEnv();require('./src/modules/fiscal/services/nsdocsHistorical/manual/runtime').assertProdProcess();";
- run(NODE,['-e',code],{cwd:BACKEND,env:procEnv(p.pid)});
+ run(NODE,['-e',code],{cwd:BACKEND,env:childEnv(procEnv(p.pid))});
 }
 async function finish(s,io){
  if(s.phase==='arquivos_prontos'){await io.qa();const baseline=io.baseline();s.protected=baseline;io.save(s,'schema_pendente');}
@@ -153,5 +168,5 @@ async function main(action,version){check(['preparar','aplicar','conferir'].incl
   check(git(['rev-parse','HEAD'])===s.version&&!git(['status','--porcelain','--untracked-files=no']),'HEAD_OU_TRACKED_DIVERGENTE');sourceCheck(s);
   await finish(s,{qa,migrate:()=>schema('--aplicar'),baseline:()=>protectedCheck(s,'refresh'),save,restart:allowStart=>restart(s,allowStart),ready:async()=>{sourceCheck(s);protectedCheck(s,'one');check(await health(),'HEALTH_FALHOU');schema('--conferir');}});report(s);
  });}
-module.exports={main,BASE,RELEASE_PARENT,releaseChain,STARTING_HEADS,FILES,EXTRA,MANIFEST,SELF,TEST,QA,COMPAT,MIGRATION,SCHEMA,startingHead,canonical,hash,inventory,oldSpace,heap4096,automaticOff,same,confirmations,restartNeeded,finish};
+module.exports={main,BASE,RELEASE_PARENT,releaseChain,STARTING_HEADS,FILES,EXTRA,MANIFEST,SELF,TEST,QA,COMPAT,MIGRATION,SCHEMA,startingHead,childEnv,spawnFailure,canonical,hash,inventory,oldSpace,heap4096,automaticOff,same,confirmations,restartNeeded,finish};
 if(require.main===module||process.argv[1]==='-')main(process.argv[2],process.argv[3]).catch(e=>{console.error(/^RH_PRIV_PROD_[A-Z0-9_]+$/.test(e.message||'')?e.message:'RH_PRIV_PROD_INTERROMPIDO_SEM_SEGREDOS');console.error('Nao repita reinicios nem remova estado ou locks. Envie somente esta saida.');process.exitCode=1;});
