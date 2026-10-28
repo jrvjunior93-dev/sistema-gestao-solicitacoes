@@ -1,0 +1,137 @@
+{
+  "base": "d6e3cc1e9b2028f746ad75a2a0fbf4981bc69722",
+  "release_parent": "d6e3cc1e9b2028f746ad75a2a0fbf4981bc69722",
+  "runtime_files": 9,
+  "business_data_writes": 0,
+  "migration": "202610270010_compras_precisao_unitarios.js",
+  "heap_mib": 4096,
+  "files": [
+    {
+      "path": "backend/migrations/202610270010_compras_precisao_unitarios.js",
+      "sha256": "e2a8736f6b90786f45b791ec5d57f44ecdfbdf9343bb026c57def8bb3abe46b3",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/package.json",
+      "sha256": "e286452c174314d6614723da6f0f2430fdab1cc00d36f075fb46850be9fec6df",
+      "old_sha256": "6dec399c5d185fb55330e1fefc0aa2666c33cdb8ea4846924362941ffbe8621a"
+    },
+    {
+      "path": "backend/scripts/gerarDecimalComprasFrontend.cjs",
+      "sha256": "c7a425f6d7bb030fe48187cc57edd5fcb81e426155e74aa9ec0c79d25b58386b",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarPrecisaoCompras.cjs",
+      "sha256": "3db4d72f1c3116b0fcada88fec97e7d4d0da8d6af42d19973c39a038370f9f02",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarPedidoReabertura.js",
+      "sha256": "4e9cd9a32c9d45fdc5bf1ca8771f5d27a0dafb4dee4291c5f5ba3fd09e64ef4a",
+      "old_sha256": "e26010b385a95b665696170fcd781edae3f000818002c4b7807423cf41aa4a27"
+    },
+    {
+      "path": "backend/scripts/validarCompraCotacaoEnvio.js",
+      "sha256": "25b3c4dd0e980604d7d739caa9baa2934b8c3520cc62c28eaf162556664f7481",
+      "old_sha256": "4a9cf0b832bf1ba03d53d34eb015812d9124ab2750b349b5c9dd44063ff848a7"
+    },
+    {
+      "path": "backend/src/controllers/CotacaoFornecedorController.js",
+      "sha256": "4da6d2fecee0645a57bb6029ba6569df942d28d3e4943d2975ce5d621fdb269a",
+      "old_sha256": "ba66ab57a906c2a1b8f411637e02be0144073d00fb10af019aa1feb8cbb983f2"
+    },
+    {
+      "path": "backend/src/models/PedidoCompraItem.js",
+      "sha256": "abef222f6eb5de0af69f530e03721256a9cf5a2fb64ae68b73cad606e0f3ce2c",
+      "old_sha256": "c990d0a77bba73385a8d107e05210bc88047400aac5d1fae52119af589b79b3b"
+    },
+    {
+      "path": "backend/src/models/SolicitacaoCompraAlocacao.js",
+      "sha256": "53e0b158700839499a1ece69bda67b0f955d5d290ed3e2cc41fe3a69a1b8f481",
+      "old_sha256": "3d97f1a97d3a1982f3ba279bf2797b6b46bf282f3ffa92ef29c91a35fbc0a48d"
+    },
+    {
+      "path": "backend/src/services/pedidoCompraPdf.js",
+      "sha256": "da27202c1cf8b3958ff84deb68f5477417f2e205bee117bd6b90ad30f2207bfc",
+      "old_sha256": "019d21a469cd6d9103c8bf7ab544c6b385811a51b8ad248a56d13e51c43b6158"
+    },
+    {
+      "path": "backend/src/services/pedidoCompraPdfHtmlTemplate.js",
+      "sha256": "cc905b7e4c17cb0c2d345efd581dbe6578b21f5883e874d11ddcc33a45118848",
+      "old_sha256": "a6cc95fd748a923c930e3421a9ac7b40296960b258891d37624e248654bd4bbc"
+    },
+    {
+      "path": "backend/src/services/pedidoCompraService.js",
+      "sha256": "04e26242634af85ebf1333c977e28bda23f4d75e468da3100c4471b04845fe94",
+      "old_sha256": "eacfef3db7be6201489256512e67939f0b7223d82f156f1647bcc97a615077b9"
+    },
+    {
+      "path": "backend/src/services/pedidoCompraTotaisService.js",
+      "sha256": "86a2c6102b3be466bce6df3e67ea6942cc944f94b125dcb1e62c9ff56cfd6b67",
+      "old_sha256": "9757763692546f49c70ff06b5c3a820cf9421244c73c14ca5dfacdf0d8f4638d"
+    },
+    {
+      "path": "backend/src/validators/operationalValidators.js",
+      "sha256": "2d9da953c0b01556dddcc19474d11de59fbb7c499770fbdd5be459bce9195e90",
+      "old_sha256": "364277ae7d5b981e990945131ef067f028be0d33ab8fb513f0c43cd4ce393ee4"
+    },
+    {
+      "path": "backend/src/utils/decimalCompras.js",
+      "sha256": "850f4837308bbe63b6be72f2bc5b48b515998ed77628132deb9631b1af278588",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/comprasPrecisaoProdSchema.cjs",
+      "sha256": "e8df476f5f9dab1f10d1e9d46697004a7e4a951cf592cbe2d67aa73759dbc776",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarComprasPrecisaoProdSchema.cjs",
+      "sha256": "d1053d806aac9b90753fc65583cc44ab963b8908fd926d72627f963be623ae40",
+      "old_sha256": null
+    }
+  ],
+  "extra": [
+    {
+      "path": "ops/deploy/precisao-compras-prod-20261028.cjs",
+      "sha256": "824fc4673a999bbfb64be991ab775536400bed04c72a8e6867692df160b9389a"
+    },
+    {
+      "path": "ops/deploy/precisao-compras-prod-20261028.test.cjs",
+      "sha256": "db9754cca4f429a80d7e4620dff5a156e95c89dd232160a3ab5be7ec1a9332be"
+    },
+    {
+      "path": "ops/deploy/README-precisao-compras-prod-20261028.md",
+      "sha256": "9611793d4a1dcc1679c50c17d9bc815373fdd4ff2dd914d5077d91b0ac7908df"
+    },
+    {
+      "path": "docs/handoffs/2026-10-28-promocao-precisao-compras-main.md",
+      "sha256": "33f438b583d906ccec5becaefcfba3bf99c4da129ea39080c01d9c5a032e32c9"
+    },
+    {
+      "path": "frontend/scripts/validarPedidoReabertura.mjs",
+      "sha256": "76e42cf16a60f515c1eec73a0be55306b35e6575f5c86e67ddb474e2fa3777d3"
+    },
+    {
+      "path": "frontend/src/modules/solicitacao-compra/pages/CotacaoFornecedorPublica.jsx",
+      "sha256": "48bbd1424b7a5c36d3be5130c6a0647145e0fba6ce09a53c004e8573bbb2f855"
+    },
+    {
+      "path": "frontend/src/modules/solicitacao-compra/pages/GerenciarCotacaoSolicitacao.jsx",
+      "sha256": "f0a69af261dd002a0c5df1b532b415b055c45d449d088065faa3c091f216866c"
+    },
+    {
+      "path": "frontend/src/modules/solicitacao-compra/pages/PedidoCompraDetalhe.jsx",
+      "sha256": "d8a031129e4c11edc992c033962216930068021e13dd64826738992ead1f4c44"
+    },
+    {
+      "path": "frontend/src/utils/comprasDecimalPreview.js",
+      "sha256": "2dfa67563a1afab620d3d9cdb69693d61ccfdc795fc013132dd269a40f79491f"
+    },
+    {
+      "path": "frontend/src/utils/decimalCompras.js",
+      "sha256": "57c553846a7fd89b00cafefa8fd4e3413a189be10c81a17790de86e4087523ef"
+    }
+  ]
+}

@@ -591,9 +591,10 @@ async function salvarRespostasCotacao(cotacaoFornecedor, itensResposta, options 
     if (!disponivelValidos.includes(statusDisponibilidade)) {
       throw new Error(`Status de disponibilidade invalido: ${statusDisponibilidade}`);
     }
-    const precoNormalizado = normalizarNumeroCotacao(itemResposta.preco);
+    const precoNormalizado = itemResposta.preco === '' || itemResposta.preco == null
+      ? null : require('../utils/decimalCompras').inputPrice(itemResposta.preco);
 
-    if (precoNormalizado !== null && !Number.isFinite(precoNormalizado)) {
+    if (precoNormalizado !== null && !Number.isFinite(Number(precoNormalizado))) {
       throw new Error(`Preco invalido informado para o item ${itemBase.nome}`);
     }
 

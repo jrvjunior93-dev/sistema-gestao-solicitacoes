@@ -1,4 +1,6 @@
 import DateInputBR from '../../../components/DateInputBR';
+import { inputPrice, lineMoney, merchandise, money, displayPrice, itemKey } from '../../../utils/decimalCompras';
+import { previewMercadorias } from '../../../utils/comprasDecimalPreview';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useFecharAoSair } from '../../../hooks/useFecharAoSair';
@@ -367,9 +369,9 @@ function obterQuantidadeBaseFinanceiraRespostaInterna(item, novaOfertaSaldo = fa
     : parseNumeroCompraDigitado(item?.quantidade_solicitada);
 }
 
-function calcularTotalRespostaInternaItem(item, incluirFrete = false, novaOfertaSaldo = false) {
+function calcularTotalRespostaInternaItem(item, incluirFrete = false, novaOfertaSaldo = false, valorMercadoria) {
   return (
-    parseNumeroCompra(item?.preco) * obterQuantidadeBaseFinanceiraRespostaInterna(item, novaOfertaSaldo)
+    (valorMercadoria ?? lineMoney(obterQuantidadeBaseFinanceiraRespostaInterna(item, novaOfertaSaldo), inputPrice(item?.preco)))
     + parseNumeroCompra(item?.ipi_valor)
     + parseNumeroCompra(item?.icms_valor)
     + parseNumeroCompra(item?.st_valor)
@@ -400,12 +402,11 @@ function ModalRespostaInternaCotacao({
       return atual.split(/[;,]/).some((parte) => parte.trim() === opcao.toLowerCase());
     })
   );
-  const valorMercadorias = form.itens.reduce(
-    (total, item) => total
-      + parseNumeroCompra(item.preco)
-      * obterQuantidadeBaseFinanceiraRespostaInterna(item, form.nova_oferta_saldo),
-    0
-  );
+  const mercadoriasProposta = previewMercadorias(form.itens.map((item, index) => ({
+    key: itemKey(item, index), quantity: obterQuantidadeBaseFinanceiraRespostaInterna(item, form.nova_oferta_saldo),
+    price: item.preco
+  })));
+  const valorMercadorias = mercadoriasProposta.total;
   const valorTributos = form.itens.reduce(
     (total, item) => total + parseNumeroCompra(item.ipi_valor) + parseNumeroCompra(item.icms_valor) + parseNumeroCompra(item.st_valor),
     0
@@ -415,10 +416,10 @@ function ModalRespostaInternaCotacao({
     : form.frete_modo === 'POR_ITEM'
       ? form.itens.reduce((total, item) => total + parseNumeroCompra(item.frete_valor), 0)
       : parseNumeroCompra(form.frete_valor);
-  const valorTotalResposta = Math.max(
+  const valorTotalResposta = money(Math.max(
     0,
     valorMercadorias + valorTributos + parseNumeroCompra(form.difal_valor) + freteAdicional - parseNumeroCompra(form.desconto_total)
-  );
+  ));
   const arquivosResposta = Array.isArray(cotacao.arquivos_resposta) && cotacao.arquivos_resposta.length
     ? cotacao.arquivos_resposta
     : (cotacao.arquivo_resposta_url || cotacao.pdf_resposta_url
@@ -731,7 +732,8 @@ function ModalRespostaInternaCotacao({
                     <span className="font-semibold">{fmtMoeda(calcularTotalRespostaInternaItem(
                       item,
                       form.frete_modo === 'POR_ITEM',
-                      form.nova_oferta_saldo
+                      form.nova_oferta_saldo,
+                      mercadoriasProposta.lines[item.__indice]
                     ))}</span>
                   )
                 },
@@ -840,6 +842,7 @@ function ModalRespostaInternaCotacao({
             Apagar um dos dois quebra um dos dois trabalhos.
           */}
           <div className="mt-3">
+            {mercadoriasProposta.errors.length > 0 && <p role="alert">Revise os valores antes de enviar: {mercadoriasProposta.errors[0]}</p>}
             <StatGrid colunas={3}>
               <StatTile label="Mercadorias" valor={fmtMoeda(valorMercadorias)} />
               <StatTile label="IPI + ICMS + ST" valor={fmtMoeda(valorTributos)} />
@@ -1244,11 +1247,9 @@ function ModalPedidoFinal({ fornecedor, itensGanhos, solicitacaoId, onRemanejame
   const [modoRemanejar, setModoRemanejar] = useState(false);
 
   const totalGanho = useMemo(() => {
-    return itensGanhos.reduce((acc, it) => {
-      const preco = Number(it.preco || 0);
-      const qtd = Number(it.quantidade || 0);
-      return acc + preco * qtd;
-    }, 0);
+    return merchandise(itensGanhos.map((it, index) => ({
+      key: it.resposta_item_id || index, quantity: it.quantidade || 0, price: it.preco || 0
+    }))).total;
   }, [itensGanhos]);
 
   const fornecedoresDestinoCotacao = useMemo(() => {
@@ -1456,7 +1457,7 @@ function ModalPedidoFinal({ fornecedor, itensGanhos, solicitacaoId, onRemanejame
                     id: 'preco',
                     titulo: 'Preço unit.',
                     tipo: 'valor',
-                    render: (it) => fmtMoeda(it.preco)
+                    render: (it) => displayPrice(it.preco || 0)
                   },
                   {
                     id: 'total',
@@ -1464,8 +1465,8 @@ function ModalPedidoFinal({ fornecedor, itensGanhos, solicitacaoId, onRemanejame
                     tipo: 'valor',
                     ordenavel: true,
                     ordemInicial: 'desc',
-                    valorOrdenacao: (it) => Number(it.quantidade) * Number(it.preco || 0),
-                    render: (it) => <span className="font-semibold">{fmtMoeda(Number(it.quantidade) * Number(it.preco || 0))}</span>
+                    valorOrdenacao: (it) => lineMoney(it.quantidade || 0, it.preco || 0),
+                    render: (it) => <span className="font-semibold">{fmtMoeda(lineMoney(it.quantidade || 0, it.preco || 0))}</span>
                   },
                   ...(modoRemanejar ? [] : [
                     {
@@ -2381,7 +2382,7 @@ function SecaoComparativo({
       >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <div className="font-semibold" style={{ color: 'var(--c-text)' }}>{resposta.preco ? fmtMoeda(resposta.preco) : '-'}</div>
+            <div className="font-semibold" style={{ color: 'var(--c-text)' }}>{resposta.preco ? displayPrice(resposta.preco) : '-'}</div>
             <div className="text-xs" style={{ color: 'var(--c-muted)' }}>
               Total cotado: {resposta.preco ? fmtMoeda(resposta.valor_total_cotado) : '-'}
             </div>
@@ -2690,7 +2691,7 @@ function SecaoComparativo({
                 </div>
                 {item.melhor_preco && (
                   <div className="cotacao-menor-preco rounded-lg border px-3 py-2 text-xs" style={estiloTom('success')}>
-                    Menor: <strong>{item.melhor_preco.fornecedor_nome}</strong> - {fmtMoeda(item.melhor_preco.preco)}/un
+                    Menor: <strong>{item.melhor_preco.fornecedor_nome}</strong> - {displayPrice(item.melhor_preco.preco)}/un
                   </div>
                 )}
               </div>
@@ -2723,7 +2724,7 @@ function SecaoComparativo({
                       tipo: 'valor',
                       ordenavel: true,
                       valorOrdenacao: (resp) => (resp.preco ? parseNumeroCompra(resp.preco) : null),
-                      render: (resp) => (resp.preco ? fmtMoeda(resp.preco) : '-')
+                      render: (resp) => (resp.preco ? displayPrice(resp.preco) : '-')
                     },
                     {
                       id: 'valor_total_cotado',

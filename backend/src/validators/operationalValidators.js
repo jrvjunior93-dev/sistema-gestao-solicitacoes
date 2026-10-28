@@ -6,6 +6,13 @@ const {
 const { onlyDigits, isValidCpfCnpj, isValidPixDocument } = require('../utils/cpfCnpj');
 const { PIX_TEXTO_MAX, parecePixCopiaCola } = require('../utils/pix');
 const { parseVigenciaContrato } = require('../services/contratoVigenciaEdicao');
+const { inputPrice } = require('../utils/decimalCompras');
+
+function parseCompraUnitPrice(value, fieldName) {
+  if (value == null || String(value).trim() === '') return undefined;
+  try { return inputPrice(value); }
+  catch (error) { throw new ValidationError(`${fieldName}: ${error.message}`); }
+}
 
 function isBlank(value) {
   return value == null || String(value).trim() === '';
@@ -765,11 +772,7 @@ function validateCompraCotacaoRespostaInternaBody(body = {}) {
       }),
       status_disponibilidade: statusDisponibilidade,
       disponivel: statusDisponibilidade !== 'NAO_TEM',
-      preco: parseDecimal(entry.preco, `Preco do item ${index + 1}`, {
-        min: 0,
-        scale: 10,
-        brazilianFormat: true
-      }),
+      preco: parseCompraUnitPrice(entry.preco, `Preco do item ${index + 1}`),
       prazo: parseOptionalText(entry.prazo, `Prazo do item ${index + 1}`, 120),
       data_chegada: parseDateOnly(entry.data_chegada, `Data de chegada do item ${index + 1}`),
       observacao: parseOptionalText(entry.observacao, `Observacao do item ${index + 1}`, 5000),
@@ -1755,10 +1758,10 @@ function validateCompraPedidoItemUpdateBody(body = {}) {
   return {
     quantidade_pedido: parseDecimal(body.quantidade_pedido, 'Quantidade do pedido', {
       min: 0,
-      scale: 2,
+      scale: 3,
       brazilianFormat: true
     }),
-    preco_unitario: parseDecimal(body.preco_unitario, 'Preco unitario', { min: 0 }),
+    preco_unitario: parseCompraUnitPrice(body.preco_unitario, 'Preco unitario'),
     observacoes: parseOptionalText(body.observacoes, 'Observacoes', 5000)
   };
 }

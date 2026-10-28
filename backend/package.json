@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
+    "test:compras-precisao": "node scripts/validarPrecisaoCompras.cjs",
     "test:download-anexo-medicao": "node scripts/validarDownloadAnexoMedicao.js && node scripts/validarRemocaoAnexosHistorico.js",
     "test:retirada-envios": "node scripts/validarRetiradaEnvios.js && node scripts/validarRetiradaEnviosHttp.js && node scripts/validarAnaliseProprietario.js && node scripts/validarPainelAutorizacoesSqlLocal.js",
     "test:medicao-reenvio": "node scripts/validarMedicaoVinculoSchema.js && node scripts/validarMedicaoRejeicaoFavorecido.js",

@@ -1,4 +1,5 @@
 const fs = require('fs');
+const { displayPrice } = require('../utils/decimalCompras');
 const path = require('path');
 const { resolverCondicaoPagamentoPedido } = require('./pedidoCompraDocumentoUtils');
 const { findPedidoCompraStatusConfig } = require('./pedidoCompraStatusConfig');
@@ -365,7 +366,8 @@ function drawItemRow(doc, item, index, y, columns) {
   const observacoes = item?.observacoes || item?.respostaItem?.observacao || '-';
   const itemHeight = doc.heightOfString(item?.descricao || '-', { width: columns[1].width - 8 });
   const obsHeight = doc.heightOfString(observacoes, { width: columns[9].width - 8 });
-  const rowHeight = Math.max(28, Math.ceil(Math.max(itemHeight, obsHeight) + 12));
+  const priceHeight = doc.heightOfString(displayPrice(item?.preco_unitario || 0), { width: columns[6].width - 8 });
+  const rowHeight = Math.max(28, Math.ceil(Math.max(itemHeight, obsHeight, priceHeight) + 12));
   const rowFill = index % 2 === 0 ? '#ffffff' : '#f8fafc';
 
   doc
@@ -384,7 +386,7 @@ function drawItemRow(doc, item, index, y, columns) {
   drawCellText(doc, formatQuantity(item?.quantidade_solicitada), columns[3], y, rowHeight, { align: 'center' });
   drawCellText(doc, formatQuantity(item?.quantidade_pedido), columns[4], y, rowHeight, { align: 'center' });
   drawCellText(doc, item?.unidade || '-', columns[5], y, rowHeight, { align: 'center' });
-  drawCellText(doc, formatMoney(item?.preco_unitario), columns[6], y, rowHeight, { align: 'right' });
+  drawCellText(doc, displayPrice(item?.preco_unitario || 0), columns[6], y, rowHeight, { align: 'right' });
   drawCellText(doc, formatMoney(item?.frete_rateado), columns[7], y, rowHeight, { align: 'right' });
   drawCellText(doc, formatMoney(Number(item?.valor_total || 0) + Number(item?.frete_rateado || 0)), columns[8], y, rowHeight, { align: 'right' });
   drawCellText(doc, observacoes, columns[9], y, rowHeight, { fontSize: 7.5 });
@@ -637,7 +639,8 @@ async function renderPedidoCompraPdf(doc, pedido) {
         Math.ceil(
           Math.max(
             doc.heightOfString(item?.descricao || '-', { width: columns[1].width - 8 }),
-            doc.heightOfString(observacoes, { width: columns[9].width - 8 })
+            doc.heightOfString(observacoes, { width: columns[9].width - 8 }),
+            doc.heightOfString(displayPrice(item?.preco_unitario || 0), { width: columns[6].width - 8 })
           ) + 12
         )
       );

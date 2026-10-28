@@ -136,7 +136,8 @@ function validarBaseFinanceiraDaCotacao() {
     'utf8'
   );
   assert(
-    publicPageSource.includes('numeroCotacao(item?.preco) * numeroCotacao(item?.quantidade)'),
+    publicPageSource.includes('lineMoney(numeroCotacao(item?.quantidade), inputPrice(item?.preco))')
+      && publicPageSource.includes('quantity: numeroCotacao(item.quantidade), price: item.preco'),
     'Cotacao publica deve calcular mercadorias pela quantidade solicitada.'
   );
   assert(

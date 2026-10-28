@@ -1,4 +1,5 @@
 const { Op, fn, col } = require('sequelize');
+const decimalCompras = require('../utils/decimalCompras');
 const {
   FornecedorCompra,
   Historico,
@@ -74,7 +75,7 @@ function asNumber(value) {
 }
 
 function roundMoney(value) {
-  return Number(asNumber(value).toFixed(2));
+  return decimalCompras.money(value);
 }
 
 function roundQty(value) {
@@ -313,7 +314,7 @@ async function buscarUltimosPrecosPorInsumo(insumoIds, obraIdsEscopo = null, sol
       continue;
     }
 
-    mapaPrecos.set(insumoId, roundMoney(resposta.preco));
+    mapaPrecos.set(insumoId, decimalCompras.unitPrice(resposta.preco));
 
     if (mapaPrecos.size >= ids.length) {
       break;
@@ -539,9 +540,9 @@ async function recalcularPedidoPorId(pedidoId, transaction) {
     });
   }
 
-  const valoresBrutos = itensAtivos.map((item) =>
-    roundMoney(asNumber(item.quantidade_pedido) * asNumber(item.preco_unitario))
-  );
+  const valoresBrutos = decimalCompras.merchandise(itensAtivos.map((item) => ({
+    key: decimalCompras.itemKey(item), quantity: item.quantidade_pedido, price: item.preco_unitario
+  }))).lines;
   const descontosRateados = calcularRateiosMonetarios(pedido.desconto_total, valoresBrutos);
   let valorMercadorias = 0;
   let valorTributos = 0;
@@ -931,8 +932,8 @@ async function adicionarRespostasAoPedido({
       await itemExistente.update(
         {
           quantidade_pedido: proximaQuantidade,
-          preco_unitario: roundMoney(resposta.preco),
-          valor_total: roundMoney(proximaQuantidade * asNumber(resposta.preco)),
+          preco_unitario: decimalCompras.unitPrice(resposta.preco),
+          valor_total: decimalCompras.lineMoney(proximaQuantidade, resposta.preco),
           quantidade_minima_item: resposta.quantidade_minima_item || null,
           observacoes: resposta.observacao || itemExistente.observacoes || null
         },
@@ -972,8 +973,8 @@ async function adicionarRespostasAoPedido({
         quantidade_solicitada: baseItem.quantidade_solicitada,
         quantidade_minima_item: resposta.quantidade_minima_item || null,
         quantidade_pedido: quantidadePedido,
-        preco_unitario: roundMoney(resposta.preco),
-        valor_total: roundMoney(quantidadePedido * asNumber(resposta.preco)),
+        preco_unitario: decimalCompras.unitPrice(resposta.preco),
+        valor_total: decimalCompras.lineMoney(quantidadePedido, resposta.preco),
         removido: false,
         origem: 'COTACAO',
         observacoes: resposta.observacao || null
@@ -1442,7 +1443,7 @@ function montarAlocacoesNormalizadas(solicitacao, vencedores = [], saldosAtuais 
       fornecedorItemKey,
       roundMoney((fretesRodadaPorFornecedorItem.get(fornecedorItemKey) || 0) + freteItemRateado)
     );
-    const valorMercadoria = roundMoney(quantidadeAlocada * asNumber(resposta.preco));
+    const valorMercadoria = decimalCompras.lineMoney(quantidadeAlocada, resposta.preco);
     alocacoes.push({
       resposta,
       vinculacaoFornecedor,
@@ -1450,7 +1451,7 @@ function montarAlocacoesNormalizadas(solicitacao, vencedores = [], saldosAtuais 
       itemKey,
       quantidade_alocada: quantidadeAlocada,
       quantidade_referencia: quantidadeBase,
-      preco_unitario: roundMoney(resposta.preco),
+      preco_unitario: decimalCompras.unitPrice(resposta.preco),
       valor_mercadoria: valorMercadoria,
       ipi_rateado: ipiRateado,
       icms_rateado: icmsRateado,
@@ -1506,6 +1507,17 @@ function montarAlocacoesNormalizadas(solicitacao, vencedores = [], saldosAtuais 
   }
 
   for (const [fornecedorId, grupo] of porFornecedor.entries()) {
+    const mercadorias = decimalCompras.merchandise(grupo.map((alocacao) => ({
+      key: decimalCompras.itemKey(alocacao.baseItem),
+      quantity: alocacao.quantidade_alocada,
+      price: alocacao.preco_unitario
+    })));
+    grupo.forEach((alocacao, index) => {
+      alocacao.valor_mercadoria = mercadorias.lines[index];
+      alocacao.valor_total = decimalCompras.sumMoney([
+        alocacao.valor_mercadoria, alocacao.ipi_rateado, alocacao.icms_rateado, alocacao.st_rateado
+      ]);
+    });
     const vinculacaoFornecedor = grupo[0]?.vinculacaoFornecedor;
     const respostaIdsGrupo = grupo.map((item) => Number(item.resposta?.id || 0)).filter(Boolean);
     const ofertaSaldoGrupo = grupo.every((item) => isOfertaSaldo(item.resposta));
@@ -1517,16 +1529,16 @@ function montarAlocacoesNormalizadas(solicitacao, vencedores = [], saldosAtuais 
       ? somarPorRespostas(difalAtivoPorResposta)
       : roundMoney(difalAtivoPorFornecedor.get(fornecedorId) || 0);
     const difalRestante = roundMoney(Math.max(0, difalCotacao - difalAnterior));
-    const baseCotada = roundMoney((vinculacaoFornecedor?.respostas || []).reduce((sum, resposta) => {
-      if (!resposta.disponivel || asNumber(resposta.preco) <= 0) return sum;
+    const baseCotada = decimalCompras.merchandise((vinculacaoFornecedor?.respostas || [])
+      .filter((resposta) => resposta.disponivel && asNumber(resposta.preco) > 0).map((resposta) => {
       const baseItem = obterBaseItemPorResposta(solicitacao, resposta);
       const quantidadeBaseFinanceira = obterQuantidadeBaseFinanceiraCotacao({
         quantidadeSolicitada: baseItem?.quantidade_solicitada,
         quantidadeDisponivel: resposta.quantidade_disponivel,
         escopoDisponibilidade: resposta.escopo_disponibilidade
       });
-      return sum + quantidadeBaseFinanceira * asNumber(resposta.preco);
-    }, 0));
+      return { key: resposta.id, quantity: quantidadeBaseFinanceira, price: resposta.preco };
+    })).total;
     const basesDifal = grupo.map((alocacao) => alocacao.valor_mercadoria);
     const difalDaRodada = baseCotada > 0
       ? roundMoney(Math.min(
@@ -1928,7 +1940,7 @@ async function gerarPedidosDosVencedores({
       if (itemPedido) {
         await itemPedido.update(
           {
-            valor_mercadoria: roundMoney(registro.quantidade_alocada * registro.preco_unitario),
+            valor_mercadoria: decimalCompras.lineMoney(registro.quantidade_alocada, registro.preco_unitario),
             ipi_valor: roundMoney(registro.ipi_rateado),
             icms_valor: roundMoney(registro.icms_rateado),
             st_valor: roundMoney(registro.st_rateado),
@@ -2968,7 +2980,7 @@ async function obterPedidoDetalhe(id, { obraIdsHistoricoPreco = null } = {}) {
         : roundPedidoQty(itemJson.quantidade_pedido),
       contexto_preco: {
         insumo_id: insumoId,
-        preco_cotado: itemJson.respostaItem?.preco != null ? roundMoney(itemJson.respostaItem.preco) : null,
+        preco_cotado: itemJson.respostaItem?.preco != null ? decimalCompras.unitPrice(itemJson.respostaItem.preco) : null,
         ultimo_preco_compra: insumoId ? (ultimoPrecoPorInsumo.get(insumoId) ?? null) : null
       }
     };
@@ -3028,14 +3040,14 @@ async function atualizarPedidoItem({ pedidoId, itemId, payload, usuarioId, trans
     ? roundPedidoQty(payload.quantidade_pedido)
     : roundPedidoQty(item.quantidade_pedido);
   const precoUnitario = payload.preco_unitario !== undefined
-    ? roundMoney(payload.preco_unitario)
-    : roundMoney(item.preco_unitario);
+    ? decimalCompras.unitPrice(payload.preco_unitario)
+    : decimalCompras.unitPrice(item.preco_unitario);
 
   await item.update(
     {
       quantidade_pedido: quantidadePedido,
       preco_unitario: precoUnitario,
-      valor_total: roundMoney(quantidadePedido * precoUnitario),
+      valor_total: decimalCompras.lineMoney(quantidadePedido, precoUnitario),
       observacoes: payload.observacoes !== undefined ? (payload.observacoes || null) : item.observacoes
     },
     { transaction }
@@ -4362,7 +4374,7 @@ async function remanejarPedidoItem({ pedidoId, itemId, respostaItemIdDestino, qu
     await itemOrigem.update(
       {
         quantidade_pedido: quantidadeRestante,
-        valor_total: roundMoney(quantidadeRestante * asNumber(itemOrigem.preco_unitario)),
+        valor_total: decimalCompras.lineMoney(quantidadeRestante, itemOrigem.preco_unitario),
         ipi_valor: roundMoney(Math.max(0, asNumber(itemOrigem.ipi_valor) - custosRemovidos.ipi_rateado)),
         icms_valor: roundMoney(Math.max(0, asNumber(itemOrigem.icms_valor) - custosRemovidos.icms_rateado)),
         st_valor: roundMoney(Math.max(0, asNumber(itemOrigem.st_valor) - custosRemovidos.st_rateado)),

@@ -31,6 +31,7 @@ const browser = await chromium.launch({ channel: 'chrome', headless: true });
 const page = await browser.newPage({ viewport: { width: 1366, height: 900 } });
 page.setDefaultTimeout(15000);
 const errors = [], unexpected = [], writes = [], reads = [];
+const testarPrecisao = process.argv.includes('--precisao');
 let status = 'FECHADO_FORNECEDOR', modo = 'ok', geo = false, falhaGet = false, liberar;
 const pedido = id => ({ id: Number(id), solicitacao_compra_id: 295, fornecedor_compra_id: 10,
   fornecedor: { id: 10, nome: 'Fornecedor QA' }, obra: { id: 1, nome: 'Obra QA' },
@@ -46,6 +47,14 @@ await page.route('**/*', async route => {
   const req = route.request(), url = new URL(req.url());
   const json = (body, code = 200) => route.fulfill({ status: code, contentType: 'application/json', body: JSON.stringify(body) });
   if (url.pathname.endsWith('/configuracoes/status-pedidos-compra')) return json({ statuses });
+  if (testarPrecisao && /\/compras\/pedidos\/\d+\/itens\/1$/.test(url.pathname) && req.method() === 'PATCH') {
+    const body=JSON.parse(req.postData());
+    writes.push({path:url.pathname,body});
+    const updated=pedido(271);
+    updated.itens[0].preco_unitario=body.preco_unitario;
+    updated.itens[0].quantidade_pedido=body.quantidade_pedido;
+    return json(updated);
+  }
   if (/\/compras\/pedidos\/\d+(\/status|\/reabrir-cotacao|\/reaberturas)?$/.test(url.pathname)) {
     const id = url.pathname.match(/pedidos\/(\d+)/)[1];
     if (req.method() === 'GET') {
@@ -165,6 +174,19 @@ try {
   assert(writes.at(-1).path.endsWith('/reaberturas'));
   assert(await page.getByRole('button', { name: 'Reabertura aguardando GEO' }).isDisabled());
   assert.equal(status, 'FECHADO_FORNECEDOR');
+  if (testarPrecisao) {
+    await abrir({atual:'ABERTO'});
+    await page.getByRole('button',{name:'Editar',exact:true}).first().click();
+    const modal=page.getByRole('dialog');
+    const price=modal.getByLabel('Preço unitário',{exact:true});
+    await price.fill('3,6751234567');
+    await price.blur();
+    assert.equal(await price.inputValue(),'3,6751234567');
+    await modal.getByRole('button',{name:'Salvar ajustes',exact:true}).click();
+    await page.getByText('Item atualizado com auditoria registrada.',{exact:true}).waitFor();
+    assert.equal(writes.at(-1).body.preco_unitario,'3.6751234567');
+    console.log('Precisao UI: blur e PATCH preservam10casas em string; API simulada.');
+  }
   assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);
   console.log('UI real pedido26 itens: reabrir/fechar, motivo/cancelar, duplo clique, entrega400/retry, recibo202, leitura falha/rede perdida reconciliadas so GET, ACL/GEO/cancelado e1366/390 aprovados. API isolada.');
 } finally { await page.close(); await browser.close(); await server.close(); }

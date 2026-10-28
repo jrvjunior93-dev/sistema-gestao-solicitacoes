@@ -1,4 +1,5 @@
 import DateInputBR from '../../../components/DateInputBR';
+import { inputPrice, editablePrice, displayPrice, lineMoney } from '../../../utils/decimalCompras';
 import { PIX_TIPOS_CHAVE, pixTipoLabel } from '../../../utils/pix';
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -111,6 +112,14 @@ function sanitizeMoneyInput(value) {
   return String(value ?? '').replace(/[^\d,.\sR$-]/g, '');
 }
 
+function formatUnitPriceInput(value) {
+  try { return editablePrice(inputPrice(value)); } catch { return value; }
+}
+
+function previewUnitPriceTotal(quantity, price) {
+  try { return lineMoney(quantity || 0, inputPrice(price)); } catch { return 0; }
+}
+
 function formatDate(value) {
   if (!value) return '-';
   const [year, month, day] = String(value).slice(0, 10).split('-');
@@ -172,7 +181,7 @@ function formatUnitPrice(value, unidade, fallback = '-') {
     return fallback;
   }
 
-  return `${formatMoney(parsed)}${unidade ? `/${unidade}` : ''}`;
+  return `${displayPrice(value)}${unidade ? `/${unidade}` : ''}`;
 }
 
 function calculateVariationPercent(currentValue, referenceValue) {
@@ -201,11 +210,15 @@ function formatVariationPercent(value, fallback = 'Sem historico') {
 
 function buildItemPriceContext(item, currentUnitPriceOverride = undefined) {
   const contexto = item?.contexto_preco || {};
-  const precoCotado = toNullableNumber(contexto.preco_cotado);
+  const parsePrice = value => {
+    if (value == null || value === '') return null;
+    try { return inputPrice(value); } catch { return null; }
+  };
+  const precoCotado = parsePrice(contexto.preco_cotado);
   const precoAtual = currentUnitPriceOverride !== undefined
-    ? toNullableNumber(currentUnitPriceOverride)
-    : toNullableNumber(item?.preco_unitario);
-  const ultimoPrecoCompra = toNullableNumber(contexto.ultimo_preco_compra);
+    ? parsePrice(currentUnitPriceOverride)
+    : parsePrice(item?.preco_unitario);
+  const ultimoPrecoCompra = parsePrice(contexto.ultimo_preco_compra);
 
   return {
     precoCotado,
@@ -578,7 +591,7 @@ export default function PedidoCompraDetalhe() {
   const conflitoFrete = modalFreteAberto && freteRevisao !== revisaoFretesPedido(pedido);
   const edicoes = Object.fromEntries((pedido?.itens || []).map(item => [item.id,
     rascunhosItens[item.id]?.campos || { quantidade_pedido: formatBrazilianQuantity(item.quantidade_pedido),
-      preco_unitario: formatMoneyInput(item.preco_unitario), observacoes: item.observacoes || '' }]));
+      preco_unitario: editablePrice(item.preco_unitario), observacoes: item.observacoes || '' }]));
   useWorkspaceWork(Boolean(Object.keys(rascunhosItens).length || comentarioPedido || modalFreteAberto
     || modalCancelamentoAberto || itensSelecionadosCancelamento.length || remanejoSelecionado || remanejoQuantidade),
     savingStatus || savingItemId || addingRespostaId || removingItemId || baixandoPdf
@@ -1176,7 +1189,7 @@ export default function PedidoCompraDetalhe() {
       const edicao = edicoes[itemId] || {};
       const payload = {
         ...edicao,
-        preco_unitario: parseBrazilianMoney(edicao.preco_unitario)
+        preco_unitario: inputPrice(edicao.preco_unitario)
       };
 
       setSavingItemId(itemId);
@@ -2208,7 +2221,7 @@ export default function PedidoCompraDetalhe() {
                 <div key={item.resposta_item_id} className="app-list-card">
                   <div className="font-medium">{item.descricao}</div>
                   <div className="mt-1 text-sm text-[var(--c-muted)]">
-                    {formatQuantityLabel(item.quantidade_solicitada, item.unidade)} - {formatMoney(item.preco_unitario)}
+                    {formatQuantityLabel(item.quantidade_solicitada, item.unidade)} - {displayPrice(item.preco_unitario || 0)}
                   </div>
                   <div className="mt-1 text-xs text-[var(--c-muted)]">
                     Minimo do item: {formatQuantityLabel(item.quantidade_minima_item, item.unidade)} - Prazo: {item.prazo || '-'}
@@ -2373,7 +2386,7 @@ export default function PedidoCompraDetalhe() {
                         }
                         onBlur={(event) =>
                           atualizarEdicaoItem(itemEditando.id, {
-                            preco_unitario: formatMoneyInput(event.target.value)
+                            preco_unitario: formatUnitPriceInput(event.target.value)
                           })
                         }
                       />
@@ -2382,7 +2395,7 @@ export default function PedidoCompraDetalhe() {
                     <CampoForm label="Valor recalculado">
                       <div className="input input-moeda flex items-center">
                         {formatMoney(
-                          parseBrazilianQuantity(edicaoItemAtual.quantidade_pedido) * (parseBrazilianMoney(edicaoItemAtual.preco_unitario) || 0)
+                          previewUnitPriceTotal(parseBrazilianQuantity(edicaoItemAtual.quantidade_pedido), edicaoItemAtual.preco_unitario)
                         )}
                       </div>
                     </CampoForm>

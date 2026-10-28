@@ -1,4 +1,5 @@
 const { Op } = require('sequelize');
+const { money } = require('../utils/decimalCompras');
 const {
   PedidoCompra,
   PedidoCompraFrete,
@@ -14,7 +15,7 @@ function asNumber(value) {
 }
 
 function roundMoney(value) {
-  return Number(asNumber(value).toFixed(2));
+  return money(value);
 }
 
 function normalizeToken(value) {
