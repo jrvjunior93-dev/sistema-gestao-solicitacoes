@@ -15,6 +15,7 @@ export function valoresDaLinha(l, concluido = false) {
   const diaria = l.forma_calculo_gerencial === 'DIARIA';
   const percentual = diaria ? 100 : l.parcela_50 ? 50
     : Boolean(l.parcela_40) === Boolean(l.parcela_60) ? 100 : l.parcela_40 ? 40 : 60;
+  if (l.salario_oculto) return { percentual, bruto: null, liquido: null };
   // Pagamentos ja gerados conservam o snapshot aprovado, mesmo apos uma mudanca de regra.
   if (concluido && l.bruto != null && l.liquido != null
     && Number.isFinite(Number(l.bruto)) && Number.isFinite(Number(l.liquido))) {
@@ -264,7 +265,7 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
       const selecionados = result.solicitacao.dados_json.linhas.filter(l => l.selecionado && linhaEditavel(l));
       if (!selecionados.length) throw new Error('Selecione os colaboradores do pagamento.');
       const { ok } = await confirmar({ titulo: dp ? 'Enviar pagamentos para a fila' : 'Solicitar pagamento ao DP',
-        mensagem: `${selecionados.length} colaborador(es) · ${moeda(selecionados.reduce((s, l) => s + valoresDaLinha(l).liquido, 0))}${result.avisos?.length ? '\nHá pagamentos anteriores nesta competência. Esta solicitação será independente.' : ''}`,
+        mensagem: `${selecionados.length} colaborador(es) · ${selecionados.some(l => l.salario_oculto) ? 'Valor restrito ao DP' : moeda(selecionados.reduce((s, l) => s + valoresDaLinha(l).liquido, 0))}${result.avisos?.length ? '\nHá pagamentos anteriores nesta competência. Esta solicitação será independente.' : ''}`,
         rotuloConfirmar: dp ? 'Enviar para a fila' : 'Solicitar pagamento' });
       if (!ok) return;
       const enviado = await pagamentoRhSolicitacao(`/${result.solicitacao.id}/enviar`, { method: 'POST', data: { revisao: result.solicitacao.dados_json.revisao } });
@@ -403,7 +404,7 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
         </div>
         {linhas.some(l => l.cadastro_atualizado && linhaEditavel(l)) && <p role="status" className="app-note">Salário/diária e dados de cadastro atualizados. Confira novamente as linhas alteradas. Pagamentos já enviados não foram modificados.</p>}
         {resposta.avisos?.length > 0 && <details className="rh-pagamento-aviso"><summary>Pagamentos anteriores nesta competência ({resposta.avisos.length})</summary>
-          <ul>{resposta.avisos.map(a => <li key={a.id}>{a.codigo} · {a.status} · {moeda(a.valor_original)}</li>)}</ul></details>}
+          <ul>{resposta.avisos.map(a => <li key={a.id}>{a.codigo} · {a.status} · {a.salario_oculto ? 'Valor restrito ao DP' : moeda(a.valor_original)}</li>)}</ul></details>}
         <fieldset disabled={ocupado || Boolean(editor)} className="rh-pagamento-table-wrap">
           <table className="rh-pagamento-tabela"><thead><tr>
             <th><input aria-label="Selecionar todos" type="checkbox" disabled={!editaveis.length} checked={editaveis.length > 0 && selecionados.length === editaveis.length} onChange={e => todos('selecionado', e.target.checked)} /></th>
@@ -428,7 +429,7 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
                   ? { reembolso: null, desconto_sem_reembolso: true } : {}) });
               }} />;
             return <tr key={l.colaborador_id} data-selecionado={l.selecionado} data-pagamento-estado={estado}>
-              <td>{check('selecionado', 'Selecionar')}</td><td><strong>{l.nome}</strong><small>{l.vale ? 'Pagamento de Vale' : diaria ? `${moeda(l.valor_diaria)} / dia` : `${moeda(l.salario_base)} · ${calculo.percentual}%`}</small>
+              <td>{check('selecionado', 'Selecionar')}</td><td><strong>{l.nome}</strong><small>{l.salario_oculto ? 'Salário restrito ao DP' : l.vale ? 'Pagamento de Vale' : diaria ? `${moeda(l.valor_diaria)} / dia` : `${moeda(l.salario_base)} · ${calculo.percentual}%`}</small>
                 {estado !== 'PENDENTE' && <small className="rh-pagamento-estado">{comBaixa ? 'Pagamento processado' : { ENVIADO: 'Enviado para pagamento', EM_EDICAO: 'Em edição pelo DP', CANCELADO: 'Cancelado' }[estado]}</small>}
                 {dp && resposta.pode_enviar_fila && !comBaixa && ['ENVIADO', 'EM_EDICAO'].includes(estado) && <div className="rh-pagamento-acoes">
                   {estado === 'ENVIADO' && <button type="button" className="btn btn-outline btn-sm" onClick={() => revisar(l, 'EDITAR')}>Editar e reenviar</button>}
@@ -440,11 +441,11 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
               <td>{check(dp ? 'conferido_dp' : 'conferido_obra', 'Conferido', !l.selecionado)}</td><td>{check('parcela_40', '40%', diaria)}</td><td>{check('parcela_50', '50%', diaria)}</td><td>{check('parcela_60', '60%', diaria)}</td>
               <td><input type="checkbox" aria-label={`100%: ${l.nome}`} disabled={diaria || bloqueada || l.vale} checked={!l.vale && !diaria && calculo.percentual === 100} onChange={() => linhaAlterar(l.colaborador_id, { parcela_40: false, parcela_50: false, parcela_60: false })} /></td>
               <td>{check('vale', 'Vale')}</td>
-              <td>{l.vale ? ajuste('valor_vale', 'Valor') : moeda(calculo.bruto)}</td><td>{!l.vale && ajuste('acrescimos', 'Acréscimos')}</td><td>{!l.vale && ajuste('descontos', 'Descontos')}{!l.vale && Number(l.descontos) > 0 && <button disabled={bloqueada} type="button" className="rh-pagamento-link" onClick={() => setEditor({ id: l.colaborador_id, tipo: 'reembolso', dados: {
+              <td>{l.vale ? ajuste('valor_vale', 'Valor') : l.salario_oculto ? 'Restrito ao DP' : moeda(calculo.bruto)}</td><td>{!l.vale && ajuste('acrescimos', 'Acréscimos')}</td><td>{!l.vale && ajuste('descontos', 'Descontos')}{!l.vale && Number(l.descontos) > 0 && <button disabled={bloqueada} type="button" className="rh-pagamento-link" onClick={() => setEditor({ id: l.colaborador_id, tipo: 'reembolso', dados: {
                 ...(l.reembolso || { modo_recebimento: 'PIX', responsavel_id: '', favorecido_nome: '', favorecido_documento: '' }),
                 valor: Number(l.reembolso?.valor ?? l.descontos)
               } })}>{l.reembolso ? 'Reembolso de vale' : 'Solicitar reembolso'}</button>}</td>
-              <td className={calculo.liquido < 0 ? 'text-red-700' : ''}><strong>{moeda(calculo.liquido)}</strong></td><td>{!l.vale && numero('dias', 'Dias', 31)}</td><td>{!l.vale && numero('faltas', 'Faltas', 31)}</td>
+              <td className={calculo.liquido < 0 ? 'text-red-700' : ''}><strong>{l.salario_oculto ? 'Restrito ao DP' : moeda(calculo.liquido)}</strong></td><td>{!l.vale && numero('dias', 'Dias', 31)}</td><td>{!l.vale && numero('faltas', 'Faltas', 31)}</td>
               <td><button disabled={bloqueada} type="button" className="btn btn-outline btn-sm" onClick={() => setEditor({ id: l.colaborador_id, tipo: 'conta', dados: contaPagamentoInputs(l) })}>{l.modo_recebimento === 'CONTA_SALARIO' ? 'Conta salário' : l.modo_recebimento === 'OUTRA_CONTA' ? 'Outra conta' : l.modo_recebimento === 'DINHEIRO' ? 'Dinheiro' : 'Pix'}</button>{l.modo_recebimento !== 'DINHEIRO' && <small className="rh-pagamento-dados" title={l.modo_recebimento === 'PIX' ? l.chave_pix : `${l.banco || '—'} · ${l.agencia || '—'} · ${l.conta || '—'}`}>{l.modo_recebimento === 'PIX' ? l.chave_pix : `Banco ${l.banco || '—'} · Ag. ${l.agencia || '—'} · Conta ${l.conta || '—'}`}</small>}</td>
               <td><input disabled={bloqueada} className="form-control" aria-label={`Observações: ${l.nome}`} value={l.observacoes || ''} maxLength={1000} onChange={e => linhaAlterar(l.colaborador_id, { observacoes: e.target.value })} /></td>
             </tr>;
@@ -455,8 +456,8 @@ export default function RhDpPagamentoModal({ local, locais = [], colaborador, co
           <ul>{linhasRemovidas.map(l => <li key={l.colaborador_id}>{l.nome} · {l.motivo_remocao}</li>)}</ul>
         </details>}
         {!concluido && reembolsos.length > 0 && <div className="rh-pagamento-reembolsos">{reembolsos.map(g => <details key={g.chave}><summary>Reembolso de vale · {g.nome} · {moeda(g.valor)} · {g.origens.length} colaborador(es)</summary><ul>{g.origens.map(o => <li key={o.colaborador_id}>{o.nome} · {moeda(o.valor)}</li>)}</ul></details>)}</div>}
-        {form.titulos?.length > 0 && <details className="rh-pagamento-titulos" open={concluido}><summary>Títulos desta solicitação ({form.titulos.length})</summary><ul>{form.titulos.map(t => <li key={t.id}>{t.codigo} · {t.tipo === 'REEMBOLSO' ? 'Reembolso' : t.natureza === 'VALE' ? 'Pagamento de Vale' : 'Salário'} · {moeda(t.valor)}{t.cancelado ? ' · Cancelado' : ''}{t.origens?.length > 0 && <details><summary>Ver colaboradores do reembolso</summary><ul>{t.origens.map(o => <li key={o.colaborador_id}>{o.nome} · {moeda(o.valor)}</li>)}</ul></details>}</li>)}</ul></details>}
-        <div className="rh-pagamento-rodape"><span role="status">{salvando ? 'Salvando…' : ocupado ? 'Processando…' : sujo ? 'Alterações pendentes' : 'Salvo'} · {resumo.length} {resumoEnviado ? 'enviado(s)' : 'selecionado(s)'} · <strong>{moeda(resumo.reduce((s, l) => s + valoresDaLinha(l, estadoLinha(l) === 'ENVIADO').liquido, 0))}</strong></span>
+        {form.titulos?.length > 0 && <details className="rh-pagamento-titulos" open={concluido}><summary>Títulos desta solicitação ({form.titulos.length})</summary><ul>{form.titulos.map(t => <li key={t.id}>{t.codigo} · {t.tipo === 'REEMBOLSO' ? 'Reembolso' : t.natureza === 'VALE' ? 'Pagamento de Vale' : 'Salário'} · {t.salario_oculto ? 'Valor restrito ao DP' : moeda(t.valor)}{t.cancelado ? ' · Cancelado' : ''}{t.origens?.length > 0 && <details><summary>Ver colaboradores do reembolso</summary><ul>{t.origens.map(o => <li key={o.colaborador_id}>{o.nome} · {o.salario_oculto ? 'Valor restrito ao DP' : moeda(o.valor)}</li>)}</ul></details>}</li>)}</ul></details>}
+        <div className="rh-pagamento-rodape"><span role="status">{salvando ? 'Salvando…' : ocupado ? 'Processando…' : sujo ? 'Alterações pendentes' : 'Salvo'} · {resumo.length} {resumoEnviado ? 'enviado(s)' : 'selecionado(s)'} · <strong>{resumo.some(l => l.salario_oculto) ? 'Valor restrito ao DP' : moeda(resumo.reduce((s, l) => s + valoresDaLinha(l, estadoLinha(l) === 'ENVIADO').liquido, 0))}</strong></span>
           {editavel && editaveis.length > 0 && <div>{resposta.pode_excluir_rascunho && <button type="button" className="btn btn-outline btn-sm" disabled={ocupado} onClick={excluirRascunho}>Excluir rascunho</button>}<button type="button" className="btn btn-outline btn-sm" disabled={ocupado || (!sujo && Boolean(resposta.solicitacao.id))} onClick={() => operacao(() => salvar(true, true))}>Salvar</button><button type="button" className="btn btn-primary btn-sm" disabled={ocupado || !selecionados.length || (dp && !resposta.pode_enviar_fila)} onClick={enviar}>{dp ? 'Enviar para a fila' : 'Solicitar pagamento'}</button></div>}
         </div>
         {!resposta.solicitacao.id && <p className="form-hint">Prévia sem rascunho salvo. Salvar ou marcar como Conferido cria o rascunho; fechar esta prévia não grava uma solicitação.</p>}
