@@ -50,7 +50,7 @@ module.exports = (sequelize, DataTypes) => {
         defaultValue: 0
       },
       preco_unitario: {
-        type: DataTypes.DECIMAL(14, 2),
+        type: DataTypes.DECIMAL(22, 10),
         allowNull: false,
         defaultValue: 0
       },

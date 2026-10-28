@@ -1,4 +1,5 @@
 const fs = require('fs');
+const { displayPrice } = require('../utils/decimalCompras');
 const path = require('path');
 const { resolverCondicaoPagamentoPedido } = require('./pedidoCompraDocumentoUtils');
 const { getRuntimeInstallationConfig } = require('./runtimeConfig');
@@ -267,7 +268,7 @@ function buildViewModel(pedido, options = {}) {
       descricao: withFallback(item?.descricao),
       quantidade: formatQuantity(item?.quantidade_pedido),
       unidade: withFallback(item?.unidade),
-      precoUnitario: formatMoneyBr(item?.preco_unitario),
+      precoUnitario: displayPrice(item?.preco_unitario || 0),
       frete: formatMoneyBr(item?.frete_rateado),
       total: formatMoneyBr(Number(item?.valor_total || 0) + Number(item?.frete_rateado || 0)),
       observacao: withFallback(item?.observacoes || item?.respostaItem?.observacao)

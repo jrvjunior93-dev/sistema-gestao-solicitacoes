@@ -22,6 +22,8 @@ import {
 } from '../../../services/compras';
 import { getCpfCnpjError, maskCpfCnpj, onlyDigits } from '../../../utils/formatters';
 import DateInputBR from '../../../components/DateInputBR';
+import { inputPrice, lineMoney, money, displayPrice, itemKey } from '../../../utils/decimalCompras';
+import { previewMercadorias } from '../../../utils/comprasDecimalPreview';
 
 /*
   COTAÇÃO PÚBLICA DO FORNECEDOR — a única tela do sistema usada por alguém de
@@ -91,6 +93,9 @@ function sanitizarDecimalInput(valor, limiteDecimais = 2) {
 
 function formatarMoeda(valor, { casasDecimaisMaximas = 2, preservarEscala = false } = {}) {
   if (valor === '' || valor === null || valor === undefined) return '';
+  if (preservarEscala && casasDecimaisMaximas === 10) {
+    try { return displayPrice(inputPrice(valor)); } catch { return String(valor); }
+  }
   const num = parseFloat(String(valor).replace(',', '.'));
   if (isNaN(num)) return valor;
   const casas = preservarEscala
@@ -110,9 +115,9 @@ function numeroCotacao(valor) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function calcularTotalItemCotacao(item, incluirFrete = false) {
+function calcularTotalItemCotacao(item, incluirFrete = false, valorMercadoria) {
   return (
-    numeroCotacao(item?.preco) * Math.max(0, numeroCotacao(item?.quantidade_disponivel))
+    (valorMercadoria ?? lineMoney(Math.max(0, numeroCotacao(item?.quantidade_disponivel)), inputPrice(item?.preco)))
     + numeroCotacao(item?.ipi_valor)
     + numeroCotacao(item?.icms_valor)
     + numeroCotacao(item?.st_valor)
@@ -525,6 +530,7 @@ export default function CotacaoFornecedorPublica() {
   }
 
   function montarPayloadResposta({ finalizar = false } = {}) {
+    if (mercadoriasProposta.errors.length) throw new Error(mercadoriasProposta.errors[0]);
     const documentoErro = getCpfCnpjError(freteTransportadorCpfCnpj, {
       label: 'CPF/CNPJ do transportador'
     });
@@ -549,7 +555,7 @@ export default function CotacaoFornecedorPublica() {
         item_referencia_id: item.item_referencia_id,
         status_disponibilidade: statusEfetivo,
         disponivel,
-        preco: statusEfetivo === 'NAO_TEM' ? null : preco,
+        preco: statusEfetivo === 'NAO_TEM' ? null : inputPrice(item.preco),
         prazo: null,
         observacao: item.observacao,
         quantidade_minima_item: statusEfetivo === 'NAO_TEM' ? null : quantidadeMinima,
@@ -726,10 +732,10 @@ export default function CotacaoFornecedorPublica() {
   const itensDisponiveis = itens.filter(
     (item) => numeroCotacao(item.quantidade_disponivel) > 0 && numeroCotacao(item.preco) > 0
   ).length;
-  const valorMercadorias = itens.reduce(
-    (total, item) => total + numeroCotacao(item.preco) * Math.max(0, numeroCotacao(item.quantidade_disponivel)),
-    0
-  );
+  const mercadoriasProposta = previewMercadorias(itens.map((item, index) => ({
+    key: itemKey(item, index), quantity: Math.max(0, numeroCotacao(item.quantidade_disponivel)), price: item.preco
+  })));
+  const valorMercadorias = mercadoriasProposta.total;
   const valorTributos = itens.reduce(
     (total, item) => total + numeroCotacao(item.ipi_valor) + numeroCotacao(item.icms_valor) + numeroCotacao(item.st_valor),
     0
@@ -739,10 +745,10 @@ export default function CotacaoFornecedorPublica() {
     : (freteModo === 'POR_ITEM'
       ? itens.reduce((total, item) => total + numeroCotacao(item.frete_valor), 0)
       : numeroCotacao(freteValor));
-  const valorTotalProposta = Math.max(
+  const valorTotalProposta = money(Math.max(
     0,
     valorMercadorias + valorTributos + numeroCotacao(difalValor) + valorFreteAdicional - numeroCotacao(descontoTotal)
-  );
+  ));
 
   const acoesResposta = dados.somente_leitura ? null : (
     <>
@@ -1159,7 +1165,7 @@ export default function CotacaoFornecedorPublica() {
               tipo: 'valor',
               render: (item) => (
                 <span className="font-semibold valor-tabular" style={{ color: 'var(--c-text)' }}>
-                  {formatarMoeda(calcularTotalItemCotacao(item, freteModo === 'POR_ITEM'))}
+                  {formatarMoeda(calcularTotalItemCotacao(item, freteModo === 'POR_ITEM', mercadoriasProposta.lines[item.__indice]))}
                 </span>
               )
             },
@@ -1293,6 +1299,7 @@ export default function CotacaoFornecedorPublica() {
         titulo="Resumo da proposta"
         descricao="Conferência automática do que será enviado. Os valores acompanham o que você digita nos itens e nas condições comerciais."
       >
+        {mercadoriasProposta.errors.length > 0 && <p role="alert">Revise os valores antes de enviar: {mercadoriasProposta.errors[0]}</p>}
         <StatGrid colunas={3}>
           <StatTile label="Mercadorias" valor={formatarMoeda(valorMercadorias)} />
           <StatTile label="IPI + ICMS + ST" valor={formatarMoeda(valorTributos)} />

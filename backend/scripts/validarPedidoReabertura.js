@@ -80,6 +80,7 @@ function fixture(consultarTitulos = null) {
     } }
   };
   const module = { exports: {} };
+  deps['../utils/decimalCompras'] = require('../src/utils/decimalCompras');
   vm.runInNewContext(source + '\nmodule.exports.__qa = { carregarSolicitacaoPedidos, sincronizarStatusSolicitacaoCompraPorSaldo };',
     { module, require(id) { assert(Object.hasOwn(deps, id), id); return deps[id]; } });
   async function transacao(fn) {
