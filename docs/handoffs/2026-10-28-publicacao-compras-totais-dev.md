@@ -2,6 +2,22 @@
 
 ## Autorizacao, bases e sequencia
 
+Usuario enviou em28/10 a saida aplicar/conferir COMPRAS_TOTAIS_BACKEND_DEV_PRONTO
+para cfe6c1cf:6 QAs/aplicador aprovados, runtime2, PROD4096/DEV/pares/ambientes
+preservados, sql0/migrations0/financial_data_writes0 e um restart exclusivo DEV.
+Etapa backend homologada operacionalmente; publicacao do frontend ja autorizada
+e liberada. Delta local conferido somente frontend/docs; remoto era cfe6c1cf.
+Frontend/testes permanecem os mesmos aprovados nos handoffs locais. Aguardar
+status Vercel antes de informar que a publicacao terminou. Nenhuma EC2 pelo agente.
+
+Backend cfe6c1cfd5620537815829012e3b11b3b831677c publicado e push confirmado
+em refactor/frontend. Hash do aplicador
+ad999f3ba02998b31358aa0a4a78a315d323c4adc70e03b23902ca48b3fd051c.
+Frontend final em commit LOCAL seguinte na mesma branch, sem push ate
+COMPRAS_TOTAIS_BACKEND_DEV_PRONTO manual. Ao receber PRONTO, confirmar que o
+remoto ainda e cfe6c1cf, conferir delta somente frontend/docs, publicar HEAD
+nessa branch e conferir Vercel. Nao executar SSH nem pedir nova autorizacao.
+
 Usuario autorizou commitar/push refactor/frontend e comandos manuais EC2 DEV.
 Base6a1ebe6cfd52485ec1078975cd32274c9c95932b; branch local
 codex/compra-direta-total-itens-20261028. Main2d6af625aff47f1592ae52d2448b9dc86a3c9c7e

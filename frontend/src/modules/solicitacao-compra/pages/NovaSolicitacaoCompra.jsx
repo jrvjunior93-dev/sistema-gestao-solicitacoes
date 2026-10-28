@@ -1713,7 +1713,9 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     });
     if (modoCompraDireta && (formasPagamentoComValor.some((forma) => forma.valor <= 0)
       || arredondarMoeda(formasPagamentoComValor.reduce((soma, forma) => soma + forma.valor, 0)) !== valorTotalCredorCompraDireta)) {
-      reprovarCampo('valores_forma_pagamento', 'Distribua o valor total do credor entre as formas selecionadas.');
+      reprovarCampo('valores_forma_pagamento', formasPagamentoSelecionadas.length === 1
+        ? 'Informe a quantidade e o valor unitário dos itens para calcular o pagamento.'
+        : 'Distribua o valor total do credor entre as formas selecionadas.');
       return;
     }
 
@@ -2268,7 +2270,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
           {modoCompraDireta && formasPagamentoSelecionadas.length > 0 && (
             <div className="form-campo--linha overflow-hidden rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]">
               <div className="hidden grid-cols-2 gap-4 border-b border-[var(--c-border)] bg-[var(--ui-surface-2)] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)] md:grid">
-                <span>Forma e valor</span>
+                <span>{formasPagamentoSelecionadas.length > 1 ? 'Forma e valor' : 'Forma de pagamento'}</span>
                 <span>Como realizar o pagamento</span>
               </div>
               <div className="divide-y divide-[var(--c-border)]">
@@ -2281,23 +2283,24 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                     <section key={forma.id} className="grid gap-4 px-4 py-4 md:grid-cols-2">
                       <div className="min-w-0 space-y-2">
                         <div>
-                          <span className="block text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)] md:hidden">Forma e valor</span>
+                          <span className="block text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)] md:hidden">{formasPagamentoSelecionadas.length > 1 ? 'Forma e valor' : 'Forma de pagamento'}</span>
                           <strong className="text-sm text-[var(--c-text)]">{formatarFormaPagamento(forma)}</strong>
                         </div>
-                        <CampoForm label="Valor" obrigatorio erro={errosCampo.valores_forma_pagamento}>
+                        {formasPagamentoSelecionadas.length > 1 ? <CampoForm label="Valor" obrigatorio erro={errosCampo.valores_forma_pagamento}>
                           <input
                             className="input input-moeda"
                             inputMode="decimal"
-                            value={formasPagamentoSelecionadas.length === 1
-                              ? valorTotalCredorCompraDireta.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-                              : valoresFormaPagamento[formaId] || ''}
-                            readOnly={formasPagamentoSelecionadas.length === 1}
+                            aria-label={`Valor para ${formatarFormaPagamento(forma)}`}
+                            value={valoresFormaPagamento[formaId] || ''}
                             onChange={(event) => {
                               setValoresFormaPagamento((atual) => ({ ...atual, [formaId]: event.target.value }));
                               limparErroCampo('valores_forma_pagamento');
                             }}
                           />
-                        </CampoForm>
+                        </CampoForm> : <>
+                          <p className="text-xs text-[var(--c-muted)]">O valor é calculado nos itens da solicitação.</p>
+                          <ErroCampo mensagem={errosCampo.valores_forma_pagamento} />
+                        </>}
                       </div>
 
                       <div className="min-w-0 space-y-3">
@@ -2392,9 +2395,6 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                     </section>
                   );
                 })}
-              </div>
-              <div className="border-t border-[var(--c-border)] bg-[var(--ui-surface-2)] px-4 py-2 text-xs text-[var(--c-muted)]">
-                Total do credor: {valorTotalCredorCompraDireta.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
               </div>
             </div>
           )}
@@ -3079,6 +3079,16 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
               )}
               larguraAcoes={140}
             />
+          )}
+
+          {modoCompraDireta && (
+            <dl aria-label="Totais da compra direta" className="mt-3 flex flex-wrap items-end justify-end gap-x-6 gap-y-2 border-t border-[var(--c-border)] pt-3 text-sm">
+              <div><dt className="text-xs text-[var(--c-muted)]">Total dos itens</dt><dd className="font-medium tabular-nums">{formatarMoeda(valorBrutoCompraDireta)}</dd></div>
+              {descontoCompraDireta > 0 && <div><dt className="text-xs text-[var(--c-muted)]">Desconto</dt><dd className="font-medium tabular-nums">− {formatarMoeda(descontoCompraDireta)}</dd></div>}
+              {freteTipo !== 'SEM_FRETE' && <div><dt className="text-xs text-[var(--c-muted)]">{freteTipo === 'TERCEIRO' ? 'Frete a terceiro' : 'Frete incluso'}</dt><dd className="font-medium tabular-nums">{formatarMoeda(freteValorNumero)}</dd></div>}
+              {freteTipo === 'TERCEIRO' && <div><dt className="text-xs text-[var(--c-muted)]">Total do credor</dt><dd className="font-medium tabular-nums">{formatarMoeda(valorTotalCredorCompraDireta)}</dd></div>}
+              <div><dt className="text-xs text-[var(--c-muted)]">Total da compra</dt><dd className="font-semibold tabular-nums">{formatarMoeda(valorTotalSolicitacaoCompraDireta)}</dd></div>
+            </dl>
           )}
 
           <div

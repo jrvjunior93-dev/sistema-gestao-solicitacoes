@@ -1,6 +1,8 @@
 # Ownership Ativo
 
 ## Publicacao DEV dos totais de Compras - 2026-10-28
+- Usuario confirmou PRONTO manual cfe6c1cf com PROD4096/DEV/env preservados e nenhuma operacao de dados. Agente reserva somente metadados deste fechamento e libera publicacao do frontend ja commitado/testado; delta somente frontend/docs, sem novo backend/reinicio/EC2. Atualizar Vercel e informar homologacao apos deploy. Main2d6af625 preservada.
+- Backend publicado cfe6c1cfd5620537815829012e3b11b3b831677c; frontend final em commit LOCAL seguinte aguardando PRONTO do usuario, conforme handoff de publicacao. Nenhum push frontend antes da conferencia manual; proximo push ja autorizado apos PRONTO. Main2d6af625 intacta. Implementacao/QA fechados e ownership funcional liberado.
 - Pronto:6 QAs backend (8casos paginacao) e8 testes aplicador PASS, inclusive QA com JSX6a1 anterior; UI1366/390/build14.20s ja aprovados. Pacote/README/handoff2026-10-28-publicacao-compras-totais-dev.md fechados. Reserva liberada para commit/push backend primeiro; frontend em commit local ate conferencia manual. Main2d6af625/PROD4096/DEV/env/planos preservados; sem EC2/SQLreal pelo agente.
 - Usuario autorizou commit/push refactor/frontend e comandos EC2 DEV. Agente principal reserva novo aplicador/teste/manifesto/README compras-totais-dev-20261028 e docs/handoff, fechamento dos2 runtime backend e frontend local. Base6a1ebe6c; publicar backend primeiro e manter frontend em commit local ate PRONTO manual do operador, pois comparativo e resposta devem usar mesma base. Preservar PROD4096, limite DEV, Experience/daemon/env/dumps/planos e main2d6af625. Sem EC2 pelo agente, SQL real, migrations ou registros. Sem outros agentes; pacotes antigos fechados intactos.
 

@@ -112,7 +112,7 @@ function numeroCotacao(valor) {
 
 function calcularTotalItemCotacao(item, incluirFrete = false) {
   return (
-    numeroCotacao(item?.preco) * numeroCotacao(item?.quantidade)
+    numeroCotacao(item?.preco) * Math.max(0, numeroCotacao(item?.quantidade_disponivel))
     + numeroCotacao(item?.ipi_valor)
     + numeroCotacao(item?.icms_valor)
     + numeroCotacao(item?.st_valor)
@@ -727,7 +727,7 @@ export default function CotacaoFornecedorPublica() {
     (item) => numeroCotacao(item.quantidade_disponivel) > 0 && numeroCotacao(item.preco) > 0
   ).length;
   const valorMercadorias = itens.reduce(
-    (total, item) => total + numeroCotacao(item.preco) * numeroCotacao(item.quantidade),
+    (total, item) => total + numeroCotacao(item.preco) * Math.max(0, numeroCotacao(item.quantidade_disponivel)),
     0
   );
   const valorTributos = itens.reduce(
@@ -1147,7 +1147,7 @@ export default function CotacaoFornecedorPublica() {
                   value={item.quantidade_disponivel}
                   disabled={formularioBloqueado}
                   aria-label={`Quantidade disponível de ${item.nome}`}
-                  title="Informe sua disponibilidade para orientar a compra. Este campo não altera o valor cotado para a quantidade solicitada."
+                  title="Base do total cotado: quantidade disponível × preço unitário. Não altera a quantidade solicitada."
                   onChange={(e) => atualizarItem(item.__indice, 'quantidade_disponivel', sanitizarDecimalInput(e.target.value, 3))}
                   placeholder="0"
                 />

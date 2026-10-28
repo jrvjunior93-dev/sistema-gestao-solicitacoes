@@ -50,15 +50,19 @@ let rule = true, ruleFailure = false, ruleDelay = 0;
 try {
   await server.listen(); browser = await chromium.launch({ channel: 'chrome', headless: true });
   const base = `http://127.0.0.1:${server.httpServer.address().port}/fixture`;
-  async function abrir({ width = 1366, credor = null, revisao = false } = {}) {
+  async function abrir({ width = 1366, credor = null, revisao = false, rateio = false } = {}) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     page.setDefaultTimeout(10000);
     page.on('pageerror', error => errors.push(error.message));
-    await page.addInitScript(({ key, draft, credor }) => {
+    await page.addInitScript(({ key, draft, credor, rateio }) => {
       const d = structuredClone(draft);
       if (credor) { d.payload.parceiro_id = credor; d.resumo.credor_nome = 'Credor QA'; }
+      if (rateio) {
+        d.payload.forma_pagamento_ids = [1, 2];
+        d.resumo.formas_pagamento.push({ id: 2, nome: 'PIX alternativo', codigo: 'PIX', favorecido_id: 9, chave_pix: 'pix-qa' });
+      }
       localStorage.setItem(key, JSON.stringify(d));
-    }, { key, draft, credor });
+    }, { key, draft, credor, rateio });
     await page.route('**/*', async route => {
       const url = new URL(route.request().url());
       if (!url.href.startsWith(base.split('/fixture')[0])) return route.abort();
@@ -75,7 +79,7 @@ try {
         status = ruleFailure ? 503 : 200;
       } else if (url.pathname === '/api/obras/minhas') data = [{ id: 7, nome: 'Obra QA' }, { id: 8, nome: 'Outra obra QA' }];
       else if (url.pathname === '/api/apropriacoes') data = [{ id: 4, codigo: '01', descricao: 'Material QA', obra_id: 7 }];
-      else if (url.pathname.endsWith('/formas-pagamento-ativas')) data = [{ id: 1, nome: 'PIX', codigo: 'PIX', ativo: true }];
+      else if (url.pathname.endsWith('/formas-pagamento-ativas')) data = [{ id: 1, nome: 'PIX', codigo: 'PIX', ativo: true }, { id: 2, nome: 'PIX alternativo', codigo: 'PIX', ativo: true }];
       else if (url.pathname === '/api/parceiros') data = [{ id: 8, nome: 'Credor QA', cpf_cnpj: '123', ativo: true, fornecedor: true }];
       else if (url.pathname.includes('/preferencias')) data = { preferencias: {} };
       await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) }).catch(() => {});
@@ -86,6 +90,44 @@ try {
   const revisar = page => page.getByRole('button', { name: 'Revisar solicitação', exact: true });
   const credor = page => page.locator('input[role="combobox"][aria-required]');
   const erro = 'Selecione o credor da compra direta na lista de resultados.';
+  const total = (page, label) => page.locator('dl[aria-label="Totais da compra direta"] div').filter({ has: page.getByText(label, { exact: true }) }).locator('dd');
+  for (const width of [1366, 390]) {
+    const page = await abrir({ width, credor: 8 });
+    const resumo = page.locator('dl[aria-label="Totais da compra direta"]');
+    await resumo.waitFor();
+    assert.equal(await page.getByLabel('Valor para PIX', { exact: true }).count(), 0, 'Forma unica nao tem campo de valor');
+    assert.equal(await resumo.locator('xpath=ancestor::section[1]').getByRole('heading', { name: 'Itens da solicitação', exact: true }).count(), 1);
+    assert.match(await total(page, 'Total dos itens').innerText(), /100,00/);
+    assert.match(await total(page, 'Total da compra').innerText(), /90,00/);
+    await page.getByLabel('Valor unitário do item', { exact: true }).fill('15');
+    await page.getByLabel('Quantidade do item', { exact: true }).fill('3');
+    assert.match(await total(page, 'Total dos itens').innerText(), /45,00/);
+    assert.match(await total(page, 'Total da compra').innerText(), /35,00/);
+    await page.getByLabel('Quantidade do item', { exact: true }).fill('2');
+    await page.getByLabel('Desconto concedido pelo fornecedor').fill('5');
+    assert.match(await total(page, 'Total da compra').innerText(), /25,00/);
+    await page.getByRole('button', { name: 'Embutido', exact: true }).click();
+    await page.getByLabel('Valor do frete').fill('12,50');
+    assert.match(await total(page, 'Total da compra').innerText(), /37,50/);
+    await page.getByRole('button', { name: 'Pago a terceiro', exact: true }).click();
+    assert.match(await total(page, 'Total do credor').innerText(), /25,00/);
+    assert.match(await total(page, 'Total da compra').innerText(), /37,50/);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    await resumo.locator('xpath=ancestor::section[1]').screenshot({ path: path.join(output, `total-itens-${width}.png`) });
+    await page.close();
+    const multi = await abrir({ width, credor: 8, rateio: true });
+    await multi.getByLabel('Valor para PIX', { exact: true }).fill('50');
+    await multi.getByLabel('Valor para PIX alternativo', { exact: true }).fill('30');
+    await revisar(multi).click();
+    await multi.getByText('Distribua o valor total do credor entre as formas selecionadas.', { exact: true }).first().waitFor();
+    await multi.getByLabel('Valor para PIX alternativo', { exact: true }).fill('40');
+    await revisar(multi).click();
+    await multi.getByRole('button', { name: 'Criar solicitacao', exact: true }).waitFor();
+    const salvo = await multi.evaluate(k => JSON.parse(localStorage.getItem(k)), key);
+    assert.deepEqual(salvo.payload.formas_pagamento.map(f => f.valor), [50, 40]);
+    assert.equal(salvo.payload.desconto_total, 10);
+    await multi.close();
+  }
   for (const width of [1366, 390]) {
     rule = true; ruleFailure = false;
     const page = await abrir({ width });

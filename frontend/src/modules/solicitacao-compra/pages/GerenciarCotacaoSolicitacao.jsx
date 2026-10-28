@@ -361,15 +361,13 @@ function montarFormularioRespostaInterna(cotacaoFornecedor, itensCombinados, opt
   };
 }
 
-function obterQuantidadeBaseFinanceiraRespostaInterna(item, novaOfertaSaldo = false) {
-  return novaOfertaSaldo
-    ? parseNumeroCompraDigitado(item?.quantidade_disponivel)
-    : parseNumeroCompraDigitado(item?.quantidade_solicitada);
+function obterQuantidadeOfertadaRespostaInterna(item) {
+  return Math.max(0, parseNumeroCompraDigitado(item?.quantidade_disponivel) || 0);
 }
 
-function calcularTotalRespostaInternaItem(item, incluirFrete = false, novaOfertaSaldo = false) {
+function calcularTotalRespostaInternaItem(item, incluirFrete = false) {
   return (
-    parseNumeroCompra(item?.preco) * obterQuantidadeBaseFinanceiraRespostaInterna(item, novaOfertaSaldo)
+    parseNumeroCompra(item?.preco) * obterQuantidadeOfertadaRespostaInterna(item)
     + parseNumeroCompra(item?.ipi_valor)
     + parseNumeroCompra(item?.icms_valor)
     + parseNumeroCompra(item?.st_valor)
@@ -403,7 +401,7 @@ function ModalRespostaInternaCotacao({
   const valorMercadorias = form.itens.reduce(
     (total, item) => total
       + parseNumeroCompra(item.preco)
-      * obterQuantidadeBaseFinanceiraRespostaInterna(item, form.nova_oferta_saldo),
+      * obterQuantidadeOfertadaRespostaInterna(item),
     0
   );
   const valorTributos = form.itens.reduce(
@@ -718,7 +716,7 @@ function ModalRespostaInternaCotacao({
                       aria-label={`Quantidade disponível de ${item.nome}`}
                       title={form.nova_oferta_saldo
                         ? 'Quantidade oferecida nesta nova rodada para o saldo.'
-                        : 'Informação de disponibilidade do fornecedor; não altera o valor cotado para a quantidade solicitada.'}
+                        : 'Base do total cotado: quantidade disponível × preço unitário. Não altera a quantidade solicitada.'}
                       onChange={(e) => onChangeItem(item.__indice, 'quantidade_disponivel', sanitizeNumeroCompraInput(e.target.value))}
                     />
                   )
@@ -730,8 +728,7 @@ function ModalRespostaInternaCotacao({
                   render: (item) => (
                     <span className="font-semibold">{fmtMoeda(calcularTotalRespostaInternaItem(
                       item,
-                      form.frete_modo === 'POR_ITEM',
-                      form.nova_oferta_saldo
+                      form.frete_modo === 'POR_ITEM'
                     ))}</span>
                   )
                 },
