@@ -109,6 +109,7 @@ try {
     await page.getByRole('option', { name: /Material QA/ }).click();
     await page.getByLabel(/^Forma de pagamento/).selectOption('1');
     await page.getByLabel('Preparar PIX', { exact: true }).check();
+    await page.getByRole('checkbox', { name: /Usar o próprio credor como favorecido/ }).check();
     await page.getByLabel(/^Tipo da chave PIX/).selectOption({ label: 'Copia e Cola' });
     const chave = page.getByLabel(/^Chave PIX/);
     await chave.fill(texto);
@@ -137,6 +138,7 @@ try {
     await page.getByLabel(/^Forma de pagamento/).nth(i).selectOption('1');
     await page.locator('.financeiro-forma-pagamento-parcela').nth(i).getByLabel('Valor', { exact: true }).fill('100,00');
     await page.getByLabel('Preparar PIX', { exact: true }).nth(i).check();
+    await page.getByRole('checkbox', { name: /Usar o próprio credor como favorecido/ }).nth(i).check();
     await page.getByLabel(/^Tipo da chave PIX/).nth(i).selectOption('COPIA_COLA');
     await page.getByLabel(/^Chave PIX/).nth(i).fill(chaves[i]);
   }

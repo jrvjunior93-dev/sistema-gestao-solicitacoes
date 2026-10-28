@@ -2312,3 +2312,15 @@ card/cancelamento em frontend/scripts, alem de build e teste de documentacao.
   sem SQL/migrations, reinicio exclusivo backend-dev e preservacao PROD4096.
   Nenhum acesso EC2 ou deploy e executado pelo agente.
   Handoff: [OFX filtro natureza local](../../handoffs/2026-10-27-ofx-filtro-natureza-local.md).
+
+## Favorecido na criacao de titulos - ajuste local 2026-10-27
+
+Card da solicitacao e Novo Titulo abrem PIX ativo sem escolher favorecido
+bancario do cadastro/historico do credor. Usar o proprio credor exige clique;
+Novo favorecido ou desmarcar essa opcao limpa nome/documento/chave/ID. Dados
+expressos na propria solicitacao/medicao continuam preservados. Consulta
+atrasada nao desfaz digitacao, e trocar credor no titulo avulso limpa dados
+anteriores. Cadastros salvos continuam disponiveis para escolha explicita.
+PIX incompleto continua bloqueado antes de gravar; pode ser desmarcado.
+Edicao de titulos existentes, permissoes, baixas e backend intactos.
+Ver [handoff local](../../handoffs/2026-10-27-favorecido-criacao-explicita-local.md).

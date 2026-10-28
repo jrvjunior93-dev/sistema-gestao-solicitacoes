@@ -1,5 +1,15 @@
 # Ownership Ativo
 
+## Publicacao DEV reabertura/favorecido - 2026-10-28
+- Pronto para commit/push exclusivo DEV:5 QAs backend,8 testes aplicador, UI Favorecido/PIX/Reabertura1366/390, build20.93s e docs/diff PASS. Backend/src apenas1arquivo; modulos fiscais/dependencias intactos. Handoff2026-10-28-publicacao-reabertura-favorecido-dev.md atualizado. Reserva liberada; usuario executara EC2 manualmente, sem registros/migrations. Main remotaece109c9 preservada.
+- Agente principal reserva transposicao seletiva das duas correcoes locais para base refactor/frontend6701ee7b, novo aplicador/teste/manifesto/README DEV e docs/handoff. Usuario autorizou commit/push DEV e comandos manuais EC2. Preservar recursos fiscais exclusivos DEV, main remotaece109c9, heap PROD4096 e argumentos DEV. Um runtime backend, sem SQL/migration/registro real; frontend independente. Nenhuma EC2 pelo agente. Sem outros agentes.
+
+## Reabertura apos exclusao de titulos - 2026-10-28
+- Concluido/testado localmente: baseline ece109c9 reproduz os3 bloqueios indevidos; correcao passa SQL :memory: direto/alocacao/frete, titulo excluido/ausente, existente/quitado/parcial, outro pedido e replay. Regressoes backend/GEO/renegociacao e UI1366/390 PASS. Handoff2026-10-28-reabertura-pedido-titulos-excluidos-local.md criado; reserva liberada. Sem EC2, registros reais, migration, commit/push/deploy. Alteracao anterior de favorecido preservada.
+- Agente principal reserva pedidoCompraService.js somente assertPedidoPodeReabrirDiretamente, harness validarPedidoReabertura.js, novo QA isolado e docs/handoff. Divergencia: resumo filtra titulos excluidos, validacao conta vinculos antigos. Reusar buscarTitulosPedido do financeiro (legados/frete/projecoes/escopo do titulo), sem apagar vinculos nem mudar GEO para titulos existentes. Preservar alteracao local anterior de favorecido. Sem EC2, registros reais, migration, commit/push ou deploy. Sem outros agentes.
+
+
+
 ## Publicacao DEV do filtro OFX - 2026-10-27
 - Pacote concluido:4 QAs backend,8 testes do aplicador, UI1366/390 com backend anterior/atualizado e regressao OFX PASS; build12.81s, docs/sintaxe/diff PASS. Reserva de edicao liberada; segue commit/push somente refactor/frontend autorizado. Operador executa EC2 depois, sem conciliacao/importacao real ou migration. Main e manifestos anteriores preservados.
 - Agente principal reserva pacote novo ops/deploy/ofx-natureza-dev, respectivos QAs/docs/handoff e ajuste de compatibilidade em FinanceiroConciliacao.jsx/conciliacaoBancariaService.js. Pedido autorizado: commit/push refactor/frontend e comandos para operador atualizar somente DEV. Sem EC2 pelo agente, registros reais, migrations ou mudanca na main. Backend anuncia suporte no meta; frontend conserva contrato antigo ate o backend estar atualizado. Preservar heap PROD4096, DEV, pares, daemon/env/dumps. Sem outros agentes.

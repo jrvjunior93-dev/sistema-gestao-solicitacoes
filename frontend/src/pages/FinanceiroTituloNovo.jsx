@@ -431,7 +431,7 @@ export default function FinanceiroTituloNovo() {
   const [cartoes, setCartoes] = useState([]);
   const [beneficiaries, setBeneficiaries] = useState([]);
   const [paymentDraft, setPaymentDraft] = useWorkspaceState('novoTitulo:pix', {
-    preparar_pagamento_pix: false,
+    preparar_pagamento_pix: true,
     usar_credor_como_favorecido: false,
     payment_beneficiary_id: '',
     nome: '',
@@ -675,17 +675,7 @@ export default function FinanceiroTituloNovo() {
         if (!active) return;
         const lista = Array.isArray(data) ? data : [];
         setBeneficiaries(lista);
-        const beneficiary = lista.find((item) => item.ativo !== false) || lista[0];
-        if (beneficiary && !paymentDraft.nome && !paymentDraft.pix_chave) {
-          setPaymentDraft((current) => ({
-            ...current,
-            payment_beneficiary_id: current.usar_credor_como_favorecido ? '' : String(beneficiary.id),
-            nome: current.usar_credor_como_favorecido ? current.nome : (beneficiary.nome || current.nome),
-            cpf_cnpj: current.usar_credor_como_favorecido ? current.cpf_cnpj : (beneficiary.cpf_cnpj || current.cpf_cnpj),
-            pix_tipo_chave: current.usar_credor_como_favorecido ? current.pix_tipo_chave : (beneficiary.pix_tipo_chave || current.pix_tipo_chave),
-            pix_chave: current.usar_credor_como_favorecido ? current.pix_chave : (beneficiary.pix_chave || current.pix_chave)
-          }));
-        }
+        // Disponibilizar para escolha, sem selecionar cadastro de outro titulo.
       })
       .catch(() => setBeneficiaries([]));
 
@@ -854,18 +844,15 @@ export default function FinanceiroTituloNovo() {
       }))
     }));
     setParceiroBusca(parceiro.nome || parceiro.cpf_cnpj || '');
-    setPaymentDraft((current) => {
-      if (!current.usar_credor_como_favorecido) return current;
-      const pix = getParceiroPixPrincipal(parceiro);
-      return {
-        ...current,
-        payment_beneficiary_id: '',
-        nome: parceiro.nome || '',
-        cpf_cnpj: parceiro.cpf_cnpj || '',
-        pix_tipo_chave: pix?.tipo || current.pix_tipo_chave || 'CNPJ',
-        pix_chave: pix?.chave || ''
-      };
-    });
+    setPaymentDraft((current) => ({
+      ...current,
+      usar_credor_como_favorecido: false,
+      payment_beneficiary_id: '',
+      nome: '',
+      cpf_cnpj: '',
+      pix_tipo_chave: 'CNPJ',
+      pix_chave: ''
+    }));
   }
 
   function filtrarParceirosPagamento(busca) {
@@ -2634,7 +2621,8 @@ export default function FinanceiroTituloNovo() {
                               checked={paymentDraft.usar_credor_como_favorecido}
                               onChange={(event) => {
                                 const checked = event.target.checked;
-                                setPaymentDraft((current) => ({ ...current, usar_credor_como_favorecido: checked }));
+                                setPaymentDraft((current) => ({ ...current, usar_credor_como_favorecido: checked,
+                                  ...(!checked ? { payment_beneficiary_id: '', nome: '', cpf_cnpj: '', pix_tipo_chave: 'CNPJ', pix_chave: '' } : {}) }));
                                 if (checked && parceiroSelecionado) preencherFavorecidoComParceiro(parceiroSelecionado);
                               }}
                               disabled={!parceiroSelecionado}
@@ -2664,10 +2652,10 @@ export default function FinanceiroTituloNovo() {
                                 ...current,
                                 usar_credor_como_favorecido: false,
                                 payment_beneficiary_id: event.target.value,
-                                nome: selected?.nome || current.nome,
-                                cpf_cnpj: selected?.cpf_cnpj || current.cpf_cnpj,
-                                pix_tipo_chave: selected?.pix_tipo_chave || current.pix_tipo_chave,
-                                pix_chave: selected?.pix_chave || current.pix_chave
+                                nome: selected?.nome || '',
+                                cpf_cnpj: selected?.cpf_cnpj || '',
+                                pix_tipo_chave: selected?.pix_tipo_chave || 'CNPJ',
+                                pix_chave: selected?.pix_chave || ''
                               }));
                             }}
                           >

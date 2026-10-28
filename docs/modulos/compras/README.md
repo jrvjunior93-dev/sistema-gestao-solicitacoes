@@ -587,3 +587,13 @@ geral de Pessoas permanece completo. Criar fornecedor e gerar links sao
 bloqueados durante a gravacao do cadastro rapido, evitando concorrencia.
 
 Testar compra normal e direta, destinos iniciais, compatibilidade de registros antigos, credor, itens cadastrados/manuais, importacao, rateio, edicao de apropriacoes, permissoes, cancelamento, cotacao, pedido, relatorios de compras e registros de origem.
+
+## Reabertura apos exclusao de titulo - correcao local 2026-10-28
+
+Validacao da reabertura usa a mesma consulta de titulos existentes do resumo
+financeiro. Vinculo historico sem titulo, inclusive apos exclusao logica, nao
+exige GEO sozinho. Titulos ainda existentes continuam exigindo aprovacao,
+inclusive os cancelados/estornados que nao foram excluidos. Nenhum vinculo ou
+historico e apagado; motivo, escopo, permissoes e transacao permanecem.
+Correcao local, sem publicacao ou operacao real.
+Ver [handoff](../../handoffs/2026-10-28-reabertura-pedido-titulos-excluidos-local.md).
