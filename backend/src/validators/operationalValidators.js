@@ -360,7 +360,7 @@ function validateContratoUpdateBody(body = {}) {
 }
 
 function validateCompraQuery(query = {}) {
-  ensureAllowedKeys(query, ['obra_id', 'contexto', 'visao'], 'Consulta de compras');
+  ensureAllowedKeys(query, ['obra_id', 'contexto', 'visao', 'page', 'limit', 'q', 'status'], 'Consulta de compras');
   const contexto = parseOptionalText(query.contexto, 'Contexto', 40);
   const contextoNormalizado = contexto ? String(contexto).trim().toLowerCase() : undefined;
   if (contextoNormalizado && !['delegacao'].includes(contextoNormalizado)) {
@@ -372,10 +372,28 @@ function validateCompraQuery(query = {}) {
     throw new ValidationError('Visao de consulta invalida.');
   }
 
+  const paginado = ['page', 'limit', 'q', 'status'].some((campo) => query[campo] !== undefined);
+  let pagina = {};
+  if (paginado) {
+    if (contextoNormalizado === 'delegacao' || visaoNormalizada === 'delegacao') {
+      throw new ValidationError('Use a listagem principal para consultar paginas de solicitacoes.');
+    }
+    try {
+      // Mesmo contrato do servico SQL: 50 por padrao, maximo 100.
+      // Filtro novo sozinho tambem opta pela pagina, nunca por carga completa.
+      const parsed = require('../services/solicitacoesCompraPaginacao').parseQuery(query);
+      pagina = { page: parsed.page, limit: parsed.limit, q: parsed.q, status: parsed.statuses.join(',') };
+    } catch (error) {
+      if (error.statusCode === 400) throw new ValidationError(error.message);
+      throw error;
+    }
+  }
+
   return {
     obra_id: parseInteger(query.obra_id, 'Obra'),
     contexto: contextoNormalizado,
-    visao: visaoNormalizada
+    visao: visaoNormalizada,
+    ...pagina
   };
 }
 

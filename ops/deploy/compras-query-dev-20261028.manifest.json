@@ -1,0 +1,50 @@
+{
+  "base": "2b1d3e7a078d1d89301dd0b08163340ca7ef599e",
+  "main": "46ac88de88957ffc15e8b0db45dfcd6eed7bc34e",
+  "files": [
+    {
+      "path": "backend/package.json",
+      "sha256": "99a56fd6f635372e0ece01b6bd86ad3267235fd7042b65e8eaf79f4a5c70d56a"
+    },
+    {
+      "path": "backend/src/validators/operationalValidators.js",
+      "sha256": "364277ae7d5b981e990945131ef067f028be0d33ab8fb513f0c43cd4ce393ee4"
+    },
+    {
+      "path": "backend/scripts/helpers/semRedeQa.js",
+      "sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf"
+    },
+    {
+      "path": "backend/scripts/validarSolicitacoesCompraPaginacao.js",
+      "sha256": "af95345f3bff9504dfb15dcd4ca69e1a04ae365de21a7ce7729c60f04e6d662f"
+    },
+    {
+      "path": "backend/scripts/validarComprasPerformanceFases.js",
+      "sha256": "66457736e37d54479bd615e618f76d5136b85efbea8d816b876d90c39042eb83"
+    },
+    {
+      "path": "backend/scripts/validarComprasCarregamentoSemProduto.js",
+      "sha256": "5c13436fef74b3e322fbafd624fb100962d6025bd9e88ed8c98f15059ee337e7"
+    },
+    {
+      "path": "backend/scripts/validarCompraDiretaGeoAcesso.js",
+      "sha256": "7f324e18e304391c8a3abc6a2710f65bc97d99a4999bbfec0c0ee63c7e32cf49"
+    },
+    {
+      "path": "backend/scripts/validarPedidoEntregasAcesso.js",
+      "sha256": "7221c40a76a5b891b062087ab00786cfa942020ebc9cf106d19afbe4c7cd5ecf"
+    },
+    {
+      "path": "backend/scripts/validarCompraCotacaoEnvio.js",
+      "sha256": "4a9cf0b832bf1ba03d53d34eb015812d9124ab2750b349b5c9dd44063ff848a7"
+    },
+    {
+      "path": "ops/deploy/atualizar-dev-compras-query-20261028.cjs",
+      "sha256": "0f840626c1475ab7eaa64a1efd5bcbf6aba2877a9414d3ded17775031025cc5b"
+    },
+    {
+      "path": "ops/deploy/atualizar-dev-compras-query-20261028.test.cjs",
+      "sha256": "798497d918c39343847c957260e9569cce76eb8e0b38bfc58cfa6cece3b39f86"
+    }
+  ]
+}

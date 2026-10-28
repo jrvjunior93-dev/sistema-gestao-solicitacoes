@@ -1,5 +1,25 @@
 # Modulo COMPRAS
 
+## Correcao local do validador da lista paginada - 28/10/2026
+
+O middleware de GET /compras/solicitacoes rejeitava page/limit/q/status antes
+do controlador, retornando400 mesmo com a paginacao SQL instalada. O validador
+agora usa o mesmo parser estrito do servico: pagina de50, maximo100, busca/status
+normalizados e filtros invalidos recusados antes de qualquer consulta.
+Busca ou status sem pagina explicita tambem optam pela resposta paginada.
+Chamadas sem os quatro parametros novos mantem o contrato legado/Delegacao.
+
+Preservados os ajustes de estabilidade: nenhuma alteracao nos controllers,
+JOINs separados, filtros antes de COUNT/LIMIT, DTO resumido e detalhes sob
+demanda. Sem fallback para carregar todas as SCs, SQL real ou migration.
+O teste agora captura a rota registrada e executa o middleware real antes
+do controller, alem de validar SQL em SQLite :memory: e a tela isolada.
+[Diagnostico, provas e proximo passo](../../handoffs/2026-10-28-compras-query-paginacao-local.md).
+
+Publicacao DEV autorizada em seguida, com aplicador fechado que leva esse
+validador e confere PROD4096/ambientes antes de reiniciar somente backend-dev.
+[Pacote DEV e execucao manual](../../handoffs/2026-10-28-publicacao-compras-query-dev.md).
+
 ## Paginacao SQL da lista principal - implementacao local 27/10/2026
 
 A tela de solicitacoes consulta 50 SCs por pagina. `GET /compras/solicitacoes`
@@ -16,7 +36,7 @@ e limpa ao trocar pagina/filtro; confirmacoes antigas perdem validade.
 Consultas sao canceladas/serializadas, com debounce da busca e descarte de
 respostas obsoletas. Nao ha carregamento automatico de todas as paginas.
 
-Compatibilidade: chamadas SEM page/limit, incluindo Delegacao, preservam o
+Compatibilidade: chamadas SEM page/limit/q/status, incluindo Delegacao, preservam o
 contrato anterior de array. Esta entrega pagina a lista principal, nao altera
 o painel de Delegacao. Publicar backend ANTES do frontend; a tela rejeita
 resposta do contrato legado, sem fazer fallback que percorra todas as paginas.
