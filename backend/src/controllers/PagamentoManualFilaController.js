@@ -25,6 +25,13 @@ function responderErro(res, error, fallback) {
 }
 
 module.exports = {
+  async boletoPedido(req, res) {
+    try {
+      const result = await require('../services/pagamentoFilaBoletosPedidosService').abrirBoletoPedido(req, req.params.id, req.params.documentoId);
+      res.setHeader('Cache-Control', 'no-store');
+      return res.json(result);
+    } catch (error) { return responderErro(res, error, 'Erro ao abrir boleto do pedido'); }
+  },
   async sugestoes(req, res) {
     try { return res.json(await require('../services/pagamentoFilaAutocompleteService').listarSugestoesFila(req, req.query)); }
     catch (error) { return responderErro(res, error, 'Erro ao consultar sugestoes da fila'); }

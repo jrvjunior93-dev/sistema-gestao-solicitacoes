@@ -6663,3 +6663,9 @@ Publicacao de acesso a apropriacoes: integracao sobre refactor/frontend 6618f6ca
 Comprovantes: inclui reserva frontend/scripts/validarComprovantesTituloSolicitacao.mjs para regressao do componente/clienteHTTP real eQA de permissao por origem.
 
 2026-10-29 — Publicacao autorizada conjunta: comprovantes compartilhados+filtrosDP. Reserva aplicadorDEV/teste/manifesto/README comprovantes-compartilhados-20261029. Base6aa7d0fa;6runtimes (routes,2servicosoriginais+tituloFinanceiro+service/controller novos),QA selecionado. Sem executar regularizacao/EC2/DB. Filtros inclusos por instrucao explicita do usuario.
+
+2026-10-29 — Reserva boletos compartilhados DEV base40ae697b nesta worktree: novo pagamentoFilaBoletosPedidosService.js, pagamentoManualFilaService.js, PagamentoManualFilaController.js, routes.js; frontend services/financeiro.js, pages/FinanceiroFilaPagamentos.jsx, novo componente BoletosPedidosFila.jsx; QA especificos e handoff. Somente leitura/listagem/presign com ACL, sem banco real/EC2/S3/commit/push/deploy. Nao tocar arquivos dos outros agentes.
+
+2026-10-29 — QA adicional reservado: frontend/scripts/validarFilaInstrumentosUI.mjs (fixture/API e cenario compartilhados), backend/scripts/validarFilaBoletosCompartilhados.cjs. Preserva testes preexistentes.
+
+2026-10-29 — Publicacao autorizada: reservar aplicador/teste/manifesto/README boletos-compartilhados-dev-20261029 e atualizar handoff. Commit/push somente correcao e publicador seletivo de4runtimeDEV. Sem EC2/DB pelo agente.

@@ -228,6 +228,7 @@ async function listarFilaPagamentos(req, filters = {}) {
   if (['NAO_PAGO', 'TODOS'].includes(status)) data.push(...rejeitados.filter(item => matchesSearch(item, filters.q)));
   await require('./recebimentoDpConsultaService').anexarRecebimentosDp(data.map(item => item.titulo).filter(Boolean));
   await require('./tituloCompartilhadoLeitura').anexarParticipacoes(data.map(item => item.titulo).filter(Boolean));
+  await require('./pagamentoFilaBoletosPedidosService').anexarBoletosPedidos(req, data.filter(item => !item.somente_consulta).map(item => item.titulo).filter(Boolean));
   const solicitacaoIds = Array.from(new Set(
     data
       .map((item) => Number(item?.titulo?.solicitacao_id || item?.titulo?.solicitacao?.id))

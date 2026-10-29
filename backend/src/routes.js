@@ -2261,6 +2261,7 @@ router.get('/financeiro/fila-pagamentos/sugestoes', allowFilaPagamentosRead, val
 router.get('/financeiro/fila-pagamentos/contas', allowFilaPagamentosRead, PagamentoManualFilaController.contas);
 router.get('/financeiro/fila-pagamentos/instrumentos', allowFilaPagamentosBaixa, PagamentoManualFilaController.instrumentos);
 router.get('/financeiro/fila-pagamentos/solicitacoes/:id/arquivos', allowFilaPagamentosRead, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), PagamentoManualFilaController.arquivosSolicitacao);
+router.get('/financeiro/fila-pagamentos/:id/boletos-pedidos/:documentoId', allowFilaPagamentosRead, validateRequest({ params: validateNumericIdParams(['id', 'documentoId'], 'Boleto do pedido na fila') }), PagamentoManualFilaController.boletoPedido);
 router.get('/financeiro/fila-pagamentos/solicitacoes/:id/notas-fiscais', allowFilaPagamentosRead, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), FiscalPagamentoDocumentosController.queue);
 router.get('/financeiro/fila-pagamentos/:id/comprovante', validateRequest({ params: validateNumericIdParam('id', 'Item da fila') }), PagamentoManualFilaController.comprovante);
 router.get('/financeiro/fila-pagamentos/:id/comprovantes/:comprovanteId', PagamentoManualFilaController.comprovanteAdicional);

@@ -1,0 +1,63 @@
+{
+  "base": "40ae697bf4a00d2966db55847cdb8db8a33718db",
+  "main": "46ac88de88957ffc15e8b0db45dfcd6eed7bc34e",
+  "files": [
+    {
+      "path": "backend/package.json",
+      "sha256": "700846aa1fe8965b555aec808a3ad841acd93ef0aa0fa054fd1ead3845394a92"
+    },
+    {
+      "path": "backend/src/routes.js",
+      "sha256": "1e62b6fcdc755d6d46c642c2989ab3c968d262c9558542f8a81ce91ea41c17b9"
+    },
+    {
+      "path": "backend/src/controllers/PagamentoManualFilaController.js",
+      "sha256": "7ca3c310b4ab74905ad48a326c8dcb1d63b5efd694fb37368c63cda105d99c91"
+    },
+    {
+      "path": "backend/src/services/pagamentoManualFilaService.js",
+      "sha256": "d5c68a2f904902c3b8520bf0533135ae9db5e8c9ee8bc1049f3eca35101371af"
+    },
+    {
+      "path": "backend/src/services/pagamentoFilaBoletosPedidosService.js",
+      "sha256": "11dc25fd69523b1e260a52e50c68327af9ad60ba5fa369d3cdd1422ad5b3871e"
+    },
+    {
+      "path": "backend/scripts/helpers/semRedeQa.js",
+      "sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf"
+    },
+    {
+      "path": "backend/scripts/validarFilaBoletosCompartilhados.cjs",
+      "sha256": "26c66173fb00d438e9fc751909dc5fc35ee1d79ae5a89d14e99f22c1364d621b"
+    },
+    {
+      "path": "backend/scripts/validarFilaPagamentoSolicitacaoAcesso.js",
+      "sha256": "de4d2997ecfd8351848dac1793472836439a4d8c98ede6b9a0dd8480c184084c"
+    },
+    {
+      "path": "backend/scripts/validarComprovantesCompartilhados.cjs",
+      "sha256": "5d73a6a8da8e90c685d06972e3e3435ab010efb3bb0824087c0f2939efe7084a"
+    },
+    {
+      "path": "backend/scripts/validarTitulosCompartilhados.js",
+      "sha256": "f98cc83f32401843becf8615221aa8c46d8f2f4b00e31ebbe25581de8f8f6d2b"
+    },
+    {
+      "path": "backend/scripts/validarFilaBaixaComposta.js",
+      "sha256": "02bb0514d36cde68687c52faf0920c72f05828533ff2e044548cdb732cc2227f"
+    },
+    {
+      "path": "backend/scripts/validarFilaBaixaEstorno.js",
+      "sha256": "337c0e3d0fee8263cc0cfd3999761246cf8fd556459b1d31783b23a6758f550c"
+    },
+    {
+      "path": "ops/deploy/atualizar-dev-boletos-compartilhados-20261029.cjs",
+      "sha256": "0c46f1d80fc5f48a715b2f8380cd65058c503ed0aa2adf562b84e5efefff420b"
+    },
+    {
+      "path": "ops/deploy/atualizar-dev-boletos-compartilhados-20261029.test.cjs",
+      "sha256": "fe47f3bcf0bea6fcf9adb1f7dcb7c2d95b9de0b0357b19302b93adf04525c063"
+    }
+  ],
+  "offline": []
+}
