@@ -1,0 +1,123 @@
+{
+  "base": "40e3239afd714e4ca70b45ecbb83ad58ba8d326a",
+  "runtime_files": 6,
+  "sql": 0,
+  "migrations": 0,
+  "heap_mib": 4096,
+  "files": [
+    {
+      "path": "backend/src/routes.js",
+      "sha256": "b9f61a7d9b20ac949f9504941bab62b4f177d4bb906a1027dde0e9661113bc00",
+      "old_sha256": "56c14ca059e0e608a2e769e31c86e050c796e337cca5a6aec7f7dfe46e21edd1"
+    },
+    {
+      "path": "backend/src/services/pagamentoFilaHistoricoService.js",
+      "sha256": "a49c2f1a576b0197dda896316db7f684e299bffd5b3696c0d424b89a6183f93b",
+      "old_sha256": "260ec5565d33b292dc049fc2246e016c70a1010fc42ff38501223d1b18d230ef"
+    },
+    {
+      "path": "backend/src/services/tituloCompartilhadoConsulta.js",
+      "sha256": "b126fc57812cf240a5ffd4da62fb9d280915c9bac15a59764b933061aec3b061",
+      "old_sha256": "7638948fb3888edd8200033263387dc4711d2b388b28d15ae383f0848e77965f"
+    },
+    {
+      "path": "backend/src/services/tituloFinanceiroService.js",
+      "sha256": "e3b25e5fea2fff98e94544d1f5e5de6f2782f3809f78015ddd223b57fb39c375",
+      "old_sha256": "42dd680a59c7907ea07cd7973a49b95f099d8651b672f36dcd1ebc29484391d6"
+    },
+    {
+      "path": "backend/src/services/comprovanteCompartilhadoSolicitacaoService.js",
+      "sha256": "b3d6d1d8337b8eeb77008d7388f7ba2376089e0ffc1ec840632b5584cdd63aee",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/src/controllers/ComprovanteCompartilhadoSolicitacaoController.js",
+      "sha256": "e375ff4e9b941e6a5567754eccd83928ca2b8347611c9403f7babcaf7883ee9f",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarComprovantesCompartilhados.cjs",
+      "sha256": "5d73a6a8da8e90c685d06972e3e3435ab010efb3bb0824087c0f2939efe7084a",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarFilaComprovantePendente.js",
+      "sha256": "aa614e9161893edaa9e540e12a1004a1a806c466f87c62a6e7aaabc6fe7a2f36",
+      "old_sha256": "aa614e9161893edaa9e540e12a1004a1a806c466f87c62a6e7aaabc6fe7a2f36"
+    },
+    {
+      "path": "backend/scripts/validarTitulosCompartilhados.js",
+      "sha256": "f98cc83f32401843becf8615221aa8c46d8f2f4b00e31ebbe25581de8f8f6d2b",
+      "old_sha256": "f98cc83f32401843becf8615221aa8c46d8f2f4b00e31ebbe25581de8f8f6d2b"
+    },
+    {
+      "path": "backend/scripts/validarFilaBaixaComposta.js",
+      "sha256": "02bb0514d36cde68687c52faf0920c72f05828533ff2e044548cdb732cc2227f",
+      "old_sha256": "02bb0514d36cde68687c52faf0920c72f05828533ff2e044548cdb732cc2227f"
+    },
+    {
+      "path": "backend/scripts/validarFilaBaixaEstorno.js",
+      "sha256": "337c0e3d0fee8263cc0cfd3999761246cf8fd556459b1d31783b23a6758f550c",
+      "old_sha256": "337c0e3d0fee8263cc0cfd3999761246cf8fd556459b1d31783b23a6758f550c"
+    },
+    {
+      "path": "backend/scripts/helpers/semRedeQa.js",
+      "sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf",
+      "old_sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf"
+    }
+  ],
+  "extra": [
+    {
+      "path": "ops/deploy/atualizar-prod-comprovantes-compartilhados-20261029.cjs",
+      "sha256": "f93f608bb32a14d11e47a92451a464b17f2230127702f2054a2854de6ad1d3f6"
+    },
+    {
+      "path": "ops/deploy/atualizar-prod-comprovantes-compartilhados-20261029.test.cjs",
+      "sha256": "a8875c7fb2f3cd0a9ada419745049b7259bdce2ef46f3584fc375cfbfdc2f032"
+    },
+    {
+      "path": "ops/deploy/README-comprovantes-compartilhados-prod-20261029.md",
+      "sha256": "0f17e77633afe44b7e5fe4b846452060754e13ea47f4fa512f4fd55d1d6d6cce"
+    },
+    {
+      "path": "docs/handoffs/2026-10-29-promocao-comprovantes-filtros-main.md",
+      "sha256": "a4f6732914165817adacf479fe86fe039f95b49b732f3e44f463690e04219bb2"
+    },
+    {
+      "path": "docs/workspace/OWNERSHIP_ATIVO.md",
+      "sha256": "573ea06942ef722521f22c82fb58a6c00014a172411d838d042ced502a97a547"
+    },
+    {
+      "path": "backend/scripts/simularComprovanteCompartilhado6453.cjs",
+      "sha256": "0236f7e588f9307f42a9bf27ba3f87714758ead9cd77a258810171f9557c212f"
+    },
+    {
+      "path": "docs/auditorias/comprovante-compartilhado-6453-evidencia-20261029.json",
+      "sha256": "ed0aa0b4091da82f1c1eb79fdf660e101590975501cde3751749baffcaf9f028"
+    },
+    {
+      "path": "frontend/src/components/financeiro/ComprovantesTituloSolicitacao.jsx",
+      "sha256": "6dcda42d6a687b95cdaf13347db21b2fdaf20ccbdcc2c88633dc3678a2ed70c6"
+    },
+    {
+      "path": "frontend/src/pages/SolicitacaoDetalhe/FinanceiroCard.jsx",
+      "sha256": "d98864f6312fbe3a8b9ed24291f9245ac148f206660ebac4791ea666fe4a1a12"
+    },
+    {
+      "path": "frontend/src/services/financeiro.js",
+      "sha256": "a744349b5c151dff46203cd6f9be90bbbcecf8c3102491ad59153de4e26c342e"
+    },
+    {
+      "path": "frontend/src/hooks/usePosicaoFlutuante.js",
+      "sha256": "2704ecac3be4c1a7501427e37c79aed39a99782d7372be7e4c0bc5810aaea760"
+    },
+    {
+      "path": "frontend/scripts/validarComprovantesTituloSolicitacao.mjs",
+      "sha256": "48be727b764d931f9fce25324e68cb50f3c4dedc3af5af0e4c26dede1442d316"
+    },
+    {
+      "path": "frontend/scripts/validarRhFiltrosDP.mjs",
+      "sha256": "f10c0a079def0f400c398d7745e0878bf9e00e1349ca325144aada9131c98bb6"
+    }
+  ]
+}

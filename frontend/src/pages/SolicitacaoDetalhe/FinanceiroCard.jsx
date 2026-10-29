@@ -56,7 +56,8 @@ import {
   getFormasPagamentoFinanceiras,
   getPaymentBeneficiaries,
   getTitulosFinanceirosPorSolicitacao,
-  getComprovanteFilaPagamento
+  getComprovanteFilaPagamento,
+  getComprovanteCompartilhadoSolicitacao
 } from '../../services/financeiro';
 
 
@@ -211,7 +212,7 @@ function findPartnerPixOption(partner, pixKey) {
 
 function createPaymentDraft() {
   return {
-    preparar_pagamento_pix: false,
+    preparar_pagamento_pix: true,
     usar_credor_como_favorecido: false,
     payment_beneficiary_id: '',
     nome: '',
@@ -262,24 +263,9 @@ function buildPaymentDraftForTitle({
   }
   if (compraDireta) return createPaymentDraft();
 
-  const beneficiary = lista.find((item) => item.ativo !== false && item.pix_chave)
-    || lista.find((item) => item.ativo !== false)
-    || null;
-  const pixDoCredor = getParceiroPixPrincipal(parceiro);
-  const pixChave = beneficiary?.pix_chave || pixDoCredor?.chave || '';
-
-  return {
-    preparar_pagamento_pix: Boolean(pixChave),
-    usar_credor_como_favorecido: Boolean(!beneficiary && pixDoCredor?.chave),
-    payment_beneficiary_id: beneficiary?.id ? String(beneficiary.id) : '',
-    nome: beneficiary?.nome || parceiro?.nome || '',
-    cpf_cnpj: beneficiary?.cpf_cnpj || parceiro?.cpf_cnpj || '',
-    pix_tipo_chave: beneficiary?.pix_tipo_chave
-      || pixDoCredor?.tipo
-      || inferPixKeyType(pixChave, parceiro?.telefone)
-      || 'CNPJ',
-    pix_chave: pixChave
-  };
+  // Cadastro historico do credor e uma opcao de consulta, nao uma instrucao
+  // para este titulo. Somente a origem acima ou uma escolha explicita preenche.
+  return createPaymentDraft();
 }
 
 function currencyToNumber(value) {
@@ -799,7 +785,7 @@ function DadosPagamentoTitulo({ pagamento, pagamentoIndex, context, onChange, on
     });
   }
 
-  for (const pix of (compraDireta ? [] : getParceiroPixOptions(parceiro))) {
+  for (const pix of (compraDireta || !draft.usar_credor_como_favorecido ? [] : getParceiroPixOptions(parceiro))) {
     const chaveNormalizada = normalizePixKey(pix.chave);
     if (!chaveNormalizada || chavesIncluidas.has(chaveNormalizada)) continue;
     chavesIncluidas.add(chaveNormalizada);
@@ -824,18 +810,8 @@ function DadosPagamentoTitulo({ pagamento, pagamentoIndex, context, onChange, on
             checked={Boolean(draft.preparar_pagamento_pix)}
             onChange={(event) => {
               const checked = event.target.checked;
-              const pix = compraDireta || pagamento?.favorecido_pagamento_id
-                ? null : getParceiroPixPrincipal(parceiro);
               onChange(pagamentoIndex, {
-                preparar_pagamento_pix: checked,
-                ...(checked && !draft.pix_chave
-                  ? {
-                      nome: draft.nome || parceiro?.nome || '',
-                      cpf_cnpj: draft.cpf_cnpj || parceiro?.cpf_cnpj || '',
-                      pix_tipo_chave: pix?.tipo || draft.pix_tipo_chave,
-                      pix_chave: pix?.chave || draft.pix_chave
-                    }
-                  : {})
+                preparar_pagamento_pix: checked
               });
             }}
           />
@@ -859,10 +835,10 @@ function DadosPagamentoTitulo({ pagamento, pagamentoIndex, context, onChange, on
                 onChange(pagamentoIndex, {
                   usar_credor_como_favorecido: false,
                   payment_beneficiary_id: event.target.value,
-                  nome: beneficiary?.nome || parceiro?.nome || draft.nome,
-                  cpf_cnpj: beneficiary?.cpf_cnpj || parceiro?.cpf_cnpj || draft.cpf_cnpj,
-                  pix_tipo_chave: beneficiary?.pix_tipo_chave || draft.pix_tipo_chave,
-                  pix_chave: beneficiary?.pix_chave || draft.pix_chave
+                  nome: beneficiary?.nome || '',
+                  cpf_cnpj: beneficiary?.cpf_cnpj || '',
+                  pix_tipo_chave: beneficiary?.pix_tipo_chave || 'CNPJ',
+                  pix_chave: beneficiary?.pix_chave || ''
                 });
               }}
             >
@@ -887,7 +863,7 @@ function DadosPagamentoTitulo({ pagamento, pagamentoIndex, context, onChange, on
                 if (event.target.checked) {
                   onUsePartner(pagamentoIndex, parceiro);
                 } else {
-                  onChange(pagamentoIndex, { usar_credor_como_favorecido: false });
+                  onChange(pagamentoIndex, { ...createPaymentDraft(), preparar_pagamento_pix: draft.preparar_pagamento_pix });
                 }
               }}
             />
@@ -1326,11 +1302,13 @@ export default function FinanceiroCard({
     autorizacaoDisponivel, confirmar, avisar, aoAtualizar: atualizarAposMedicaoOuEnvio
   });
 
-  async function abrirComprovante(filaId, comprovanteId, caminhoSolicitacao, nome) {
+  async function abrirComprovante(filaId, comprovanteId, caminhoSolicitacao, nome, tituloCompartilhadoId) {
     try {
       await abrirPreview(() => caminhoSolicitacao
         ? getLinkSeguroAnexoSolicitacao(caminhoSolicitacao)
-        : getComprovanteFilaPagamento(filaId, comprovanteId),
+        : tituloCompartilhadoId
+          ? getComprovanteCompartilhadoSolicitacao(solicitacao.id, tituloCompartilhadoId, filaId, comprovanteId)
+          : getComprovanteFilaPagamento(filaId, comprovanteId),
         { nome: nome || 'Comprovante', caminho: caminhoSolicitacao, mime: caminhoSolicitacao ? undefined : 'application/pdf' });
     } catch (error) {
       avisar.erro(error?.message || 'Não foi possível abrir o comprovante.');
@@ -1866,6 +1844,7 @@ export default function FinanceiroCard({
       const pagamento = pagamentos[index] || createPagamento(solicitacao);
       pagamentos[index] = {
         ...pagamento,
+        dados_pagamento_parceiro_id: String(pagamento.parceiro_id || ''),
         dados_pagamento: {
           ...(pagamento.dados_pagamento || createPaymentDraft()),
           ...changes
@@ -2105,7 +2084,8 @@ export default function FinanceiroCard({
       }
 
       const dadosPagamento = pagamento.dados_pagamento || createPaymentDraft();
-      if (form.tipo === 'PAGAR' && podeGerenciarDadosPagamento && dadosPagamento.preparar_pagamento_pix) {
+      if (form.tipo === 'PAGAR' && podeGerenciarDadosPagamento && !pagamento.instrucao_favorecido
+        && (!compraDiretaSolicitacao || isFormaPix(forma)) && dadosPagamento.preparar_pagamento_pix) {
         if (!pagamento.parceiro_id) {
           return `Selecione o credor do titulo ${pagamentoIndex + 1} antes de informar os dados para pagamento.`;
         }
@@ -2188,6 +2168,7 @@ export default function FinanceiroCard({
     if (form.tipo !== 'PAGAR' || !podeGerenciarDadosPagamento) return idsPorPagamento;
 
     for (const pagamento of form.pagamentos || []) {
+      if (pagamento.instrucao_favorecido) continue;
       const draft = pagamento.dados_pagamento || createPaymentDraft();
       if (compraDiretaSolicitacao && !isFormaPix(getFormaPagamento(pagamento.forma_pagamento_id))) continue;
       if (!draft.preparar_pagamento_pix) continue;
@@ -2486,7 +2467,8 @@ export default function FinanceiroCard({
       id: 'comprovante',
       titulo: 'Comprovante',
       tipo: 'acao',
-      render: (titulo) => <ComprovantesTituloSolicitacao titulo={titulo} onAbrir={abrirComprovante} />
+      render: (titulo) => <ComprovantesTituloSolicitacao titulo={titulo}
+        onAbrir={(...args) => abrirComprovante(...args, titulo.somente_participacao ? titulo.id : null)} />
     },
     {
       id: 'saldo',

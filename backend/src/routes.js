@@ -1866,6 +1866,8 @@ router.post('/prioridades-diretoria/lotes/:id/finalizar', requireEnabledModule('
 router.post('/prioridades-diretoria/lotes/:id/cancelar', requireEnabledModule('SOLICITACOES'), validateRequest({ params: validateNumericIdParam('id', 'Lote de prioridade') }), PrioridadeDiretoriaController.cancelar);
 router.delete('/prioridades-diretoria/lotes/:id', requireEnabledModule('SOLICITACOES'), validateRequest({ params: validateNumericIdParam('id', 'Lote de prioridade') }), PrioridadeDiretoriaController.excluir);
 router.get('/solicitacoes/:id/titulos-financeiros', allowSolicitacaoFinanceiro, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), TituloFinanceiroController.listarPorSolicitacao);
+router.get('/solicitacoes/:id/titulos-financeiros/:tituloId/comprovantes-fila/:filaId', allowSolicitacaoFinanceiro,
+  require('./controllers/ComprovanteCompartilhadoSolicitacaoController').abrir);
 router.post('/solicitacoes/:id/gerar-conta', requireEnabledModule('FINANCEIRO'), allowSolicitacaoFinanceiroOperar, allowFinanceiroArea('FINANCEIRO_TITULO_CRIAR_SOLICITACAO', ['financeiro.titulos.criar']), criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao'), body: validateFinanceTituloCreateFromSolicitacaoBody }), TituloFinanceiroController.criarPorSolicitacao);
 
 // -------------------------------------------------------------------

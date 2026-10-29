@@ -2743,7 +2743,7 @@ async function listarTitulosPorSolicitacao(req, solicitacaoId) {
   });
 
   const originais = await require('./tituloRenegociacaoVinculos').projetarOrigens(await TituloFinanceiro.findAll(consulta));
-  const titulos = await require('./tituloCompartilhadoConsulta').porSolicitacao(req, originais, solicitacao.id);
+  const titulos = await require('./tituloCompartilhadoConsulta').porSolicitacao(req, originais, solicitacao.id, { incluirComprovantes: true });
   if (acessoFinanceiroCompleto) await require('./instrucaoFinanceiraFavorecidoService').anexarInstrucoes(titulos);
   // Importacao pelo nome SOL-xxxx vincula a solicitacao, nao um titulo especifico.
   // Nao cria vinculos nem altera baixa/historico; o frontend identifica essa origem.

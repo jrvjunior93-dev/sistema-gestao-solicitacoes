@@ -2,6 +2,7 @@ import { listarComprovantesFila } from '../../utils/comprovantesFila';
 
 export default function ComprovantesTituloSolicitacao({ titulo, onAbrir }) {
   const comprovantes = (titulo.filaPagamentosManuais || []).flatMap(listarComprovantesFila);
+  comprovantes.push(...(titulo.comprovantesCompartilhados || []));
   for (const arquivo of titulo.comprovantesSolicitacao || []) {
     comprovantes.push({ id: `solicitacao-${arquivo.id}`, nome: arquivo.nome_original,
       caminhoSolicitacao: arquivo.caminho_arquivo });

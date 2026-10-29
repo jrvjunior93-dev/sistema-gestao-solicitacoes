@@ -2,7 +2,7 @@
 const leitura = require('./tituloCompartilhadoLeitura');
 const { centavos, dinheiro } = require('./tituloRenegociacaoDomain');
 const plain = v => v?.toJSON ? v.toJSON() : v;
-async function porSolicitacao(req, titulos, solicitacaoId, { transaction } = {}) {
+async function porSolicitacao(req, titulos, solicitacaoId, { transaction, incluirComprovantes = false } = {}) {
   const mapa = await leitura.mapa(titulos.map(plain), transaction);
   return Promise.all(titulos.map(async titulo => {
     const t = plain(titulo), linhas = mapa.get(Number(t.id));
@@ -19,7 +19,9 @@ async function porSolicitacao(req, titulos, solicitacaoId, { transaction } = {})
       valor_original: valor, valor_baixado: pago,
       valor_saldo: saldo, data_vencimento: t.data_vencimento,
       parceiro: t.parceiro, formaPagamento: t.formaPagamento, forma_pagamento_id: t.forma_pagamento_id,
-      filaPagamentosManuais: [], comprovantesSolicitacao: [], somente_participacao: true };
+      filaPagamentosManuais: [], comprovantesSolicitacao: [], somente_participacao: true,
+      comprovantesCompartilhados: incluirComprovantes
+        ? await require('./comprovanteCompartilhadoSolicitacaoService').listar(t.id, Number(solicitacaoId), transaction) : [] };
   }));
 }
 module.exports = { porSolicitacao };

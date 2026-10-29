@@ -196,10 +196,18 @@ export function usePosicaoFlutuante(ancoraRef, camadaRef, aberto, opcoes = {}) {
     const no = camadaRef.current;
     let desvioX = 0;
     let desvioY = 0;
-    if (no && escrito.current) {
+    // React pode agrupar duas medicoes de scroll/resize antes de aplicar o
+    // setCaixa. O ref ja contem a proxima posicao, mas o DOM ainda pinta a
+    // anterior: compara-la ao ref inventa um deslocamento do bloco continente.
+    // Ler o inline aplicado conserva o mesmo referencial da caixa medida.
+    const aplicadoX = no ? Number.parseFloat(no.style.left) : NaN;
+    const aplicadoY = no ? Number.parseFloat(no.style.top) : NaN;
+    const temPosicaoAplicada = no?.style.position === 'fixed'
+      && Number.isFinite(aplicadoX) && Number.isFinite(aplicadoY);
+    if (no && temPosicaoAplicada) {
       const r = no.getBoundingClientRect();
-      desvioX = r.left - escrito.current.left;
-      desvioY = r.top - escrito.current.top;
+      desvioX = r.left - aplicadoX;
+      desvioY = r.top - aplicadoY;
       if (!natural.current.medido) {
         natural.current = { altura: r.height, largura: r.width, medido: true };
       }

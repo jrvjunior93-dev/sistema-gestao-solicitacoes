@@ -2153,3 +2153,11 @@ export async function getArquivosDoTitulo(tituloId) {
   if (!res.ok) throw new Error(json?.error || 'Erro ao buscar os arquivos do titulo');
   return json;
 }
+
+export async function getComprovanteCompartilhadoSolicitacao(solicitacaoId, tituloId, filaId, comprovanteId = null) {
+  const query = comprovanteId == null ? '' : `?comprovante_id=${encodeURIComponent(comprovanteId)}`;
+  const response = await fetch(`${API_URL}/solicitacoes/${Number(solicitacaoId)}/titulos-financeiros/${Number(tituloId)}/comprovantes-fila/${Number(filaId)}${query}`, {
+    headers: authHeaders()
+  });
+  return parseJson(response, 'Erro ao abrir comprovante compartilhado');
+}
