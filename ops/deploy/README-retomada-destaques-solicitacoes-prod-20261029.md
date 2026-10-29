@@ -34,3 +34,12 @@ Nao apagar estado/locks nem executar gitadd/reset/pull para contornar bloqueios.
 Testes locais:5casos negativos/loader/guarda/excecao com fonte congelada;17casos
 do aplicador original executados comDESTAQUES_QA_COMMIT=998... para ler seus
 proprios blobs imutaveis. Nenhuma EC2 ou banco acessado pelo agente.
+
+## Retomada apos instalacao - indice 29/10
+Usuario confirmou fase atualizando e todos os nove arquivos VERSAO_NOVA.
+HEAD15a86635 preservado e stage vazio. Indice bruto mudou de8449d34c... para5f612dd8...
+A guarda aceita somente esse par completo recebido, release998, HEAD15 e fases
+posteriores ao preparo. Exige diff cached raw vazio contraHEAD e nenhum conflito.
+Nao modifica indice nem estado.index. Demais hashes continuam bloqueados.
+Executar apenas aplicar e conferir pelo wrapper atualizado; nao preparar novamente.
+Testes:6da retomada e17do aplicador congelado aprovados. Sem EC2/banco pelo agente.

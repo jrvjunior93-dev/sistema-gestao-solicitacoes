@@ -43,3 +43,18 @@ test('guarda e loader nao executam nenhum comando de escrita ou alteracao do ind
  assert(original.includes("check(git(['rev-parse','HEAD'])===s.head&&hash(fs.readFileSync(ROOT+'/.git/index'))===s.index"));
  assert(source.includes("proc.argv=['node','-']"));
 });
+
+test('retomada do indice aceita somente o par recebido e conteudo igual ao HEAD',()=>{
+ const s={head:'15a86635b4f26bd911b76d83023b6fb3592919d9',version:op.RELEASE,phase:'atualizando',index:'8449d34cadd8da9523a81e5f1ed6c30244a56fd5f4e1eb3290ea670593e56dd1'};
+ const current='5f612dd8f719c2796e8904656be7134250656f2b02d8589a364f3cd6f5a6cd60';
+ const seen=[],io={readGit:args=>{seen.push(args);return Buffer.alloc(0);}};
+ assert(op.validateIndex(s,current,io));assert.equal(seen.length,2);
+ assert.deepEqual(seen[0],['diff','--cached','--raw','--no-ext-diff','--no-textconv',s.head,'--']);
+ assert.deepEqual(seen[1],['ls-files','--unmerged']);
+ for(const delta of [{head:'outro'},{version:'outro'},{phase:'preparado'},{index:'outro'}])assert.throws(()=>op.validateIndex({...s,...delta},current,io),/NAO_RECONHECIDO/);
+ assert.throws(()=>op.validateIndex(s,'outro',io),/NAO_RECONHECIDO/);
+ assert.throws(()=>op.validateIndex(s,current,{readGit:()=>Buffer.from('alterado')}),/CONTEUDO_DIVERGENTE/);
+ assert.throws(()=>op.validateIndex(s,current,{readGit:args=>Buffer.from(args[0]==='ls-files'?'conflito':'')}),/CONFLITO/);
+ assert(op.validateIndex(s,s.index,{readGit:()=>{throw Error('nao deve consultar');}}));
+ for(const phase of ['arquivos_prontos','reiniciando','aplicado'])assert(op.validateIndex({...s,phase},current,io));
+});

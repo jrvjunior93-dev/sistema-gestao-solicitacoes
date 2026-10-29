@@ -49,3 +49,13 @@ tamper,tracked,owner,symlink,hardlink,world-writable,outra diferenca e loaderpin
 Aplicador original revalidado com env de QA pinado ao proprio commit998, tal
 como executado pelo operador. Sem EC2/banco pelo agente. Publicar patch main
 e fornecer as tres chamadas ao wrapper, com alvo funcional998 inalterado.
+
+## 29/10 - indice bruto divergente apos instalacao
+Evidencia do operador: fase atualizando,9fontes novas,HEAD15igual,stage vazio,
+indice salvo8449d34cadd8da9523a81e5f1ed6c30244a56fd5f4e1eb3290ea670593e56dd1
+atual5f612dd8f719c2796e8904656be7134250656f2b02d8589a364f3cd6f5a6cd60.
+Retomada limita excecao a esse par/head/release/fases e exige equivalencia do
+indice comHEAD e ausencia de conflitos. Nao regrava indice/estado.index.
+23testes locais aprovados. Proximo: usuario executa aplicar/conferir pelo wrapper
+novo. Nao executar preparar porque estado ja esta atualizando. Nao houve EC2,
+banco,reinicio ou integracao pelo agente. Preservar estado e locks existentes.
