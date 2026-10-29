@@ -9,6 +9,7 @@ export default function RhColaboradorObraModal({ id, onFechar, onSalvo }) {
   const [dados, setDados] = useState(null), [observacoes, setObservacoes] = useState('');
   const [ocupado, setOcupado] = useState(false), [tipo, setTipo] = useState('');
   const [validade, setValidade] = useState(''), [file, setFile] = useState(null);
+  const [erroCarregamento, setErroCarregamento] = useState(''), [tentativa, setTentativa] = useState(0);
   const chave = useRef(crypto.randomUUID()), trava = useRef(false), arquivoRef = useRef(null);
   const { avisos, avisar, fechar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
@@ -27,10 +28,11 @@ export default function RhColaboradorObraModal({ id, onFechar, onSalvo }) {
   }
   useEffect(() => {
     let ativo = true;
+    setDados(null); setErroCarregamento(''); setObservacoes('');
     cadastroRhObra(id).then(result => { if (ativo) { setDados(result); setObservacoes(result.colaborador.observacoes || ''); } })
-      .catch(error => { if (ativo) avisar.erro(error.message); });
+      .catch(error => { if (ativo) setErroCarregamento(error.message || 'Não foi possível carregar o cadastro.'); });
     return () => { ativo = false; };
-  }, [id]);
+  }, [id, tentativa]);
   async function executar(fn) {
     if (trava.current) return;
     trava.current = true; setOcupado(true);
@@ -42,7 +44,10 @@ export default function RhColaboradorObraModal({ id, onFechar, onSalvo }) {
       <div className="flex items-center justify-between gap-2"><h2 className="text-base font-semibold">{dados?.colaborador.nome || 'Cadastro do colaborador'}</h2>
         <button className="btn btn-outline btn-sm" disabled={ocupado} onClick={fecharCadastro}>Fechar</button></div>
       <Avisos avisos={avisos} aoFechar={fechar} />
-      {!dados ? <p role="status">Carregando cadastro…</p> : <>
+      {!dados ? erroCarregamento ? <div className="space-y-2">
+        <p role="alert">{erroCarregamento}</p>
+        <button className="btn btn-outline btn-sm" onClick={() => { setErroCarregamento(''); setTentativa(v => v + 1); }}>Tentar novamente</button>
+      </div> : <p role="status">Carregando cadastro…</p> : <>
         <label className="form-group"><span className="form-label">Observações</span><textarea aria-label="Observações" className="form-control" rows={4} maxLength={4000}
           value={observacoes} disabled={ocupado || !dados.pode_editar} onChange={e => setObservacoes(e.target.value)} /></label>
         {dados.pode_editar && <button className="btn btn-primary btn-sm" disabled={ocupado || observacoes === (dados.colaborador.observacoes || '')} onClick={() => executar(async () => {

@@ -16,7 +16,7 @@ import Editor from '/src/pages/RhDpColaboradores.jsx';import{ThemeContext,TEMA_P
 import '/src/index.css';import '/src/styles/design-tokens.css';import '/src/styles/componentes-padrao.css';
 const mode=new URLSearchParams(location.search).get('mode');
 createRoot(document.getElementById('root')).render(<ThemeContext.Provider value={{tema:TEMA_PADRAO}}><MemoryRouter><main className="layout-main">
-{mode==='cadastro'?<Cadastro id={7} onFechar={()=>{}}/>:mode==='editor'?<Editor colaboradorId={7} comoEditor onFecharEditor={()=>{}}/>:<Pagamento solicitacaoId={91} local={{id:10,nome:'Obra QA'}} onFechar={()=>{}}/>}
+{mode.startsWith('cadastro')?<Cadastro id={7} onFechar={()=>{}}/>:mode==='editor'?<Editor colaboradorId={7} comoEditor onFecharEditor={()=>{}}/>:<Pagamento solicitacaoId={91} local={{id:10,nome:'Obra QA'}} onFechar={()=>{}}/>}
 </main></MemoryRouter></ThemeContext.Provider>);`;
 const server = await createServer({ root, configFile: false, logLevel: 'error', cacheDir: path.join(output, 'vite-cache'), server: { host: '127.0.0.1', port: 0 }, plugins: [{
   name: 'rh-privacidade-qa', enforce: 'pre',
@@ -48,6 +48,7 @@ try {
         cadastro_versao: 'SECRET-HASH', modo_recebimento: 'PIX', chave_pix: 'qa@example.test', favorecido_nome: 'Pessoa QA', favorecido_documento: pessoa.cpf, conferido_obra: false, conferido_dp: false }] } },
       pode_conferir: mode === 'dp', pode_enviar_fila: mode === 'dp', responsaveis: [], avisos: [] };
     const docs = [{ id: 3, nome_original: 'arquivo-da-obra.pdf', tipo_nome: 'Documento', status: 'ENVIADO' }];
+    let falharCadastro = mode === 'cadastro-erro';
     await page.route('**/*', async route => {
       const request = route.request(), url = new URL(request.url());
       if (url.origin !== base) return route.abort();
@@ -55,6 +56,10 @@ try {
       const method = request.method(); calls.push({ path: url.pathname, method, body: request.postData() });
       let result = [];
       if (url.pathname.includes('/cadastro-obra')) {
+        if (falharCadastro && method === 'GET') {
+          falharCadastro = false;
+          return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Erro no cadastro limitado do colaborador' }) });
+        }
         if (method === 'POST') { await new Promise(r => setTimeout(r, 200)); docs.push({ id: 4, nome_original: 'novo.pdf', status: 'ENVIADO' }); result = { replay: false }; }
         else {
           if (method === 'PATCH') pessoa.observacoes = request.postDataJSON().observacoes;
@@ -114,6 +119,16 @@ try {
     assert.equal(await dialog.getByLabel('Observações', { exact: true }).inputValue(), 'Observação ainda não salva');
     assert.equal(await c.getByText('DP-PRIVATE').count(), 0);
     await dialog.screenshot({ path: path.join(output, `cadastro-obra-${width}.png`) }); await c.close();
+    const falha = await abrir('cadastro-erro', width);
+    const d = falha.page.getByRole('dialog', { name: 'Cadastro do colaborador' });
+    await d.getByRole('alert').getByText('Erro no cadastro limitado do colaborador', { exact: true }).waitFor();
+    assert.equal(await d.getByText('Carregando cadastro…', { exact: true }).count(), 0);
+    assert.equal(await d.getByLabel('Observações', { exact: true }).count(), 0);
+    await d.getByRole('button', { name: 'Tentar novamente' }).click();
+    await d.getByLabel('Observações', { exact: true }).waitFor();
+    assert.equal(falha.calls.filter(r => r.path.endsWith('/cadastro-obra') && r.method === 'GET').length, 2);
+    assert.equal(falha.calls.filter(r => r.method !== 'GET').length, 0);
+    await falha.page.close();
   }
   const dp = await abrir('dp', 1366);
   await dp.page.getByText('R$ 9.743,21', { exact: false }).first().waitFor(); await dp.page.close();

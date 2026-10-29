@@ -6577,3 +6577,5 @@ Promocao isolada validada sobre main f429b6f2: testes de acesso/sincronizacao e 
 2026-10-29 — Retomada indice: reserva wrapper/teste/README e handoff. Estado recebido atualizando, nove fontes novas; HEAD15 preservado, stage vazio, indice8449 para5f61. Excecao apenas par de hashes recebido e indice semanticamente igualHEAD. Sem EC2/banco.
 
 2026-10-29 — Reserva wrapper/teste/README/handoff para substituir hash bruto atual por equivalencia integral indice/HEAD (caminho,modo,blob,stage), sem alterar indice/estado e mantendo release/HEAD/indice original pinados. Sem EC2 ou banco.
+
+2026-10-29 — PromocaoRH homologada6aa7d0fa: reserva service,modal,QAbackend/UI,novo aplicadorPROD/teste/manifesto/README e handoff nesta branch codex/rh-cadastro-obra-main base1f07f3b1. Escopo1runtime, sem mergegeral/EC2/banco. Indice semantico, overlays anteriores validos por hash;DEV preservado.

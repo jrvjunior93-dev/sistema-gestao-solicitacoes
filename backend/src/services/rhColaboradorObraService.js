@@ -33,13 +33,13 @@ async function colaboradorNoEscopo(req, id, transaction, escrita = false) {
 const documentoDto = d => {
   const v = plain(d);
   return { id: v.id, nome_original: v.nome_original, status: v.status, validade: v.validade,
-    tipo_nome: v.tipo?.nome, observacoes: v.observacoes, createdAt: v.createdAt };
+    tipo_nome: v.tipoDocumento?.nome, observacoes: v.observacoes, createdAt: v.createdAt };
 };
 async function mostrar(req, id) {
   const { colaborador: c, escopo } = await colaboradorNoEscopo(req, id);
   const documentos = await RhDocumento.findAll({ where: { colaborador_id: c.id, ativo: true, obra_origem_id: { [Op.in]: escopo } },
     attributes: ['id', 'nome_original', 'status', 'validade', 'observacoes', 'createdAt'],
-    include: [{ model: RhDocumentoTipo, as: 'tipo', attributes: ['id', 'nome'] }], order: [['id', 'DESC']] });
+    include: [{ model: RhDocumentoTipo, as: 'tipoDocumento', attributes: ['id', 'nome'] }], order: [['id', 'DESC']] });
   const tipos = await RhDocumentoTipo.findAll({ where: { ativo: true, [Op.or]: [{ tipo_vinculo: null }, { tipo_vinculo: c.tipo_vinculo }] },
     attributes: ['id', 'nome', 'exige_validade'], order: [['nome', 'ASC']] });
   return { colaborador: plain(c), documentos: documentos.map(documentoDto), tipos_documento: tipos.map(plain),
