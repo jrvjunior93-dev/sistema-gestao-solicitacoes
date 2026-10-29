@@ -1,0 +1,101 @@
+{
+  "base": "39f4e7192adb0e0205e0f34dfb08b3106be4bf6e",
+  "runtime_files": 2,
+  "sql": 0,
+  "migrations": 0,
+  "heap_mib": 4096,
+  "files": [
+    {
+      "path": "backend/src/controllers/SolicitacaoController.js",
+      "sha256": "4d622ba9e2a14b6a3ae72a5a5496ecd75a6a5bd771ff84ca6a34caa5ee62a311",
+      "old_sha256": "f2f0fd253716ebc0d2c37d2353f11d2393a6fbb0e45d09e452e0b330f7534080"
+    },
+    {
+      "path": "backend/src/services/solicitacaoFilaOperacional.js",
+      "sha256": "d35addf1592cbb08f1e94c76911ee52d6cf8c3eb64482c3cfe45355c35385a64",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarFilaOperacionalSolicitacoes.cjs",
+      "sha256": "7ba430101a398d1baeea61ace63a853b32548bcf4722b54a9886d64b59fa6697",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarInteracoesSolicitacao.js",
+      "sha256": "ede5d70236932260a85f259a47719a676cece9b31a3f26d1227c9e36d8f5c89a",
+      "old_sha256": "ede5d70236932260a85f259a47719a676cece9b31a3f26d1227c9e36d8f5c89a"
+    },
+    {
+      "path": "backend/scripts/validarDevolucaoRetornoSolicitacao.js",
+      "sha256": "0b135cf5418eb73082ce0949e9b4751ffa9654f8206502a75210355e09fa2e3e",
+      "old_sha256": "31d33a3545d6392f472aca76cceabf2adf1fe6269454a61a31cf22d7a0ff7db5"
+    },
+    {
+      "path": "backend/scripts/helpers/semRedeQa.js",
+      "sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf",
+      "old_sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf"
+    }
+  ],
+  "extra": [
+    {
+      "path": "ops/deploy/atualizar-prod-destaques-solicitacoes-20261029.cjs",
+      "sha256": "85b112493acad07eef30efb2c77c411b09ae3b57329a4174274b2e032c902599"
+    },
+    {
+      "path": "ops/deploy/atualizar-prod-destaques-solicitacoes-20261029.test.cjs",
+      "sha256": "c86bdd272bbfee6aed52fad88ce259db8ea3b75c182d82beeada2848de5c2f84"
+    },
+    {
+      "path": "ops/deploy/README-destaques-solicitacoes-prod-20261029.md",
+      "sha256": "88646d295eb856bafef256007835c7635a458f3e9580ef6837061683cd5bd8cd"
+    },
+    {
+      "path": "docs/handoffs/2026-10-29-promocao-destaques-main.md",
+      "sha256": "982720cc89b26ebe7575a025ab3d44a260398b387619b273e5b0b4c74c3339a8"
+    },
+    {
+      "path": "docs/modulos/solicitacoes/README.md",
+      "sha256": "785308b7aba89941f071eab529b72bd1172d54de2aaa8747fd03d3ede26ae14e"
+    },
+    {
+      "path": "docs/workspace/OWNERSHIP_ATIVO.md",
+      "sha256": "24bcedee6e1b9b75ddfee267530787273a85a69ec5bdb56b4b95c24b2195b1a0"
+    },
+    {
+      "path": "frontend/scripts/interacoesPaginasQA.mjs",
+      "sha256": "1423042207bcc090ebf54df38c33cd71c4fbcd49dd3d48acc414a1949af2b754"
+    },
+    {
+      "path": "frontend/scripts/validarDestaquesSolicitacoes.mjs",
+      "sha256": "af75681c1280643629fa6a157fa26398233b231e2dc0010d4102207e63da363d"
+    },
+    {
+      "path": "frontend/scripts/validarInteracoesSolicitacao.mjs",
+      "sha256": "b033619224050e1ace2992f152d57b4010634cb9feda9f1c5d278483595481d8"
+    },
+    {
+      "path": "frontend/src/components/lista-avancada/lista-avancada.css",
+      "sha256": "cfcc2522f022ec82c8643206cdabc7cf8d7beacec959665f92a05f0dbbbbb1a8"
+    },
+    {
+      "path": "frontend/src/pages/Solicitacoes/AtencaoPendente.jsx",
+      "sha256": "fdb400dfb6e4a1384dd16ffb5ac7f4f373458ebe0ef28b11ffe5a74a68ad6869"
+    },
+    {
+      "path": "frontend/src/pages/Solicitacoes/AtividadePendente.jsx",
+      "sha256": "803be9c0a2fd4171e9fc2234204f3a3915170b6c6e1096f80d8f294b2f54c4b1"
+    },
+    {
+      "path": "frontend/src/pages/Solicitacoes/LegendaDestaques.jsx",
+      "sha256": "193cfaca1798f64bfd97608a2f5d74e9813284b711b7d911d5924d2625d195e9"
+    },
+    {
+      "path": "frontend/src/pages/Solicitacoes/LinhaSolicitacao.jsx",
+      "sha256": "30e0629b0d1314ffd2f0da19584646993b43924eec4d73d0d0904dc9559df06a"
+    },
+    {
+      "path": "frontend/src/pages/Solicitacoes/index.jsx",
+      "sha256": "4e0be193bc3e6679dcf2c0cde79f95267348245ab81706b466b347ab94230362"
+    }
+  ]
+}

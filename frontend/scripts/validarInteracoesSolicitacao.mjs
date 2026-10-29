@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer, transformWithEsbuild } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwind from 'tailwindcss';
 import { chromium } from 'playwright';
 import { validarPaginasInteracoes } from './interacoesPaginasQA.mjs';
 
@@ -28,19 +29,21 @@ const compra = { solicitacao_compra_id: 8, status_compra: 'COTACAO', pedidos: []
 const fixture = `import React,{useEffect,useState} from 'react';import {createRoot} from 'react-dom/client';
 import {BrowserRouter,useLocation} from 'react-router-dom';
 import Atencao from '/src/pages/Solicitacoes/AtencaoPendente.jsx';
+import Atividade from '/src/pages/Solicitacoes/AtividadePendente.jsx';
 import Timeline from '/src/pages/SolicitacaoDetalhe/Timeline.jsx';
 import CompraEtapas from '/src/pages/SolicitacaoDetalhe/CompraEtapas.jsx';
 import '/src/index.css';import '/src/styles/design-tokens.css';import '/src/styles/componentes-padrao.css';
 function App(){const [grupos,setGrupos]=useState(${JSON.stringify(grupos)});const location=useLocation();
 const q=new URLSearchParams(location.search);useEffect(()=>{const f=e=>setGrupos(e.detail.interacoes_pendentes);window.addEventListener('fluxy:interacoes-lidas',f);return()=>window.removeEventListener('fluxy:interacoes-lidas',f)},[]);
 return <main className="layout-main" style={{padding:12}}><div onClick={()=>window.cliqueLinha=(window.cliqueLinha||0)+1}>
+<Atividade solicitacao={{id:42,atividades_pendentes:[{tipo:'RETORNO_PENDENTE',nome:'Aprovar retorno',prazo_em:null,atrasada:false}]}} />
 <Atencao solicitacao={{id:42,codigo:'SOL-42',interacoes_pendentes:grupos,retorno_solicitado_pendente:true}} /></div>
 <div id="rota">{location.pathname+location.search}</div>
 <Timeline solicitacaoId={42} historicos={${JSON.stringify(historicos)}} interacoesPendentes={grupos}
 eventoFoco={q.get('interacao')!=='COMENTARIO_ITEM'?Number(q.get('evento')):null} />
 <CompraEtapas solicitacaoId={42} user={{id:1,perfil:'OBRA'}} podeDecidir={false} podeGerenciarCotacao={false} />
 </main>};createRoot(document.getElementById('root')).render(<BrowserRouter><App/></BrowserRouter>);`;
-const server = await createServer({ root, configFile: false, logLevel: 'error', server: { host: '127.0.0.1', port: 0 }, plugins: [{
+const server = await createServer({ root, configFile: false, css: { postcss: { plugins: [tailwind({config:path.join(root,'tailwind.config.js')})] } }, logLevel: 'error', server: { host: '127.0.0.1', port: 0 }, plugins: [{
   name: 'interacoes-fixture', enforce: 'pre',
   resolveId(id, importer) {
     if (id === '/fixture.jsx') return '\0interacoes-fixture.jsx';
@@ -92,47 +95,44 @@ try {
     });
     const base = `http://127.0.0.1:${server.httpServer.address().port}`;
     await page.goto(`${base}/fixture`);
-    await page.getByRole('button', { name: 'Interações pendentes de SOL-42: 5' }).waitFor({ timeout: 10000 }).catch((e) => { console.error(erros); throw e; });
+    await page.getByRole('button', { name: 'Interações não lidas de SOL-42: 4' }).waitFor({ timeout: 10000 }).catch((e) => { console.error(erros); throw e; });
     await page.waitForTimeout(1000); assert.equal(leituras.length, 0, 'abrir detalhe nao reconhece eventos');
-    await page.getByRole('button', { name: 'Interações pendentes de SOL-42: 5' }).click();
+    await page.getByRole('button', { name: 'Interações não lidas de SOL-42: 4' }).click();
     const modal = page.getByRole('dialog', { name: 'Interações · SOL-42' });
     await modal.getByRole('link', { name: /Comentário em item/ }).waitFor();
     assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Fechar');
     await page.keyboard.press('Shift+Tab');
-    assert.ok(await page.evaluate(() => document.activeElement.textContent.includes('Aprovação de retorno pendente')));
+    assert.ok(await page.evaluate(() => document.activeElement.textContent.includes('Comentário em item')));
     await page.keyboard.press('Tab');
     assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Fechar');
     assert.equal(await page.evaluate(() => window.cliqueLinha || 0), 0, 'balao nao dispara clique da linha');
-    assert.equal(await modal.getByRole('link').count(), 4, 'um grupo por tipo');
+    assert.equal(await modal.getByRole('link').count(), 3, 'um grupo por tipo');
     assert.equal(await modal.locator('script').count(), 0);
     await page.screenshot({ path: path.join(root, `../outputs/interacoes-${width}.png`) });
     await page.keyboard.press('Escape'); await modal.waitFor({ state: 'hidden' });
-    assert.equal(await page.evaluate(() => document.activeElement.getAttribute('aria-label')), 'Interações pendentes de SOL-42: 5');
-    await page.getByRole('button', { name: /Interações pendentes/ }).click();
+    assert.equal(await page.evaluate(() => document.activeElement.getAttribute('aria-label')), 'Interações não lidas de SOL-42: 4');
+    await page.getByRole('button', { name: /Interações não lidas/ }).click();
     await page.mouse.click(2, 2); await modal.waitFor({ state: 'hidden' });
-    await page.getByRole('button', { name: /Interações pendentes/ }).click();
+    await page.getByRole('button', { name: /Interações não lidas/ }).click();
     falhar = true;
     await modal.getByRole('link', { name: /Novo comentário no histórico/ }).click();
     await page.getByText('Conferir pagamento <script>literal</script>', { exact: true }).waitFor();
     await page.waitForTimeout(1100);
     assert.ok(leituras.some((ids) => ids.includes(100)));
-    assert.equal(await page.getByRole('button', { name: 'Interações pendentes de SOL-42: 5' }).count(), 1, 'falha nao apaga destaque');
+    assert.equal(await page.getByRole('button', { name: 'Interações não lidas de SOL-42: 4' }).count(), 1, 'falha nao apaga destaque');
     assert.equal(leituras.flat().includes(102), false, 'historico nao consome comentarios de itens');
     falhar = false;
-    await page.getByRole('button', { name: 'Interações pendentes de SOL-42: 3' }).waitFor();
-    await page.getByRole('button', { name: 'Interações pendentes de SOL-42: 3' }).click();
+    await page.getByRole('button', { name: 'Interações não lidas de SOL-42: 2' }).waitFor();
+    await page.getByRole('button', { name: 'Interações não lidas de SOL-42: 2' }).click();
     await modal.getByRole('link', { name: /Comentário em item/ }).click();
     const comentarios = page.getByRole('dialog', { name: 'Comentários: Arame' });
     await comentarios.getByText('Material errado', { exact: true }).waitFor();
     await comentarios.getByText('Conferir entrega', { exact: true }).waitFor();
     assert.equal(await comentarios.getByRole('button', { name: 'Enviar', exact: true }).count(), 0, 'atalho nao amplia escrita');
-    await page.getByRole('button', { name: 'Interações pendentes de SOL-42: 1' }).waitFor();
+    await page.getByRole('button', { name: /Interações não lidas/ }).waitFor({state:'hidden'});
     assert.ok(leituras.some((ids) => ids.includes(102) && ids.includes(103)), 'conversa compartilhada sem duplicidade');
     await comentarios.getByRole('button', { name: 'Fechar comentários' }).click();
-    await page.getByRole('button', { name: 'Interações pendentes de SOL-42: 1' }).click();
-    await modal.getByRole('link', { name: /Aprovação de retorno pendente/ }).waitFor();
-    assert.equal(await modal.getByRole('link').count(), 1, 'retorno nao e consumido por leitura');
-    await modal.getByRole('button', { name: 'Fechar' }).click();
+    assert.equal(await page.getByRole('link', { name: /Aprovar retorno/ }).count(), 1, 'atividade nao e consumida por leitura');
     assert.deepEqual(erros, []); assert.deepEqual(externos, []);
     await page.close();
   }

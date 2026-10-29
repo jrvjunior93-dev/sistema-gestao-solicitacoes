@@ -344,7 +344,20 @@ function validarDatasConsultaSolicitacoes(filtros) {
   return null;
 }
 
-async function montarResumoSolicitacoesLista(solicitacoes, usuarioId = null) {
+async function obterContextoFilaOperacional(req) {
+  const area = await obterAreaUsuario(req);
+  const [tokens, decidir, obra, compras, regra] = await Promise.all([
+    obterTokensSetorPrincipalUsuario(req, area),
+    userHasAreaPermission(req.user, ['solicitacoes.retorno.decidir']),
+    userHasSetorCapability(req.user, 'eh_setor_obra'),
+    userHasSetorCapability(req.user, 'eh_setor_compras'),
+    require('../services/prazosOperacionaisService').configuracao()
+  ]);
+  const superadmin = String(req.user?.perfil || '').toUpperCase() === 'SUPERADMIN';
+  return { tokens, decidir, superadmin, setorEntrega: superadmin ? null : compras ? 'COMPRAS' : obra ? 'OBRA' : null, regra };
+}
+
+async function montarResumoSolicitacoesLista(solicitacoes, usuarioId = null, contextoFila = null) {
   if (!Array.isArray(solicitacoes) || solicitacoes.length === 0) {
     return [];
   }
@@ -403,7 +416,7 @@ async function montarResumoSolicitacoesLista(solicitacoes, usuarioId = null) {
       ],
       order: [
         ['solicitacao_id', 'ASC'],
-        ['createdAt', 'DESC']
+        ['createdAt', 'ASC']
       ]
     }),
     usuarioId ? SolicitacaoAtencaoUsuario.findAll({
@@ -426,7 +439,7 @@ async function montarResumoSolicitacoesLista(solicitacoes, usuarioId = null) {
       .then((linhas) => linhas.map((linha) => ({ ...linha, setor })))))).flat();
   const entregasPorSolicitacao = new Map();
   const prazosService = require('../services/prazosOperacionaisService');
-  const regraPrazos = await prazosService.configuracao();
+  const regraPrazos = contextoFila?.regra || await prazosService.configuracao();
   const obrigacoes = await prazosService.pendencias({ solicitacaoIds: idsSolicitacoes, regra: regraPrazos });
   const agoraPrazos = new Date();
   const itensComPrazo = new Set(obrigacoes.map((o) => Number(o.referencia_id)));
@@ -464,8 +477,7 @@ async function montarResumoSolicitacoesLista(solicitacoes, usuarioId = null) {
     if (
       !pedidoRetornoPorSolicitacao.has(solicitacaoId)
       && areaPorSolicitacao.has(solicitacaoId)
-      && normalizarTokenComparacao(item.setor_atual_pedido)
-        === normalizarTokenComparacao(areaPorSolicitacao.get(solicitacaoId))
+      && require('../services/solicitacaoFilaOperacional').mesmoSetor(item.setor_atual_pedido, areaPorSolicitacao.get(solicitacaoId))
     ) {
       pedidoRetornoPorSolicitacao.set(solicitacaoId, item);
     }
@@ -504,6 +516,12 @@ async function montarResumoSolicitacoesLista(solicitacoes, usuarioId = null) {
         ? { tipo: atencao.tipo, resumo: atencao.resumo, evento_em: atencao.evento_em }
         : null;
       solicitacao.interacoes_pendentes = interacoesPorSolicitacao.get(Number(item.id)) || [];
+      solicitacao.atividades_pendentes = require('../services/solicitacaoFilaOperacional').atividades({
+        solicitacao, retorno: pedidoRetorno, entregas: entregasPendentes.filter(e => Number(e.solicitacao_id) === Number(item.id)),
+        obrigacoes: obrigacoes.filter(o => Number(o.solicitacao_id) === Number(item.id)), regra: regraPrazos, contexto: contextoFila, agora: agoraPrazos
+      });
+      solicitacao.acompanhamento_setor = contextoFila && !require('../services/solicitacaoFilaOperacional').atual(solicitacao, contextoFila)
+        ? solicitacao.area_responsavel : null;
       return solicitacao;
     })
     .sort((a, b) => (ordemIds.get(Number(a.id)) || 0) - (ordemIds.get(Number(b.id)) || 0));
@@ -544,7 +562,7 @@ function buildSolicitacaoResumoListaInclude() {
   ];
 }
 
-async function buscarResumoListaSolicitacaoPorId(id) {
+async function buscarResumoListaSolicitacaoPorId(id, req) {
   const solicitacao = await Solicitacao.findByPk(id, {
     attributes: {
       include: [[Sequelize.literal(sqlVencimentoMedicaoPendente()), 'data_vencimento_medicao']]
@@ -556,7 +574,7 @@ async function buscarResumoListaSolicitacaoPorId(id) {
     return null;
   }
 
-  const resumo = await montarResumoSolicitacoesLista([solicitacao]);
+  const resumo = await montarResumoSolicitacoesLista([solicitacao], req?.user?.id, req ? await obterContextoFilaOperacional(req) : null);
   return Array.isArray(resumo) && resumo.length > 0 ? resumo[0] : null;
 }
 
@@ -2157,11 +2175,9 @@ async function montarEscopoVisibilidadeLista(req, { listarArquivadas = false } =
         perfil === 'USUARIO' &&
         !adminGEO &&
         !isSetorObra;
-      // A fila do GEO e operacional: uma prestacao, retorno ou nova movimentacao precisa voltar
-      // ao topo para conferencia. Os demais setores preservam a ordenacao historica por criacao.
-      const ordenacaoLista = isUsuarioGeo
-        ? [['updatedAt', 'DESC'], ['createdAt', 'DESC']]
-        : [['createdAt', 'DESC']];
+      // A prioridade operacional e a leitura entram antes da paginação.
+      // Acompanhamento sem pendência não sobe só porque updatedAt mudou.
+      const ordenacaoLista = [['createdAt', 'DESC'], ['id', 'DESC']];
 
       return {
         vazio: false,
@@ -2499,44 +2515,13 @@ module.exports = {
       const ordenacaoColunaSolicitada = colunaOrdenacaoSolicitada === 'data_vencimento'
         ? [Sequelize.literal(sqlVencimentoEfetivoSolicitacao()), direcaoOrdenacaoSolicitada]
         : [colunaOrdenacaoSolicitada, direcaoOrdenacaoSolicitada];
-      // Pedido de retorno e uma interrupcao operacional: precisa aparecer antes das demais
-      // solicitacoes, inclusive quando estiver fora da pagina que o usuario tinha carregado.
-      // A prioridade entra no banco antes de limit/offset e continua valendo quando ha uma
-      // ordenacao de coluna escolhida na interface.
-      const ordenacaoRetornoPendente = [
-        [Sequelize.literal(`CASE WHEN ${require('../services/pedidoEntregaService').sqlPendenciaEntrega(
-          await userHasSetorCapability(req.user, 'eh_setor_compras') ? 'COMPRAS' : 'OBRA'
-        )} THEN 0 ELSE 1 END`), 'ASC'],
-        [Sequelize.literal(require('../services/pedidoEntregaService').sqlOrdemEntrega(
-          await userHasSetorCapability(req.user, 'eh_setor_compras') ? 'COMPRAS' : 'OBRA'
-        )), 'DESC'],
-        [Sequelize.literal(`CASE WHEN EXISTS (
-          SELECT 1 FROM solicitacao_atencoes_usuario sau
-          WHERE sau.solicitacao_id = Solicitacao.id
-            AND sau.usuario_id = ${Number(usuarioId) || -1}
-            AND sau.lido_em IS NULL
-        ) OR ${require('../services/solicitacaoInteracoesService').sqlExistePendente(usuarioId)} THEN 0 ELSE 1 END`), 'ASC'],
-        [Sequelize.literal(`GREATEST(COALESCE((
-          SELECT sau.evento_em FROM solicitacao_atencoes_usuario sau
-          WHERE sau.solicitacao_id = Solicitacao.id
-            AND sau.usuario_id = ${Number(usuarioId) || -1}
-            AND sau.lido_em IS NULL
-        ), '1970-01-01'), COALESCE(${require('../services/solicitacaoInteracoesService').sqlUltimoPendente(usuarioId)}, '1970-01-01'))`), 'DESC'],
-        [Sequelize.literal(`CASE WHEN EXISTS (
-          SELECT 1
-          FROM solicitacao_pedidos_retorno spr
-          WHERE spr.solicitacao_id = Solicitacao.id
-            AND spr.status = 'PENDENTE'
-            AND spr.setor_atual_pedido = Solicitacao.area_responsavel
-        ) THEN 0 ELSE 1 END`), 'ASC'],
-        [Sequelize.literal(`(
-          SELECT MAX(spr.createdAt)
-          FROM solicitacao_pedidos_retorno spr
-          WHERE spr.solicitacao_id = Solicitacao.id
-            AND spr.status = 'PENDENTE'
-            AND spr.setor_atual_pedido = Solicitacao.area_responsavel
-        )`), 'DESC']
-      ];
+      const contextoFila = await obterContextoFilaOperacional(req);
+      const { sqlExistePendente, sqlUltimoPendente } = require('../services/solicitacaoInteracoesService');
+      const ordenacaoRetornoPendente = require('../services/solicitacaoFilaOperacional').sqlFila({
+        contexto: { ...contextoFila, sqlInteracao: sqlExistePendente(usuarioId), sqlUltimaInteracao: sqlUltimoPendente(usuarioId) },
+        usuarioId, escape: v => db.sequelize.escape(v), regra: contextoFila.regra,
+        hoje: require('../services/pedidoEntregaDomain').hojeBrasil(), agora: new Date()
+      }).map(([sql, direcao]) => [Sequelize.literal(sql), direcao]);
       const ordenacaoEfetiva = [
         ...ordenacaoRetornoPendente,
         ...(CAMPOS_ORDENAVEIS.has(colunaOrdenacaoSolicitada)
@@ -3001,7 +2986,7 @@ module.exports = {
             },
             include: includeBase
           });
-          resultado = await montarResumoSolicitacoesLista(solicitacoesPagina, usuarioId);
+          resultado = await montarResumoSolicitacoesLista(solicitacoesPagina, usuarioId, contextoFila);
           resultado.sort(
             (a, b) =>
               (ordemPagina.get(Number(a.id)) || 0) -
@@ -3045,7 +3030,7 @@ module.exports = {
             ? { limit: limitePorPagina, offset }
             : {})
         });
-        resultado = await montarResumoSolicitacoesLista(solicitacoes, usuarioId);
+        resultado = await montarResumoSolicitacoesLista(solicitacoes, usuarioId, contextoFila);
 
       }
 
@@ -4504,7 +4489,7 @@ module.exports = {
         return res.status(acesso.status || 403).json({ error: acesso.error || 'Acesso negado' });
       }
 
-      const resumo = await buscarResumoListaSolicitacaoPorId(id);
+      const resumo = await buscarResumoListaSolicitacaoPorId(id, req);
       if (!resumo) {
         return res.status(404).json({ error: 'Solicitacao nao encontrada' });
       }

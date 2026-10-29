@@ -4,7 +4,7 @@ const assert = require('assert/strict');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const { Op } = require('sequelize');
+const { Op, col, fn } = require('sequelize');
 
 const arquivo = path.join(__dirname, '../src/services/solicitacaoRetornoService.js');
 const criados = [];
@@ -221,7 +221,7 @@ const usuarioObra = { user: { id: 11, setor: 'OBRA' } };
     findAll:async options=>{consultas.push(options);return [destinatario]}
   }};
   const notifSandbox={module:{exports:{}},console,Number,String,Set,JSON,
-    require:dependency=>dependency==='sequelize'?{Op}:dependency==='../models'?notifModels:
+    require:dependency=>dependency==='sequelize'?{Op,col,fn}:dependency==='../models'?notifModels:
       dependency==='../services/solicitacaoRetornoService'?service:(()=>{throw new Error(dependency)})()};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/controllers/NotificacaoController.js'),'utf8'),notifSandbox);
   let resposta;

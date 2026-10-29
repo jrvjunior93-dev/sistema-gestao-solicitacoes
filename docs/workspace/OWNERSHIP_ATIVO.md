@@ -6567,3 +6567,5 @@ Promocao isolada validada sobre main f429b6f2: testes de acesso/sincronizacao e 
 - Backend primeiro; frontend Vale preparado, publicacao somente apos SC_VALE_BACKEND_PROD_PRONTO fornecido pelo usuario. Nao publicar esses arquivos novamente sem conferir a continuacao deste registro.
 
 - QA de promocao concluido:30testes SC/doctor PROD,7testes do aplicador,servico Vale em memoria,UI desktop/mobile,buildfrontend,16regressoes e documentacao651MD/19canonicos aprovados. Corrigido somente mock de lock no teste antigo de escopo RH. Ownership de implementacao liberado; publicacao backend autorizada, frontend aguarda retorno EC2.
+
+2026-10-29 — Promocao isolada destaques GEO: reserva delta funcional72c0cc47 (2runtime/QA/frontend/README), novos aplicadorPROD/manifesto/teste/README e handoff nesta branch codex/destaques-geo-main. Base main39f4e719. Usuario homologouDEV e autorizou main/push/comandosEC2. Sem mergegeral/EC2/banco/migration pelo agente; preservar overlays/progressos/permissoes/modos confirmados.
