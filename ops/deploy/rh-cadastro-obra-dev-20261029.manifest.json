@@ -1,0 +1,38 @@
+{
+  "base": "72c0cc4756b0841b89581a1771e1c27eb908b7b5",
+  "main": "46ac88de88957ffc15e8b0db45dfcd6eed7bc34e",
+  "files": [
+    {
+      "path": "backend/package.json",
+      "sha256": "700846aa1fe8965b555aec808a3ad841acd93ef0aa0fa054fd1ead3845394a92"
+    },
+    {
+      "path": "backend/src/services/rhColaboradorObraService.js",
+      "sha256": "31221ae375ed4c37c2aac22635fbdb32f60a2c05502c776fbdc3d4381be97582"
+    },
+    {
+      "path": "backend/scripts/helpers/semRedeQa.js",
+      "sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf"
+    },
+    {
+      "path": "backend/scripts/validarRhCadastroObraAssociacao.cjs",
+      "sha256": "f2ac86b8241ae5e9c95918feca8148b34664ef9762b2d7355edec267d69c64ac"
+    },
+    {
+      "path": "backend/scripts/validarRhPrivacidadeObra.js",
+      "sha256": "57f1b52ab2c3155ebe09b41a1068f3cfd009720c699e8e2c039a5565cc5fe1f7"
+    },
+    {
+      "path": "backend/scripts/validarRhConsultaSalario.js",
+      "sha256": "2b1ccf60ca72a49557c054f71dce0f2c2a2fa000c0ba8162f2c6e8d74ea26d68"
+    },
+    {
+      "path": "ops/deploy/atualizar-dev-rh-cadastro-obra-20261029.cjs",
+      "sha256": "a9da894aef51b46b32327c8b35466dbe53e11504f539d09a41f6f728da6b1fcf"
+    },
+    {
+      "path": "ops/deploy/atualizar-dev-rh-cadastro-obra-20261029.test.cjs",
+      "sha256": "1662c6bf9bf52aa9094a3239f2d15fb518e5817a9b155f27261a64c6c915d42e"
+    }
+  ]
+}
