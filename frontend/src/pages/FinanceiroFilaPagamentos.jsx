@@ -1,3 +1,4 @@
+import BoletosPedidosFila from '../components/financeiro/BoletosPedidosFila';
 import useVisualizadorArquivo from '../hooks/useVisualizadorArquivo';
 import { COMPROVANTE_MANUAL_ACCEPT, erroComprovanteManual } from '../utils/comprovanteFilaArquivo';
 import ParticipacoesTitulo from '../components/financeiro/ParticipacoesTitulo';
@@ -27,6 +28,7 @@ import {
   getContasFilaPagamentos,
   getInstrumentosFilaPagamentos,
   getComprovanteFilaPagamento,
+  getBoletoPedidoFilaPagamento,
   getFilaPagamentos,
   informarNaoPagamentoFila,
   previewComprovantesFilaPagamentos,
@@ -1442,6 +1444,11 @@ export default function FinanceiroFilaPagamentos() {
                       )}
                       <div className="mt-1 max-w-56 truncate" title={title.descricao}>{title.descricao || 'Sem descrição'}</div>
                       <ParticipacoesTitulo titulo={title} compacto />
+                      <BoletosPedidosFila boletos={title.boletos_pedidos || []} onAbrir={async boleto => {
+                        try {
+                          await abrirPreview(() => getBoletoPedidoFilaPagamento(row.id, boleto.documento_id), { nome: boleto.nome });
+                        } catch (error) { avisar.erro(error?.message || 'Não foi possível abrir o boleto.'); }
+                      }} />
                       {solicitacaoVinculada && title.solicitacao?.boletos?.length > 0 && (
                         <details className="mt-1 max-w-56 text-xs">
                           <summary className="cursor-pointer text-[var(--module-financeiro)]">Boletos da solicitação ({title.solicitacao.boletos.length})</summary>

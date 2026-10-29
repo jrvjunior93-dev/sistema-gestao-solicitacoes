@@ -2161,3 +2161,8 @@ export async function getComprovanteCompartilhadoSolicitacao(solicitacaoId, titu
   });
   return parseJson(response, 'Erro ao abrir comprovante compartilhado');
 }
+
+export async function getBoletoPedidoFilaPagamento(filaId, documentoId) {
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/${filaId}/boletos-pedidos/${documentoId}`, { headers: authHeaders(), cache: 'no-store' });
+  return parseJson(response, 'Erro ao abrir boleto do pedido');
+}

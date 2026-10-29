@@ -6581,3 +6581,7 @@ Promocao isolada validada sobre main f429b6f2: testes de acesso/sincronizacao e 
 2026-10-29 — PromocaoRH homologada6aa7d0fa: reserva service,modal,QAbackend/UI,novo aplicadorPROD/teste/manifesto/README e handoff nesta branch codex/rh-cadastro-obra-main base1f07f3b1. Escopo1runtime, sem mergegeral/EC2/banco. Indice semantico, overlays anteriores validos por hash;DEV preservado.
 
 2026-10-29 — Promocao autorizada de40ae697b comprovantes compartilhados+filtrosDP: reserva12arquivosfuncionais/testes/evidencias e novo aplicadorPROD/teste/manifesto/README/handoff. Base40e3239a. SemEC2/DB/backfill. Preservar RH,destaques,precisao,DEV,PROD4096 eflags.
+
+2026-10-29 — Reserva promocao isolada boletos compartilhados MAIN basebc6dbdad:9fontesfuncionais/QA doDEV81b0e545 e novo aplicadorPROD/teste/manifesto/README/handoff. Somente4runtime backend;semmergegeral/EC2/DB. Preservar overlays,heap4096,DEV/Experience,envs/dumps eflags.
+
+2026-10-29 — Promocao boletosMAIN finalizada localmente:11QAfuncional/18operador/UI/build aprovados. Ownership sera liberado aposcommit/push; apenas correcao+QA/aplicador seletivoPROD, semacaoEC2/DB.

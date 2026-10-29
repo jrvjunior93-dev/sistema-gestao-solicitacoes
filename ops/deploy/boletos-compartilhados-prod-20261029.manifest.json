@@ -1,0 +1,102 @@
+{
+  "base": "bc6dbdad90e37e6d3f920163effbcbd6eafdd2d9",
+  "runtime_files": 4,
+  "sql": 0,
+  "migrations": 0,
+  "heap_mib": 4096,
+  "files": [
+    {
+      "path": "backend/src/routes.js",
+      "sha256": "1e62b6fcdc755d6d46c642c2989ab3c968d262c9558542f8a81ce91ea41c17b9",
+      "old_sha256": "b9f61a7d9b20ac949f9504941bab62b4f177d4bb906a1027dde0e9661113bc00"
+    },
+    {
+      "path": "backend/src/controllers/PagamentoManualFilaController.js",
+      "sha256": "7ca3c310b4ab74905ad48a326c8dcb1d63b5efd694fb37368c63cda105d99c91",
+      "old_sha256": "abd81dcd1805f13dbece6d910e3024d2dd0aafbd4d1ea12f51624e4109090e46"
+    },
+    {
+      "path": "backend/src/services/pagamentoManualFilaService.js",
+      "sha256": "d5c68a2f904902c3b8520bf0533135ae9db5e8c9ee8bc1049f3eca35101371af",
+      "old_sha256": "813da1a783c964befc1f6b4a2af3b4fe57dbfde45d4cfa43043b19ae4b86554c"
+    },
+    {
+      "path": "backend/src/services/pagamentoFilaBoletosPedidosService.js",
+      "sha256": "11dc25fd69523b1e260a52e50c68327af9ad60ba5fa369d3cdd1422ad5b3871e",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarFilaBoletosCompartilhados.cjs",
+      "sha256": "26c66173fb00d438e9fc751909dc5fc35ee1d79ae5a89d14e99f22c1364d621b",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarFilaPagamentoSolicitacaoAcesso.js",
+      "sha256": "de4d2997ecfd8351848dac1793472836439a4d8c98ede6b9a0dd8480c184084c",
+      "old_sha256": "de4d2997ecfd8351848dac1793472836439a4d8c98ede6b9a0dd8480c184084c"
+    },
+    {
+      "path": "backend/scripts/validarComprovantesCompartilhados.cjs",
+      "sha256": "5d73a6a8da8e90c685d06972e3e3435ab010efb3bb0824087c0f2939efe7084a",
+      "old_sha256": "5d73a6a8da8e90c685d06972e3e3435ab010efb3bb0824087c0f2939efe7084a"
+    },
+    {
+      "path": "backend/scripts/validarTitulosCompartilhados.js",
+      "sha256": "f98cc83f32401843becf8615221aa8c46d8f2f4b00e31ebbe25581de8f8f6d2b",
+      "old_sha256": "f98cc83f32401843becf8615221aa8c46d8f2f4b00e31ebbe25581de8f8f6d2b"
+    },
+    {
+      "path": "backend/scripts/validarFilaBaixaComposta.js",
+      "sha256": "02bb0514d36cde68687c52faf0920c72f05828533ff2e044548cdb732cc2227f",
+      "old_sha256": "02bb0514d36cde68687c52faf0920c72f05828533ff2e044548cdb732cc2227f"
+    },
+    {
+      "path": "backend/scripts/validarFilaBaixaEstorno.js",
+      "sha256": "337c0e3d0fee8263cc0cfd3999761246cf8fd556459b1d31783b23a6758f550c",
+      "old_sha256": "337c0e3d0fee8263cc0cfd3999761246cf8fd556459b1d31783b23a6758f550c"
+    },
+    {
+      "path": "backend/scripts/helpers/semRedeQa.js",
+      "sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf",
+      "old_sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf"
+    }
+  ],
+  "extra": [
+    {
+      "path": "ops/deploy/atualizar-prod-boletos-compartilhados-20261029.cjs",
+      "sha256": "2053c57fa3afe10a390fcd67dbbf7c93c4e9d0127a3fc16fe380eae5632b7534"
+    },
+    {
+      "path": "ops/deploy/atualizar-prod-boletos-compartilhados-20261029.test.cjs",
+      "sha256": "e912d3b223ab8d1c5195f9476cadc74c0564fcfe4ee7bd9a6c3a9771f2f955d3"
+    },
+    {
+      "path": "ops/deploy/README-boletos-compartilhados-prod-20261029.md",
+      "sha256": "94cb3c5e0c8d952c1943d7763f20d091f46bf4462c8fb2dece62c20ebfb7b4dd"
+    },
+    {
+      "path": "docs/handoffs/2026-10-29-promocao-boletos-compartilhados-main.md",
+      "sha256": "267c9f34e840ca9b94a212be8690074cf02d13817c084092e13ef9ae7d58e369"
+    },
+    {
+      "path": "docs/workspace/OWNERSHIP_ATIVO.md",
+      "sha256": "9a4b565457a9b3fd8e621e3c64f3105237ae7913167f784a0921ba22043b45c0"
+    },
+    {
+      "path": "frontend/src/components/financeiro/BoletosPedidosFila.jsx",
+      "sha256": "c459025649c14d10f66d45234e9fbc40fa9c2ee56b9536d372480b1c51144984"
+    },
+    {
+      "path": "frontend/src/pages/FinanceiroFilaPagamentos.jsx",
+      "sha256": "7fb29f9e86d92a6bfe1cfdd478a4949ca774e0282e801b22254a068a7887db8a"
+    },
+    {
+      "path": "frontend/src/services/financeiro.js",
+      "sha256": "33c17fe1aa119fd00e668aac680e1e61b58829f45606fe6ed71219dbcb8b0fee"
+    },
+    {
+      "path": "frontend/scripts/validarFilaInstrumentosUI.mjs",
+      "sha256": "f2045d4332a9c0bd61c69719e8240c64746044131402dfe20735fa55478ce381"
+    }
+  ]
+}

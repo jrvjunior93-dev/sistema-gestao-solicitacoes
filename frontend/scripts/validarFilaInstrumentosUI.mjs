@@ -44,7 +44,7 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
     if (id === stub + 'tema') return `export const useTheme=()=>({tema:{}});`;
     if (id === stub + 'auth') return `const qaQuery=new URLSearchParams(location.search);if(!qaQuery.has('persistir-modo')){if(qaQuery.has('rolagem'))localStorage.removeItem('financeiro-fila-pagamentos:modo-lista');else localStorage.setItem('financeiro-fila-pagamentos:modo-lista',JSON.stringify({numerada:true}));}export const useAuth=()=>({user:{id:Number(new URLSearchParams(location.search).get('usuario')||1),areas_permissoes:qaQuery.has('retirada')&&!qaQuery.has('sem-retirar')?['financeiro.fila_pagamentos.retirar']:[]},authReady:true,isAuthenticated:true});`;
     if (id === stub + 'permissoes') return `const noResolve=new URLSearchParams(location.search).has('sem-resolver');export const canAccessFinanceiro=()=>true,canBaixarFilaPagamentos=()=>!window.__readOnly,hasPermissao=(_,key)=>!(key==='financeiro.titulos.estornar'&&(window.__noReverse||window.__readOnly)),canImportarComprovantesFilaPagamentos=()=>new URLSearchParams(location.search).has('importar')&&!window.__readOnly,canReportarFilaPagamentos=()=>true,canResolverFilaPagamentos=()=>!window.__readOnly&&!noResolve;`;
-    if (id === stub + 'padrao') return `export{default as Pagina}from'/src/components/padrao/Pagina.jsx';export{default as BlocoConteudo}from'/src/components/padrao/BlocoConteudo.jsx';export{default as PageHeader}from'/src/components/padrao/PageHeader.jsx';const avisar={erro:console.error,sucesso:()=>{},alerta:message=>window.__alerts.push(message)};const confirmar=async()=>({ok:true,texto:'Correção QA'});export const Avisos=()=>null;export const useAvisos=()=>({avisos:[],fechar:()=>{},limpar:()=>{},avisar});export const useConfirmacao=()=>({confirmar});`;
+    if (id === stub + 'padrao') return `export{default as Pagina}from'/src/components/padrao/Pagina.jsx';export{default as BlocoConteudo}from'/src/components/padrao/BlocoConteudo.jsx';export{default as PageHeader}from'/src/components/padrao/PageHeader.jsx';const avisar={erro:message=>{console.error(message);(window.__errors ||= []).push(message);},sucesso:()=>{},alerta:message=>window.__alerts.push(message)};const confirmar=async()=>({ok:true,texto:'Correção QA'});export const Avisos=()=>null;export const useAvisos=()=>({avisos:[],fechar:()=>{},limpar:()=>{},avisar});export const useConfirmacao=()=>({confirmar});`;
     if (id === stub + 'api') return `
       const onlyConsult=new URLSearchParams(location.search).has('somente-consulta');
       const filtrosDpScenario=new URLSearchParams(location.search).has('filtros-dp');
@@ -104,6 +104,7 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
           data[0].status='BAIXADO';data[0].movimento_financeiro_id=801;
           return {data,resumo:{PENDENTE:7,BAIXADO:1}};
         }
+        if(new URLSearchParams(location.search).has('boletos-compartilhados')){row.id=993;row.titulo={...row.titulo,id:12758,codigo:'TIT-012512',compartilhamento_id:4,solicitacao_id:null,solicitacao:null,boletos_pedidos:[10,11,12].map(id=>({documento_id:id,nome:'boleto-'+id+'.jpeg',origens:[{pedido_compra_id:243,solicitacao_id:6443,solicitacao_codigo:'SOL-6408'}]}))};}
         if(new URLSearchParams(location.search).has('arquivos'))row.titulo.solicitacao.boletos=[{id:1,nome:'boleto.PDF',tipo:'BOLETO_COMPRA'},{id:2,nome:'foto.jpeg',tipo:'BOLETO_FRETE'}];
         if(volumeScenario) {
           if(window.__volumeDelay && params.pagina>1) await new Promise(resolve=>setTimeout(resolve,window.__volumeDelay));
@@ -164,6 +165,7 @@ const plugin = { name: 'qa-fila-instrumentos', enforce: 'pre',
       export const estornarBaixaFilaPagamento=async(id,motivo,key)=>{window.__reverseCalls=(window.__reverseCalls||0)+1;window.__reversed={id,motivo,key};};
       export const resolverFilaPagamento=async(id,action,motivo)=>{window.__returned={id,action,motivo};};
       export const previewBaixaCompostaFila=async()=>{throw Error('Composicao fora desta fixture');},confirmarBaixaCompostaFila=async()=>{throw Error('Composicao fora desta fixture');};
+      export const getBoletoPedidoFilaPagamento=async(filaId,documentoId)=>{(window.__boletosAbertos ||= []).push({filaId,documentoId});await new Promise(r=>setTimeout(r,150));if(window.__boletoErro)throw Error('Boleto removido ou não autorizado.');return {nome:'boleto-'+documentoId+'.jpeg',url:'http://127.0.0.1:5308/arquivo-imagem-qa.png'};};
       export const getComprovanteFilaPagamento=async()=>window.__uploadedName?{nome:window.__uploadedName,url:'http://127.0.0.1:5308/arquivo-imagem-qa.png'}:undefined;
       export const aprovarDivergenciasFilaPagamentos=async()=>{},informarNaoPagamentoFila=async()=>{},previewComprovantesFilaPagamentos=async()=>{window.__importCalls=(window.__importCalls||0)+1},vincularComprovantesFilaPagamentos=async()=>{};`;
   },
@@ -182,6 +184,7 @@ try {
   page.on('pageerror', e => { errors.push(e.message); console.error('Erro da tela QA:', e.message); });
   page.on('console', message => { if (message.type() === 'error') console.error(message.text()); });
   await page.route('**/*', route => {
+    if(new URL(route.request().url()).pathname==='/arquivo-imagem-qa.png')return route.fulfill({status:200,contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==','base64')});
     if (new URL(route.request().url()).pathname.includes('/listas/financeiro-fila-pagamentos/preferencias/')) {
       return route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
     }
@@ -231,6 +234,35 @@ try {
   } else if (process.argv.includes('--datas-cheques')) {
     await validarDatasChequesFila(page,root);
     assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
+  } else if (process.argv.includes('--boletos-compartilhados')) {
+    for (const width of [1920,1366,390]) {
+      await page.setViewportSize({width,height:900});
+      await page.goto('http://127.0.0.1:5308/qa-fila?boletos-compartilhados=1');
+      await page.getByText('Boletos dos pedidos vinculados (3)',{exact:true}).click();
+      const lista=page.getByRole('list',{name:'Boletos dos pedidos vinculados',exact:true});
+      assert.equal(await lista.getByRole('listitem').count(),3);
+      assert.equal(await lista.getByText('PC-00243 · SOL-6408',{exact:true}).count(),3);
+      await page.screenshot({path:path.join(root,'../outputs/boletos-compartilhados/fila-'+width+'.png'),fullPage:true});
+      const abrir=lista.getByRole('button',{name:'Visualizar / baixar boleto-10.jpeg',exact:true});
+      await abrir.evaluate(el=>{el.click();el.click();});
+      await page.waitForFunction(()=>window.__boletosAbertos?.length===1);
+      assert.deepEqual(await page.evaluate(()=>window.__boletosAbertos),[{filaId:993,documentoId:10}]);
+      const preview=page.getByRole('dialog',{name:'boleto-10.jpeg',exact:true});await preview.waitFor();
+      await preview.getByRole('img',{name:'boleto-10.jpeg',exact:true}).waitFor();
+      await page.waitForFunction(()=>{const im=document.querySelector('[role=dialog] img');return im?.complete&&im.naturalWidth>0;});
+      await page.screenshot({path:path.join(root,'../outputs/boletos-compartilhados/preview-'+width+'.png'),fullPage:true});
+      await preview.getByRole('button',{name:'Fechar',exact:true}).click();
+      assert.equal(await page.evaluate(()=>window.__settles.length),0);
+    }
+    await page.goto('http://127.0.0.1:5308/qa-fila?boletos-compartilhados=1&readonly=1&status=TODOS');
+    await page.getByText('Boletos dos pedidos vinculados (3)',{exact:true}).click();
+    await page.evaluate(()=>{window.__boletoErro=true;});
+    await page.getByRole('button',{name:'Visualizar / baixar boleto-11.jpeg',exact:true}).click();
+    await page.waitForFunction(()=>window.__errors?.includes('Boleto removido ou não autorizado.'));
+    assert(await page.getByRole('button',{name:'Visualizar / baixar boleto-11.jpeg',exact:true}).isEnabled());
+    assert.equal(await page.evaluate(()=>window.__settles.length),0);
+    assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
+    console.log('OK: fila real 1920/1366/390, compartilhado sem solicitacao direta, origem por pedido, preview individual, duplo clique, erro de acesso e leitura sem baixa.');
   } else if (process.argv.includes('--boletos-pedido')) {
     for (const width of [1366,390]) {
       await page.setViewportSize({width,height:900});
