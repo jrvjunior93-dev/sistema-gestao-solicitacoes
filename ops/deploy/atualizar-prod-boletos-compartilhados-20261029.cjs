@@ -109,9 +109,12 @@ function inventory(m,names,read,oldRead){
  for(const f of [...m.files,...m.extra])check(hash(read(f.path))===f.sha256,'HASH_DIVERGENTE');
  for(const f of m.files){const old=oldRead(f.path);check((old===null?null:hash(old))===f.old_sha256,'BASE_HASH_DIVERGENTE');}
 }
+function validateReleaseParent(parent, count){
+ check([BASE,'7d0c7c0c7064582905291964b05adc2e2332bff3'].includes(parent)&&count===2,'BASE_DIVERGENTE');
+}
 function verify(version){
  check(/^[a-f0-9]{40}$/.test(version||''),'SHA_INVALIDO');git(['fetch','origin','main']);git(['merge-base','--is-ancestor',version,'origin/main']);
- check(git(['rev-parse',version+'^'])===BASE&&git(['rev-list','--parents','-n','1',version]).split(' ').length===2,'BASE_DIVERGENTE');
+ validateReleaseParent(git(['rev-parse',version+'^']),git(['rev-list','--parents','-n','1',version]).split(' ').length);
  const read=p=>{const b=blob(version,p);check(b!==null,'ARQUIVO_AUSENTE');return b;},m=JSON.parse(read(MANIFEST));
  inventory(m,parsePaths(git(['diff','--name-only',BASE,version])),read,p=>blob(BASE,p));
  check(!git(['diff','--diff-filter=D','--name-only',BASE,version]),'EXCLUSAO_NEGADA');
@@ -127,12 +130,13 @@ function safeFile(relative){
  if(fs.existsSync(file)){const s=regular(file);check(s.uid===1000,'DONO_DIVERGENTE');}return file;
 }
 function validateRuntimeDelta(paths){
- const overlays=['backend/src/services/compraTitulosAdicionaisService.js','backend/src/services/solicitacaoFilaOperacional.js'];
+ const overlays=['backend/src/services/compraTitulosAdicionaisService.js','backend/src/services/solicitacaoFilaOperacional.js',
+  'backend/src/controllers/ComprovanteCompartilhadoSolicitacaoController.js','backend/src/services/comprovanteCompartilhadoSolicitacaoService.js'];
  for(const p of paths){
   if(RUNTIME.includes(p))continue;
   check(overlays.includes(p),'RUNTIME_FORA_ESCOPO');
   const expected=blob(BASE,p),file=ROOT+'/'+p;
-  for(const dir of ['backend','backend/src','backend/src/services']){const d=fs.lstatSync(ROOT+'/'+dir);check(d.isDirectory()&&!d.isSymbolicLink(),'DIRETORIO_OVERLAY_DIVERGENTE');}
+  for(const dir of ['backend','backend/src',p.slice(0,p.lastIndexOf('/'))]){const d=fs.lstatSync(ROOT+'/'+dir);check(d.isDirectory()&&!d.isSymbolicLink(),'DIRETORIO_OVERLAY_DIVERGENTE');}
   const s=regular(file);check(s.uid===1000&&expected!==null&&hash(fs.readFileSync(file))===hash(expected),'OVERLAY_DIVERGENTE');
  }
 }
@@ -206,7 +210,7 @@ async function main(action,version){
   }});report(s);
  });
 }
-module.exports={BASE,HEADS,FILES,EXTRA,FRONTEND,MANIFEST,SELF,TEST,QA,RUNTIME,hash,canonical,inventory,install,safeFile,validateRuntimeDelta,oldSpace,heap4096,automaticOff,same,confirmations,restartNeeded,finish,childEnv,spawnFailure};
+module.exports={BASE,HEADS,FILES,EXTRA,FRONTEND,MANIFEST,SELF,TEST,QA,RUNTIME,hash,canonical,inventory,install,validateReleaseParent,safeFile,validateRuntimeDelta,oldSpace,heap4096,automaticOff,same,confirmations,restartNeeded,finish,childEnv,spawnFailure};
 if(require.main===module||process.argv[1]==='-')main(process.argv[2],process.argv[3]).catch(e=>{
  console.error(/^BOLETOS_COMPARTILHADOS_PROD_[A-Z0-9_]+$/.test(e.message||'')?e.message:'BOLETOS_COMPARTILHADOS_PROD_INTERROMPIDO_SEM_SEGREDOS');
  console.error('Preserve estado e locks. Nao force Git nem repita reinicios; envie somente esta saida.');process.exitCode=1;

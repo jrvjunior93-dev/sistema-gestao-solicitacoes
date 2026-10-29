@@ -6585,3 +6585,5 @@ Promocao isolada validada sobre main f429b6f2: testes de acesso/sincronizacao e 
 2026-10-29 — Reserva promocao isolada boletos compartilhados MAIN basebc6dbdad:9fontesfuncionais/QA doDEV81b0e545 e novo aplicadorPROD/teste/manifesto/README/handoff. Somente4runtime backend;semmergegeral/EC2/DB. Preservar overlays,heap4096,DEV/Experience,envs/dumps eflags.
 
 2026-10-29 — Promocao boletosMAIN finalizada localmente:11QAfuncional/18operador/UI/build aprovados. Ownership sera liberado aposcommit/push; apenas correcao+QA/aplicador seletivoPROD, semacaoEC2/DB.
+
+2026-10-29 — Retomada boletosPROD: reserva aplicador/teste/manifesto/README e handoff. Operador confirmou4arquivos fora do HEAD15 com hashes identicosBASEbc6: comprovanteController ecomprovanteService faltavam na allowlist. Adicionar somente esses2overlays comhashBASE/uid1000/regular/nlink1; preservar fontes. Sem EC2/DB.

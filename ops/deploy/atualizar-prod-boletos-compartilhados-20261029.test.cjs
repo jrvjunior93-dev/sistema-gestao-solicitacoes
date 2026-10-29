@@ -160,7 +160,7 @@ test('nenhuma aplicacao/banco/DDL/PM2 global; HEAD e indice da EC2 ficam preserv
 
 test('overlays anteriores somente se identicos aBASE; conteudo alterado ou link bloqueiam',()=>{
  const vm=require('node:vm'),text=read(op.SELF).toString();
- for(const file of ['backend/src/services/compraTitulosAdicionaisService.js','backend/src/services/solicitacaoFilaOperacional.js']){
+ for(const file of ['backend/src/services/compraTitulosAdicionaisService.js','backend/src/services/solicitacaoFilaOperacional.js','backend/src/controllers/ComprovanteCompartilhadoSolicitacaoController.js','backend/src/services/comprovanteCompartilhadoSolicitacaoService.js']){
   const payload=gitBlob(op.BASE,file);assert(payload);
   function actual({changed=false,link=false,uid=1000}={}){
    const fakeFs={readFileSync:()=>changed?Buffer.from('DIVERGENTE'):payload,
@@ -171,4 +171,9 @@ test('overlays anteriores somente se identicos aBASE; conteudo alterado ou link 
   }
   actual();for(const delta of [{changed:true},{link:true},{uid:0}])assert.throws(()=>actual(delta));
  }
+});
+
+test('retomada aceita somente pais revisados e continua rejeitando merge ou revisao desconhecida',()=>{
+ for(const parent of [op.BASE,'7d0c7c0c7064582905291964b05adc2e2332bff3'])op.validateReleaseParent(parent,2);
+ assert.throws(()=>op.validateReleaseParent('f'.repeat(40),2));assert.throws(()=>op.validateReleaseParent(op.BASE,3));
 });

@@ -5,3 +5,5 @@ Backupprivadodecodigo antes da aplicacao e backupDB/timer/janela confirmados pel
 Dados existentes deSOL6408/pedidos243/309 aparecem por consulta. Nenhum backfill/titulo/baixa/upload ou envio deparcela para fila e executado. Nova rotaGET revalida permissoes/escopo/origens/arquivos ativos antes de presign estrito;UIidentificaorigem e nao presume boleto porparcela.
 Publicar backend antes de homologar frontendVercel. Campo ausente no backend antigo oculta secao temporariamente. Exemplos usuario: TIT012512/fila993 e TIT012513/fila1004 com3boletos dopedido243. TIT012514 permanece semfila.
 Confirmacoes: CONFIRM_PROD_BACKUP,CONFIRM_PROD_BACKUP_TIMER,CONFIRM_PROD_MAINTENANCE,CONFIRM_BOLETOS_COMPARTILHADOS_PROD=SIM. Nenhum acessoEC2/DB/S3 peloagente.
+
+Retomada: reconhece os2arquivos comprovanteController/service ja instalados fora do HEAD15 somente com conteudoidenticoBASEbc6. Nao copia nem altera essesarquivos. ParentrevisadoBASE ourelease7d0c,deltafechadointegral. Falha inicial foi antes de troca/restart.

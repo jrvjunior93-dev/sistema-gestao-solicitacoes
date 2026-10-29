@@ -64,23 +64,23 @@
   "extra": [
     {
       "path": "ops/deploy/atualizar-prod-boletos-compartilhados-20261029.cjs",
-      "sha256": "2053c57fa3afe10a390fcd67dbbf7c93c4e9d0127a3fc16fe380eae5632b7534"
+      "sha256": "56f3932f41dacd164b8529aada8487aaca56e52a764d5e0ab669241007265c73"
     },
     {
       "path": "ops/deploy/atualizar-prod-boletos-compartilhados-20261029.test.cjs",
-      "sha256": "e912d3b223ab8d1c5195f9476cadc74c0564fcfe4ee7bd9a6c3a9771f2f955d3"
+      "sha256": "ce6975119b62a51dab961b412ace0ef22914379ac8c799b5c165af2c8d75c91c"
     },
     {
       "path": "ops/deploy/README-boletos-compartilhados-prod-20261029.md",
-      "sha256": "94cb3c5e0c8d952c1943d7763f20d091f46bf4462c8fb2dece62c20ebfb7b4dd"
+      "sha256": "ad516559bed23e31233d3425090e5977d8e0032873b72b0dff641cdaafc8f299"
     },
     {
       "path": "docs/handoffs/2026-10-29-promocao-boletos-compartilhados-main.md",
-      "sha256": "267c9f34e840ca9b94a212be8690074cf02d13817c084092e13ef9ae7d58e369"
+      "sha256": "080282efdae79dbd784a55335ba467671ea7e7b4a34ef76223023f3e9a283d5f"
     },
     {
       "path": "docs/workspace/OWNERSHIP_ATIVO.md",
-      "sha256": "9a4b565457a9b3fd8e621e3c64f3105237ae7913167f784a0921ba22043b45c0"
+      "sha256": "6f206da0fb4dd6d630a938bd63568101b84eb00d4cea14b2bbeea99a0d5598d6"
     },
     {
       "path": "frontend/src/components/financeiro/BoletosPedidosFila.jsx",
