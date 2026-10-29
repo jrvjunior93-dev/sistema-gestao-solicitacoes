@@ -59,3 +59,13 @@ indice comHEAD e ausencia de conflitos. Nao regrava indice/estado.index.
 23testes locais aprovados. Proximo: usuario executa aplicar/conferir pelo wrapper
 novo. Nao executar preparar porque estado ja esta atualizando. Nao houve EC2,
 banco,reinicio ou integracao pelo agente. Preservar estado e locks existentes.
+
+## Retomada sem depender de hash bruto atual do indice
+Tentativa e9c46aa0 parou em INDICE_NAO_RECONHECIDO antesQA/restart.
+Hash bruto atual nao deve ser fixado: indice contem metadados mutaveis.
+Wrapper agora exige equivalencia integral do indice comHEAD (caminhos binarios,
+modos,hashes,stage0), sem conflitos/intent-to-add, leitura concorrente estavel.
+Mantem HEAD/release/indice original/fases pinados; sem gravacao de indice/estado.
+24testes aprovados, incluindo indice real e arquivos alterados/modos/paths/conflitos.
+Proximo: aplicar/conferir pelo novo commit. Nao preparar/apagarestado/restartmanual.
+Sem servidor/banco pelo agente. Ownership liberado apos publicacao.

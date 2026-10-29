@@ -43,3 +43,13 @@ posteriores ao preparo. Exige diff cached raw vazio contraHEAD e nenhum conflito
 Nao modifica indice nem estado.index. Demais hashes continuam bloqueados.
 Executar apenas aplicar e conferir pelo wrapper atualizado; nao preparar novamente.
 Testes:6da retomada e17do aplicador congelado aprovados. Sem EC2/banco pelo agente.
+
+## Correcao definitiva da comparacao do indice
+Substitui a restricao ao hash bruto atual: esse hash nao e identificador estavel
+somente de conteudo. Mantem HEAD15/release998/indice original8449/fases pinados.
+Compara integralmente ls-files --stage -z com ls-tree -r -z HEAD: mesmos caminhos
+binarios, modos e objetos Git, estagio zero; inclui deteccao de intent-to-add,
+conflitos, inclusao/exclusao e chmod. Confere indice estavel durante a leitura.
+Nao grava indice ou estado.index. Mantem todas as guardas de fontes/processos.
+24testes locais aprovados incluindo indice real do repositorio e casos negativos.
+Retomar somente aplicar/conferir pelo wrapper novo. Sem EC2/banco pelo agente.

@@ -6575,3 +6575,5 @@ Promocao isolada validada sobre main f429b6f2: testes de acesso/sincronizacao e 
 2026-10-29 — Retomada destaques PROD: reserva novos retomar-prod-destaques-solicitacoes-20261029.cjs/.test.cjs,README e handoff. Evidencia usuario:HEAD15a86635;diffBASE39 marca D em compraTitulosAdicionaisService.js mas arquivo existe com SHA922ed26b (identicoBASE). Correcao sera wrapper do release998 congelado, apenas excecao hash/arquivo regular/uid1000 e nao rastreado; sem gitadd/alterarindice ou runtime do overlay. Sem EC2/banco pelo agente.
 
 2026-10-29 — Retomada indice: reserva wrapper/teste/README e handoff. Estado recebido atualizando, nove fontes novas; HEAD15 preservado, stage vazio, indice8449 para5f61. Excecao apenas par de hashes recebido e indice semanticamente igualHEAD. Sem EC2/banco.
+
+2026-10-29 — Reserva wrapper/teste/README/handoff para substituir hash bruto atual por equivalencia integral indice/HEAD (caminho,modo,blob,stage), sem alterar indice/estado e mantendo release/HEAD/indice original pinados. Sem EC2 ou banco.

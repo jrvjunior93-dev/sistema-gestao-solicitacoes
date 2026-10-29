@@ -13,7 +13,7 @@ const CLEAN={PATH:'/usr/sbin:/usr/bin:/sbin:/bin',HOME:'/home/ubuntu',USER:'ubun
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
 const check=(v,c)=>{if(!v)throw Error('DESTAQUES_SOLICITACOES_PROD_RETOMADA_'+c);};
 function git(args){
- check(['show','ls-files','diff'].includes(args[0]),'GIT_SOMENTE_LEITURA');
+ check(['show','ls-files','ls-tree','diff'].includes(args[0]),'GIT_SOMENTE_LEITURA');
  const r=cp.spawnSync('/usr/bin/git',['--no-pager','--no-optional-locks','-c','core.fsmonitor=false',...args],{
   cwd:ROOT,env:CLEAN,encoding:null,timeout:15000,maxBuffer:16*1024*1024,stdio:['ignore','pipe','pipe']});
  check(!r.error&&r.status===0,'LEITURA_GIT_FALHOU');return r.stdout;
@@ -28,15 +28,33 @@ function validateOverlay(relative,{stat=p=>fs.lstatSync(p),read=p=>fs.readFileSy
  check(hash(read(file))===OVERLAY_SHA,'OVERLAY_HASH_DIVERGENTE');
  check(readGit(['ls-files','--',OVERLAY]).toString('utf8').trim()==='','OVERLAY_JA_RASTREADO_REVISAR');
 }
-function validateIndex(s,current,{readGit=git}={}){
+function indexEntries(bytes,tree=false){
+ check(Buffer.isBuffer(bytes)&&bytes.length>0&&bytes[bytes.length-1]===0,'INDICE_FORMATO');
+ const entries=[];let start=0;
+ while(start<bytes.length){
+  const end=bytes.indexOf(0,start),record=bytes.subarray(start,end),tab=record.indexOf(9);
+  check(tab>0&&tab<record.length-1,'INDICE_FORMATO');
+  const header=record.subarray(0,tab).toString('ascii');
+  const match=header.match(tree?/^(\d{6}) (?:blob|commit) ([a-f0-9]{40})$/:/^(\d{6}) ([a-f0-9]{40}) 0$/);
+  check(match&&match[2]!=='0'.repeat(40),'INDICE_CONFLITO_OU_ENTRADA_INVALIDA');
+  entries.push(Buffer.concat([Buffer.from(match[1]+' '+match[2]+'\t'),record.subarray(tab+1)]));
+  start=end+1;
+ }
+ return entries.sort(Buffer.compare);
+}
+function validateIndex(s,current,{readGit=git,readIndexHash=()=>hash(fs.readFileSync(ROOT+'/.git/index'))}={}){
  if(current===s.index)return true;
  check(s.head==='15a86635b4f26bd911b76d83023b6fb3592919d9'
   &&s.version===RELEASE
   &&['atualizando','arquivos_prontos','reiniciando','aplicado'].includes(s.phase)
   &&s.index==='8449d34cadd8da9523a81e5f1ed6c30244a56fd5f4e1eb3290ea670593e56dd1'
-  &&current==='5f612dd8f719c2796e8904656be7134250656f2b02d8589a364f3cd6f5a6cd60','INDICE_NAO_RECONHECIDO');
+  &&/^[a-f0-9]{64}$/.test(current),'INDICE_NAO_RECONHECIDO');
  check(readGit(['diff','--cached','--raw','--no-ext-diff','--no-textconv',s.head,'--']).length===0,'INDICE_CONTEUDO_DIVERGENTE');
  check(readGit(['ls-files','--unmerged']).length===0,'INDICE_CONFLITO');
+ const indexed=indexEntries(readGit(['ls-files','--stage','-z']));
+ const committed=indexEntries(readGit(['ls-tree','-r','-z',s.head]),true);
+ check(indexed.length===committed.length&&indexed.every((v,i)=>v.equals(committed[i])),'INDICE_ARVORE_DIVERGENTE');
+ check(readIndexHash()===current,'INDICE_MUDOU_DURANTE_CONFERENCIA');
  return true;
 }
 function loadFrozen({readGit=git,overlay=validateOverlay,indexGuard=validateIndex,fsModule=fs,processModule=process,requireModule=require}={}){
@@ -70,7 +88,7 @@ async function main(args){
  await api.runMain(args[0],RELEASE);
  validateOverlay(OVERLAY);
 }
-module.exports={ROOT,NODE,RELEASE,BASE,SELF,SHA,OVERLAY,OVERLAY_SHA,hash,validateOverlay,validateIndex,loadFrozen,main};
+module.exports={ROOT,NODE,RELEASE,BASE,SELF,SHA,OVERLAY,OVERLAY_SHA,hash,validateOverlay,indexEntries,validateIndex,loadFrozen,main};
 if(require.main===module||process.argv[1]==='-')main(process.argv.slice(2)).catch(e=>{
  console.error(/^DESTAQUES_SOLICITACOES_PROD_[A-Z0-9_]+$/.test(e.message||'')?e.message:'DESTAQUES_SOLICITACOES_PROD_RETOMADA_INTERROMPIDA');
  console.error('Preserve estado/locks. Nao adicionar arquivos ao indice, alterar fonte ou repetir restart manual. Envie esta saida.');process.exitCode=1;
