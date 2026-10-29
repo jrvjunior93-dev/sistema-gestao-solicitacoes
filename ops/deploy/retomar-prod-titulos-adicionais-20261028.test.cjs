@@ -2,6 +2,8 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),cp=require('node:child_process'),path=require('node:path'),vm=require('node:vm');
 const op=require('./retomar-prod-titulos-adicionais-20261028.cjs');
 const root=path.resolve(__dirname,'../..'),original=require('./atualizar-prod-titulos-adicionais-20261028.cjs');
+const modeEvidence=require('./fixtures/titulos-adicionais-modos-20261029.json');
+const modeOf=p=>parseInt(modeEvidence.arquivos.find(f=>f.arquivo===p).modo_registrado,8);
 const gitCache=new Map();
 const localGit=args=>{const key=JSON.stringify(args);if(!gitCache.has(key)){try{gitCache.set(key,{bytes:cp.execFileSync('git',args,{cwd:root,stdio:['ignore','pipe','ignore']})});}catch(error){gitCache.set(key,{error});}}const result=gitCache.get(key);if(result.error)throw result.error;return result.bytes;};
 function semantic({oid='a'.repeat(40),mode='100644',stage='0',flag='H',extra=false,race=false}={}){
@@ -35,11 +37,11 @@ function stateFixture(){
   if(before!==null)files.set('/home/ubuntu/sistema-gestao-solicitacoes-main/'+e.path,before);
   // Reproduz estado do operador: fontes modificadas ja instaladas.
   files.set('/home/ubuntu/sistema-gestao-solicitacoes-main/'+e.path,target);
-  return{...e,mode:before===null?0o644:0o600,backup:before===null?null:before.toString('base64')};
+  return{...e,mode:modeOf(e.path),backup:before===null?null:before.toString('base64')};
  });
  return{body,expected,files,s:{version:op.RELEASE,head:original.HEADS[0],index:op.hash('INDEX_ANTIGO'),phase:'atualizando',files:rows,outside:[],protected:{},data:[]}};
 }
-function stateApi(){return{HEADS:original.HEADS,safeFile:p=>'/home/ubuntu/sistema-gestao-solicitacoes-main/'+p};}
+function stateApi(){return{HEADS:original.HEADS,safeFile:p=>'/home/ubuntu/sistema-gestao-solicitacoes-main/'+p,sourceStat:p=>({isFile:()=>true,isSymbolicLink:()=>false,nlink:1,uid:1000,mode:0o100000+modeOf(p.replace('/home/ubuntu/sistema-gestao-solicitacoes-main/',''))})};}
 test('estado parcial real de23 arquivos e aceito sem alterar backups ou estado',()=>{
  const {s,expected,files}=stateFixture(),before=JSON.stringify(s);op.validateState(s,expected,stateApi(),p=>files.get(p));assert.equal(JSON.stringify(s),before);
 });
@@ -49,9 +51,32 @@ test('modos herdados mais restritos sao aceitos sem normalizar permissao ou esta
   assert(op.safeSourceMode(mode));const copy=structuredClone(s);for(const f of copy.files)f.mode=mode;
   const before=JSON.stringify(copy);op.validateState(copy,expected,stateApi(),p=>files.get(p));assert.equal(JSON.stringify(copy),before);
  }
- for(const mode of [0o000,0o200,0o660,0o664,0o646,0o666,0o700,0o755,0o777,0o4644,0o2644,0o1644,-1,0o644+0x100000000,'600',NaN,null]){
+ assert.equal(op.safeSourceMode(0o664),false,'0664 nao e permitido genericamente');
+ for(const mode of [0o000,0o200,0o660,0o646,0o666,0o700,0o755,0o777,0o4644,0o2644,0o1644,-1,0o644+0x100000000,'600',NaN,null]){
   assert.equal(op.safeSourceMode(mode),false,String(mode));
   const copy=structuredClone(s);copy.files[0].mode=mode;assert.throws(()=>op.validateState(copy,expected,stateApi(),p=>files.get(p)),/MODO_NAO_REVISADO/);
+ }
+});
+test('evidencia manual23 reproduz os16 modos0664 herdados sem ampliar modos ou estado',()=>{
+ const {s,expected,files}=stateFixture(),before=JSON.stringify(s);
+ assert.equal(modeEvidence.arquivos.length,23);
+ assert.deepEqual([...op.LEGACY_GROUP_WRITABLE].sort(),modeEvidence.arquivos.filter(f=>f.modo_registrado==='0664').map(f=>f.arquivo).sort());
+ assert.equal(s.files.filter(f=>f.mode===0o664).length,16);assert.equal(s.files.filter(f=>f.mode===0o644).length,7);
+ for(const f of s.files.filter(f=>f.mode===0o664))assert.notEqual(f.old_sha256,null,'0664 somente para fonte preexistente');
+ for(const f of modeEvidence.arquivos)assert(f.regular&&f.dono_ubuntu&&f.modo_atual===f.modo_registrado);
+ op.validateState(s,expected,stateApi(),p=>files.get(p));assert.equal(JSON.stringify(s),before);
+});
+test('modo0664 herdado exige arquivo regular ubuntu com mesmo modo atual, sem specialbits',()=>{
+ const {s,expected,files}=stateFixture(),api=stateApi(),read=p=>files.get(p);
+ for(const delta of [{mode:0o100600},{mode:0o100644},{mode:0o100666},{mode:0o100755},{mode:0o104664},{uid:0},{nlink:2},{isSymbolicLink:()=>true},{isFile:()=>false}]){
+  assert.throws(()=>op.validateState(s,expected,{...api,sourceStat:p=>({...api.sourceStat(p),...delta})},read),/MODO_LEGADO_DIVERGENTE/);
+ }
+});
+test('nao aceita0664 em arquivo novo ou fora dos16 caminhos confirmados',()=>{
+ const {s,expected,files}=stateFixture();
+ for(const index of [s.files.findIndex(f=>f.old_sha256===null),s.files.findIndex(f=>!op.LEGACY_GROUP_WRITABLE.includes(f.path)&&f.old_sha256!==null)]){
+  assert(index>=0);const copy=structuredClone(s);copy.files[index].mode=0o664;
+  assert.throws(()=>op.validateState(copy,expected,stateApi(),p=>files.get(p)),/MODO_NAO_REVISADO/);
  }
 });
 test('estado/backup/fonte desconhecidos, release diferente e modo inseguro sao recusados',()=>{

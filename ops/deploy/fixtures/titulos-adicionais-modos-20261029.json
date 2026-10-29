@@ -1,0 +1,167 @@
+{
+  "origem": "Diagnostico manual somente leitura enviado pelo operador em 2026-10-29",
+  "phase": "atualizando",
+  "arquivos": [
+    {
+      "arquivo": "backend/src/services/pedidoCompraFinanceiroService.js",
+      "modo_registrado": "0664",
+      "modo_atual": "0664",
+      "regular": true,
+      "dono_ubuntu": true
+    },
+    {
+      "arquivo": "backend/src/services/tituloFinanceiroService.js",
+      "modo_registrado": "0664",
+      "modo_atual": "0664",
+      "regular": true,
+      "dono_ubuntu": true
+    },
+    {
+      "arquivo": "backend/src/services/compraTitulosAdicionaisService.js",
+      "modo_registrado": "0644",
+      "modo_atual": "0644",
+      "regular": true,
+      "dono_ubuntu": true
+    },
+    {
+      "arquivo": "backend/scripts/validarCompraTitulosAdicionais.js",
+      "modo_registrado": "0644",
+      "modo_atual": "0644",
+      "regular": true,
+      "dono_ubuntu": true
+    },
+    {
+      "arquivo": "backend/scripts/validarCompraTitulosAdicionaisSql.js",
+      "modo_registrado": "0644",
+      "modo_atual": "0644",
+      "regular": true,
+      "dono_ubuntu": true
+    },
+    {
+      "arquivo": "backend/scripts/validarCartaoOpcionalSolicitacao.js",
+      "modo_registrado": "0664",
+      "modo_atual": "0664",
+      "regular": true,
+      "dono_ubuntu": true
+    },
+    {
+      "arquivo": "backend/scripts/validarTitulosPorPedido.js",
+      "modo_registrado": "0664",
+      "modo_atual": "0664",
+      "regular": true,
+      "dono_ubuntu": true
+    },
+    {
+      "arquivo": "backend/scripts/validarPedidoCompraFinanceiroGeo.js",
+      "modo_registrado": "0664",
+      "modo_atual": "0664",
+      "regular": true,
+      "dono_ubuntu": true
+    },
+    {
+      "arquivo": "backend/scripts/validarSobreposicaoTitulos.js",
+      "modo_registrado": "0664",
+      "modo_atual": "0664",
+      "regular": true,
+      "dono_ubuntu": true
+    },
+    {
+      "arquivo": "backend/scripts/validarTitulosCompartilhados.js",
+      "modo_registrado": "0664",
+      "modo_atual": "0664",
+      "regular": true,
+      "dono_ubuntu": true
+    },
+    {
+      "arquivo": "backend/scripts/validarPedidoReabertura.js",
+      "modo_registrado": "0664",
+      "modo_atual": "0664",
+      "regular": true,
+      "dono_ubuntu": true
+    },
+    {
+      "arquivo": "backend/scripts/validarPedidoReaberturaTitulosExcluidos.js",
+      "modo_registrado": "0644",
+      "modo_atual": "0644",
+      "regular": true,
+      "dono_ubuntu": true
+    },
+    {
+      "arquivo": "backend/scripts/validarTituloRenegociacaoVinculos.js",
+      "modo_registrado": "0664",
+      "modo_atual": "0664",
+      "regular": true,
+      "dono_ubuntu": true
+    },
+    {
+      "arquivo": "backend/scripts/validarComprasCarregamentoSemProduto.js",
+      "modo_registrado": "0664",
+      "modo_atual": "0664",
+      "regular": true,
+      "dono_ubuntu": true
+    },
+    {
+      "arquivo": "backend/scripts/validarSolicitacoesCompraPaginacao.js",
+      "modo_registrado": "0664",
+      "modo_atual": "0664",
+      "regular": true,
+      "dono_ubuntu": true
+    },
+    {
+      "arquivo": "backend/scripts/validarPrecisaoCompras.cjs",
+      "modo_registrado": "0664",
+      "modo_atual": "0664",
+      "regular": true,
+      "dono_ubuntu": true
+    },
+    {
+      "arquivo": "backend/scripts/validarFilaBaixaComposta.js",
+      "modo_registrado": "0664",
+      "modo_atual": "0664",
+      "regular": true,
+      "dono_ubuntu": true
+    },
+    {
+      "arquivo": "backend/scripts/validarAnaliseProprietario.js",
+      "modo_registrado": "0664",
+      "modo_atual": "0664",
+      "regular": true,
+      "dono_ubuntu": true
+    },
+    {
+      "arquivo": "backend/scripts/helpers/semRedeQa.js",
+      "modo_registrado": "0664",
+      "modo_atual": "0664",
+      "regular": true,
+      "dono_ubuntu": true
+    },
+    {
+      "arquivo": "backend/scripts/helpers/sqliteSequelizeMemory.js",
+      "modo_registrado": "0664",
+      "modo_atual": "0664",
+      "regular": true,
+      "dono_ubuntu": true
+    },
+    {
+      "arquivo": "ops/deploy/atualizar-prod-titulos-adicionais-20261028.cjs",
+      "modo_registrado": "0644",
+      "modo_atual": "0644",
+      "regular": true,
+      "dono_ubuntu": true
+    },
+    {
+      "arquivo": "ops/deploy/atualizar-prod-titulos-adicionais-20261028.test.cjs",
+      "modo_registrado": "0644",
+      "modo_atual": "0644",
+      "regular": true,
+      "dono_ubuntu": true
+    },
+    {
+      "arquivo": "ops/deploy/titulos-adicionais-prod-20261028.manifest.json",
+      "modo_registrado": "0644",
+      "modo_atual": "0644",
+      "regular": true,
+      "dono_ubuntu": true
+    }
+  ]
+}

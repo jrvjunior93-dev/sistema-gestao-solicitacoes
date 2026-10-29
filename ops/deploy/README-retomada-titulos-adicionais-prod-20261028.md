@@ -18,8 +18,12 @@ Substitui somente workingCheck durante esta execucao, com as verificacoes:
 - Mesmo HEAD e release; inventario/targets/backup/modos do estado conhecidos.
 - Modos herdados da preparacao podem ser iguais ou mais restritos que0644,
   desde que mantenham leitura do dono.0600/0640 sao aceitos sem chmod ou
-  regravacao do estado. Escrita de grupo/outros, execucao e bits especiais
-  continuam recusados; nao se exige ampliar para0644.
+  regravacao do estado; nao se exige ampliar para0644. A evidencia manual
+  de29/10 confirmou16 arquivos preexistentes com0664 registrado/atual. Esse
+  modo e preservado SOMENTE nos16 caminhos fixos LEGACY_GROUP_WRITABLE, com
+  hash/backup de base preexistente e arquivo atual regular/ubuntu/exatamente0664.
+  Nao aceita0664 em novos ou outros caminhos. Escrita para outros, execucao
+  e bits especiais continuam recusados. Nao executa chmod ou amplia modos.
 - Fontes atuais somente original ou release; fases posteriores exigem release.
 - Entradas do indice (blob, caminho e modo), todas stage0, identicas a arvore do
   HEAD. Flags assume-unchanged/skip-worktree sao recusadas. Hash bruto deve
