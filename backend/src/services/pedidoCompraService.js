@@ -1000,10 +1000,18 @@ async function adicionarRespostasAoPedido({
   return recalcularPedidoPorId(pedido.id, transaction);
 }
 
+// Mesma elegibilidade do comparativo: null/vazio preserva compras diretas e
+// legados. Rejeitados e pendentes permanecem no cadastro/historico, mas nao
+// representam saldo autorizado para uma nova rodada de compra.
+function itemAptoParaFechamento(item) {
+  return Boolean(item) && (!item.status_aprovacao || normalizeText(item.status_aprovacao) === 'APROVADO');
+}
+
 function montarMapaSaldosSolicitacao(solicitacao) {
   const saldos = new Map();
 
   for (const item of solicitacao?.itens || []) {
+    if (!itemAptoParaFechamento(item)) continue;
     const key = buildRespostaKey('CADASTRADO', item.id);
     saldos.set(key, {
       item_key: key,
@@ -1018,6 +1026,7 @@ function montarMapaSaldosSolicitacao(solicitacao) {
   }
 
   for (const item of solicitacao?.itensManuais || []) {
+    if (!itemAptoParaFechamento(item)) continue;
     const key = buildRespostaKey('MANUAL', item.id);
     saldos.set(key, {
       item_key: key,
@@ -1071,8 +1080,8 @@ async function sincronizarStatusSolicitacaoCompraPorSaldo({
     transaction,
     attributes: ['id', 'status', 'encerrado_em', 'solicitacao_principal_id'],
     include: [
-      { model: SolicitacaoCompraItem, as: 'itens', separate: true, attributes: ['id', 'quantidade'] },
-      { model: SolicitacaoCompraItemManual, as: 'itensManuais', separate: true, attributes: ['id', 'quantidade'] },
+      { model: SolicitacaoCompraItem, as: 'itens', separate: true, attributes: ['id', 'quantidade', 'status_aprovacao'] },
+      { model: SolicitacaoCompraItemManual, as: 'itensManuais', separate: true, attributes: ['id', 'quantidade', 'status_aprovacao'] },
       { model: SolicitacaoCompraAlocacao, as: 'alocacoes', separate: true,
         attributes: ['id', 'status', 'item_tipo', 'solicitacao_compra_item_id', 'solicitacao_compra_item_manual_id', 'quantidade_alocada'] },
       { model: PedidoCompra, as: 'pedidos', separate: true, attributes: ['id', 'status'] }
@@ -1352,6 +1361,15 @@ function montarAlocacoesNormalizadas(solicitacao, vencedores = [], saldosAtuais 
     const baseItem = obterBaseItemPorResposta(solicitacao, resposta);
     if (!baseItem) {
       throw new Error('Item da resposta vencedora nao foi encontrado.');
+    }
+
+    const itensOriginais = baseItem.item_tipo === 'CADASTRADO' ? solicitacao.itens : solicitacao.itensManuais;
+    const referenciaId = baseItem.solicitacao_compra_item_id || baseItem.solicitacao_compra_item_manual_id;
+    const itemOriginal = (itensOriginais || []).find(item => Number(item.id) === Number(referenciaId));
+    if (!itemAptoParaFechamento(itemOriginal)) {
+      throw Object.assign(new Error('O item selecionado nao esta aprovado para gerar um novo pedido.'), {
+        statusCode: 409, code: 'COMPRA_ITEM_NAO_APROVADO_PARA_FECHAMENTO'
+      });
     }
 
     const itemKey = buildItemKeyFromResposta(resposta);

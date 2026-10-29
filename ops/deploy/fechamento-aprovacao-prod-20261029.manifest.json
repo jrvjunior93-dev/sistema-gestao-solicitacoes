@@ -1,0 +1,76 @@
+{
+  "base": "8b635f786539fd846d9c4af8e88a61b0bfda30c3",
+  "runtime_files": 1,
+  "sql": 0,
+  "migrations": 0,
+  "heap_mib": 4096,
+  "files": [
+    {
+      "path": "backend/src/services/pedidoCompraService.js",
+      "sha256": "12b4a964898a7c66276a2363e2047b6722f0631132c99c50eba4bf3b41d94ef0",
+      "old_sha256": "98d5f607ac09b43f89d73a98acdda3c148408bbdee4db101c3b3c514b619cbfc"
+    },
+    {
+      "path": "backend/scripts/validarCompraFechamentoAprovacao.cjs",
+      "sha256": "05842ebf3c91d44aa9926e8e0b1bd6d6d02edea825303a06350292026fc220a1",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarPedidoReabertura.js",
+      "sha256": "91c900412e5509d9ab5e9509af967c9dee217fd36b01c9623939251a10a54994",
+      "old_sha256": "91c900412e5509d9ab5e9509af967c9dee217fd36b01c9623939251a10a54994"
+    },
+    {
+      "path": "backend/scripts/validarPedidoReaberturaTitulosExcluidos.js",
+      "sha256": "f8407885c5e5d32bf988326dbf654967be7cb2f89d27b32cc239092713d9a624",
+      "old_sha256": "f8407885c5e5d32bf988326dbf654967be7cb2f89d27b32cc239092713d9a624"
+    },
+    {
+      "path": "backend/scripts/validarCompraRemanejamento.js",
+      "sha256": "b2c429482c9178f803f6b9aa851e0c412c5d3cb8e3daf4da47ed13181196b5de",
+      "old_sha256": "b2c429482c9178f803f6b9aa851e0c412c5d3cb8e3daf4da47ed13181196b5de"
+    },
+    {
+      "path": "backend/scripts/validarCompraCotacaoEnvio.js",
+      "sha256": "25b3c4dd0e980604d7d739caa9baa2934b8c3520cc62c28eaf162556664f7481",
+      "old_sha256": "25b3c4dd0e980604d7d739caa9baa2934b8c3520cc62c28eaf162556664f7481"
+    },
+    {
+      "path": "backend/scripts/validarPrecisaoCompras.cjs",
+      "sha256": "3db4d72f1c3116b0fcada88fec97e7d4d0da8d6af42d19973c39a038370f9f02",
+      "old_sha256": "3db4d72f1c3116b0fcada88fec97e7d4d0da8d6af42d19973c39a038370f9f02"
+    },
+    {
+      "path": "backend/scripts/validarPedidoCompraFinanceiroGeo.js",
+      "sha256": "8ca675e3f64848dee6a137a487ccb61a59fe108d5c4d929705557f2e382bef27",
+      "old_sha256": "8ca675e3f64848dee6a137a487ccb61a59fe108d5c4d929705557f2e382bef27"
+    },
+    {
+      "path": "backend/scripts/helpers/semRedeQa.js",
+      "sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf",
+      "old_sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf"
+    }
+  ],
+  "extra": [
+    {
+      "path": "ops/deploy/atualizar-prod-fechamento-aprovacao-20261029.cjs",
+      "sha256": "b7511bd6e699a32ac9c635faf743aed6df53407b6d2db9080ba6a62891f1d38f"
+    },
+    {
+      "path": "ops/deploy/atualizar-prod-fechamento-aprovacao-20261029.test.cjs",
+      "sha256": "9f16a07c66b3393e28fc02c055f501a005785b2e82e52a7708d225e848f0c81e"
+    },
+    {
+      "path": "ops/deploy/README-fechamento-aprovacao-prod-20261029.md",
+      "sha256": "14cf130bae8e272d69a56beda12a0e714e360ce4ebfee84026cee710298519b1"
+    },
+    {
+      "path": "docs/handoffs/2026-10-29-promocao-fechamento-aprovacao-main.md",
+      "sha256": "7f884921ce5c260aaecf3671b04cac362ba32961af4df847efd26cadf0775026"
+    },
+    {
+      "path": "docs/workspace/OWNERSHIP_ATIVO.md",
+      "sha256": "cc3101566080a2f2db678fddc67ddb526af5f49caf21fe940cd8ec0078eba21d"
+    }
+  ]
+}
