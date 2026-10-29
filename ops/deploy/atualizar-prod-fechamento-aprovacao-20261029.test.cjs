@@ -160,7 +160,7 @@ test('nenhuma aplicacao/banco/DDL/PM2 global; HEAD e indice da EC2 ficam preserv
 
 test('overlays anteriores somente se identicos aBASE; conteudo alterado ou link bloqueiam',()=>{
  const vm=require('node:vm'),text=read(op.SELF).toString();
- for(const file of ['backend/src/services/compraTitulosAdicionaisService.js','backend/src/services/solicitacaoFilaOperacional.js','backend/src/controllers/ComprovanteCompartilhadoSolicitacaoController.js','backend/src/services/comprovanteCompartilhadoSolicitacaoService.js']){
+ for(const file of ['backend/src/services/compraTitulosAdicionaisService.js','backend/src/services/solicitacaoFilaOperacional.js','backend/src/controllers/ComprovanteCompartilhadoSolicitacaoController.js','backend/src/services/comprovanteCompartilhadoSolicitacaoService.js','backend/src/services/pagamentoFilaBoletosPedidosService.js']){
   const payload=gitBlob(op.BASE,file);assert(payload);
   function actual({changed=false,link=false,uid=1000}={}){
    const fakeFs={readFileSync:()=>changed?Buffer.from('DIVERGENTE'):payload,
@@ -174,6 +174,6 @@ test('overlays anteriores somente se identicos aBASE; conteudo alterado ou link 
 });
 
 test('retomada aceita somente pais revisados e continua rejeitando merge ou revisao desconhecida',()=>{
- for(const parent of [op.BASE])op.validateReleaseParent(parent,2);
+ for(const parent of [op.BASE,'3705c894cab7b3b552aa5c1951fbc74354202af3'])op.validateReleaseParent(parent,2);
  assert.throws(()=>op.validateReleaseParent('f'.repeat(40),2));assert.throws(()=>op.validateReleaseParent(op.BASE,3));
 });

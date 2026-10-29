@@ -110,7 +110,7 @@ function inventory(m,names,read,oldRead){
  for(const f of m.files){const old=oldRead(f.path);check((old===null?null:hash(old))===f.old_sha256,'BASE_HASH_DIVERGENTE');}
 }
 function validateReleaseParent(parent, count){
- check([BASE].includes(parent)&&count===2,'BASE_DIVERGENTE');
+ check([BASE,'3705c894cab7b3b552aa5c1951fbc74354202af3'].includes(parent)&&count===2,'BASE_DIVERGENTE');
 }
 function verify(version){
  check(/^[a-f0-9]{40}$/.test(version||''),'SHA_INVALIDO');git(['fetch','origin','main']);git(['merge-base','--is-ancestor',version,'origin/main']);
@@ -131,7 +131,7 @@ function safeFile(relative){
 }
 function validateRuntimeDelta(paths){
  const overlays=['backend/src/services/compraTitulosAdicionaisService.js','backend/src/services/solicitacaoFilaOperacional.js',
-  'backend/src/controllers/ComprovanteCompartilhadoSolicitacaoController.js','backend/src/services/comprovanteCompartilhadoSolicitacaoService.js'];
+  'backend/src/controllers/ComprovanteCompartilhadoSolicitacaoController.js','backend/src/services/comprovanteCompartilhadoSolicitacaoService.js','backend/src/services/pagamentoFilaBoletosPedidosService.js'];
  for(const p of paths){
   if(RUNTIME.includes(p))continue;
   check(overlays.includes(p),'RUNTIME_FORA_ESCOPO');

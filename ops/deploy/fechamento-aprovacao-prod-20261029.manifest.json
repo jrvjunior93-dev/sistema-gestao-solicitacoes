@@ -54,11 +54,11 @@
   "extra": [
     {
       "path": "ops/deploy/atualizar-prod-fechamento-aprovacao-20261029.cjs",
-      "sha256": "b7511bd6e699a32ac9c635faf743aed6df53407b6d2db9080ba6a62891f1d38f"
+      "sha256": "2781933cb9a829fe3135c58a0dd0c252b39984c38f14bf7bed8e1ed03e127377"
     },
     {
       "path": "ops/deploy/atualizar-prod-fechamento-aprovacao-20261029.test.cjs",
-      "sha256": "9f16a07c66b3393e28fc02c055f501a005785b2e82e52a7708d225e848f0c81e"
+      "sha256": "217841cd0938ac3663b3beca85c810fc7737ca435204c9a675492371558d44c6"
     },
     {
       "path": "ops/deploy/README-fechamento-aprovacao-prod-20261029.md",
