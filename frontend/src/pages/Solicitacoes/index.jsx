@@ -17,6 +17,8 @@ import { hasEnabledModule } from '../../utils/acessoProduto';
 import ListaAvancada from '../../components/lista-avancada/ListaAvancada';
 import StatusBadge from '../../components/StatusBadge';
 import AtencaoPendente from './AtencaoPendente';
+import AtividadePendente, { urgenciaAtividade } from './AtividadePendente';
+import LegendaDestaques from './LegendaDestaques';
 import { ContadorPrazo } from '../../components/PrazosOperacionais';
 import OverlayModal from '../../components/ui/OverlayModal';
 import ModalEditarDadosSolicitacao from '../../components/solicitacoes/ModalEditarDadosSolicitacao';
@@ -37,8 +39,7 @@ import {
 import {
   formatarMaiusculas,
   formatarDescricao,
-  vencimentoHumano,
-  urgenciaVencimento
+  vencimentoHumano
 } from '../../utils/formatarTexto';
 import {
   arquivarSolicitacoesEmMassa,
@@ -1962,11 +1963,12 @@ export default function Solicitacoes({ arquivadas = false }) {
         titulo: 'Código',
         principal: true,
         ordenavel: true,
-        larguraPadrao: 130,
+        larguraPadrao: 230,
         render: (item) => <span className="flex min-w-0 flex-col gap-1">
           {linkSolicitacao(item)}
+          <AtividadePendente solicitacao={item} />
           <AtencaoPendente atencao={item.atencao_pendente} solicitacao={item} />
-          <ContadorPrazo prazo={item.prazo_operacional} />
+          {item.atividades_pendentes?.some(a => a.tipo === 'ENTREGA_OBRA') && <ContadorPrazo prazo={item.prazo_operacional} />}
         </span>
       },
       {
@@ -2082,19 +2084,9 @@ export default function Solicitacoes({ arquivadas = false }) {
       <div className="sol-card-compacto-topo">
         <span className="sol-card-compacto-codigo">
           {linkSolicitacao(item)}
-          {item.retorno_solicitado_pendente && (
-            <span
-              className="sol-retorno-pendente"
-              title={item.pedido_retorno_pendente?.motivo || 'Esta solicitação precisa de atenção do setor atual.'}
-            >
-              Retorno solicitado
-            </span>
-          )}
+          <AtividadePendente solicitacao={item} />
           <AtencaoPendente atencao={item.atencao_pendente} solicitacao={item} />
-          <ContadorPrazo prazo={item.prazo_operacional} />
-          {item.entrega_pendente && <span className="sol-retorno-pendente" title={item.entrega_pendente.resumo}>
-            Entrega: {item.entrega_pendente.vencida ? 'ação vencida' : 'pendência'}
-          </span>}
+          {item.atividades_pendentes?.some(a => a.tipo === 'ENTREGA_OBRA') && <ContadorPrazo prazo={item.prazo_operacional} />}
         </span>
         <StatusBadge
           status={item.status_global}
@@ -2206,6 +2198,7 @@ export default function Solicitacoes({ arquivadas = false }) {
 
       {/* R19: os avisos da tela vivem aqui, não em caixa do navegador. */}
       <Avisos avisos={avisos} aoFechar={fechar} />
+      <LegendaDestaques />
 
       {filtroIdsUrl.length > 0 && (
         <BlocoConteudo variante="secundario">
@@ -2316,11 +2309,7 @@ export default function Solicitacoes({ arquivadas = false }) {
             { id: 'faixa_valor', rotulo: 'faixa de valor', valor: (item) => faixaDeValor(item.valor_exibicao ?? item.valor), ordenarGrupos: compararFaixaValor }
           ]}
           renderCard={renderCardSolicitacao}
-          urgencia={(item) => (
-            item.entrega_pendente ? (item.entrega_pendente.vencida ? 'retorno' : 'entrega') : item.retorno_solicitado_pendente || item.atencao_pendente || item.interacoes_pendentes?.length
-              ? 'retorno'
-              : urgenciaVencimento(item.data_vencimento)
-          )}
+          urgencia={urgenciaAtividade}
           acoesLote={acoesLoteLista}
           aoAbrirItem={abrirSolicitacao}
           onSelecaoChange={(ids) => setSelecionadasIds(ids.map(Number))}

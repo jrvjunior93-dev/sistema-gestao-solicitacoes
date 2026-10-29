@@ -68,9 +68,9 @@ export async function validarPaginasInteracoes(browser) {
         return route.fulfill({ json: data });
       });
       await page.goto(`${base}/fixture`);
-      const balao = page.getByRole('button', { name: 'Interações pendentes de SOL-QA90: 1', exact: true });
+      const balao = page.getByRole('button', { name: 'Interações não lidas de SOL-QA90: 1', exact: true });
       await balao.waitFor().catch(async (e) => { console.error(erros, await page.locator('body').innerText()); throw e; });
-      if (width > 767) assert.equal(await balao.locator('xpath=ancestor::tr').getAttribute('class').then((s) => s.includes('la-urgencia-retorno')), true);
+      if (width > 767) assert.equal(await balao.locator('xpath=ancestor::tr').getAttribute('class').then((s) => s.includes('la-urgencia-retorno')), false, 'interacao nao pinta linha vermelha');
       await balao.press('Enter'); assert.equal(new URL(page.url()).pathname, '/fixture');
       const modal = page.getByRole('dialog', { name: 'Interações · SOL-QA90' });
       await modal.getByRole('link', { name: /Novo comentário no histórico/ }).click();
@@ -80,18 +80,18 @@ export async function validarPaginasInteracoes(browser) {
       await page.evaluate(() => window.dispatchEvent(new CustomEvent('fluxy:interacoes-lidas', {
         detail: { id: 90, usuario_id: 999, interacoes_pendentes: [] }
       })));
-      assert.equal(await page.getByRole('button', { name: 'Interações pendentes de SOL-QA90: 1', exact: true }).count(), 1,
+      assert.equal(await page.getByRole('button', { name: 'Interações não lidas de SOL-QA90: 1', exact: true }).count(), 1,
         'resposta de outro usuario nao muda leitura atual');
-      await page.waitForFunction(() => !document.querySelector('[aria-label="Interações pendentes de SOL-QA90: 1"]'));
+      await page.waitForFunction(() => !document.querySelector('[aria-label="Interações não lidas de SOL-QA90: 1"]'));
       assert.ok(leituras.some((l) => l.historico_ids.includes(123)), 'leitura depois de exibir historico oculto, sem mudar preferencia');
       assert.equal(registro.status_global, 'PENDENTE'); assert.equal(registro.valor, 1000);
       await page.goBack(); await page.getByRole('heading', { name: 'Solicitações', exact: true }).waitFor();
-      assert.equal(await page.getByRole('button', { name: /Interações pendentes de SOL-QA90/ }).count(), 0);
+      assert.equal(await page.getByRole('button', { name: /Interações não lidas de SOL-QA90/ }).count(), 0);
       novoEventoForaDaPagina = true;
       await page.evaluate(() => window.dispatchEvent(new CustomEvent('qa:liveupdate', {
         detail: { entity: 'SOLICITACAO', action: 'INTERACTION_ADDED', record_id: 91 }
       })));
-      await page.getByRole('button', { name: 'Interações pendentes de SOL-QA91: 1', exact: true }).waitFor();
+      await page.getByRole('button', { name: 'Interações não lidas de SOL-QA91: 1', exact: true }).waitFor();
       const codigos = width > 767 ? await page.locator('tbody tr').allTextContents() : await page.locator('.la-card').allTextContents();
       assert.ok(codigos.findIndex((s) => s.includes('SOL-QA91')) < codigos.findIndex((s) => s.includes('SOL-QA90')),
         'evento fora da pagina provoca consulta da janela ordenada, nao apenas alteracao da linha');

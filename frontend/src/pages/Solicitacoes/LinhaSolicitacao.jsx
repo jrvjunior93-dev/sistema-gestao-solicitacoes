@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AtencaoPendente from './AtencaoPendente';
+import AtividadePendente from './AtividadePendente';
 import { ContadorPrazo } from '../../components/PrazosOperacionais';
 import StatusBadge from '../../components/StatusBadge';
 import MenuMais from '../../components/padrao/MenuMais';
@@ -546,19 +547,9 @@ export function construirColunas({
       render: (item) => (
         <span className="sol-codigo-retorno">
           <span>{item.codigo || `#${item.id}`}</span>
-          {item.retorno_solicitado_pendente && (
-            <span
-              className="sol-retorno-pendente"
-              title={item.pedido_retorno_pendente?.motivo || 'Esta solicitação precisa de atenção do setor atual.'}
-            >
-              Retorno solicitado
-            </span>
-          )}
+          <AtividadePendente solicitacao={item} />
           <AtencaoPendente atencao={item.atencao_pendente} solicitacao={item} />
-          <ContadorPrazo prazo={item.prazo_operacional} />
-          {item.entrega_pendente && <span className="sol-retorno-pendente" title={item.entrega_pendente.resumo}>
-            Entrega: {item.entrega_pendente.vencida ? 'ação vencida' : 'pendência'}
-          </span>}
+          {item.atividades_pendentes?.some(a => a.tipo === 'ENTREGA_OBRA') && <ContadorPrazo prazo={item.prazo_operacional} />}
         </span>
       )
     },

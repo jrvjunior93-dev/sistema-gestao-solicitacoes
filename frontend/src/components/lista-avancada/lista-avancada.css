@@ -701,6 +701,35 @@
   white-space: nowrap;
 }
 
+/* Atividade e leitura sao sinais independentes; nao reutilizar vermelho de mensagem. */
+.la-linha.la-urgencia-atividade-pendente td,
+.la-card.la-urgencia-atividade-pendente { background: var(--sem-warning-bg); }
+.la-linha.la-urgencia-atividade-atrasada td,
+.la-card.la-urgencia-atividade-atrasada { background: var(--sem-danger-bg); }
+.la-linha.la-urgencia-atividade-pendente td:first-child::before,
+.la-card.la-urgencia-atividade-pendente::before { background: var(--sem-warning); }
+.la-linha.la-urgencia-atividade-atrasada td:first-child::before,
+.la-card.la-urgencia-atividade-atrasada::before { background: var(--sem-danger); }
+.la-linha.la-urgencia-atividade-pendente:hover td { background: color-mix(in srgb, var(--sem-warning) 15%, var(--ui-surface)); }
+.la-linha.la-urgencia-atividade-atrasada:hover td { background: color-mix(in srgb, var(--sem-danger) 15%, var(--ui-surface)); }
+.sol-atividades { display: inline-flex; flex-direction: column; gap: 3px; min-width: 0; width: 100%; max-width: 100%; }
+.sol-atividades .sol-atividade { color: var(--sem-warning); min-width: 0; font-size: var(--fonte-detalhe); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sol-atividade:hover { text-decoration: underline; }
+.sol-atividades .sol-atividade--atrasada { color: var(--sem-danger-text, var(--sem-danger)); }
+button.sol-interacoes-nao-lidas.btn.btn-outline, .sol-atencao-pendente { color: var(--sem-info); border-color: var(--sem-info-border); background: var(--sem-info-bg); }
+.la-card:has(.sol-atividades) { min-width: 0; }
+@media (max-width: 767px) { .la-cards-grid:has(.sol-atividades) { grid-template-columns: minmax(0, 1fr); } }
+.sol-acompanhamento { color: var(--app-muted-color); font-size: var(--fonte-detalhe); font-weight: 500; }
+.sol-legenda { padding: 8px 12px; margin-bottom: 8px; border: 1px solid var(--ui-border); border-radius: 6px; font-size: var(--fonte-detalhe); color: var(--app-body-color); }
+.sol-legenda summary { cursor: pointer; font-weight: 650; }
+.sol-legenda ul { display: grid; gap: 6px; padding: 8px 0; margin: 0; list-style: none; }
+.sol-legenda p { max-width: 100ch; margin: 6px 0 0; }
+.sol-legenda-cor { display: inline-block; width: 10px; height: 10px; margin-right: 4px; border-radius: 2px; }
+.sol-legenda-cor--amarelo { background: var(--sem-warning); }
+.sol-legenda-cor--vermelho { background: var(--sem-danger); }
+.sol-legenda-cor--azul { background: var(--sem-info); }
+.sol-legenda-cor--neutro { background: var(--app-muted-color); }
+
 .la-grupo-linha td {
   padding: 8px 12px;
   background: var(--ui-surface-soft);

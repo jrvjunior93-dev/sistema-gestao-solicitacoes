@@ -30,11 +30,9 @@ function dataHoraAtencao(valor) {
 }
 
 export function gruposInteracoes(solicitacao = {}, atencao) {
-  const grupos = [...(solicitacao.interacoes_pendentes || [])];
-  if (!grupos.length && atencao) grupos.push({ tipo: atencao.tipo, quantidade: 1, resumo: atencao.resumo });
-  const pedidosRetorno = solicitacao.contexto_interacao?.pedidos_retorno_para_decisao || [];
-  if (solicitacao.retorno_solicitado_pendente || pedidosRetorno.length) grupos.push({ tipo: 'RETORNO_PENDENTE', quantidade: pedidosRetorno.length || 1 });
-  if (solicitacao.entrega_pendente) grupos.push({ tipo: 'ENTREGA_PENDENTE', quantidade: Number(solicitacao.entrega_pendente.quantidade) || 1 });
+  const atividade = tipo => ['RETORNO_PENDENTE', 'ENTREGA_PENDENTE', 'ENTREGA_OBRA'].includes(tipo);
+  const grupos = (solicitacao.interacoes_pendentes || []).filter(g => !atividade(g.tipo));
+  if (!grupos.length && atencao && !atividade(atencao.tipo)) grupos.push({ tipo: atencao.tipo, quantidade: 1, resumo: atencao.resumo });
   return grupos;
 }
 
@@ -57,8 +55,8 @@ export default function AtencaoPendente({ atencao, solicitacao }) {
         else if (!event.shiftKey && document.activeElement === ultimo) { event.preventDefault(); primeiro?.focus(); }
       }
     }}>
-      <button type="button" className="btn btn-outline btn-sm inline-flex items-center gap-1"
-        aria-label={`Interações pendentes de ${solicitacao.codigo || solicitacao.id}: ${total}`}
+      <button type="button" className="btn btn-outline btn-sm sol-interacoes-nao-lidas inline-flex items-center gap-1"
+        aria-label={`Interações não lidas de ${solicitacao.codigo || solicitacao.id}: ${total}`}
         title={grupos.map((grupo) => `${ROTULOS_TIPO_ATENCAO[grupo.tipo] || 'Nova interação'}: ${grupo.quantidade}`).join('\n')}
         onClick={() => setAberto(true)}><HiChatBubbleLeftRight aria-hidden="true" />{total}</button>
       {aberto && <OverlayModal onFechar={() => setAberto(false)} rotulo={`Interações · ${solicitacao.codigo || solicitacao.id}`} largura="480px" fecharAoClicarFora>
@@ -76,14 +74,14 @@ export default function AtencaoPendente({ atencao, solicitacao }) {
       </OverlayModal>}
     </span>;
   }
-  if (!atencao) return null;
+  if (!atencao || ['RETORNO_PENDENTE', 'ENTREGA_PENDENTE', 'ENTREGA_OBRA'].includes(atencao.tipo)) return null;
   const descricao = descricaoAtencao(atencao);
   const dataHora = dataHoraAtencao(atencao.evento_em);
   const titulo = [descricao, dataHora ? `Em ${dataHora}` : ''].filter(Boolean).join(' · ');
 
   return (
     <span className="sol-atencao-pendente" title={titulo}>
-      <span className="sol-atencao-pendente-prefixo">Tratar:</span>
+      <span className="sol-atencao-pendente-prefixo">Não lida:</span>
       <span className="sol-atencao-pendente-texto">{descricao}</span>
     </span>
   );

@@ -1,0 +1,42 @@
+{
+  "base": "720d4acd1ce9624627934195f9a3172371bd4a10",
+  "main": "46ac88de88957ffc15e8b0db45dfcd6eed7bc34e",
+  "files": [
+    {
+      "path": "backend/package.json",
+      "sha256": "700846aa1fe8965b555aec808a3ad841acd93ef0aa0fa054fd1ead3845394a92"
+    },
+    {
+      "path": "backend/src/controllers/SolicitacaoController.js",
+      "sha256": "4d622ba9e2a14b6a3ae72a5a5496ecd75a6a5bd771ff84ca6a34caa5ee62a311"
+    },
+    {
+      "path": "backend/src/services/solicitacaoFilaOperacional.js",
+      "sha256": "d35addf1592cbb08f1e94c76911ee52d6cf8c3eb64482c3cfe45355c35385a64"
+    },
+    {
+      "path": "backend/scripts/helpers/semRedeQa.js",
+      "sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf"
+    },
+    {
+      "path": "backend/scripts/validarFilaOperacionalSolicitacoes.cjs",
+      "sha256": "7ba430101a398d1baeea61ace63a853b32548bcf4722b54a9886d64b59fa6697"
+    },
+    {
+      "path": "backend/scripts/validarInteracoesSolicitacao.js",
+      "sha256": "ede5d70236932260a85f259a47719a676cece9b31a3f26d1227c9e36d8f5c89a"
+    },
+    {
+      "path": "backend/scripts/validarDevolucaoRetornoSolicitacao.js",
+      "sha256": "0b135cf5418eb73082ce0949e9b4751ffa9654f8206502a75210355e09fa2e3e"
+    },
+    {
+      "path": "ops/deploy/atualizar-dev-destaques-solicitacoes-20261029.cjs",
+      "sha256": "ce5a3502e6cbae4dfdb642b67f4650241100007868fc615b9a4692581d95ab99"
+    },
+    {
+      "path": "ops/deploy/atualizar-dev-destaques-solicitacoes-20261029.test.cjs",
+      "sha256": "21cd94e5b71b49cd149dddb36641bcf72fb98790b0419e66c9c33f548072c6fd"
+    }
+  ]
+}

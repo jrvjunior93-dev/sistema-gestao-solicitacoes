@@ -1,5 +1,54 @@
 # Modulo SOLICITACOES
 
+## Destaques e fila operacional — 29/10/2026
+
+A lista separa trabalho pendente, leitura e acompanhamento. O backend calcula
+`atividades_pendentes` por usuário usando setor principal e permissões atuais;
+vínculos secundários/visibilidade não transformam acompanhamento em aprovação.
+O SUPERADMIN mantém a exceção funcional existente para decidir retornos.
+
+- Amarelo suave: atividade que o usuário pode tratar, ainda não atrasada ou sem
+  prazo definido. Aprovar retorno não tem SLA configurado nesta implementação:
+  mostra espera desde o pedido mais antigo e nunca vira vermelho só pelo tempo.
+- Vermelho suave: atividade operacional com prazo existente ultrapassado.
+  Vencimento financeiro da solicitação não é prazo da atividade.
+- Contador azul: apenas interações não lidas, independente da cor da linha.
+  Retorno/entrega não são somados ao contador. Os atalhos para os blocos de
+  conversa, anexos, pedidos, cotações e itens continuam existentes.
+- Etiqueta neutra: aguardando outro setor, sem prioridade só por acompanhar.
+
+Ordenação no SQL, antes do LIMIT/OFFSET: atrasadas (retorno primeiro no grupo),
+aprovações de retorno, demais atividades reconhecidas, não lidas e restante.
+Usa prazo mais próximo ou pedido mais antigo; novas mensagens não ultrapassam
+ações pendentes. A coluna escolhida desempata a prioridade/data; agrupamentos
+continuam dividindo a fila pelos grupos. Não reordena só a página no cliente.
+Movimentação em outro setor não sobe apenas por updatedAt. Escopo de acesso,
+filtros, contadores e visões do Hub permanecem os mesmos.
+
+Atividades reconhecidas nesta etapa:
+
+| Atividade | Início / evidência | Conclusão | Prazo |
+| --- | --- | --- | --- |
+| Aprovar retorno | Pedido PENDENTE para o setor atual, com permissão de decidir | Aprovar, rejeitar, cancelar/expirar ou deixar de existir pedido pendente válido para esse setor | Sem prazo inventado |
+| Informar entrega / tratar divergência / reprogramar | Controles existentes do pedido e setor responsável por entrega | Mesmas ações existentes de entrega, sem mudanças nesta implementação | Data e regras de entrega existentes |
+| Ciclo operacional de entrega da Obra | Obrigação ENTREGA_OBRA PENDENTE e válida | Mesmas regras existentes do ciclo | limite_em existente, com tolerância já calculada |
+
+Ler, abrir ou comentar não conclui atividade. A consulta da lista e o resumo
+individual não fazem gravações de negócio. Leitura permanece no endpoint
+específico; aprovação, rejeição, devolução e entregas mantêm suas transações,
+ACLs e idempotência. Atualizações em tempo real recarregam a janela autorizada.
+53 itens de uma mesma atividade são resumidos, sem criar 53 etiquetas por linha.
+Novas atividades/SLA de outros tipos dependem de mapear seus eventos reais;
+não se presume que qualquer comentário ou mudança de status conclua uma etapa.
+
+Validação: `backend/scripts/validarFilaOperacionalSolicitacoes.cjs` executa SQL
+em SQLite local, incluindo paginação, leitura, ACL e regras de entrega;
+regressões de interações/retorno e UI real em navegador com APIs fictícias.
+`frontend/scripts/validarDestaquesSolicitacoes.mjs` cobre tabela/cards, celular,
+claro/escuro, teclado, cores e leitura independente; screenshots em outputs.
+Sem migration, flags, acesso à EC2 ou banco real. Backend e frontend precisam
+ser publicados juntos para disponibilizar os metadados e sua apresentação.
+
 ## Promocao MAIN RH, centros e pedidos - 2026-10-21
 
 Usuario autorizou os tres commits pendentes2d161b85/ba4a41b2/a00a15f6 e confirmou
