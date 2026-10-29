@@ -27,3 +27,25 @@ main sem force e fornecer comandos com SHA completo. Depois conferir saida do
 usuario e smoke visual com GEO no frontend publicado.
 
 Validacao da integracao:17testes aplicadorPROD (incluindo escrita0664/0644),6dominio/SQL SQLite e regressoes backend interacoes/retorno aprovados. UI real tabela/cards/mobile/claro/escuro e paginas lista/detalhe com APIs ficticias aprovadas. Build29,84s aprovado, apenas avisos preexistentes. Documentacao668MD/19canonicos aprovada. Nenhum banco, EC2 ou integracao externa acessado. Payload funcional identico ao delta72c0cc47 (13arquivos), demais features da main preservadas. Roteiro sera pinado ao commit publicado; sem gitpull/reiniciarDEV.
+
+## Retomada apos arquivo novo nao rastreado
+
+Publicado998b78bd e usuario executou preparar; bloqueou RUNTIME_FORA_ESCOPO
+antes de instalar ou reiniciar. Diagnostico enviado: HEAD15a86635; GitdiffBASE39
+marca D no compraTitulosAdicionaisService.js, mas o arquivo existe comSHA922ed26b,
+identico ao arquivo da base. Erro da guarda ao considerar so Gitdiff e ignorar
+arquivo novo fisicamente instalado por pacote anterior sobre HEAD antigo.
+
+Wrapper retomar-prod-destaques-solicitacoes-20261029.cjs carrega release998 e
+SHA85b11249... congelados; altera em memoria apenas validateRuntimeDelta para
+validar esse caminho fora de RUNTIME por hash/regularidade/uid/ls-files vazio.
+Nao altera indice/HEAD, fontes do overlay, manifesto, testes ou payload original.
+Conferir deve ser executado pelo wrapper (via stdin), nao pelo script original
+instalado, que conserva a antiga validacao. Qualquer outra diferenca bloqueia.
+
+Novas alteracoes de fonte somente wrapper/teste/README/este handoff/ownership.
+Sem mudanca funcional frontend/backend. Validacao local5testes passou; inclui
+tamper,tracked,owner,symlink,hardlink,world-writable,outra diferenca e loaderpin.
+Aplicador original revalidado com env de QA pinado ao proprio commit998, tal
+como executado pelo operador. Sem EC2/banco pelo agente. Publicar patch main
+e fornecer as tres chamadas ao wrapper, com alvo funcional998 inalterado.
