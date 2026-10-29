@@ -6653,3 +6653,13 @@ Publicacao de acesso a apropriacoes: integracao sobre refactor/frontend 6618f6ca
 2026-10-29 — Agente desta conversa reserva backend/src/services/rhColaboradorObraService.js, backend/scripts/validarRhPrivacidadeObra.js, novo teste de associacao real, frontend/src/components/rh/RhColaboradorObraModal.jsx, frontend/scripts/validarRhPrivacidadeObraUI.mjs e handoff. Branch codex/rh-cadastro-obra-correcao sobre origin/refactor72c0cc47. Corrigir alias tipoDocumento e erro de carregamento; manter ACL/escopo/campos restritos/idempotencia. Sem EC2/banco/S3.
 
 2026-10-29 — Publicacao autorizada: reserva novo aplicadorDEV/teste/manifesto/README rh-cadastro-obra-20261029. Reutilizar guardas do aplicadorDEV homologado72c0cc47, instalar somente service1runtime eQA, preservarHEAD/indice/PROD/Experience/flags. Sem executar EC2.
+
+2026-10-29 — Revisao filtrosDP: reserva novo teste UI frontend/scripts/validarRhFiltrosDP.mjs e handoff. Inspecao transferencias/solicitacoes/componentes comuns; ainda sem alteracao de permissoes. Branch codex/rh-dp-filtros base6aa7d0fa. SemEC2/DB.
+
+2026-10-29 — Achado reproduzido: duas medicoes sync antes commit calculam desvio contra escrito.current ainda nao pintado. Reserva frontend/src/hooks/usePosicaoFlutuante.js para ler coordenadas inline efetivamente aplicadas. Teste UI antes correcao falha30px; menus abrem deslocados em sessaoDEV existente, sem trocarusuario/escrevercadastro.
+
+2026-10-29 — Comprovantes compartilhados autorizados: reserva backend/src/services/pagamentoFilaHistoricoService.js,tituloCompartilhadoConsulta.js,novo comprovanteCompartilhadoSolicitacaoService.js/controller,backend/src/routes.js,frontend/src/services/financeiro.js,frontend/src/pages/SolicitacaoDetalhe/FinanceiroCard.jsx,QAbackend/UI e handoff. Preservar alteracoes de filtrosDP ainda locais. SOL6453id6488/SOL6554id6589,TIT12604/fila883/doc784. Implementar fluxo futuro+card e simulacaooffline; semEC2/DB/S3/regularizacao real.
+
+Comprovantes: inclui reserva frontend/scripts/validarComprovantesTituloSolicitacao.mjs para regressao do componente/clienteHTTP real eQA de permissao por origem.
+
+2026-10-29 — Publicacao autorizada conjunta: comprovantes compartilhados+filtrosDP. Reserva aplicadorDEV/teste/manifesto/README comprovantes-compartilhados-20261029. Base6aa7d0fa;6runtimes (routes,2servicosoriginais+tituloFinanceiro+service/controller novos),QA selecionado. Sem executar regularizacao/EC2/DB. Filtros inclusos por instrucao explicita do usuario.

@@ -1,0 +1,36 @@
+{
+  "origens": [
+    {
+      "remocoes_historico": 0,
+      "valor_centavos": 119190,
+      "anexos_ativos": 0,
+      "codigo": "SOL-6453",
+      "id": 6488,
+      "anexos_removidos": 0,
+      "historicos": 0
+    },
+    {
+      "remocoes_historico": 0,
+      "valor_centavos": 99147,
+      "anexos_ativos": 0,
+      "codigo": "SOL-6554",
+      "id": 6589,
+      "anexos_removidos": 0,
+      "historicos": 0
+    }
+  ],
+  "titulo_id": 12604,
+  "status_fila": "BAIXADO",
+  "fonte_sha256": "128bb279030133b75057e2124fcc4853fbf49e052eec26db24370dd1f71f149d",
+  "data_baixa": "2026-10-28",
+  "lote_id": 3,
+  "fila_id": 883,
+  "titulo_codigo": "TIT-012333",
+  "valor_centavos": 218337,
+  "principal_e_adicional_mesmo_hash": true,
+  "principal_e_adicional_mesmo_caminho": true,
+  "status_titulo": "QUITADO",
+  "arquivo": "12333.pdf",
+  "comprovante_id": 784,
+  "movimento_id": 8542
+}

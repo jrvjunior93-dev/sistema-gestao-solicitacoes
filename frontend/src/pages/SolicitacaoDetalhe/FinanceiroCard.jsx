@@ -56,7 +56,8 @@ import {
   getFormasPagamentoFinanceiras,
   getPaymentBeneficiaries,
   getTitulosFinanceirosPorSolicitacao,
-  getComprovanteFilaPagamento
+  getComprovanteFilaPagamento,
+  getComprovanteCompartilhadoSolicitacao
 } from '../../services/financeiro';
 
 
@@ -1301,11 +1302,13 @@ export default function FinanceiroCard({
     autorizacaoDisponivel, confirmar, avisar, aoAtualizar: atualizarAposMedicaoOuEnvio
   });
 
-  async function abrirComprovante(filaId, comprovanteId, caminhoSolicitacao, nome) {
+  async function abrirComprovante(filaId, comprovanteId, caminhoSolicitacao, nome, tituloCompartilhadoId) {
     try {
       await abrirPreview(() => caminhoSolicitacao
         ? getLinkSeguroAnexoSolicitacao(caminhoSolicitacao)
-        : getComprovanteFilaPagamento(filaId, comprovanteId),
+        : tituloCompartilhadoId
+          ? getComprovanteCompartilhadoSolicitacao(solicitacao.id, tituloCompartilhadoId, filaId, comprovanteId)
+          : getComprovanteFilaPagamento(filaId, comprovanteId),
         { nome: nome || 'Comprovante', caminho: caminhoSolicitacao, mime: caminhoSolicitacao ? undefined : 'application/pdf' });
     } catch (error) {
       avisar.erro(error?.message || 'Não foi possível abrir o comprovante.');
@@ -2464,7 +2467,8 @@ export default function FinanceiroCard({
       id: 'comprovante',
       titulo: 'Comprovante',
       tipo: 'acao',
-      render: (titulo) => <ComprovantesTituloSolicitacao titulo={titulo} onAbrir={abrirComprovante} />
+      render: (titulo) => <ComprovantesTituloSolicitacao titulo={titulo}
+        onAbrir={(...args) => abrirComprovante(...args, titulo.somente_participacao ? titulo.id : null)} />
     },
     {
       id: 'saldo',

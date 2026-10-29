@@ -1,0 +1,76 @@
+{
+  "base": "6aa7d0fa136235195609a804aa1d3236e46eeea8",
+  "main": "46ac88de88957ffc15e8b0db45dfcd6eed7bc34e",
+  "files": [
+    {
+      "path": "backend/package.json",
+      "sha256": "700846aa1fe8965b555aec808a3ad841acd93ef0aa0fa054fd1ead3845394a92"
+    },
+    {
+      "path": "backend/src/routes.js",
+      "sha256": "b9f61a7d9b20ac949f9504941bab62b4f177d4bb906a1027dde0e9661113bc00"
+    },
+    {
+      "path": "backend/src/services/pagamentoFilaHistoricoService.js",
+      "sha256": "a49c2f1a576b0197dda896316db7f684e299bffd5b3696c0d424b89a6183f93b"
+    },
+    {
+      "path": "backend/src/services/tituloCompartilhadoConsulta.js",
+      "sha256": "b126fc57812cf240a5ffd4da62fb9d280915c9bac15a59764b933061aec3b061"
+    },
+    {
+      "path": "backend/src/services/tituloFinanceiroService.js",
+      "sha256": "e3b25e5fea2fff98e94544d1f5e5de6f2782f3809f78015ddd223b57fb39c375"
+    },
+    {
+      "path": "backend/src/services/comprovanteCompartilhadoSolicitacaoService.js",
+      "sha256": "b3d6d1d8337b8eeb77008d7388f7ba2376089e0ffc1ec840632b5584cdd63aee"
+    },
+    {
+      "path": "backend/src/controllers/ComprovanteCompartilhadoSolicitacaoController.js",
+      "sha256": "e375ff4e9b941e6a5567754eccd83928ca2b8347611c9403f7babcaf7883ee9f"
+    },
+    {
+      "path": "backend/scripts/helpers/semRedeQa.js",
+      "sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf"
+    },
+    {
+      "path": "backend/scripts/validarComprovantesCompartilhados.cjs",
+      "sha256": "5d73a6a8da8e90c685d06972e3e3435ab010efb3bb0824087c0f2939efe7084a"
+    },
+    {
+      "path": "backend/scripts/validarFilaComprovantePendente.js",
+      "sha256": "aa614e9161893edaa9e540e12a1004a1a806c466f87c62a6e7aaabc6fe7a2f36"
+    },
+    {
+      "path": "backend/scripts/validarTitulosCompartilhados.js",
+      "sha256": "f98cc83f32401843becf8615221aa8c46d8f2f4b00e31ebbe25581de8f8f6d2b"
+    },
+    {
+      "path": "backend/scripts/validarFilaBaixaComposta.js",
+      "sha256": "02bb0514d36cde68687c52faf0920c72f05828533ff2e044548cdb732cc2227f"
+    },
+    {
+      "path": "backend/scripts/validarFilaBaixaEstorno.js",
+      "sha256": "337c0e3d0fee8263cc0cfd3999761246cf8fd556459b1d31783b23a6758f550c"
+    },
+    {
+      "path": "ops/deploy/atualizar-dev-comprovantes-compartilhados-20261029.cjs",
+      "sha256": "33512759724240aaf64ff1332e67cf6c7b17e69d9193b603ff83b00e3fcf89b5"
+    },
+    {
+      "path": "ops/deploy/atualizar-dev-comprovantes-compartilhados-20261029.test.cjs",
+      "sha256": "8085fee94b5b380cd49d629209c6737d0a370e2dbb1e3f72a3746729cc0c3e90"
+    }
+  ],
+  "offline": [
+    {
+      "path": "backend/scripts/simularComprovanteCompartilhado6453.cjs",
+      "sha256": "0236f7e588f9307f42a9bf27ba3f87714758ead9cd77a258810171f9557c212f"
+    },
+    {
+      "path": "docs/auditorias/comprovante-compartilhado-6453-evidencia-20261029.json",
+      "sha256": "ed0aa0b4091da82f1c1eb79fdf660e101590975501cde3751749baffcaf9f028"
+    }
+  ]
+}
