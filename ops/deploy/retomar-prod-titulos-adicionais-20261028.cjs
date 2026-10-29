@@ -11,6 +11,9 @@ const MANIFEST='ops/deploy/titulos-adicionais-prod-20261028.manifest.json';
 const CLEAN={PATH:'/usr/sbin:/usr/bin:/sbin:/bin',HOME:'/home/ubuntu',USER:'ubuntu',LOGNAME:'ubuntu',LANG:'C',GIT_OPTIONAL_LOCKS:'0'};
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
 const check=(ok,code)=>{if(!ok)throw Error('TITULOS_ADICIONAIS_PROD_RETOMADA_'+code);};
+// A preparacao original conserva o modo do arquivo; nao exigir0644 quando
+// ele ja era mais restrito. Nunca adicionar execucao ou escrita de terceiros.
+const safeSourceMode=mode=>Number.isInteger(mode)&&mode>=0&&mode<=0o644&&(mode&0o400)!==0&&(mode&~0o644)===0;
 function git(args){
  check(['show','rev-parse','ls-files','ls-tree'].includes(args[0]),'COMANDO_GIT_INVALIDO');
  const r=cp.spawnSync('/usr/bin/git',['--no-pager','--no-optional-locks','-c','core.fsmonitor=false',...args],{cwd:ROOT,env:CLEAN,encoding:null,timeout:15000,maxBuffer:16*1024*1024,stdio:['ignore','pipe','pipe']});
@@ -41,7 +44,7 @@ function validateState(s,expected,api,readFile=p=>fs.readFileSync(p)){
  for(let i=0;i<expected.length;i++){
   const f=s.files[i],e=expected[i];
   check(f.path===e.path&&f.sha256===e.sha256&&f.old_sha256===e.old_sha256,'HASH_ESTADO_DIVERGENTE');
-  check(Number.isInteger(f.mode)&&f.mode===0o644,'MODO_NAO_REVISADO');
+  check(safeSourceMode(f.mode),'MODO_NAO_REVISADO');
   check((f.backup===null?null:hash(Buffer.from(f.backup,'base64')))===e.old_sha256,'BACKUP_DIVERGENTE');
   const p=api.safeFile(f.path);let actual;
   try{actual=hash(readFile(p));}catch(error){if(error.code!=='ENOENT')throw error;actual=null;}
@@ -82,7 +85,7 @@ async function main(action){
  console.log('TITULOS_ADICIONAIS_PROD_RETOMADA_CONGELADA. Mesma release e backups; guarda do indice por conteudo.');
  await mod.exports.recoveryMain(action);
 }
-module.exports={RELEASE,SELF,SHA,MANIFEST,hash,indexEntries,semanticIndex,validateState,recoveryGuard,loadFrozen,main};
+module.exports={RELEASE,SELF,SHA,MANIFEST,hash,safeSourceMode,indexEntries,semanticIndex,validateState,recoveryGuard,loadFrozen,main};
 if(require.main===module||process.argv[1]==='-')main(process.argv[2]).catch(e=>{
  console.error(/^TITULOS_ADICIONAIS_PROD_[A-Z0-9_]+$/.test(e.message||'')?e.message:'TITULOS_ADICIONAIS_PROD_RETOMADA_INTERROMPIDA_SEM_SEGREDOS');
  console.error('Preserve estado e locks; nao force Git nem repita reinicios. Envie somente esta saida.');process.exitCode=1;

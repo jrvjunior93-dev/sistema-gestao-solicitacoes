@@ -35,13 +35,24 @@ function stateFixture(){
   if(before!==null)files.set('/home/ubuntu/sistema-gestao-solicitacoes-main/'+e.path,before);
   // Reproduz estado do operador: fontes modificadas ja instaladas.
   files.set('/home/ubuntu/sistema-gestao-solicitacoes-main/'+e.path,target);
-  return{...e,mode:0o644,backup:before===null?null:before.toString('base64')};
+  return{...e,mode:before===null?0o644:0o600,backup:before===null?null:before.toString('base64')};
  });
  return{body,expected,files,s:{version:op.RELEASE,head:original.HEADS[0],index:op.hash('INDEX_ANTIGO'),phase:'atualizando',files:rows,outside:[],protected:{},data:[]}};
 }
 function stateApi(){return{HEADS:original.HEADS,safeFile:p=>'/home/ubuntu/sistema-gestao-solicitacoes-main/'+p};}
 test('estado parcial real de23 arquivos e aceito sem alterar backups ou estado',()=>{
  const {s,expected,files}=stateFixture(),before=JSON.stringify(s);op.validateState(s,expected,stateApi(),p=>files.get(p));assert.equal(JSON.stringify(s),before);
+});
+test('modos herdados mais restritos sao aceitos sem normalizar permissao ou estado',()=>{
+ const {s,expected,files}=stateFixture();
+ for(const mode of [0o400,0o404,0o440,0o444,0o600,0o604,0o640,0o644]){
+  assert(op.safeSourceMode(mode));const copy=structuredClone(s);for(const f of copy.files)f.mode=mode;
+  const before=JSON.stringify(copy);op.validateState(copy,expected,stateApi(),p=>files.get(p));assert.equal(JSON.stringify(copy),before);
+ }
+ for(const mode of [0o000,0o200,0o660,0o664,0o646,0o666,0o700,0o755,0o777,0o4644,0o2644,0o1644,-1,0o644+0x100000000,'600',NaN,null]){
+  assert.equal(op.safeSourceMode(mode),false,String(mode));
+  const copy=structuredClone(s);copy.files[0].mode=mode;assert.throws(()=>op.validateState(copy,expected,stateApi(),p=>files.get(p)),/MODO_NAO_REVISADO/);
+ }
 });
 test('estado/backup/fonte desconhecidos, release diferente e modo inseguro sao recusados',()=>{
  const {s,expected,files}=stateFixture();
@@ -69,7 +80,7 @@ test('guarda real mantem HEAD, runtime fora do escopo e overlay protegidos',()=>
 async function integration({phase='atualizando',failQa=false}={}){
  const {s,expected,files,body}=stateFixture(),events=[];s.phase=phase;const ROOT='/home/ubuntu/sistema-gestao-solicitacoes-main';
  if(phase==='reiniciando')s.restart_before={marcador:'baseline'};
- const fakeFs={realpathSync:p=>p,existsSync:p=>files.has(p),readFileSync:p=>{assert(files.has(p),p);return files.get(p);},lstatSync:p=>({isFile:()=>files.has(p),isDirectory:()=>!files.has(p),isSymbolicLink:()=>false,nlink:1,uid:1000,mode:0o100644})};
+ const fakeFs={realpathSync:p=>p,existsSync:p=>files.has(p),readFileSync:p=>{assert(files.has(p),p);return files.get(p);},lstatSync:p=>({isFile:()=>files.has(p),isDirectory:()=>!files.has(p),isSymbolicLink:()=>false,nlink:1,uid:1000,mode:0o100000+(s.files.find(f=>ROOT+'/'+f.path===p)?.mode||0o644)})};
  const mod={exports:{}},sandbox={module:mod,require:n=>n==='node:fs'?fakeFs:n==='node:crypto'?require(n):{},process:{argv:['node','-'],platform:'linux',arch:'x64',getuid:()=>1000,version:'v24.22.1',execPath:'/home/ubuntu/fluxy-node24-prod/node-v24.22.1-linux-x64/bin/node',cwd:()=>ROOT,env:{CONFIRM_PROD_BACKUP:'SIM',CONFIRM_PROD_BACKUP_TIMER:'SIM',CONFIRM_PROD_MAINTENANCE:'SIM',CONFIRM_TITULOS_ADICIONAIS_PROD:'SIM'}},Buffer,console:{log:()=>{}},expected,
  recoveryGuard:(v,e,api)=>{events.push('guard');return op.recoveryGuard(v,e,api,{git:()=>Buffer.from(s.head),semanticIndex:semantic(),readFile:p=>files.get(p)});},events,stateFixture:s,failQa};
  vm.runInNewContext(body+`\nwithLocks=async fn=>fn();state=()=>stateFixture;run=(bin,args)=>bin==='/usr/bin/git'?(args.includes('branch')?'main':args.includes('diff')?(args.includes(BASE)?RUNTIME.join('\\n'):''):stateFixture.head):'';verify=version=>{if(version!==stateFixture.version)throw Error('VERSAO');events.push('verify');};protectedCheck=()=>({marcador:'baseline'});health=async()=>true;save=(v,p)=>{v.phase=p;events.push(p);};qa=()=>{events.push('qa');if(failQa)throw Error('QA_FALHOU');};restart=async(v,allow)=>events.push(allow?'restart':'observar');`,sandbox);

@@ -16,6 +16,10 @@ funcoes originais de instalacao, QA, locks, estado privado, snapshots e restart.
 Substitui somente workingCheck durante esta execucao, com as verificacoes:
 
 - Mesmo HEAD e release; inventario/targets/backup/modos do estado conhecidos.
+- Modos herdados da preparacao podem ser iguais ou mais restritos que0644,
+  desde que mantenham leitura do dono.0600/0640 sao aceitos sem chmod ou
+  regravacao do estado. Escrita de grupo/outros, execucao e bits especiais
+  continuam recusados; nao se exige ampliar para0644.
 - Fontes atuais somente original ou release; fases posteriores exigem release.
 - Entradas do indice (blob, caminho e modo), todas stage0, identicas a arvore do
   HEAD. Flags assume-unchanged/skip-worktree sao recusadas. Hash bruto deve
