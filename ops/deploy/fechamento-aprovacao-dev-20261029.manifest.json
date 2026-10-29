@@ -1,0 +1,55 @@
+{
+  "base": "81b0e545578adbff5d475ce15f1c0ee6cf3d1ecd",
+  "main": "46ac88de88957ffc15e8b0db45dfcd6eed7bc34e",
+  "files": [
+    {
+      "path": "backend/package.json",
+      "sha256": "700846aa1fe8965b555aec808a3ad841acd93ef0aa0fa054fd1ead3845394a92"
+    },
+    {
+      "path": "backend/src/services/pedidoCompraService.js",
+      "sha256": "12b4a964898a7c66276a2363e2047b6722f0631132c99c50eba4bf3b41d94ef0"
+    },
+    {
+      "path": "backend/scripts/helpers/semRedeQa.js",
+      "sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf"
+    },
+    {
+      "path": "backend/scripts/validarCompraFechamentoAprovacao.cjs",
+      "sha256": "05842ebf3c91d44aa9926e8e0b1bd6d6d02edea825303a06350292026fc220a1"
+    },
+    {
+      "path": "backend/scripts/validarPedidoReabertura.js",
+      "sha256": "b6470d909ec4a4174bae045975ec0164a619ef13be78687997b308e67d1a4cb9"
+    },
+    {
+      "path": "backend/scripts/validarPedidoReaberturaTitulosExcluidos.js",
+      "sha256": "f8407885c5e5d32bf988326dbf654967be7cb2f89d27b32cc239092713d9a624"
+    },
+    {
+      "path": "backend/scripts/validarCompraRemanejamento.js",
+      "sha256": "b2c429482c9178f803f6b9aa851e0c412c5d3cb8e3daf4da47ed13181196b5de"
+    },
+    {
+      "path": "backend/scripts/validarCompraCotacaoEnvio.js",
+      "sha256": "def383b9c06a41e60566496a32b739733859bc0c6eed234bf264138852f6b4ca"
+    },
+    {
+      "path": "backend/scripts/validarPrecisaoCompras.cjs",
+      "sha256": "3db4d72f1c3116b0fcada88fec97e7d4d0da8d6af42d19973c39a038370f9f02"
+    },
+    {
+      "path": "backend/scripts/validarPedidoCompraFinanceiroGeo.js",
+      "sha256": "8ca675e3f64848dee6a137a487ccb61a59fe108d5c4d929705557f2e382bef27"
+    },
+    {
+      "path": "ops/deploy/atualizar-dev-fechamento-aprovacao-20261029.cjs",
+      "sha256": "43e79787556106ea1a84bbcb0ce3db0d456048842d3679924a7ec27e9d833c23"
+    },
+    {
+      "path": "ops/deploy/atualizar-dev-fechamento-aprovacao-20261029.test.cjs",
+      "sha256": "286a5ffd71f2a28ff2ce0ff2fb402afa5754ff78f95d2a908f15799765140d24"
+    }
+  ],
+  "offline": []
+}

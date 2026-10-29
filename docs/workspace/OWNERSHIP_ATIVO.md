@@ -6669,3 +6669,7 @@ Comprovantes: inclui reserva frontend/scripts/validarComprovantesTituloSolicitac
 2026-10-29 — QA adicional reservado: frontend/scripts/validarFilaInstrumentosUI.mjs (fixture/API e cenario compartilhados), backend/scripts/validarFilaBoletosCompartilhados.cjs. Preserva testes preexistentes.
 
 2026-10-29 — Publicacao autorizada: reservar aplicador/teste/manifesto/README boletos-compartilhados-dev-20261029 e atualizar handoff. Commit/push somente correcao e publicador seletivo de4runtimeDEV. Sem EC2/DB pelo agente.
+
+2026-10-29 — Reserva correcao aprovacao fechamento DEV base81b0e545: backend/src/services/pedidoCompraService.js, novo backend/scripts/validarCompraFechamentoAprovacao.cjs e handoff. Filtrar saldo de novos fechamentos por aprovacao, bloquear rejeitado/pendente em nova selecao, preservar pedidos/alocacoes/historico. Sem EC2/DB/migration/commit/push/deploy.
+
+2026-10-29 — Usuario autorizou commit/push fechamento-aprovacao DEV: reservar novo ops/deploy/atualizar-dev-fechamento-aprovacao-20261029.cjs/.test.cjs, manifesto/README e handoff. Somente1runtime pedidoCompraService, bases ehashes fechados; sem EC2/banco peloagente.
