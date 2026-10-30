@@ -563,7 +563,9 @@ function validateCompraIntegrarBody(body = {}) {
 }
 
 function validateCompraEnviarBody(body = {}) {
-  ensureAllowedKeys(body, ['fornecedores', 'itens'], 'Envio para fornecedores');
+  ensureAllowedKeys(body, ['fornecedores', 'itens', 'chave_envio'], 'Envio para fornecedores');
+  const chaveEnvio = parseOptionalText(body.chave_envio, 'Chave do envio', 100);
+  if (chaveEnvio && !/^[a-zA-Z0-9_-]{16,100}$/.test(chaveEnvio)) throw new ValidationError('Chave do envio invalida.');
 
   if (!Array.isArray(body.fornecedores) || body.fornecedores.length === 0) {
     throw new ValidationError('Selecione ao menos um fornecedor.');
@@ -671,8 +673,8 @@ function validateCompraEnviarBody(body = {}) {
   }
 
   return itens === undefined
-    ? { fornecedores }
-    : { fornecedores, itens };
+    ? { fornecedores, ...(chaveEnvio ? { chave_envio: chaveEnvio } : {}) }
+    : { fornecedores, itens, ...(chaveEnvio ? { chave_envio: chaveEnvio } : {}) };
 }
 
 function validateCompraCotacaoCancelBody(body = {}) {
@@ -884,17 +886,19 @@ function validateCompraEncerrarBody(body = {}) {
     const ids = new Set();
     previsoesEntrega = body.previsoes_entrega.map((entrada) => {
       if (!entrada || typeof entrada !== 'object' || Array.isArray(entrada)) throw new ValidationError('Previsão de fornecedor inválida.');
-      ensureAllowedKeys(entrada, ['fornecedor_id', 'data_base', 'previsao', 'previsao_calculada', 'confirmada'], 'Previsão de entrega');
+      ensureAllowedKeys(entrada, ['fornecedor_id', 'cotacao_fornecedor_id', 'data_base', 'previsao', 'previsao_calculada', 'confirmada'], 'Previsão de entrega');
       const id = parseInteger(entrada.fornecedor_id, 'Fornecedor', { required: true });
-      if (ids.has(id)) throw new ValidationError('Fornecedor repetido nas previsões.');
-      ids.add(id);
+      const cotacaoId = parseInteger(entrada.cotacao_fornecedor_id, 'Cotacao', { positiveOnly: true });
+      const chave = cotacaoId ? `cotacao:${cotacaoId}` : `fornecedor:${id}`;
+      if (ids.has(chave)) throw new ValidationError('Cotacao repetida nas previsoes.');
+      ids.add(chave);
       if (entrada.confirmada !== true) throw new ValidationError('Confirme a data de cada fornecedor.');
       const { dataValida } = require('../services/pedidoEntregaDomain');
       if (!dataValida(entrada.data_base) || !dataValida(entrada.previsao)
         || (!isBlank(entrada.previsao_calculada) && !dataValida(entrada.previsao_calculada))) {
         throw new ValidationError('Data de previsão inválida.');
       }
-      return { fornecedor_id: id, data_base: parseDateOnly(entrada.data_base, 'Data base', { required: true }),
+      return { fornecedor_id: id, ...(cotacaoId ? { cotacao_fornecedor_id: cotacaoId } : {}), data_base: parseDateOnly(entrada.data_base, 'Data base', { required: true }),
         previsao: parseDateOnly(entrada.previsao, 'Previsão confirmada', { required: true }),
         previsao_calculada: parseDateOnly(entrada.previsao_calculada, 'Previsão calculada'), confirmada: true };
     });

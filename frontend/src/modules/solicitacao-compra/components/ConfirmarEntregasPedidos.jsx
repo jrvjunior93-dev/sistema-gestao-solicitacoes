@@ -30,8 +30,8 @@ export function useConfirmarEntregasPedidos() {
     </div>
     <div className="space-y-3 p-4">
       <p className="text-sm">Confira a data sugerida ou altere o dia acordado com o fornecedor. Marque a confirmação de cada pedido antes de continuar.</p>
-      {linhas.map((linha, index) => <fieldset key={linha.fornecedor_id} className="min-w-0 rounded-md border border-[var(--c-border)] p-3">
-        <legend className="px-1 text-sm font-semibold">{linha.fornecedor_nome}</legend>
+      {linhas.map((linha, index) => <fieldset key={linha.cotacao_fornecedor_id || linha.fornecedor_id} className="min-w-0 rounded-md border border-[var(--c-border)] p-3">
+        <legend className="px-1 text-sm font-semibold">{linha.fornecedor_nome} {linha.cotacao_fornecedor_id ? `· Cotação #${linha.cotacao_fornecedor_id}` : ''}</legend>
         <p className="mb-2 text-xs text-[var(--c-muted)]">Prazo da cotação: {linha.prazo_entrega_dias != null
           ? `${linha.prazo_entrega_dias} ${linha.prazo_entrega_tipo === 'DIAS_UTEIS' ? 'dias úteis' : 'dias corridos'}` : 'não informado em dias'} · Data calculada: {dataBR(linha.previsao_calculada)}</p>
         {!linha.previsao_calculada && <p className="mb-2 text-xs text-[var(--sem-warning)]">Não há prazo válido para calcular. Informe a data acordada com o fornecedor.</p>}
@@ -47,7 +47,7 @@ export function useConfirmarEntregasPedidos() {
     <div data-modal="rodape" className="flex flex-wrap justify-end gap-2 border-t border-[var(--c-border)] p-4">
       <button type="button" className="btn btn-outline" onClick={() => concluir(null)}>Cancelar</button>
       <button type="button" className="btn btn-primary" disabled={!valido} onClick={() => concluir(linhas.map((p) => ({
-        fornecedor_id: p.fornecedor_id, data_base: p.data_base, previsao: p.previsao,
+        fornecedor_id: p.fornecedor_id, ...(p.cotacao_fornecedor_id ? { cotacao_fornecedor_id: p.cotacao_fornecedor_id } : {}), data_base: p.data_base, previsao: p.previsao,
         previsao_calculada: p.previsao_calculada, confirmada: true
       })))}>Confirmar datas e gerar pedidos</button>
     </div>

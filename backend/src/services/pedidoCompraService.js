@@ -1,4 +1,4 @@
-const { Op, fn, col } = require('sequelize');
+const { Op, fn, col, literal } = require('sequelize');
 const decimalCompras = require('../utils/decimalCompras');
 const {
   FornecedorCompra,
@@ -684,7 +684,10 @@ async function obterOuCriarPedidoPorFornecedor({
   transaction
 }) {
   await require('./pedidoEntregaService').assertComprasPodeGerarPedido(transaction);
-  let pedido = await PedidoCompra.findOne({
+  const variasCotacoes = (solicitacao.fornecedores || []).filter(c => Number(c.fornecedor_compra_id) === Number(vinculacaoFornecedor.fornecedor_compra_id)).length > 1;
+  const respostasOrigem = new Set((vinculacaoFornecedor.respostas || []).map(r => Number(r.id)));
+  const pedidoOrigem = (solicitacao.pedidos || []).find(p => normalizeText(p.status) !== 'CANCELADO' && (p.itens || []).some(i => respostasOrigem.has(Number(i.resposta_item_id))));
+  let pedido = variasCotacoes ? (pedidoOrigem ? await PedidoCompra.findByPk(pedidoOrigem.id, { transaction }) : null) : await PedidoCompra.findOne({
     where: {
       solicitacao_compra_id: solicitacao.id,
       fornecedor_compra_id: vinculacaoFornecedor.fornecedor_compra_id
@@ -1177,6 +1180,8 @@ async function sincronizarStatusSolicitacaoCompraPorSaldo({
 async function sincronizarStatusCotacoesAposPedido({
   solicitacaoId,
   fornecedorCompraId = null,
+  pedidoId = null,
+  cotacaoFornecedorId = null,
   modo = 'STATUS_PEDIDO',
   usuarioId = null,
   transaction
@@ -1189,6 +1194,9 @@ async function sincronizarStatusCotacoesAposPedido({
     return solicitacao;
   }
 
+  // Nunca reabrir todos os links de um fornecedor ao reabrir um unico pedido.
+  const escopoCotacao = Number(cotacaoFornecedorId) > 0 ? { id: Number(cotacaoFornecedorId) }
+    : Number(pedidoId) > 0 ? { id: { [Op.in]: literal('(SELECT DISTINCT r.solicitacao_compra_fornecedor_id FROM pedido_compra_itens pi JOIN solicitacao_compra_resposta_itens r ON r.id = pi.resposta_item_id WHERE pi.pedido_compra_id = ' + Number(pedidoId) + ')') } } : {};
   const statusSolicitacao = normalizeText(solicitacao.status);
   let atualizadas = 0;
   if (statusSolicitacao === 'ENCERRADO') {
@@ -1209,6 +1217,7 @@ async function sincronizarStatusCotacoesAposPedido({
       {
         where: {
           solicitacao_compra_id: solicitacao.id,
+          ...escopoCotacao,
           status: 'FINALIZADA',
           respondido_em: { [Op.ne]: null }
         },
@@ -1225,6 +1234,7 @@ async function sincronizarStatusCotacoesAposPedido({
           where: {
             solicitacao_compra_id: solicitacao.id,
             fornecedor_compra_id: Number(fornecedorCompraId),
+            ...escopoCotacao,
             status: { [Op.notIn]: ['CANCELADA', 'CANCELADO'] },
             respondido_em: { [Op.ne]: null }
           },
@@ -1299,12 +1309,21 @@ function montarAlocacoesNormalizadas(solicitacao, vencedores = [], saldosAtuais 
       .filter(({ resposta }) => resposta.vencedor)
       .map(({ resposta }) => ({ resposta_item_id: resposta.id }));
 
+  const { mapaDonosRespostas, donoAlocacao } = require('./cotacoesIndependentes');
+  const donosRespostas = mapaDonosRespostas(solicitacao);
   const mapaSaldos = saldosAtuais || montarMapaSaldosSolicitacao(solicitacao);
   const alocacoes = [];
   const totaisPorItem = new Map();
-  const alocadoAnteriorPorFornecedorItem = montarMapaAlocacoesAtivasPorFornecedorItem(
-    solicitacao?.alocacoes || []
-  );
+  const alocadoAnteriorPorFornecedorItem = new Map();
+  for (const a of solicitacao?.alocacoes || []) {
+    if (normalizeText(a.status) !== 'ATIVA') continue;
+    const dono = donoAlocacao(solicitacao, donosRespostas, a);
+    if (!dono && (solicitacao.fornecedores || []).filter(c => Number(c.fornecedor_compra_id) === Number(a.fornecedor_compra_id)).length > 1) {
+      throw Object.assign(new Error('Alocacao anterior sem origem de cotacao identificavel. Solicite conferencia antes de fechar novos pedidos.'), { statusCode: 409 });
+    }
+    const key = buildCompraFornecedorItemKey(dono || a.fornecedor_compra_id, a);
+    alocadoAnteriorPorFornecedorItem.set(key, roundQty((alocadoAnteriorPorFornecedorItem.get(key) || 0) + asNumber(a.quantidade_alocada)));
+  }
   const alocadoAnteriorPorResposta = montarMapaAlocacoesAtivasPorResposta(solicitacao?.alocacoes || []);
   const tributosAnterioresPorFornecedorItem = new Map();
   const fretesAnterioresPorFornecedorItem = new Map();
@@ -1312,7 +1331,7 @@ function montarAlocacoesNormalizadas(solicitacao, vencedores = [], saldosAtuais 
   const fretesAnterioresPorResposta = new Map();
   for (const alocacao of solicitacao?.alocacoes || []) {
     if (normalizeText(alocacao.status) !== 'ATIVA') continue;
-    const fornecedorItemKey = buildCompraFornecedorItemKey(alocacao.fornecedor_compra_id, alocacao);
+    const fornecedorItemKey = buildCompraFornecedorItemKey(donoAlocacao(solicitacao, donosRespostas, alocacao) || alocacao.fornecedor_compra_id, alocacao);
     const atual = tributosAnterioresPorFornecedorItem.get(fornecedorItemKey) || { ipi: 0, icms: 0, st: 0 };
     tributosAnterioresPorFornecedorItem.set(fornecedorItemKey, {
       ipi: roundMoney(atual.ipi + asNumber(alocacao.ipi_rateado)),
@@ -1374,7 +1393,7 @@ function montarAlocacoesNormalizadas(solicitacao, vencedores = [], saldosAtuais 
 
     const itemKey = buildItemKeyFromResposta(resposta);
     const fornecedorItemKey = buildCompraFornecedorItemKey(
-      vinculacaoFornecedor.fornecedor_compra_id,
+      vinculacaoFornecedor.id || vinculacaoFornecedor.fornecedor_compra_id,
       resposta
     );
     const quantidadeBase = roundQty(baseItem.quantidade_solicitada);
@@ -1482,7 +1501,7 @@ function montarAlocacoesNormalizadas(solicitacao, vencedores = [], saldosAtuais 
 
   const porFornecedor = new Map();
   for (const alocacao of alocacoes) {
-    const fornecedorId = Number(alocacao.vinculacaoFornecedor?.fornecedor_compra_id || 0);
+    const fornecedorId = Number(alocacao.vinculacaoFornecedor?.id || alocacao.vinculacaoFornecedor?.fornecedor_compra_id || 0);
     if (!porFornecedor.has(fornecedorId)) {
       porFornecedor.set(fornecedorId, []);
     }
@@ -1497,7 +1516,7 @@ function montarAlocacoesNormalizadas(solicitacao, vencedores = [], saldosAtuais 
   const freteAtivoPorResposta = new Map();
   for (const alocacao of solicitacao?.alocacoes || []) {
     if (normalizeText(alocacao.status) !== 'ATIVA') continue;
-    const fornecedorId = Number(alocacao.fornecedor_compra_id || 0);
+    const fornecedorId = donoAlocacao(solicitacao, donosRespostas, alocacao) || Number(alocacao.fornecedor_compra_id || 0);
     descontosAtivosPorFornecedor.set(
       fornecedorId,
       roundMoney((descontosAtivosPorFornecedor.get(fornecedorId) || 0) + asNumber(alocacao.desconto_rateado))
@@ -1865,7 +1884,7 @@ async function gerarPedidosDosVencedores({
 
   const porFornecedor = new Map();
   for (const alocacao of alocacoes) {
-    const fornecedorId = Number(alocacao.vinculacaoFornecedor.fornecedor_compra_id);
+    const fornecedorId = Number(alocacao.vinculacaoFornecedor.id || alocacao.vinculacaoFornecedor.fornecedor_compra_id);
     if (!porFornecedor.has(fornecedorId)) {
       porFornecedor.set(fornecedorId, {
         vinculacaoFornecedor: alocacao.vinculacaoFornecedor,
@@ -1883,10 +1902,17 @@ async function gerarPedidosDosVencedores({
   const { dataValida, hojeBrasil, confirmarPrevisaoFornecedor } = require('./pedidoEntregaDomain');
   const dataGeracao = hojeBrasil();
   const feriadosEntrega = previsoesEntrega ? await require('./pedidoEntregaService').calendarioEntrega(transaction) : [];
-  if (previsoesEntrega && (previsoesEntrega.length !== porFornecedor.size
-    || new Set(previsoesEntrega.map((p) => Number(p.fornecedor_id))).size !== porFornecedor.size
-    || previsoesEntrega.some((p) => !porFornecedor.has(Number(p.fornecedor_id))))) {
-    throw Object.assign(new Error('As previsões devem corresponder aos fornecedores dos pedidos selecionados.'), { statusCode: 400 });
+  const gruposPedidos = [...porFornecedor.values()];
+  if (previsoesEntrega) {
+    const chavePrevisao = p => p.cotacao_fornecedor_id ? 'c:' + Number(p.cotacao_fornecedor_id) : 'f:' + Number(p.fornecedor_id);
+    const corresponde = (p, g) => Number(p.fornecedor_id) === Number(g.vinculacaoFornecedor.fornecedor_compra_id)
+      && (!p.cotacao_fornecedor_id || Number(p.cotacao_fornecedor_id) === Number(g.vinculacaoFornecedor.id));
+    if (previsoesEntrega.length !== gruposPedidos.length
+      || new Set(previsoesEntrega.map(chavePrevisao)).size !== gruposPedidos.length
+      || gruposPedidos.some(g => previsoesEntrega.filter(p => corresponde(p, g)).length !== 1)
+      || previsoesEntrega.some(p => gruposPedidos.filter(g => corresponde(p, g)).length !== 1)) {
+      throw Object.assign(new Error('Confirme uma previsao por cotacao selecionada. Atualize a tela.'), { statusCode: 400 });
+    }
   }
   const pedidosCriados = [];
   const prazosOperacionais = require('./prazosOperacionaisService');
@@ -1924,7 +1950,8 @@ async function gerarPedidosDosVencedores({
     );
 
     const confirmacaoEntrega = previsoesEntrega ? confirmarPrevisaoFornecedor(grupo.vinculacaoFornecedor,
-      previsoesEntrega.find((p) => Number(p.fornecedor_id) === Number(grupo.vinculacaoFornecedor.fornecedor_compra_id)),
+      previsoesEntrega.find((p) => Number(p.fornecedor_id) === Number(grupo.vinculacaoFornecedor.fornecedor_compra_id)
+        && (!p.cotacao_fornecedor_id || Number(p.cotacao_fornecedor_id) === Number(grupo.vinculacaoFornecedor.id))),
       dataGeracao, feriadosEntrega) : null;
     // Compatibilidade com frontend anterior: a data explícita legada continua validada.
     const previsaoConfirmada = confirmacaoEntrega?.previsao || previsaoEntrega;
@@ -2468,6 +2495,7 @@ async function reabrirPedidoParaCotacao({ pedidoId, usuarioId, motivo, aprovacao
   await sincronizarStatusCotacoesAposPedido({
     solicitacaoId: pedido.solicitacao_compra_id,
     fornecedorCompraId: pedido.fornecedor_compra_id,
+    pedidoId: pedido.id,
     modo: 'REABERTURA',
     usuarioId,
     transaction
@@ -2485,9 +2513,9 @@ async function criarPedidoParaFornecedor({ solicitacaoId, fornecedorCompraId, us
     throw new Error('Solicitacao de compra cancelada ou recusada nao permite gerar pedidos.');
   }
 
-  const vinculacaoFornecedor = (solicitacao.fornecedores || []).find(
-    (item) => Number(item.fornecedor_compra_id) === Number(fornecedorCompraId)
-  );
+  const candidatas = (solicitacao.fornecedores || []).filter(item => Number(item.fornecedor_compra_id) === Number(fornecedorCompraId));
+  if (candidatas.length > 1) throw Object.assign(new Error('Este fornecedor possui varios links. Gere o pedido pelo comparativo da cotacao desejada.'), { statusCode: 409 });
+  const vinculacaoFornecedor = candidatas[0];
 
   if (!vinculacaoFornecedor) {
     throw new Error('Fornecedor nao possui cotacao vinculada a esta solicitacao.');
@@ -2879,9 +2907,7 @@ async function obterPedidoDetalhe(id, { obraIdsHistoricoPreco = null } = {}) {
       .filter((idAtual) => idAtual > 0)
   );
 
-  const vinculacaoFornecedor = (solicitacao?.fornecedores || []).find(
-    (item) => Number(item.fornecedor_compra_id) === Number(pedido.fornecedor_compra_id)
-  );
+  const vinculacaoFornecedor = require('./cotacoesIndependentes').cotacaoDoPedido(solicitacao, pedido);
   const mapaAlocacoesFornecedorItem = montarMapaAlocacoesAtivasPorFornecedorItem(
     solicitacao?.alocacoes || []
   );
@@ -3141,9 +3167,8 @@ async function adicionarRespostaAoPedido({ pedidoId, respostaItemId, usuarioId, 
   await assertPedidoEditavel(pedido, transaction);
 
   const solicitacao = await carregarSolicitacaoPedidos(pedido.solicitacao_compra_id, transaction);
-  const vinculacaoFornecedor = (solicitacao?.fornecedores || []).find(
-    (item) => Number(item.fornecedor_compra_id) === Number(pedido.fornecedor_compra_id)
-  );
+  const itensOrigem = await PedidoCompraItem.findAll({ where: { pedido_compra_id: pedido.id }, attributes: ['resposta_item_id'], transaction });
+  const vinculacaoFornecedor = require('./cotacoesIndependentes').cotacaoDoPedido(solicitacao, { fornecedor_compra_id: pedido.fornecedor_compra_id, itens: itensOrigem });
 
   if (!vinculacaoFornecedor) {
     throw new Error('Fornecedor do pedido nao esta vinculado a cotacao.');
@@ -3257,6 +3282,7 @@ async function atualizarStatusPedido({ pedidoId, status, motivo, usuarioId, tran
     await sincronizarStatusCotacoesAposPedido({
       solicitacaoId: solicitacao.id,
       fornecedorCompraId: pedido.fornecedor_compra_id,
+    pedidoId: pedido.id,
       modo: 'STATUS_PEDIDO',
       usuarioId,
       transaction
@@ -3530,6 +3556,7 @@ async function cancelarPedidoCompra({ pedidoId, motivo, usuarioId, transaction }
   await sincronizarStatusCotacoesAposPedido({
     solicitacaoId: pedido.solicitacao_compra_id,
     fornecedorCompraId: pedido.fornecedor_compra_id,
+    pedidoId: pedido.id,
     modo: 'STATUS_PEDIDO',
     usuarioId,
     transaction
@@ -3827,6 +3854,7 @@ async function cancelarPedidoItens({ pedidoId, itens = [], motivo, usuarioId, tr
     await sincronizarStatusCotacoesAposPedido({
       solicitacaoId: pedido.solicitacao_compra_id,
       fornecedorCompraId: pedido.fornecedor_compra_id,
+    pedidoId: pedido.id,
       modo: 'STATUS_PEDIDO',
       usuarioId,
       transaction
@@ -4477,6 +4505,7 @@ async function remanejarPedidoItem({ pedidoId, itemId, respostaItemIdDestino, qu
   await sincronizarStatusCotacoesAposPedido({
     solicitacaoId: solicitacao.id,
     fornecedorCompraId: fornecedorDestino.fornecedor_compra_id,
+    cotacaoFornecedorId: fornecedorDestino.id,
     modo: 'REABERTURA',
     usuarioId,
     transaction

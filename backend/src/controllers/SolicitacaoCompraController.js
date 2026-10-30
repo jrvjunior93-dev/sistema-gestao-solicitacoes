@@ -1,3 +1,4 @@
+const { identidadeEnvio, lerReplay, alocacoesDaCotacao } = require('../services/cotacoesIndependentes');
 const fs = require('fs');
 const path = require('path');
 const { Op, fn, col } = require('sequelize');
@@ -1431,6 +1432,8 @@ function montarComparativoSolicitacao(solicitacao) {
     respondido_em: cotacaoFornecedor.respondido_em
   }));
 
+  const alocacoesPorCotacao = new Map(fornecedoresAtivos.map(c => [Number(c.id),
+    montarMapaAlocacoesAtivasPorFornecedorItem(alocacoesDaCotacao(solicitacao, c))]));
   const itensComparativo = itens.map((item) => {
     const respostas = fornecedoresAtivos
       .filter(fornecedorTemRespostaValida)
@@ -1450,7 +1453,7 @@ function montarComparativoSolicitacao(solicitacao) {
         fornecedorCompraId: cotacaoFornecedor.fornecedor_compra_id,
         item: resposta || item,
         quantidadeDisponivel,
-        mapaAlocacoesFornecedorItem: mapaAlocacoesPorFornecedorItem,
+        mapaAlocacoesFornecedorItem: alocacoesPorCotacao.get(Number(cotacaoFornecedor.id)),
         mapaAlocacoesResposta: mapaAlocacoesPorResposta
       });
 
@@ -4944,8 +4947,10 @@ module.exports = {
 
       let fornecedoresPayload = [];
       let itensPayload = null;
+      let envioIdentidade;
       try {
         const dadosEnvio = validateCompraEnviarBody(req.body || {});
+        envioIdentidade = identidadeEnvio(solicitacao.id, usuario.id, dadosEnvio);
         fornecedoresPayload = dadosEnvio.fornecedores;
         itensPayload = dadosEnvio.itens;
       } catch (error) {
@@ -4957,6 +4962,12 @@ module.exports = {
         await transaction.rollback();
         return res.status(400).json({ error: 'Selecione ao menos um fornecedor' });
       }
+
+      const logEnvio = await SolicitacaoCompraLog.findOne({ where: {
+        solicitacao_compra_id: solicitacao.id, tipo_acao: 'LINKS_INDEPENDENTES', descricao: envioIdentidade.descricao
+      }, transaction });
+      const replay = lerReplay(logEnvio, envioIdentidade.fingerprint);
+      if (replay) { await transaction.commit(); return res.status(200).json({ fornecedores: replay, replay: true }); }
 
       let itensCotaveisSolicitacao = [];
       try {
@@ -5047,69 +5058,11 @@ module.exports = {
           });
         }
 
-        let vinculacao = await SolicitacaoCompraFornecedor.findOne({
-          where: {
-            solicitacao_compra_id: solicitacao.id,
-            fornecedor_compra_id: fornecedor.id
-          },
-          transaction
-        });
-
-        if (!vinculacao) {
-          vinculacao = await SolicitacaoCompraFornecedor.create(
-            {
-              solicitacao_compra_id: solicitacao.id,
-              fornecedor_compra_id: fornecedor.id,
-              token: gerarTokenCotacao(),
-              status: 'ENVIADO',
-              enviado_em: new Date()
-            },
-            { transaction }
-          );
-        } else {
-          const reativandoCotacaoCancelada = ['CANCELADA', 'CANCELADO'].includes(
-            normalizeTextCompra(vinculacao.status)
-          );
-
-          if (reativandoCotacaoCancelada) {
-            await SolicitacaoCompraRespostaItem.update(
-              { deleted_at: new Date() },
-              {
-                where: {
-                  solicitacao_compra_fornecedor_id: vinculacao.id,
-                  deleted_at: null
-                },
-                transaction
-              }
-            );
-          }
-
-          await vinculacao.update(
-            {
-              status: 'ENVIADO',
-              enviado_em: new Date(),
-              ...(reativandoCotacaoCancelada
-                ? {
-                    token: gerarTokenCotacao(),
-                    visualizado_em: null,
-                    respondido_em: null,
-                    valor_minimo_pedido: null,
-                    desconto_total: 0,
-                    condicao_pagamento: null,
-                    prazo_entrega: null,
-                    observacao_resposta: null,
-                    pdf_resposta_url: null
-                  }
-                : {})
-            },
-            { transaction }
-          );
-        }
-
-        await SolicitacaoCompraFornecedorItem.destroy({
-          where: { solicitacao_compra_fornecedor_id: vinculacao.id },
-          transaction
-        });
+        // Cada envio cria identidade/link novos. Nunca substituir itens ou respostas anteriores.
+        const vinculacao = await SolicitacaoCompraFornecedor.create({
+          solicitacao_compra_id: solicitacao.id, fornecedor_compra_id: fornecedor.id,
+          token: gerarTokenCotacao(), status: 'ENVIADO', enviado_em: new Date()
+        }, { transaction });
 
         await SolicitacaoCompraFornecedorItem.bulkCreate(
           itensSelecionadosCotacao.map((item) => ({
@@ -5147,12 +5100,15 @@ module.exports = {
         });
       }
 
+      await registrarLogSolicitacaoCompra({ solicitacaoCompraId: solicitacao.id, usuarioId: usuario.id,
+        tipoAcao: 'LINKS_INDEPENDENTES', descricao: envioIdentidade.descricao,
+        metadados: { fingerprint: envioIdentidade.fingerprint, fornecedores: vinculados }, transaction });
       await transaction.commit();
       return res.status(201).json({ fornecedores: vinculados });
     } catch (error) {
       await transaction.rollback();
       console.error(error);
-      return res.status(500).json({ error: 'Erro ao enviar solicitacao para fornecedores' });
+      return res.status(error.statusCode || 500).json({ error: error.statusCode ? error.message : 'Erro ao enviar solicitacao para fornecedores' });
     }
   },
 

@@ -6673,3 +6673,8 @@ Comprovantes: inclui reserva frontend/scripts/validarComprovantesTituloSolicitac
 2026-10-29 — Reserva correcao aprovacao fechamento DEV base81b0e545: backend/src/services/pedidoCompraService.js, novo backend/scripts/validarCompraFechamentoAprovacao.cjs e handoff. Filtrar saldo de novos fechamentos por aprovacao, bloquear rejeitado/pendente em nova selecao, preservar pedidos/alocacoes/historico. Sem EC2/DB/migration/commit/push/deploy.
 
 2026-10-29 — Usuario autorizou commit/push fechamento-aprovacao DEV: reservar novo ops/deploy/atualizar-dev-fechamento-aprovacao-20261029.cjs/.test.cjs, manifesto/README e handoff. Somente1runtime pedidoCompraService, bases ehashes fechados; sem EC2/banco peloagente.
+
+## 2026-10-30 Cotacoes independentes DEV
+Agente desta conversa: controllers/SolicitacaoCompraController.js, services/pedidoCompraService.js, novo services/cotacoesIndependentes.js, validators/operationalValidators.js, frontend GerenciarCotacaoSolicitacao.jsx, novos testes e handoff desta tarefa. Sem EC2, banco ou migrations executadas.
+Complemento do mesmo escopo: CotacaoFornecedorController.js (oferta adicional/reabertura isolada por link).
+Publicacao autorizada: reservar tambem ops/deploy/atualizar-dev-cotacoes-independentes-20261030.cjs, teste, manifesto e README correspondentes. Somente refactor/frontend.
