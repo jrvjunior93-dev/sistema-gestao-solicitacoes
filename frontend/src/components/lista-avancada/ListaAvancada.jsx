@@ -312,6 +312,7 @@ const ListaAvancada = forwardRef(function ListaAvancada({
   // ---------- API imperativa ----------
   useImperativeHandle(ref, () => ({
     refreshContadores: carregarContadores,
+    limparOrdenacao: () => setOrdenacao({ campo: null, direcao: 'desc' }),
     getSelecionadas: () => Array.from(selecao),
     clearSelecao: () => {
       setSelecao(new Set());

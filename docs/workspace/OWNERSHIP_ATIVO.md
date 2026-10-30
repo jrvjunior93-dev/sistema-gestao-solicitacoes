@@ -6678,3 +6678,13 @@ Comprovantes: inclui reserva frontend/scripts/validarComprovantesTituloSolicitac
 Agente desta conversa: controllers/SolicitacaoCompraController.js, services/pedidoCompraService.js, novo services/cotacoesIndependentes.js, validators/operationalValidators.js, frontend GerenciarCotacaoSolicitacao.jsx, novos testes e handoff desta tarefa. Sem EC2, banco ou migrations executadas.
 Complemento do mesmo escopo: CotacaoFornecedorController.js (oferta adicional/reabertura isolada por link).
 Publicacao autorizada: reservar tambem ops/deploy/atualizar-dev-cotacoes-independentes-20261030.cjs, teste, manifesto e README correspondentes. Somente refactor/frontend.
+
+## 2026-10-30 Historico recuperado de propostas DEV
+Responsavel agente desta conversa. Reservados SolicitacaoCompraEtapasController.js, novo services/historicoPropostasCompra.js, CompraEtapas.jsx, novo HistoricoFechamentosCompra.jsx, testes e handoff especificos. Somente leitura no fluxo existente; sem EC2/banco/schema.
+
+## 2026-10-30 Encargos, ordenacao e baixa lote da solicitacao
+Agente desta conversa reserva FinanceiroCard.jsx, novo modal baixa lote, services/financeiro.js, paginas/Solicitacoes/index.jsx, SolicitacaoController.js e novo domain ordenacao; tituloFinanceiroService.js, financialValidators.js, TituloFinanceiroController.js, routes.js, novos services/domain/QA de encargos e baixa lote. Historico recuperado anterior permanece separado e preservado. Sem servidor/banco.
+
+Complemento ordenacao: components/lista-avancada/ListaAvancada.jsx (limpar ordenacao explicitamente sem limpar filtros).
+
+Publicacao 2026-10-30 autorizada: agente desta conversa reserva ops/deploy/atualizar-dev-financeiro-solicitacao-20261030.cjs, teste, manifesto e README correspondentes. Somente encargos, ordenacao e baixa em lote; historico de propostas continua separado.

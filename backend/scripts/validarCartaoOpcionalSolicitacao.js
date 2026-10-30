@@ -110,6 +110,7 @@ dependencies['./tituloCompartilhadoLeitura'] = { anexarParticipacoes: async titu
   assert(titulos.every(titulo => !titulo.compartilhamento_id));
 } };
 dependencies['./pagamentoFilaValoresDomain'] = require('../src/services/pagamentoFilaValoresDomain');
+dependencies['./solicitacaoEncargosDomain'] = require('../src/services/solicitacaoEncargosDomain');
 const instrucaoModule = { exports: {} };
 vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../src/services/instrucaoFinanceiraFavorecidoService.js'), 'utf8'), {
   module: instrucaoModule, require(id) { if (!(id in dependencies)) throw Error(`Dependencia de instrucao nao isolada: ${id}`); return dependencies[id]; }

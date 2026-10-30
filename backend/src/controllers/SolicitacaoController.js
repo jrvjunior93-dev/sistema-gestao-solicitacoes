@@ -2523,7 +2523,8 @@ module.exports = {
         hoje: require('../services/pedidoEntregaDomain').hojeBrasil(), agora: new Date()
       }).map(([sql, direcao]) => [Sequelize.literal(sql), direcao]);
       const ordenacaoEfetiva = [
-        ...ordenacaoRetornoPendente,
+        ...(['createdAt', 'data_vencimento'].includes(colunaOrdenacaoSolicitada) ? [] : ordenacaoRetornoPendente),
+        ...(colunaOrdenacaoSolicitada === 'data_vencimento' ? [[Sequelize.literal('(' + sqlVencimentoEfetivoSolicitacao() + ') IS NULL'), 'ASC']] : []),
         ...(CAMPOS_ORDENAVEIS.has(colunaOrdenacaoSolicitada)
           ? [ordenacaoColunaSolicitada, ['id', 'DESC']]
           : ordenacaoLista)

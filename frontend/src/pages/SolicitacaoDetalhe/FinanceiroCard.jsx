@@ -1,3 +1,4 @@
+import BaixaLoteSolicitacaoModal from '../../components/financeiro/BaixaLoteSolicitacaoModal';
 import useVisualizadorArquivo from '../../hooks/useVisualizadorArquivo';
 import DateInputBR from '../../components/DateInputBR';
 import { adicionarObservacoesTitulo } from '../../utils/observacoesTitulo';
@@ -576,6 +577,8 @@ export function buildDefaultForm(solicitacao, titulosExistentes = []) {
     linha_digitavel: '',
     codigo_barras: '',
     desconto_financeiro: '',
+    juros: '',
+    multa: '',
     observacoes: '',
     considera_dre: true,
     intercompany: false,
@@ -1078,6 +1081,11 @@ export default function FinanceiroCard({
   const autorizacaoDisponivel = Boolean(user?.autorizacao_pagamentos?.enabled
     && user.autorizacao_pagamentos.can_prepare && !user.autorizacao_pagamentos.paused);
   const podeEnviarTitulos = podeEnviarParaFila || podeEnviarParaAutorizacao;
+  const podeBaixarEmLote = podeExecutarAcoesFinanceiras && podeAcessarModuloFinanceiro && podeVisualizarTitulos && hasPermissao(user, 'financeiro.titulos.baixar');
+  const [idsBaixaLote, setIdsBaixaLote] = useState([]);
+  const elegivelBaixaLote = titulo => !titulo.somente_participacao && !titulo.renegociado_por_id
+    && !titulo.bloqueado_retorno_obra && ['ABERTO','PARCIAL'].includes(String(titulo.status).toUpperCase())
+    && Number(titulo.valor_saldo) > 0 && !(titulo.filaPagamentosManuais || []).some(f => ['PENDENTE','NAO_PAGO','DIVERGENTE'].includes(String(f.status).toUpperCase()));
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const podeGerenciarDadosPagamento = canManagePaymentBeneficiaries(user);
   const freteTerceiroObrigatorio = exigeTitulosSeparadosCompraDireta(solicitacao);
@@ -1735,6 +1743,9 @@ export default function FinanceiroCard({
 
   const valorSolicitacao = useMemo(() => roundCurrency(currencyToNumber(form.valor)), [form.valor]);
   const descontoFinanceiro = useMemo(() => roundCurrency(currencyToNumber(form.desconto_financeiro)), [form.desconto_financeiro]);
+  const jurosPrevistos = roundCurrency(currencyToNumber(form.juros));
+  const multaPrevista = roundCurrency(currencyToNumber(form.multa));
+  const totalComEncargos = roundCurrency(valorSolicitacao - descontoFinanceiro + jurosPrevistos + multaPrevista);
   const valorLiquidoPrevisto = useMemo(() => roundCurrency(valorSolicitacao - descontoFinanceiro), [valorSolicitacao, descontoFinanceiro]);
   const diferencaPagamentos = useMemo(() => roundCurrency(valorSolicitacao - totalPagamentos), [valorSolicitacao, totalPagamentos]);
   const totalBateComSolicitacao = Math.abs(diferencaPagamentos) <= 0.009;
@@ -2043,6 +2054,7 @@ export default function FinanceiroCard({
       return 'A solicitacao precisa ter valor informado para gerar a conta.';
     }
 
+    if (jurosPrevistos < 0 || multaPrevista < 0) return 'Juros e multa nao podem ser negativos.';
     if (descontoFinanceiro < 0) {
       return 'O desconto concedido nao pode ser negativo.';
     }
@@ -2243,6 +2255,8 @@ export default function FinanceiroCard({
         linha_digitavel: form.linha_digitavel || undefined,
         codigo_barras: form.codigo_barras || undefined,
         valor: form.valor,
+        juros: jurosPrevistos,
+        multa: multaPrevista,
         valor_bruto: form.valor,
         valor_liquido: formatCurrencyInput(valorLiquidoPrevisto),
         observacoes: form.observacoes?.trim() || undefined,
@@ -2626,10 +2640,12 @@ export default function FinanceiroCard({
         )}
 
         {exibirTitulosDetalhados && (
-          podeEnviarTitulos && titulos.some(elegivelParaFila) ? (
+          (podeEnviarTitulos || podeBaixarEmLote) && titulos.some(t => elegivelParaFila(t) || elegivelBaixaLote(t)) ? (
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <span className="text-sm text-[var(--c-muted)]">Selecione os títulos abertos na tabela.</span>
-              <AcoesEnvioTitulosPagamento ids={titulosSelecionados}
+              {podeBaixarEmLote && <button type="button" className="btn btn-outline" disabled={loading || enviandoFila || !titulosSelecionados.length || titulosSelecionados.some(id => !titulos.some(t => Number(t.id) === Number(id) && elegivelBaixaLote(t)))}
+                onClick={() => setIdsBaixaLote([...new Set(titulosSelecionados.map(Number))].sort((a,b) => a-b))}>Baixar selecionados ({titulosSelecionados.length})</button>}
+              <AcoesEnvioTitulosPagamento ids={titulosSelecionados.filter(id => titulos.some(t => Number(t.id) === Number(id) && elegivelParaFila(t)))}
                 podeAutorizar={podeEnviarParaAutorizacao} podeFila={podeEnviarParaFila}
                 autorizacaoDisponivel={autorizacaoDisponivel} enviando={enviandoFila}
                 aoEnviar={enviarTitulosParaPagamento} />
@@ -2649,9 +2665,9 @@ export default function FinanceiroCard({
             colunas={colunasTitulos}
             itens={resumoTitulos.vigentes}
             getId={(titulo) => titulo.id}
-            selecao={podeEnviarTitulos ? {
+            selecao={(podeEnviarTitulos || podeBaixarEmLote) ? {
               selecionados: titulosSelecionados,
-              elegivel: elegivelParaFila,
+              elegivel: t => (podeEnviarTitulos && elegivelParaFila(t)) || (podeBaixarEmLote && elegivelBaixaLote(t)),
               aoAlternar: (id) => setTitulosSelecionados((atual) => atual.includes(Number(id))
                 ? atual.filter((atualId) => atualId !== Number(id))
                 : [...atual, Number(id)]),
@@ -2671,6 +2687,9 @@ export default function FinanceiroCard({
         ))}
         {exibirTitulosDetalhados && <HistoricoTitulosSolicitacao titulos={resumoTitulos.historicos} podeConsultar={podeConsultarTitulo} />}
       </BlocoConteudo>
+      {idsBaixaLote.length > 0 && podeBaixarEmLote && <BaixaLoteSolicitacaoModal key={solicitacao.id + ':' + idsBaixaLote.join(':')}
+        solicitacaoId={solicitacao.id} ids={idsBaixaLote} onClose={() => setIdsBaixaLote([])}
+        onConfirmed={async () => { await carregarTitulos(); await onTituloCriado?.(); await onSolicitacaoAtualizada?.(); avisar.sucesso('Baixas do lote concluídas.'); }} />}
       {elementoConfirmacao}
 
       {/*
@@ -3049,9 +3068,19 @@ export default function FinanceiroCard({
                 </div>
                 <div className="text-sm">
                   <span className="mb-1 block text-[var(--c-muted)]">Obra</span>
-                  <div className="input flex items-center bg-[var(--c-bg)] text-[var(--c-text)]">
+                <div className="input flex items-center bg-[var(--c-bg)] text-[var(--c-text)]">
                     {solicitacao.obra?.nome || '-'}
                   </div>
+                </div>
+                  {['juros', 'multa'].map(campo => <div key={campo} className="text-sm">
+                  <label className="mb-1 block text-[var(--c-muted)]" htmlFor={`titulo-${campo}`}>{campo === 'juros' ? 'Juros (R$)' : 'Multa (R$)'}</label>
+                  <input id={`titulo-${campo}`} className="input input-moeda" value={form[campo] || ''}
+                    onChange={e => setForm(atual => ({ ...atual, [campo]: normalizeCurrencyTyping(e.target.value) }))}
+                    onBlur={e => setForm(atual => ({ ...atual, [campo]: formatCurrencyInput(e.target.value) }))} />
+                </div>)}
+                <div className="text-sm"><span className="mb-1 block text-[var(--c-muted)]">Total previsto com juros e multa</span>
+                  <div className="input input-moeda text-right">{formatCurrency(totalComEncargos)}</div>
+                  <p className="mt-1 text-xs text-[var(--c-muted)]">Encargos em reais, distribuídos entre os títulos/parcelas. O principal da solicitação permanece preservado.</p>
                 </div>
                 <label className="text-sm">
                   <span className="mb-1 block text-[var(--c-muted)]">Desconto concedido</span>

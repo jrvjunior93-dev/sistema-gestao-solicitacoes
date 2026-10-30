@@ -1496,6 +1496,7 @@ async function baixarTituloCartaoNoAto({
     return null;
   }
 
+  const encargosCartao = require('./pagamentoFilaValoresDomain').calcularTotalComEncargos(valorBaixa, { juros: titulo.juros, multa: titulo.multa });
   const caixaSessao = await obterSessaoAbertaParaConta(conta, dataBaixa, { transaction });
   const movimento = await MovimentoFinanceiro.create({
     titulo_financeiro_id: titulo.id,
@@ -1509,14 +1510,18 @@ async function baixarTituloCartaoNoAto({
     tipo_movimento: 'BAIXA',
     status: 'ATIVO',
     valor: valorBaixa,
-    juros: 0,
-    multa: 0,
+    juros: encargosCartao.juros,
+    multa: encargosCartao.multa,
     desconto: 0,
-    valor_quitacao: valorBaixa,
+    valor_quitacao: encargosCartao.totalEsperado,
     data_movimento: dataBaixa,
     observacoes: `Baixa automatica por cartao de ${tipoCartao === 'CREDITO' ? 'credito' : 'debito'} ${cartao.nome || cartao.id}`,
     criado_por: req.user?.id || null
   }, { transaction });
+
+  if (tipoCartao === 'CREDITO' && titulo.fatura_cartao_id && (encargosCartao.juros || encargosCartao.multa)) {
+    await recalcularFaturaCartao(titulo.fatura_cartao_id, { transaction, leituraCorrente: true });
+  }
 
   await titulo.update({
     valor_baixado: roundCurrency(Number(titulo.valor_baixado || 0) + valorBaixa),
@@ -2775,7 +2780,7 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
     if (payload.tipo && payload.tipo !== 'PAGAR' || payload.status && payload.status !== 'ABERTO'
       || Number(payload.quantidade_parcelas || 1) !== 1 || (!partesSolicitadas.length && payload.pagamentos?.length > 1) || payload.parcelas?.length > 1
       || payload.rateios?.length || payload.impostos?.length || Number(payload.valor_impostos || 0) > 0 || Number(payload.desconto_financeiro || 0) !== 0
-      || payload.intercompany || payload.transferencia_interna) throw createHttpError(400, 'Adiantamento deve gerar um titulo a pagar aberto, sem rateio/impostos ou parcelamento antecipado.');
+      || Number(payload.juros || 0) || Number(payload.multa || 0) || payload.intercompany || payload.transferencia_interna) throw createHttpError(400, 'Adiantamento deve gerar um titulo a pagar aberto, sem rateio/impostos ou parcelamento antecipado.');
   }
   const recargaAutomatica = await SolicitacaoRecargaCartao.findOne({
     where: { solicitacao_id: solicitacao.id },
@@ -2793,7 +2798,7 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
   if (partesSolicitadas.length && (tipo !== 'PAGAR' || statusTitulo !== 'ABERTO'
     || Number(payload.quantidade_parcelas || 1) !== 1 || payload.parcelas?.length > 1
     || payload.intercompany || payload.transferencia_interna || payload.impostos?.length
-    || Number(payload.valor_impostos || 0) || Number(payload.desconto_financeiro || 0))) {
+    || Number(payload.valor_impostos || 0) || Number(payload.desconto_financeiro || 0) || Number(payload.juros || 0) || Number(payload.multa || 0))) {
     throw createHttpError(400, 'A divisao registrada deve gerar titulos a pagar abertos, preservando os valores de cada favorecido.');
   }
 
@@ -2957,6 +2962,8 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
   });
 
   const impostosResumo = normalizarImpostosTitulo(payload, valorOriginal);
+  const encargosPorParcela = require('./solicitacaoEncargosDomain').encargosParcelas({ juros: toCurrencyNumber(payload.juros || 0), multa: toCurrencyNumber(payload.multa || 0) }, pagamentos.flatMap(p => p.valoresParcelas));
+  let indiceEncargo = 0;
   const rateiosTitulo = adiantamento ? [] : await normalizarRateiosTitulo(
     req,
     payload,
@@ -3079,6 +3086,7 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
           valor_liquido: valoresParcela.valorLiquido,
           possui_rateio: !adiantamento && rateiosTitulo.length > 0,
           valor_saldo: valoresParcela.valorLiquido,
+          ...encargosPorParcela[indiceEncargo++],
           valor_baixado: 0,
           data_emissao: payload.data_emissao || getHoje(),
           data_vencimento: vencimentoParcela,
@@ -3143,7 +3151,11 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
       setor: getSetorUsuario(req),
       acao: 'TITULO_FINANCEIRO_CRIADO',
       observacao: `${titulosCriados.length} titulo(s) ${tipo} gerado(s) no valor de ${formatCurrency(valorOriginal)}`,
-      ...(operacaoCompra ? { metadata: JSON.stringify({ ...operacaoCompra, titulos_ids: titulosCriados.map(t => Number(t.id)), criacao_adicional_compra: true }) } : {})
+      ...((operacaoCompra || Number(payload.juros) || Number(payload.multa)) ? { metadata: JSON.stringify({
+        ...(operacaoCompra ? { ...operacaoCompra, criacao_adicional_compra: true } : {}),
+        titulos_ids: titulosCriados.map(t => Number(t.id)),
+        encargos: titulosCriados.map(t => ({ titulo_id: Number(t.id), juros: Number(t.juros || 0), multa: Number(t.multa || 0) }))
+      }) } : {})
     }, { transaction });
 
     await marcarSolicitacaoComTituloCadastrado({
@@ -5554,6 +5566,7 @@ async function listarChequesTerceirosDisponiveis(req, filters = {}) {
 }
 
 module.exports = {
+  carregarTituloParaBaixaComLock,
   consumirChequeTerceiroPagamento,
   resolverCompetenciaCriacaoSolicitacao,
   atualizarCobrancaTitulo,

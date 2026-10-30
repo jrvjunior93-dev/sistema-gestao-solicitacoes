@@ -197,6 +197,14 @@ module.exports = {
     }
   },
 
+  async previaBaixaLoteSolicitacao(req, res) {
+    try { return res.json(await require('../services/baixaLoteSolicitacaoService').executar(req, req.params.id, req.body || {}, false)); }
+    catch (error) { return responderErro(res, error, 'Erro ao conferir baixa em lote'); }
+  },
+  async confirmarBaixaLoteSolicitacao(req, res) {
+    try { return res.status(201).json(await require('../services/baixaLoteSolicitacaoService').executar(req, req.params.id, req.body || {}, true)); }
+    catch (error) { return responderErro(res, error, 'Erro ao confirmar baixa em lote'); }
+  },
   async criarPorSolicitacao(req, res) {
     try {
       const titulo = await criarTituloPorSolicitacao(req, req.params.id, req.body || {});

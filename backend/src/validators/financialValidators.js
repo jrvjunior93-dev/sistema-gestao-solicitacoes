@@ -1320,7 +1320,9 @@ function validateFinanceTituloCreateFromSolicitacaoBody(body = {}) {
       'rateios',
       'impostos',
       'valor_bruto',
-      'valor_liquido'
+      'valor_liquido',
+      'juros',
+      'multa'
     ],
     'Geracao de titulo financeiro'
   );
@@ -1330,6 +1332,8 @@ function validateFinanceTituloCreateFromSolicitacaoBody(body = {}) {
     status: parseEnum(body.status, 'Status', STATUS_TITULO_INICIAL),
     empresa_id: parseInteger(body.empresa_id, 'Empresa do grupo'),
     parceiro_id: parseInteger(body.parceiro_id, 'Parceiro'),
+    juros: parseDecimal(body.juros, 'Juros', { min: 0 }),
+    multa: parseDecimal(body.multa, 'Multa', { min: 0 }),
     valor: parseDecimal(body.valor, 'Valor', { min: 0.01 }),
     data_vencimento: parseDateOnly(body.data_vencimento, 'Data de vencimento'),
     data_emissao: parseDateOnly(body.data_emissao, 'Data de emissao'),
