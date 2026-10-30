@@ -80,7 +80,7 @@ const regra = visivel => ({ campos: { cadastro_credor: { visivel } } });
     reset(); assert.equal((await send({ tipo_sub_id: sub })).code, 400); assert.equal(criados.length, 0);
   }
   reset(); assert.match((await send({ endereco: '' })).body.error, /Logradouro/); assert.equal(criados.length, 0);
-  reset(); assert.match((await send({ pix_chave_fixa_1: '' })).body.error, /primeira chave PIX/); assert.equal(criados.length, 0);
+  reset(); assert.equal((await send({ pix_chave_fixa_1: '' })).code, 201); assert.equal(criados.length, 1);
   reset(); assert.equal((await send({ contrato_id: 7 })).code, 201); assert.equal(vinculos.length, 1);
   reset(); config.regras.GEO = { tipos: { 33: { ...regra(true), opcoes: { permitir_credor_avulso_com_contrato: true } } } };
   assert.equal((await send({ contrato_id: 7 })).code, 201); assert.equal(vinculos.length, 0);
@@ -91,7 +91,7 @@ const regra = visivel => ({ campos: { cadastro_credor: { visivel } } });
   assert(handler);
   for (const sub of ['', '8']) {
     const envios = [], errors = [];
-    const sandbox = { console, novoParceiro: body, salvandoNovoParceiroRef: { current: false },
+    const sandbox = { console, novoParceiro: { ...body, pix_chave_fixa_1: '' }, salvandoNovoParceiroRef: { current: false },
       form: { obra_id: '10', tipo_solicitacao_id: '33', tipo_sub_id: sub, area_responsavel: 'GEO' },
       permitirCredorAvulsoComContrato: false, getCpfCnpjError: () => null,
       getDadosEmpresaParceiroError: () => null, getPixDocumentError: () => null,

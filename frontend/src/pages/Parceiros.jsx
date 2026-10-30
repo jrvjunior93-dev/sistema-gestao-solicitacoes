@@ -658,7 +658,7 @@ export default function Parceiros() {
                 recolhivel
                 recolhidoPadrao={!temPix}
               >
-                <p className="app-note mb-2">Até duas chaves fixas e uma chave variável.</p>
+                <p className="app-note mb-2">Preenchimento opcional: até duas chaves fixas e uma chave variável.</p>
                 {[
                   ['pix_chave_fixa_1_tipo', 'pix_chave_fixa_1', 'Chave PIX fixa 1'],
                   ['pix_chave_fixa_2_tipo', 'pix_chave_fixa_2', 'Chave PIX fixa 2'],

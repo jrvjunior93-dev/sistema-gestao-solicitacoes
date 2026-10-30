@@ -863,10 +863,6 @@ export default function NovaSolicitacao() {
         avisar.alerta(empresaErro);
         return;
       }
-      if (!String(novoParceiro.pix_chave_fixa_1 || '').trim()) {
-        avisar.alerta('Informe a primeira chave PIX do credor.');
-        return;
-      }
       const pixErro = [
         ['pix_chave_fixa_1_tipo', 'pix_chave_fixa_1', 'Chave PIX fixa 1'],
         ['pix_chave_fixa_2_tipo', 'pix_chave_fixa_2', 'Chave PIX fixa 2'],
@@ -4691,10 +4687,10 @@ export default function NovaSolicitacao() {
           <BlocoConteudo
             variante="secundario"
             titulo="Chaves PIX"
-            descricao="A primeira chave é obrigatória. A segunda chave fixa e a chave variável são opcionais."
+            descricao="As chaves Pix são opcionais no cadastro. Se informar uma chave, confira seu tipo e valor."
           >
             <FormSecao colunas={2}>
-              <CampoForm label="Chave PIX fixa 1 — tipo" obrigatorio>
+              <CampoForm label="Chave PIX fixa 1 — tipo">
                 <select
                   className="input input-sm"
                   value={novoParceiro.pix_chave_fixa_1_tipo}
@@ -4705,7 +4701,7 @@ export default function NovaSolicitacao() {
                   ))}
                 </select>
               </CampoForm>
-              <CampoForm label="Chave PIX fixa 1" obrigatorio>
+              <CampoForm label="Chave PIX fixa 1">
                 <input
                   className="input input-sm"
                   value={novoParceiro.pix_chave_fixa_1}

@@ -6703,3 +6703,9 @@ Agente desta conversa reserva SolicitacaoCompraController.js (campos de pedidos/
 
 ## 2026-10-30 Publicacao comparativo e baixa fora de setor DEV
 Agente desta conversa reserva novo ops/deploy/atualizar-dev-comparativo-baixa-20261030.cjs, teste/manifesto/README e handoffs dos dois ajustes autorizados. Base79213894; somente3runtimes. Preservar handoff documental antigo do posicionamento fora deste commit. Sem EC2/banco.
+
+## 2026-10-30 Pix opcional no cadastro de pessoas
+Agente desta conversa reserva ParceiroController.js, NovaSolicitacao.jsx, Parceiros.jsx e validarCadastroCredorTipoSubtipo.js. Remover exigencia cadastral de Pix, preservar validacao quando informado e regras do pagamento. Escopo separado do commit comparativo/baixa. Sem EC2/banco.
+
+## 2026-10-30 Publicacao Pix e pacote DEV consolidado
+Agente desta conversa reserva novo atualizador/teste/manifesto comparativo-baixa-pix-dev-20261030 e README. Usuario autorizou commit/push Pix e comandos DEV consolidados. Quatro runtimes; nenhum acesso EC2/banco.

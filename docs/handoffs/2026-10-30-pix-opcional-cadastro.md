@@ -1,0 +1,3 @@
+# Pix opcional no cadastro — 2026-10-30
+Retirada a exigencia da primeira chave Pix no cadastro rapido da Nova Solicitacao, no frontend e no controller. Cadastro geral ja aceitava vazio; texto agora explicita opcional. Chaves informadas e pagamentos mantem validacoes existentes. QA validarCadastroCredorTipoSubtipo com persistencia simulada aprovado, incluindo envio sem Pix e clique duplo. Sem EC2/banco. Pendente commit/publicacao separados do comparativo e baixa.
+Publicacao autorizada pelo usuario: Pix em commit separado com atualizador DEV consolidado de quatro runtimes. QA cadastro e aplicador aprovados; build frontend aprovado no turno anterior. Sem servidor/banco. Handoff antigo de posicionamento excluido.
