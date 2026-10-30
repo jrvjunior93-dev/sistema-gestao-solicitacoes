@@ -35,6 +35,8 @@ import {
   uploadArquivosRespostaInternaCotacao
 } from '../../../services/compras';
 import { buscarParceiros, buscarParceiroPorId, listarCategoriasParceiro } from '../../../services/parceiros';
+import { organizarPedidosRecuperados, itensDoPedidoRecuperado } from '../utils/pedidosRecuperadosComparativo';
+import { CabecalhoPedidoRecuperado, ValoresPedidoRecuperado, PedidosRecuperadosDoItem, RegistrosSemItemAtual } from '../components/PedidosRecuperadosComparativo';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useWorkspaceState, useWorkspaceWork } from '../../../navigation/WorkspaceContext';
 import useQueryRevision from '../../../navigation/useQueryRevision';
@@ -2231,7 +2233,7 @@ function SecaoEnvioFornecedores({
 
 // SecaoComparativo
 
-function SecaoComparativo({
+export function SecaoComparativo({
   embedded = false,
   comparativo,
   solicitacao,
@@ -2254,6 +2256,8 @@ function SecaoComparativo({
   const [modoVisualizacao, setModoVisualizacao] = useWorkspaceState(`cotacao:${solicitacao.id}:modo`, 'cards');
   const [painelFornecedoresAberto, setPainelFornecedoresAberto] = useWorkspaceState(`cotacao:${solicitacao.id}:painel`, false);
   const [fornecedoresVisiveis, setFornecedoresVisiveis] = useWorkspaceState(`cotacao:${solicitacao.id}:visiveis`, {});
+  const [mostrarPedidosRecuperados, setMostrarPedidosRecuperados] = useWorkspaceState(`cotacao:${solicitacao.id}:pedidos-recuperados`, true);
+  const historicoComparativo = useMemo(() => organizarPedidosRecuperados(comparativo), [comparativo]);
 
   function getQuantidadeAlocada(respostaItemId) {
     const registro = vencedoresSelecionados[String(respostaItemId)];
@@ -2487,9 +2491,9 @@ function SecaoComparativo({
         recolhivel={embedded}
         className="cotacao-comparativo-panel"
       >
-        <div className="app-empty-card">
+        {historicoComparativo.pedidos.length > 0 ? <RegistrosSemItemAtual registros={historicoComparativo.semItemAtual} /> : <div className="app-empty-card">
           O comparativo aparece assim que os fornecedores responderem a cotação.
-        </div>
+        </div>}
         {rodapeEncerramento}
       </BlocoConteudo>
     );
@@ -2534,6 +2538,10 @@ function SecaoComparativo({
         )}
       >
 
+        {historicoComparativo.pedidos.length > 0 && <div className="mb-3 flex flex-wrap items-start justify-between gap-2 text-xs">
+          <p className="min-w-0 flex-1 text-[var(--c-muted)]">A resposta atual permanece disponível para compra. As colunas dos pedidos mostram valores preservados, somente para consulta; não são novas cotações nem valores a somar.</p>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={mostrarPedidosRecuperados} onChange={e => setMostrarPedidosRecuperados(e.target.checked)} />Valores dos pedidos ({historicoComparativo.pedidos.length})</label>
+        </div>}
         {modoVisualizacao === 'mapa' && (
           <div className="mb-3 rounded-lg border" style={{ borderColor: 'var(--c-border)', background: 'var(--ui-surface-2)' }}>
             <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2" style={{ borderColor: 'var(--c-border)' }}>
@@ -2595,7 +2603,7 @@ function SecaoComparativo({
               `overflow-x: auto` — pela R18 esse é o arranjo CORRETO: é o
               scrollport ao qual as duas colunas fixas grudam.
             */}
-            {fornecedoresMapaVisiveis.length > 0 ? (
+            {(fornecedoresMapaVisiveis.length > 0 || (mostrarPedidosRecuperados && historicoComparativo.pedidos.length > 0)) ? (
               <div className="compras-responsive-table">
                 <table className="table min-w-[1420px] text-xs">
                   <thead>
@@ -2611,6 +2619,7 @@ function SecaoComparativo({
                           <div className="flex items-center justify-between gap-2">
                             <span className="min-w-0">
                               <span className="block truncate" title={fornecedor.nome}>{fornecedor.nome}</span>
+                              <span className="block text-xs font-normal">Resposta atual</span>
                               {/* R10: era `text-[9px]` — abaixo do piso de 12px
                                   que o cliente fixou em 02/09. */}
                               <span className="block text-xs font-normal" style={{ color: 'var(--c-muted)' }}>
@@ -2632,6 +2641,7 @@ function SecaoComparativo({
                           </div>
                         </th>
                       ))}
+                      {mostrarPedidosRecuperados && historicoComparativo.pedidos.map(pedido => <th key={`pedido:${pedido.pedido_id}`} className="min-w-[260px] border-l border-[var(--c-border)] align-top" style={{ background: 'var(--ui-surface-2)' }} data-recuperado="coluna"><CabecalhoPedidoRecuperado pedido={pedido} /></th>)}
                     </tr>
                   </thead>
                   <tbody>
@@ -2662,6 +2672,7 @@ function SecaoComparativo({
                             {formatNumeroCompra(quantidadeItem)} {item.unidade || ''}
                           </td>
                           {fornecedoresMapaVisiveis.map((fornecedor) => renderCelulaFornecedorMapa(item, fornecedor))}
+                          {mostrarPedidosRecuperados && historicoComparativo.pedidos.map(pedido => <td key={`pedido:${pedido.pedido_id}`} className="min-w-[260px] border-l border-[var(--c-border)] px-3 py-2 align-top" data-recuperado="celula"><ValoresPedidoRecuperado pedido={pedido} itens={itensDoPedidoRecuperado(historicoComparativo, pedido, item)} /></td>)}
                         </tr>
                       );
                     })}
@@ -2835,11 +2846,13 @@ function SecaoComparativo({
                   }}
                 />
               </div>
+              {mostrarPedidosRecuperados && <PedidosRecuperadosDoItem historico={historicoComparativo} item={item} />}
             </div>
           ))}
         </div>
         )}
 
+          {mostrarPedidosRecuperados && <RegistrosSemItemAtual registros={historicoComparativo.semItemAtual} />}
           {rodapeEncerramento}
       </BlocoConteudo>
 

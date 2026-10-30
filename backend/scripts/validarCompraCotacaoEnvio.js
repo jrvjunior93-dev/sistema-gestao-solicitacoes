@@ -144,7 +144,7 @@ function validarTotalComparativoPelaOferta() {
   const helpers = source.slice(source.indexOf('function buildRespostaItemKey('), source.indexOf('function normalizarItensSelecionadosCotacao('));
   const comparativo = source.slice(source.indexOf('function montarComparativoSolicitacao('), source.indexOf('function desenharCabecalhoFicha('));
   const cotacao = require('../src/services/comprasCotacao');
-  const ctx = { ...require('../src/services/cotacoesIndependentes'), ...cotacao, ...require('../src/services/comprasDisponibilidadeService'),
+  const ctx = { require: nome => { assert.equal(nome, '../services/historicoPropostasCompra'); return require('../src/services/historicoPropostasCompra'); }, ...require('../src/services/cotacoesIndependentes'), ...cotacao, ...require('../src/services/comprasDisponibilidadeService'),
     normalizeTextCompra: cotacao.normalizeText, arredondarMoeda: v => Math.round((Number(v) + Number.EPSILON) * 100) / 100 };
   const montar = new Function(...Object.keys(ctx), helpers + comparativo + ';return montarComparativoSolicitacao;')(...Object.values(ctx));
   const compra = { id: 666, status: 'LIBERADO', itens: [], alocacoes: [],

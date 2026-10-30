@@ -1,0 +1,3 @@
+# DEV: comparativo recuperado e baixa financeira fora do setor
+
+Escopo exclusivo dos dois ajustes autorizados: valores de pedidos no comparativo por item e baixa lote sem exigir setor atual, preservando ACL e bloqueios financeiros canonicos. Base79213894,3arquivos runtime. Sem SQL, migration, instalacao, regularizacao, backfill, novas cotacoes ou baixas executadas pelo atualizador. Backup privado de codigo; unico restart backend-dev, HEAD/ambientes/heap/PROD/Experience preservados. Node DEV isolado. Exige CONFIRM_DEV_BACKUP=SIM e CONFIRM_COMPARATIVO_BAIXA_DEV=SIM. Modos --backend COMMIT e --conferir COMMIT. Frontend Vercel refactor/frontend.

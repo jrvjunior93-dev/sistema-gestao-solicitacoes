@@ -33,7 +33,9 @@ function criarServico(deps) {
       const { Solicitacao, TituloFinanceiro, Historico, FormaPagamentoFinanceira, ContaBancaria, MovimentoFinanceiro, PagamentoManualFilaItem } = deps.models;
       const solicitacao = await Solicitacao.findByPk(Number(solicitacaoId), { transaction: tx, lock: tx.LOCK.UPDATE });
       if (!solicitacao || solicitacao.cancelada) throw erro('Solicitacao indisponivel.', 409);
-      await deps.assertPodeInteragir(req, solicitacao);
+      // Baixa financeira nao e uma acao da etapa/setor da solicitacao.
+      // A leitura da origem e a ACL/bloqueios de cada titulo continuam obrigatorios.
+      await deps.assertPodeVisualizar(req, solicitacao);
       const descricao = 'Baixa em lote ' + hash([Number(solicitacaoId), req.user.id, payload.chave]);
       const fingerprint = hash([dados, payload.revisao]);
       if (confirmar) {
@@ -92,6 +94,6 @@ function criarServico(deps) {
 async function executar(req, id, body, confirmar) {
   const svc = require('./tituloFinanceiroService');
   return criarServico({ models: require('../models'), validarAcessoTitulo: (r,t,tx) => svc.carregarTituloParaBaixaComLock(r,t.id,tx), baixarTitulo: svc.baixarTitulo, listarTitulos: svc.listarTitulosPorSolicitacao,
-    assertPodeInteragir: require('./solicitacaoRetornoService').assertPodeInteragirSolicitacao })(req,id,body,confirmar);
+    assertPodeVisualizar: require('./solicitacaoRetornoService').assertPodeVisualizarSolicitacao })(req,id,body,confirmar);
 }
 module.exports = { executar, criarServico, validar, tipoForma };

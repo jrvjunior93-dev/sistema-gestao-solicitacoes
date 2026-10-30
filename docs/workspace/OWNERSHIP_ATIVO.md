@@ -6694,3 +6694,12 @@ Agente desta conversa reserva FinanceiroCard.jsx para agrupamento visual a direi
 
 ## 2026-10-30 Publicacao historico recuperado DEV
 Agente desta conversa reserva controller/domain/QA e CompraEtapas/HistoricoFechamentosCompra ja preparados, novo atualizador-dev-historico-cotacoes-20261030, teste/manifesto/README e handoff. Somente consulta e exibicao, base01940faf; sem banco/EC2/migration e sem incluir outros pendentes.
+
+## 2026-10-30 Baixa lote fora do setor
+Agente desta conversa reserva backend/src/services/baixaLoteSolicitacaoService.js e backend/scripts/validarBaixaLoteSolicitacao.cjs, handoff especifico. Alinhar baixa lote a ACL financeira individual sem exigir setor atual; manter bloqueios dos titulos/atomicidade. Sem servidor/banco. Nao tocar historico recuperado ou demais fontes.
+
+## 2026-10-30 Comparativo por item com pedidos recuperados
+Agente desta conversa reserva SolicitacaoCompraController.js (campos de pedidos/projecao somente leitura), historicoPropostasCompra.js (identidade dos itens), GerenciarCotacaoSolicitacao.jsx, novo componente/utilitario de pedidos recuperados e QA/handoff especificos. Preservar respostas editaveis/selecao/fechamento. Correcao pendente da baixa em lote permanece separada. Sem servidor/banco.
+
+## 2026-10-30 Publicacao comparativo e baixa fora de setor DEV
+Agente desta conversa reserva novo ops/deploy/atualizar-dev-comparativo-baixa-20261030.cjs, teste/manifesto/README e handoffs dos dois ajustes autorizados. Base79213894; somente3runtimes. Preservar handoff documental antigo do posicionamento fora deste commit. Sem EC2/banco.
