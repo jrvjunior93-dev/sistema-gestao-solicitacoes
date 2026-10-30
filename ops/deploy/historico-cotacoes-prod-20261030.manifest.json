@@ -1,0 +1,78 @@
+{
+  "base": "124bb97f1fff35e099132c826f1a12ea13c4de1a",
+  "runtime_files": 2,
+  "sql": 0,
+  "migrations": 0,
+  "heap_mib": 4096,
+  "files": [
+    {
+      "path": "backend/src/controllers/SolicitacaoCompraEtapasController.js",
+      "sha256": "335d86b27f31887bb98f0acafb7fa1d46a0fb6327e84d708be8966a007baa610",
+      "old_sha256": "1641b65e0c434d27d770b058054b4e001d8d72077c20a339d59d5b27be663ab3"
+    },
+    {
+      "path": "backend/src/services/historicoPropostasCompra.js",
+      "sha256": "e8ee97bf5da79a95d3504278b19905c6eb3094163d2c5727e902f7a6ce5cb3aa",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarHistoricoPropostasCompra.cjs",
+      "sha256": "0e2688e581cd4ebf55884646a96accae6de3d940980472b74cce2647169dc699",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarCompraEtapasResumoPedido.js",
+      "sha256": "666940fd6ea8914dff3678cf7f95ce292ffc4a3543e19873dda2a0603b3b6ec5",
+      "old_sha256": "fe26380afce6041c556632afff8859fa694a312a37ddc7ac534b2999f074a506"
+    },
+    {
+      "path": "backend/scripts/validarCompraCotacaoEnvio.js",
+      "sha256": "25b3c4dd0e980604d7d739caa9baa2934b8c3520cc62c28eaf162556664f7481",
+      "old_sha256": "25b3c4dd0e980604d7d739caa9baa2934b8c3520cc62c28eaf162556664f7481"
+    },
+    {
+      "path": "backend/scripts/validarCotacoesIndependentes.cjs",
+      "sha256": "97e293aca5fa5fb33b9ce8ab36757f33cb50b76181eefb28025335599a565222",
+      "old_sha256": "97e293aca5fa5fb33b9ce8ab36757f33cb50b76181eefb28025335599a565222"
+    },
+    {
+      "path": "backend/scripts/helpers/semRedeQa.js",
+      "sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf",
+      "old_sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf"
+    }
+  ],
+  "extra": [
+    {
+      "path": "ops/deploy/atualizar-prod-historico-cotacoes-20261030.cjs",
+      "sha256": "f8b296ce951efe9c1751ba025db6db652163fcea90fe8dd068543df69758bb56"
+    },
+    {
+      "path": "ops/deploy/atualizar-prod-historico-cotacoes-20261030.test.cjs",
+      "sha256": "65a126e532dc3e8d7955daa672f219e3c75747afa5b08c5f454a781da61dd794"
+    },
+    {
+      "path": "ops/deploy/README-historico-cotacoes-prod-20261030.md",
+      "sha256": "ebc7212096533507d3906ed02ee409254845022d7ddfecdbb4bfa61ed9d5ab9c"
+    },
+    {
+      "path": "docs/handoffs/2026-10-30-promocao-historico-cotacoes-main.md",
+      "sha256": "f0747502d272fc43ef99de0af4f93e1985bdb553b7b3ac8363b0f7e77c180f7b"
+    },
+    {
+      "path": "docs/workspace/OWNERSHIP_ATIVO.md",
+      "sha256": "8a74b238f41387d5e0af612def2f998c38fc4866218a575dbd4d9d1dd9bf2fb4"
+    },
+    {
+      "path": "frontend/src/pages/SolicitacaoDetalhe/CompraEtapas.jsx",
+      "sha256": "2ea315536377902f9481a5408e8e0479fbb286689674d2eb39a8c45fb213d5ac"
+    },
+    {
+      "path": "frontend/src/pages/SolicitacaoDetalhe/HistoricoFechamentosCompra.jsx",
+      "sha256": "a0b63eed8c42c050786d7c457841c0f1adf13be134437558e9355b8114f50a2e"
+    },
+    {
+      "path": "frontend/scripts/validarHistoricoPropostasCompra.mjs",
+      "sha256": "5d96296cf7b9c61b284793d7f7faf7368d8c6c4cdd2271494bdfee522fb29459"
+    }
+  ]
+}

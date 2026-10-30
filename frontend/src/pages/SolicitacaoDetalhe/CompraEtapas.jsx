@@ -1,3 +1,4 @@
+import HistoricoFechamentosCompra from './HistoricoFechamentosCompra';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useWorkspaceState, useWorkspaceRestored, useWorkspaceWork } from '../../navigation/WorkspaceContext';
@@ -551,6 +552,7 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
             somenteLeitura={!podeGerenciarCotacao} onAtualizado={carregar} />
         </div>
       </div>}
+      <HistoricoFechamentosCompra registros={dados.historico_propostas_recuperado || []} />
     </BlocoConteudo>
     <BlocoConteudo titulo="Pedidos de compra" contagem={`${dados.pedidos.length} pedido(s)`} recolhivel recolhidoPadrao alternarAoClicar
       recolhido={pedidosRecolhidos} aoAlternarRecolhido={setPedidosRecolhidos}>

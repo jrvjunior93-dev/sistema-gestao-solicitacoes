@@ -6596,3 +6596,6 @@ Agente desta conversa reserva controllers CotacaoFornecedor/SolicitacaoCompra, p
 
 ## 2026-10-30 Promocao Financeiro da solicitacao
 Agente desta conversa: somente juros/multa, baixa lote, ordenacao de datas e posicionamento. Reservados runtime/QA de abdc7bdf e FinanceiroCard de 01940faf, novo atualizador PROD/manifesto/teste/README e handoff. Sem historico recuperado de propostas, EC2 ou banco.
+
+## 2026-10-30 Promocao historico recuperado de cotacoes
+Agente desta conversa reserva somente controller/domain/QA e CompraEtapas/HistoricoFechamentosCompra do commit DEV79213894, novo atualizador PROD historico-cotacoes/teste/manifesto/README e handoff. Sem banco, EC2, reconstrucao de links ou regularizacao de dados. Base main124bb97f.

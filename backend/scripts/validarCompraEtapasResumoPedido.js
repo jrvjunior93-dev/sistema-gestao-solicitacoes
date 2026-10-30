@@ -21,7 +21,7 @@ models.PedidoCompra.findAll = async (options) => {
   for (const alias of ['itens', 'fornecedor', 'obra']) assert.ok(options.include.some(i => i.as === alias));
   const resposta = options.include.find(i => i.as === 'itens').include[0];
   assert.equal(resposta.as, 'respostaItem');
-  assert.deepEqual(resposta.attributes, ['id', 'observacao']);
+  assert.deepEqual(resposta.attributes, ['id', 'observacao', 'updatedAt']);
   assert.deepEqual(resposta.include[0].attributes, ['id', 'condicao_pagamento']);
   return [pedido];
 };
@@ -38,7 +38,7 @@ Module._load = function(request, parent, isMain) {
     if (request.endsWith('compraItensCotacaoService')) return { obterChavesItensEmCotacao: () => new Set() };
     if (request.endsWith('solicitacaoCompraComentarioLeituraService')) return { listarLeiturasComentarios: async () => ({}) };
     if (request.endsWith('pedidoEntregaService')) return { resumirPedidos: async () => new Map([[91, { restante: 2 }]]) };
-    if (request.includes('/services/') && !request.endsWith('pedidoCompraDocumentoUtils')) return {};
+    if (request.includes('/services/') && !request.endsWith('pedidoCompraDocumentoUtils') && !request.endsWith('historicoPropostasCompra')) return {};
   }
   return originalLoad.call(this, request, parent, isMain);
 };
@@ -56,6 +56,9 @@ Module._load = function(request, parent, isMain) {
   assert.equal(resumo.itens[0].respostaItem, undefined, 'Não expor a resposta de cotação inteira.');
   assert.equal(resumo.itens[0].entrega.restante, 2);
   assert.deepEqual(resumo.itens[0].recebimentos, []);
+  assert.equal(res.body.historico_propostas_recuperado.length, 1);
+  assert.equal(res.body.historico_propostas_recuperado[0].pedido_id, 12);
+  assert.equal(res.body.historico_propostas_recuperado[0].condicao_pagamento_pedido, null, 'Historico nao inventa condicao original a partir da resposta atual.');
   autorizado = false;
   await controller.listar({ user: { id: 2 }, params: { id: 77 } }, res);
   assert.equal(res.statusCode, 403);
