@@ -1,3 +1,4 @@
+const { montarHistoricoPropostasCompra } = require('../services/historicoPropostasCompra');
 const { Op } = require('sequelize');
 const {
   Historico,
@@ -9,6 +10,7 @@ const {
   PedidoCompraItemRecebimento,
   SolicitacaoCompra,
   SolicitacaoCompraFornecedor,
+  SolicitacaoCompraFechamento,
   SolicitacaoCompraFornecedorItem,
   SolicitacaoCompraItem,
   SolicitacaoCompraItemApropriacao,
@@ -136,8 +138,10 @@ module.exports = {
         PedidoCompra.findAll({
           where: { solicitacao_compra_id: compra.id },
           include: [
+            { model: SolicitacaoCompraFechamento, as: 'fechamento', attributes: ['id', 'solicitacao_compra_id', 'numero_rodada', 'tipo'], required: false },
+            { model: User, as: 'criador', attributes: ['id', 'nome'], required: false },
             { model: PedidoCompraItem, as: 'itens', required: false, include: [{
-              model: SolicitacaoCompraRespostaItem, as: 'respostaItem', attributes: ['id', 'observacao'],
+              model: SolicitacaoCompraRespostaItem, as: 'respostaItem', attributes: ['id', 'observacao', 'updatedAt'],
               include: [{ model: SolicitacaoCompraFornecedor, as: 'cotacaoFornecedor', attributes: ['id', 'condicao_pagamento'] }]
             }] },
             { model: FornecedorCompra, as: 'fornecedor', attributes: ['id', 'nome', 'contato', 'email', 'whatsapp', 'parceiro_id'] },
@@ -212,6 +216,7 @@ module.exports = {
         solicitacao_compra_id: compra.id,
         obra_id: compra.obra_id,
         status_compra: compra.status,
+        historico_propostas_recuperado: montarHistoricoPropostasCompra(compra.id, pedidos),
         revisao_geo_pendente: revisaoPendente,
         itens: [
           ...itens.map((item) => itemComReaproveitamento(item, 'CADASTRADO', item.insumo?.nome || item.descricao || `Item ${item.id}`)),

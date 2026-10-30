@@ -6688,3 +6688,9 @@ Agente desta conversa reserva FinanceiroCard.jsx, novo modal baixa lote, service
 Complemento ordenacao: components/lista-avancada/ListaAvancada.jsx (limpar ordenacao explicitamente sem limpar filtros).
 
 Publicacao 2026-10-30 autorizada: agente desta conversa reserva ops/deploy/atualizar-dev-financeiro-solicitacao-20261030.cjs, teste, manifesto e README correspondentes. Somente encargos, ordenacao e baixa em lote; historico de propostas continua separado.
+
+## 2026-10-30 Alinhamento acoes Financeiro
+Agente desta conversa reserva FinanceiroCard.jsx para agrupamento visual a direita e fixture/QA de baixa em lote para conferencia das combinacoes de permissoes. Sem alterar regras, backend ou banco.
+
+## 2026-10-30 Publicacao historico recuperado DEV
+Agente desta conversa reserva controller/domain/QA e CompraEtapas/HistoricoFechamentosCompra ja preparados, novo atualizador-dev-historico-cotacoes-20261030, teste/manifesto/README e handoff. Somente consulta e exibicao, base01940faf; sem banco/EC2/migration e sem incluir outros pendentes.

@@ -1,0 +1,47 @@
+{
+  "base": "01940faf06b43474eff8d51afaa1a654dd3a5fb9",
+  "main": "46ac88de88957ffc15e8b0db45dfcd6eed7bc34e",
+  "files": [
+    {
+      "path": "backend/package.json",
+      "sha256": "700846aa1fe8965b555aec808a3ad841acd93ef0aa0fa054fd1ead3845394a92"
+    },
+    {
+      "path": "backend/src/controllers/SolicitacaoCompraEtapasController.js",
+      "sha256": "335d86b27f31887bb98f0acafb7fa1d46a0fb6327e84d708be8966a007baa610"
+    },
+    {
+      "path": "backend/src/services/historicoPropostasCompra.js",
+      "sha256": "e8ee97bf5da79a95d3504278b19905c6eb3094163d2c5727e902f7a6ce5cb3aa"
+    },
+    {
+      "path": "backend/scripts/helpers/semRedeQa.js",
+      "sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf"
+    },
+    {
+      "path": "backend/scripts/validarHistoricoPropostasCompra.cjs",
+      "sha256": "0e2688e581cd4ebf55884646a96accae6de3d940980472b74cce2647169dc699"
+    },
+    {
+      "path": "backend/scripts/validarCompraEtapasResumoPedido.js",
+      "sha256": "666940fd6ea8914dff3678cf7f95ce292ffc4a3543e19873dda2a0603b3b6ec5"
+    },
+    {
+      "path": "backend/scripts/validarCompraCotacaoEnvio.js",
+      "sha256": "16d87d9fca6b7aefb37cce4effadaa23a8738e342a5d63bb342ccb860bcf24b8"
+    },
+    {
+      "path": "backend/scripts/validarCotacoesIndependentes.cjs",
+      "sha256": "97e293aca5fa5fb33b9ce8ab36757f33cb50b76181eefb28025335599a565222"
+    },
+    {
+      "path": "ops/deploy/atualizar-dev-historico-cotacoes-20261030.cjs",
+      "sha256": "8a2fba73cddd6f150af148c816901e9496626d15d9d13f0395ea6494fe6063e6"
+    },
+    {
+      "path": "ops/deploy/atualizar-dev-historico-cotacoes-20261030.test.cjs",
+      "sha256": "e39176c1d10b95068801dcada305eb3da3b63372a9b8bc00271dd6fd6dac5b74"
+    }
+  ],
+  "offline": []
+}
