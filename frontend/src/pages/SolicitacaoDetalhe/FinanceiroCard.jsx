@@ -2643,12 +2643,14 @@ export default function FinanceiroCard({
           (podeEnviarTitulos || podeBaixarEmLote) && titulos.some(t => elegivelParaFila(t) || elegivelBaixaLote(t)) ? (
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <span className="text-sm text-[var(--c-muted)]">Selecione os títulos abertos na tabela.</span>
+              <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
               {podeBaixarEmLote && <button type="button" className="btn btn-outline" disabled={loading || enviandoFila || !titulosSelecionados.length || titulosSelecionados.some(id => !titulos.some(t => Number(t.id) === Number(id) && elegivelBaixaLote(t)))}
                 onClick={() => setIdsBaixaLote([...new Set(titulosSelecionados.map(Number))].sort((a,b) => a-b))}>Baixar selecionados ({titulosSelecionados.length})</button>}
-              <AcoesEnvioTitulosPagamento ids={titulosSelecionados.filter(id => titulos.some(t => Number(t.id) === Number(id) && elegivelParaFila(t)))}
+              {podeEnviarTitulos && <AcoesEnvioTitulosPagamento ids={titulosSelecionados.filter(id => titulos.some(t => Number(t.id) === Number(id) && elegivelParaFila(t)))}
                 podeAutorizar={podeEnviarParaAutorizacao} podeFila={podeEnviarParaFila}
                 autorizacaoDisponivel={autorizacaoDisponivel} enviando={enviandoFila}
-                aoEnviar={enviarTitulosParaPagamento} />
+                aoEnviar={enviarTitulosParaPagamento} />}
+              </div>
             </div>
           ) : null
         )}
