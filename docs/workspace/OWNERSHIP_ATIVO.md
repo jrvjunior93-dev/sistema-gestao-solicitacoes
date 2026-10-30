@@ -6590,3 +6590,6 @@ Promocao isolada validada sobre main f429b6f2: testes de acesso/sincronizacao e 
 
 ## 2026-10-29 Promocao fechamento aprovado MAIN
 Responsavel: agente desta conversa. Reservados pedidoCompraService.js, validarCompraFechamentoAprovacao.cjs, ops/deploy/*fechamento-aprovacao*prod*, handoff promocao-fechamento-aprovacao-main. Somente correcao homologada, sem servidor/banco.
+
+## 2026-10-30 Promocao cotacoes independentes MAIN
+Agente desta conversa reserva controllers CotacaoFornecedor/SolicitacaoCompra, pedidoCompraService, cotacoesIndependentes, operationalValidators, QA homologados, GerenciarCotacaoSolicitacao/ConfirmarEntregasPedidos, aplicador PROD e handoff. Somente implementacao24b7c7df, sem servidor/banco.

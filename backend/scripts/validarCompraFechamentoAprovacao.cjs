@@ -15,6 +15,7 @@ function fixture() {
       disponivel: true, preco: '10.0000000000', quantidade_disponivel: i.quantidade })) }] };
   const persistencias = [];
   const sandbox = { module: { exports: {} }, console, require: name => {
+    if (name === './cotacoesIndependentes') return require('../src/services/cotacoesIndependentes');
     if (name === 'sequelize') return require(name);
     if (name === '../models') return {
       SolicitacaoCompra: { findByPk: async (id, opts) => {
@@ -31,7 +32,7 @@ function fixture() {
     if (name === './comprasDisponibilidadeService') return require('../src/services/comprasDisponibilidadeService');
     if (name === './pedidoCompraStatusConfig') return { getPedidoCompraStatusConfig: async () => [{ codigo: 'FECHADO_FORNECEDOR', ativo: true }] };
     if (name === './comprasCotacao') return { isSolicitacaoCompraCancelada: () => false, normalizeText: v => String(v || '').toUpperCase(),
-      obterQuantidadeBaseFinanceiraCotacao: (resposta, quantidade) => quantidade };
+      obterQuantidadeBaseFinanceiraCotacao: ({ quantidadeSolicitada, quantidadeDisponivel }) => quantidadeDisponivel ?? quantidadeSolicitada };
     return {};
   } };
   vm.runInNewContext(source + '\nmodule.exports.qa={montarMapaSaldosSolicitacao,montarAlocacoesNormalizadas,sincronizarStatusSolicitacaoCompraPorSaldo};', sandbox);
@@ -102,4 +103,22 @@ test('sincronizacao com projecao SQL de aprovacao nao reabre compra encerrada po
  for(const id of [283,284])f.d.alocacoes.push({item_tipo:'CADASTRADO',solicitacao_compra_item_id:id,quantidade_alocada:20,status:'ATIVA'});
  const antes=JSON.stringify(f.d);await f.s.qa.sincronizarStatusSolicitacaoCompraPorSaldo({solicitacaoId:687});
  assert.equal(JSON.stringify(f.d),antes);assert.equal(f.persistencias.length,0);
+});
+
+
+test('cotacoes do mesmo fornecedor isolam desconto/frete/DIFAL e nao consomem oferta uma da outra', () => {
+  const f=fixture();f.d.alocacoes=[];
+  const q1={id:101,fornecedor_compra_id:11,desconto_total:10,frete_tipo:'CIF',frete_valor:5,difal_valor:2,respostas:[{id:501,item_tipo:'CADASTRADO',solicitacao_compra_item_id:283,disponivel:true,preco:'10',quantidade_disponivel:20}]};
+  const q2={id:102,fornecedor_compra_id:11,desconto_total:20,frete_tipo:'CIF',frete_valor:8,difal_valor:4,respostas:[{id:502,item_tipo:'CADASTRADO',solicitacao_compra_item_id:284,disponivel:true,preco:'10',quantidade_disponivel:20}]};
+  f.d.fornecedores=[q1,q2];
+  const al=f.s.qa.montarAlocacoesNormalizadas(f.d,[{resposta_item_id:501,quantidade_alocada:20},{resposta_item_id:502,quantidade_alocada:20}]);
+  assert.equal(al.length,2);assert.equal(al[0].desconto_rateado,10);assert.equal(al[1].desconto_rateado,20);
+  assert.equal(al[0].frete_rateado,5);assert.equal(al[1].frete_rateado,8);assert.equal(al[0].difal_rateado,2);assert.equal(al[1].difal_rateado,4);
+  f.d.alocacoes=[{status:'ATIVA',resposta_item_id:501,fornecedor_compra_id:11,item_tipo:'CADASTRADO',solicitacao_compra_item_id:283,quantidade_alocada:10,desconto_rateado:10,frete_rateado:5,difal_rateado:2}];
+  const nova=f.s.qa.montarAlocacoesNormalizadas(f.d,[{resposta_item_id:502,quantidade_alocada:20}]);
+  assert.equal(nova[0].desconto_rateado,20);assert.equal(nova[0].frete_rateado,8);assert.equal(nova[0].difal_rateado,4);
+});
+test('links distintos nao permitem ultrapassar saldo global aprovado',()=>{
+  const f=fixture();f.d.alocacoes=[];f.d.fornecedores=[101,102].map((id,index)=>({id,fornecedor_compra_id:11,respostas:[{id:501+index,item_tipo:'CADASTRADO',solicitacao_compra_item_id:283,disponivel:true,preco:'10',quantidade_disponivel:20}]}));
+  assert.throws(()=>f.s.qa.montarAlocacoesNormalizadas(f.d,[{resposta_item_id:501,quantidade_alocada:20},{resposta_item_id:502,quantidade_alocada:20}]),/saldo solicitado/);
 });

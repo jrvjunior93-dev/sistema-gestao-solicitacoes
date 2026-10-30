@@ -1,0 +1,4 @@
+# Promocao isolada de cotacoes independentes
+Origem homologada24b7c7df, base MAIN a6edfcd31516af6daa27fe0e27cbae0a52d45735. Somente multiplos links, condicoes e pedidos por cotacao, QA e atualizadorPROD. Preservadas diferencas preexistentesMAIN/DEV sobre quantidade/base financeira das ofertas; nao promover esse comportamento separado. Sem EC2 ou banco. Sem reconstrucao do historico antigo.
+
+Validacao: nove cenarios de cotacoes independentes completos, nove de fechamento, regressoes de reabertura/titulos excluidos/remanejamento/envio/oferta saldo/precisao/financeiro aprovadas com preload semRedeQa. Dezenove testes do aplicador PROD aprovados. Build frontend aprovado. Nenhuma conexao de banco/EC2/S3. Proximo passo: publicar commit autorizado e operador executar preparar/aplicar/conferir. Sem backfill da SOL6758.

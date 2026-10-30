@@ -281,6 +281,7 @@ function montarFormularioRespostaInterna(cotacaoFornecedor, itensCombinados, opt
     (options.comparativo?.itens || []).map((item) => [buildItemKey(item), item])
   );
   const fornecedorCompraId = Number(cotacaoFornecedor?.fornecedor_compra_id || 0);
+  const respostasDaCotacao = new Set((cotacaoFornecedor?.respostas || []).map(r => Number(r.id)));
   const selecoes = new Set(
     (cotacaoFornecedor?.itensSelecionados || []).map((item) => buildItemKey({
       item_tipo: item.item_tipo,
@@ -333,6 +334,7 @@ function montarFormularioRespostaInterna(cotacaoFornecedor, itensCombinados, opt
         }) === buildItemKey(item);
         const ativa = String(alocacao?.status || '').toUpperCase() === 'ATIVA';
         return ativa && mesmoItem && Number(alocacao?.fornecedor_compra_id) === fornecedorCompraId
+          && respostasDaCotacao.has(Number(alocacao?.resposta_item_id))
           ? total + parseNumeroCompra(alocacao?.quantidade_alocada)
           : total;
       }, 0);
@@ -1755,9 +1757,10 @@ function SecaoEnvioFornecedores({
       if (!f?.whatsapp) return;
 
       // Encontra o token da cotacao para este fornecedor, quando ja gerado.
-      const vinculo = (solicitacao?.fornecedores || []).find(
+      const candidatos = (solicitacao?.fornecedores || []).filter(
         (v) => String(v.fornecedor_compra_id) === String(f.fornecedor_compra_id || f.id)
       );
+      const vinculo = candidatos.length === 1 ? candidatos[0] : null;
       if (!vinculo?.token) return;
 
       const url = `${publicBase}/cotacao/${vinculo.token}`;
@@ -2079,8 +2082,9 @@ function SecaoEnvioFornecedores({
               <div className="grid gap-2 pt-1">
                 <button type="button" className="btn btn-outline w-full" onClick={onCriarFornecedorRapido} disabled={enviandoFornecedores || salvandoFornecedor}>{salvandoFornecedor ? 'Cadastrando...' : 'Cadastrar e selecionar'}</button>
                 <button type="button" className="btn btn-primary w-full" onClick={onEnviarFornecedores} disabled={enviandoFornecedores || salvandoFornecedor}>
-                  {enviandoFornecedores ? 'Gerando links...' : 'Gerar links de cotacao'}
+                  {enviandoFornecedores ? 'Gerando links...' : 'Gerar novos links independentes'}
                 </button>
+                <p className="text-xs text-[var(--c-muted)]">Cada geração cria outra cotação, mesmo para o mesmo fornecedor. Para reenviar um link existente, use Copiar link na cotação.</p>
               </div>
             </div>
           </div>
@@ -2295,17 +2299,20 @@ function SecaoComparativo({
   const fornecedoresMapa = useMemo(() => {
     const fornecedoresPorId = new Map();
     (comparativo?.fornecedores || []).forEach((fornecedor) => {
-      fornecedoresPorId.set(String(fornecedor.fornecedor_id), {
+      fornecedoresPorId.set(String(fornecedor.id), {
         ...fornecedor,
+        mapa_id: fornecedor.id,
+        nome: `${fornecedor.nome} · Cotação #${fornecedor.id}`,
         possuiResposta: false
       });
     });
 
     (comparativo?.itens || []).forEach((item) => {
       (item.respostas || []).forEach((resposta) => {
-        const key = String(resposta.fornecedor_id);
+        const key = String(resposta.cotacao_fornecedor_id);
         const atual = fornecedoresPorId.get(key) || {
           id: resposta.cotacao_fornecedor_id,
+          mapa_id: resposta.cotacao_fornecedor_id,
           fornecedor_id: resposta.fornecedor_id,
           nome: resposta.fornecedor_nome,
           status: resposta.status_fornecedor
@@ -2325,7 +2332,7 @@ function SecaoComparativo({
 
   const fornecedoresMapaVisiveis = useMemo(() => {
     if (!fornecedoresMapa.length) return [];
-    return fornecedoresMapa.filter((fornecedor) => fornecedoresVisiveis[String(fornecedor.fornecedor_id)] !== false);
+    return fornecedoresMapa.filter((fornecedor) => fornecedoresVisiveis[String(fornecedor.mapa_id)] !== false);
   }, [fornecedoresMapa, fornecedoresVisiveis]);
 
   function toggleFornecedorMapa(fornecedorId) {
@@ -2342,18 +2349,18 @@ function SecaoComparativo({
   function ocultarTodosFornecedoresMapa() {
     setFornecedoresVisiveis(
       fornecedoresMapa.reduce((acc, fornecedor) => {
-        acc[String(fornecedor.fornecedor_id)] = false;
+        acc[String(fornecedor.mapa_id)] = false;
         return acc;
       }, {})
     );
   }
 
   function renderCelulaFornecedorMapa(item, fornecedor) {
-    const resposta = (item.respostas || []).find((resp) => String(resp.fornecedor_id) === String(fornecedor.fornecedor_id));
+    const resposta = (item.respostas || []).find((resp) => String(resp.cotacao_fornecedor_id) === String(fornecedor.mapa_id));
     if (!resposta) {
       return (
         <td
-          key={`${buildItemKey(item)}-${fornecedor.fornecedor_id}`}
+          key={`${buildItemKey(item)}-${fornecedor.mapa_id}`}
           className="min-w-[220px] border-l px-2 py-2 align-top text-xs"
           style={{ borderColor: 'var(--c-border)', background: 'var(--ui-surface-2)', color: 'var(--c-muted)' }}
         >
@@ -2371,7 +2378,7 @@ function SecaoComparativo({
 
     return (
       <td
-        key={`${buildItemKey(item)}-${fornecedor.fornecedor_id}`}
+        key={`${buildItemKey(item)}-${fornecedor.mapa_id}`}
         className="min-w-[270px] border-l px-2 py-2 align-top text-xs"
         style={{
           borderColor: 'var(--c-border)',
@@ -2549,10 +2556,10 @@ function SecaoComparativo({
             {painelFornecedoresAberto && (
               <div className="grid gap-2 border-b px-3 py-3 sm:grid-cols-2 lg:grid-cols-3" style={{ borderColor: 'var(--c-border)' }}>
                 {fornecedoresMapa.map((fornecedor) => {
-                  const visivel = fornecedoresVisiveis[String(fornecedor.fornecedor_id)] !== false;
+                  const visivel = fornecedoresVisiveis[String(fornecedor.mapa_id)] !== false;
                   return (
                     <label
-                      key={fornecedor.fornecedor_id}
+                      key={fornecedor.mapa_id}
                       className="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm"
                       style={visivel
                         ? estiloTom('info')
@@ -2561,7 +2568,7 @@ function SecaoComparativo({
                       <input
                         type="checkbox"
                         checked={visivel}
-                        onChange={() => toggleFornecedorMapa(fornecedor.fornecedor_id)}
+                        onChange={() => toggleFornecedorMapa(fornecedor.mapa_id)}
                       />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-semibold">{fornecedor.nome}</span>
@@ -2600,7 +2607,7 @@ function SecaoComparativo({
                       <th className="md:sticky left-[260px] z-celula-cabecalho min-w-[110px] text-right" style={{ background: 'var(--ui-surface-2)' }}>Qtd.</th>
                       {fornecedoresMapaVisiveis.map((fornecedor) => (
                         <th
-                          key={fornecedor.fornecedor_id}
+                          key={fornecedor.mapa_id}
                           className="min-w-[240px] border-l"
                           style={{ borderColor: 'var(--c-border)', background: 'var(--ui-surface-2)' }}
                         >
@@ -2774,7 +2781,7 @@ function SecaoComparativo({
                     }
                   ]}
                   itens={item.respostas}
-                  getId={(resp) => `${item.id}-${resp.fornecedor_id}`}
+                  getId={(resp) => `${item.id}-${resp.cotacao_fornecedor_id}-${resp.resposta_item_id}`}
                   storageKey="tabela:gerenciar-cotacao:respostas-item"
                   rotuloRolagem={`Respostas dos fornecedores para ${item.nome}`}
                   vazio="Nenhuma resposta para este item."
@@ -2893,6 +2900,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   const [revisaoComparativo, setRevisaoComparativo] = useWorkspaceState(scope + 'revisaoComparativo', null);
   const respostaOperacaoRef = useRef(false);
   const enviosEmCursoRef = useRef(new Set());
+  const chaveEnvioRef = useRef(null);
   const { confirmarEntregas, elementoEntregas } = useConfirmarEntregasPedidos();
   const encerramentoEmCursoRef = useRef(false);
   const encerramentoIdempotencyRef = useRef(null);
@@ -3199,11 +3207,14 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
     });
   };
 
-  const pedidosPorFornecedor = useMemo(() => {
+  const pedidosPorCotacao = useMemo(() => {
     const mapa = new Map();
-    (solicitacao?.pedidos || []).forEach((pedido) => {
-      mapa.set(Number(pedido.fornecedor_compra_id), pedido);
-    });
+    for (const cf of solicitacao?.fornecedores || []) {
+      const respostas = new Set((cf.respostas || []).map(r => Number(r.id)));
+      const pedidos = (solicitacao?.pedidos || []).filter(p => (p.itens || []).some(i => respostas.has(Number(i.resposta_item_id))));
+      const ativo = pedidos.find(p => String(p.status).toUpperCase() !== 'CANCELADO');
+      if (ativo || pedidos[0]) mapa.set(Number(cf.id), ativo || pedidos[0]);
+    }
     return mapa;
   }, [solicitacao]);
 
@@ -3297,7 +3308,12 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       }
 
       setEnviandoFornecedores(true);
-      await enviarSolicitacaoCompraParaFornecedores(id, { fornecedores: payload });
+      const assinatura = JSON.stringify({ id, fornecedores: payload });
+      if (chaveEnvioRef.current?.assinatura !== assinatura) {
+        chaveEnvioRef.current = { assinatura, chave: crypto.randomUUID() };
+      }
+      await enviarSolicitacaoCompraParaFornecedores(id, { fornecedores: payload, chave_envio: chaveEnvioRef.current.chave });
+      chaveEnvioRef.current = null;
       setFornecedoresSelecionados([]);
       setFornecedoresSelecionadosDados({});
       setItensSelecionadosEnvio({});
@@ -3787,7 +3803,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       const respostasSelecionadas = alocacoes.map((alocacao) => itens.flatMap((item) => item.respostas || [])
         .find((resposta) => Number(resposta.resposta_item_id) === alocacao.resposta_item_id));
       if (respostasSelecionadas.some((resposta) => !resposta?.fornecedor_id)) throw new Error('Atualize a cotação antes de gerar os pedidos.');
-      const fornecedoresSelecionadosIds = new Set(respostasSelecionadas.map((resposta) => Number(resposta.fornecedor_id)));
+      const fornecedoresSelecionadosIds = new Set(respostasSelecionadas.map((resposta) => Number(resposta.cotacao_fornecedor_id)));
 
       const itensExcedentes = [];
       const errosDisponibilidadeFornecedor = [];
@@ -3886,7 +3902,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       }
 
       const workspaceAtual = await obterWorkspaceCotacaoSolicitacaoCompra(id);
-      const previsoes = (workspaceAtual.previsoes_entrega || []).filter((p) => fornecedoresSelecionadosIds.has(Number(p.fornecedor_id)));
+      const previsoes = (workspaceAtual.previsoes_entrega || []).filter((p) => fornecedoresSelecionadosIds.has(Number(p.cotacao_fornecedor_id)));
       if (previsoes.length !== fornecedoresSelecionadosIds.size) throw new Error('Não foi possível calcular as entregas. Atualize a cotação e confira os fornecedores selecionados.');
       const previsoesConfirmadas = await confirmarEntregas(previsoes);
       if (!previsoesConfirmadas) return;
@@ -4239,7 +4255,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
                       ordenavel: true,
                       valorOrdenacao: (cf) => cf.fornecedor?.nome || '',
                       render: (cf) => {
-                        const pedidoFornecedor = pedidosPorFornecedor.get(Number(cf.fornecedor_compra_id));
+                        const pedidoFornecedor = pedidosPorCotacao.get(Number(cf.id));
                         const possuiRespostaArquivo = Boolean(
                           cf.pdf_resposta_url || cf.arquivo_resposta_url || cf.arquivos_resposta?.length
                         );
@@ -4247,7 +4263,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
                           <div className="min-w-0">
                             <div className="flex min-w-0 items-center gap-2">
                               <span className="truncate font-semibold" style={{ color: 'var(--c-text)' }}>
-                                {cf.fornecedor?.nome || '-'}
+                                {cf.fornecedor?.nome || '-'} · Cotação #{cf.id}
                               </span>
                               {possuiRespostaArquivo && (
                                 <Etiqueta tom="info" className="shrink-0">Arquivo</Etiqueta>
@@ -4318,7 +4334,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
                   acoesLinha={(cotacaoFornecedor) => {
                     const publicUrl = `${window.location.origin}/cotacao/${cotacaoFornecedor.token}`;
                     const pdfUrl = obterUrlPdfCotacaoPublica(cotacaoFornecedor.token);
-                    const pedidoFornecedor = pedidosPorFornecedor.get(Number(cotacaoFornecedor.fornecedor_compra_id));
+                    const pedidoFornecedor = pedidosPorCotacao.get(Number(cotacaoFornecedor.id));
                     const statusFornecedor = String(cotacaoFornecedor.status || '').toUpperCase();
                     const cotacaoCancelada = ['CANCELADA', 'CANCELADO'].includes(statusFornecedor);
                     const podeEditarResposta = podeEditarRespostas && !cotacaoCancelada;

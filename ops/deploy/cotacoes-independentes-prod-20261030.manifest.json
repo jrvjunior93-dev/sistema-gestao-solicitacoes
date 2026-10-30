@@ -1,0 +1,114 @@
+{
+  "base": "a6edfcd31516af6daa27fe0e27cbae0a52d45735",
+  "runtime_files": 5,
+  "sql": 0,
+  "migrations": 0,
+  "heap_mib": 4096,
+  "files": [
+    {
+      "path": "backend/src/controllers/SolicitacaoCompraController.js",
+      "sha256": "ae33132633a7e6aad34b560d50e9a9f969702927248854eb23c9547d6be3429e",
+      "old_sha256": "3ce62f9651067790e6e1fc2c5b7981e3395cebf28717fff5406c8c5d9149f606"
+    },
+    {
+      "path": "backend/src/controllers/CotacaoFornecedorController.js",
+      "sha256": "47bbc1faafea989e7e2e030cd6ec997fb5c6e020bee87561db8dcf40a90b2644",
+      "old_sha256": "4da6d2fecee0645a57bb6029ba6569df942d28d3e4943d2975ce5d621fdb269a"
+    },
+    {
+      "path": "backend/src/services/pedidoCompraService.js",
+      "sha256": "f24cd2dc7f7b54d3a2d873068d3ba99d641c15c359b8d1d74471e804f5846376",
+      "old_sha256": "12b4a964898a7c66276a2363e2047b6722f0631132c99c50eba4bf3b41d94ef0"
+    },
+    {
+      "path": "backend/src/services/cotacoesIndependentes.js",
+      "sha256": "91411bb99cf53b8cbb20c6c2d0dc6bba668f43438c275f6255a5d2c750084cfe",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/src/validators/operationalValidators.js",
+      "sha256": "e5b3a1ff647b3128ad676d58f480e73a706673bd43e54cd83743318232c1b44a",
+      "old_sha256": "2d9da953c0b01556dddcc19474d11de59fbb7c499770fbdd5be459bce9195e90"
+    },
+    {
+      "path": "backend/scripts/validarCotacoesIndependentes.cjs",
+      "sha256": "97e293aca5fa5fb33b9ce8ab36757f33cb50b76181eefb28025335599a565222",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarCompraFechamentoAprovacao.cjs",
+      "sha256": "5d07a60a65bf37aa7c4b0a1d8c6928845db83123514e8d2ab4edb71dd3f26b2f",
+      "old_sha256": "05842ebf3c91d44aa9926e8e0b1bd6d6d02edea825303a06350292026fc220a1"
+    },
+    {
+      "path": "backend/scripts/validarPedidoReabertura.js",
+      "sha256": "39a30f26eaab0f215471722881bd4a6fe762de110da8ee3d7f2e0e3ca49a63fc",
+      "old_sha256": "91c900412e5509d9ab5e9509af967c9dee217fd36b01c9623939251a10a54994"
+    },
+    {
+      "path": "backend/scripts/validarPedidoReaberturaTitulosExcluidos.js",
+      "sha256": "f8407885c5e5d32bf988326dbf654967be7cb2f89d27b32cc239092713d9a624",
+      "old_sha256": "f8407885c5e5d32bf988326dbf654967be7cb2f89d27b32cc239092713d9a624"
+    },
+    {
+      "path": "backend/scripts/validarCompraRemanejamento.js",
+      "sha256": "b2c429482c9178f803f6b9aa851e0c412c5d3cb8e3daf4da47ed13181196b5de",
+      "old_sha256": "b2c429482c9178f803f6b9aa851e0c412c5d3cb8e3daf4da47ed13181196b5de"
+    },
+    {
+      "path": "backend/scripts/validarCompraCotacaoEnvio.js",
+      "sha256": "25b3c4dd0e980604d7d739caa9baa2934b8c3520cc62c28eaf162556664f7481",
+      "old_sha256": "25b3c4dd0e980604d7d739caa9baa2934b8c3520cc62c28eaf162556664f7481"
+    },
+    {
+      "path": "backend/scripts/validarCompraOfertaSaldoMesmoFornecedor.js",
+      "sha256": "355aff73104c3b6da44eb0292bdd270835e3a0363b0440c5d11eac2c2b21af3e",
+      "old_sha256": "355aff73104c3b6da44eb0292bdd270835e3a0363b0440c5d11eac2c2b21af3e"
+    },
+    {
+      "path": "backend/scripts/validarPrecisaoCompras.cjs",
+      "sha256": "3db4d72f1c3116b0fcada88fec97e7d4d0da8d6af42d19973c39a038370f9f02",
+      "old_sha256": "3db4d72f1c3116b0fcada88fec97e7d4d0da8d6af42d19973c39a038370f9f02"
+    },
+    {
+      "path": "backend/scripts/validarPedidoCompraFinanceiroGeo.js",
+      "sha256": "8ca675e3f64848dee6a137a487ccb61a59fe108d5c4d929705557f2e382bef27",
+      "old_sha256": "8ca675e3f64848dee6a137a487ccb61a59fe108d5c4d929705557f2e382bef27"
+    },
+    {
+      "path": "backend/scripts/helpers/semRedeQa.js",
+      "sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf",
+      "old_sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf"
+    }
+  ],
+  "extra": [
+    {
+      "path": "ops/deploy/atualizar-prod-cotacoes-independentes-20261030.cjs",
+      "sha256": "f5e167c03a5c822457111d9841b27d8616223d9abe39e54af7714ff0dda5c98e"
+    },
+    {
+      "path": "ops/deploy/atualizar-prod-cotacoes-independentes-20261030.test.cjs",
+      "sha256": "44f5bb2b7aee385e46d14432267f29a97e16e1170a5d3493920b43898f3d928f"
+    },
+    {
+      "path": "ops/deploy/README-cotacoes-independentes-prod-20261030.md",
+      "sha256": "567c411cef70e21dac3f5bc6a92dfc5d89c816021276d1dc5e2f34e04730c89b"
+    },
+    {
+      "path": "docs/handoffs/2026-10-30-promocao-cotacoes-independentes-main.md",
+      "sha256": "e5cb66f44108b1c0974076d7f82d49d08926d6407a8ff75b24bb0d2a37caca6b"
+    },
+    {
+      "path": "docs/workspace/OWNERSHIP_ATIVO.md",
+      "sha256": "7017b89d6d58527ff3c730e7efd46a428c40cb1d736168d6e7737f67c6a6c662"
+    },
+    {
+      "path": "frontend/src/modules/solicitacao-compra/components/ConfirmarEntregasPedidos.jsx",
+      "sha256": "dc8966f5f86c4cadd04227415aff29bacccbb0070060b4d837508a1c4a36ceda"
+    },
+    {
+      "path": "frontend/src/modules/solicitacao-compra/pages/GerenciarCotacaoSolicitacao.jsx",
+      "sha256": "8e41f29ca630728bb83d82d4b5da95775f85ebec3375e4cac1410f4c9bc28b8c"
+    }
+  ]
+}

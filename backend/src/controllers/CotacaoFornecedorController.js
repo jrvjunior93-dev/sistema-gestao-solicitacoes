@@ -690,6 +690,7 @@ async function salvarRespostasCotacao(cotacaoFornecedor, itensResposta, options 
         where: {
           solicitacao_compra_id: solicitacaoTravada.id,
           fornecedor_compra_id: cotacaoTravada.fornecedor_compra_id,
+          resposta_item_id: { [Op.in]: require('sequelize').literal('(SELECT id FROM solicitacao_compra_resposta_itens WHERE solicitacao_compra_fornecedor_id = ' + Number(cotacaoTravada.id) + ')') },
           status: 'ATIVA'
         },
         transaction
