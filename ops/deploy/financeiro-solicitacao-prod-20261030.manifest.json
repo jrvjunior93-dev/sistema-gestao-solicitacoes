@@ -1,0 +1,154 @@
+{
+  "base": "89b1e735572ccf272543ca05dc3cfef32c12c909",
+  "runtime_files": 7,
+  "sql": 0,
+  "migrations": 0,
+  "heap_mib": 4096,
+  "files": [
+    {
+      "path": "backend/src/controllers/SolicitacaoController.js",
+      "sha256": "27d5801dc7478697af16f059cfde6fdbf686f7d3b54dc8b858eff0bb5e40743b",
+      "old_sha256": "4d622ba9e2a14b6a3ae72a5a5496ecd75a6a5bd771ff84ca6a34caa5ee62a311"
+    },
+    {
+      "path": "backend/src/controllers/TituloFinanceiroController.js",
+      "sha256": "364a5d19ae49fcbb5be27be91d9bed0d656ef4b761dbf64cc553f4a1038604e6",
+      "old_sha256": "c00b24370c23121d97196e79b90e3f865f26c46f17c11a40d796751316d29004"
+    },
+    {
+      "path": "backend/src/routes.js",
+      "sha256": "94e96c3552d5a53d9c9e59ebea0d803339627f54d55d38288e075fde3e48eb24",
+      "old_sha256": "1e62b6fcdc755d6d46c642c2989ab3c968d262c9558542f8a81ce91ea41c17b9"
+    },
+    {
+      "path": "backend/src/services/tituloFinanceiroService.js",
+      "sha256": "f811feff89343c15570690d08f5d5b9895efbeb39614ea7d11434394ef494ab2",
+      "old_sha256": "e3b25e5fea2fff98e94544d1f5e5de6f2782f3809f78015ddd223b57fb39c375"
+    },
+    {
+      "path": "backend/src/validators/financialValidators.js",
+      "sha256": "f7d7eb98f41b75674714d99f79c051171cce7a526feb3188946c6b53100bbec2",
+      "old_sha256": "70d3da7f50a4f5b7a1ba273677d122ab87532adf7ae9d7da423fe6a46b85b4cb"
+    },
+    {
+      "path": "backend/src/services/solicitacaoEncargosDomain.js",
+      "sha256": "f8329c4eb5f2e8e6b50a07855c53e9758ccb7d4d1a21c2bcb0f683494d1583ee",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/src/services/baixaLoteSolicitacaoService.js",
+      "sha256": "d6f1795b8bd3b97da0edf8cb9949dd664c4c72d85b7763bd840c31d7eafa8841",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarEncargosSolicitacao.cjs",
+      "sha256": "e884b66493faef509bd4289a4da2b47d555677a42dd2d998fe7e11729de0244f",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarBaixaLoteSolicitacao.cjs",
+      "sha256": "42e24bf06d756e5d377ef74cbe0ab4ba5c845864aa9fe38c82f2fef063f19cf6",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarOrdenacaoDatasSolicitacoes.cjs",
+      "sha256": "bee82578751469885f74f8904595f3b72a75c7767989882597a23a32b11089f6",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarCartaoOpcionalSolicitacao.js",
+      "sha256": "9fa5ae5dac7b24d0d5865edcd4fcb346bfba404b5704c5f65d740830bd459968",
+      "old_sha256": "cd145c96788030dd33ea01e8d5fe2e4b3fd00139aaa38b7cc0cca04fc484bf3b"
+    },
+    {
+      "path": "backend/scripts/validarAdiantamentoFinanceiro.js",
+      "sha256": "13ff33f575c93ef26fbf2471d28a25c25b4c783bfc9d4096ecb790a449502c67",
+      "old_sha256": "4a0b1cf70df833cd96c649c5b9a171991b3d69d89522ba128b7dbcb4669de73a"
+    },
+    {
+      "path": "backend/scripts/validarCompraDiretaFreteFinanceiro.js",
+      "sha256": "465a72b318d27d896ac652f16ceb254d388c37cc6b68b18d2108999bd11fce2f",
+      "old_sha256": "465a72b318d27d896ac652f16ceb254d388c37cc6b68b18d2108999bd11fce2f"
+    },
+    {
+      "path": "backend/scripts/validarCompraTitulosAdicionais.js",
+      "sha256": "5585789134c8bb20bcbd1185fd4f681f95b418b70498fa8860daa00b96ae1413",
+      "old_sha256": "5585789134c8bb20bcbd1185fd4f681f95b418b70498fa8860daa00b96ae1413"
+    },
+    {
+      "path": "backend/scripts/validarMedicaoFavorecidos.js",
+      "sha256": "85b27303390d3fc4c42f02769e576ef423d32e095a4ae0438fe9f70af6194b8b",
+      "old_sha256": "85b27303390d3fc4c42f02769e576ef423d32e095a4ae0438fe9f70af6194b8b"
+    },
+    {
+      "path": "backend/scripts/validarFilaBaixaComposta.js",
+      "sha256": "02bb0514d36cde68687c52faf0920c72f05828533ff2e044548cdb732cc2227f",
+      "old_sha256": "02bb0514d36cde68687c52faf0920c72f05828533ff2e044548cdb732cc2227f"
+    },
+    {
+      "path": "backend/scripts/validarFilaBaixaEstorno.js",
+      "sha256": "337c0e3d0fee8263cc0cfd3999761246cf8fd556459b1d31783b23a6758f550c",
+      "old_sha256": "337c0e3d0fee8263cc0cfd3999761246cf8fd556459b1d31783b23a6758f550c"
+    },
+    {
+      "path": "backend/scripts/validarFilaOperacionalSolicitacoes.cjs",
+      "sha256": "7ba430101a398d1baeea61ace63a853b32548bcf4722b54a9886d64b59fa6697",
+      "old_sha256": "7ba430101a398d1baeea61ace63a853b32548bcf4722b54a9886d64b59fa6697"
+    },
+    {
+      "path": "backend/scripts/helpers/semRedeQa.js",
+      "sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf",
+      "old_sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf"
+    }
+  ],
+  "extra": [
+    {
+      "path": "ops/deploy/atualizar-prod-financeiro-solicitacao-20261030.cjs",
+      "sha256": "fd47c7d05c436961a5e0c44a0715c54ea8cfea07ea91512c0e183c51f3809302"
+    },
+    {
+      "path": "ops/deploy/atualizar-prod-financeiro-solicitacao-20261030.test.cjs",
+      "sha256": "c7f0993993351afd2ef3a7733b12f21205817aead7e5811e0277eff5a93a1025"
+    },
+    {
+      "path": "ops/deploy/README-financeiro-solicitacao-prod-20261030.md",
+      "sha256": "7956a2f64c7a5c9e2313730e3aabf64314419e52c7064b02d555624fbdc68564"
+    },
+    {
+      "path": "docs/handoffs/2026-10-30-promocao-financeiro-solicitacao-main.md",
+      "sha256": "efae59e6dbe75dc2ee109367d2b419622ced47b918977ff0f0afd9d5b86e3ac4"
+    },
+    {
+      "path": "docs/workspace/OWNERSHIP_ATIVO.md",
+      "sha256": "68bc2a15684d441118e0683562debc5dd3089769c6ed214e3bc9d048301f1274"
+    },
+    {
+      "path": "frontend/scripts/fixtures/cartaoOpcionalSolicitacao.jsx",
+      "sha256": "9eb6d2182cc59e94283d8c93effcc37ac063d05974185a3c8136cd145fb0120a"
+    },
+    {
+      "path": "frontend/scripts/validarFinanceiroSolicitacaoLoteUI.mjs",
+      "sha256": "d4b303699d9f9a89daa7740dede4c6bb30ef35717073667a5b1c3440f3aca877"
+    },
+    {
+      "path": "frontend/src/components/financeiro/BaixaLoteSolicitacaoModal.jsx",
+      "sha256": "c4186b4917806b01f66d3fc4715f57f5a9b4737a7d97340039e166f755f61357"
+    },
+    {
+      "path": "frontend/src/components/lista-avancada/ListaAvancada.jsx",
+      "sha256": "e9c0e1d3118105f178e14cf37607f146cb5ec14e3403eb0045e874b046324a73"
+    },
+    {
+      "path": "frontend/src/pages/SolicitacaoDetalhe/FinanceiroCard.jsx",
+      "sha256": "7eab7bc6ac57d17cd2f7c407f39010c497992b627d1cc1c19620e35597038530"
+    },
+    {
+      "path": "frontend/src/pages/Solicitacoes/index.jsx",
+      "sha256": "0bcdef2cef58790f3cd0501e8cf17cb2d6331026a06652ea2eda685cae85ac64"
+    },
+    {
+      "path": "frontend/src/services/financeiro.js",
+      "sha256": "54cf309418469900d04c9bede1b7934b31c127e3b98c30d2e7839860cb9c200f"
+    }
+  ]
+}

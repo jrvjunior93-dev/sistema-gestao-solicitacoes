@@ -6593,3 +6593,6 @@ Responsavel: agente desta conversa. Reservados pedidoCompraService.js, validarCo
 
 ## 2026-10-30 Promocao cotacoes independentes MAIN
 Agente desta conversa reserva controllers CotacaoFornecedor/SolicitacaoCompra, pedidoCompraService, cotacoesIndependentes, operationalValidators, QA homologados, GerenciarCotacaoSolicitacao/ConfirmarEntregasPedidos, aplicador PROD e handoff. Somente implementacao24b7c7df, sem servidor/banco.
+
+## 2026-10-30 Promocao Financeiro da solicitacao
+Agente desta conversa: somente juros/multa, baixa lote, ordenacao de datas e posicionamento. Reservados runtime/QA de abdc7bdf e FinanceiroCard de 01940faf, novo atualizador PROD/manifesto/teste/README e handoff. Sem historico recuperado de propostas, EC2 ou banco.

@@ -2245,6 +2245,10 @@ export default function Solicitacoes({ arquivadas = false }) {
           Continua na ListaAvancada — ver o relatório da rodada para o porquê
           de não virar TabelaPadrao. */}
       <BlocoConteudo variante="primario" cor="var(--c-primary)">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--c-muted)]">
+          <span>Clique em Registro ou Vencimento para ordenar por data. A ordenação por data considera toda a lista, mantendo os destaques visuais.</span>
+          <button type="button" className="btn btn-outline" onClick={() => listaRef.current?.limparOrdenacao()}>Restaurar fila operacional</button>
+        </div>
         <ListaAvancada
           ref={listaRef}
           id={arquivadas ? 'solicitacoes-arquivadas' : 'solicitacoes'}

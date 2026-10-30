@@ -30,6 +30,9 @@ async function criacao() {
   reset();
   const tx = { LOCK: { UPDATE: 'UPDATE' }, commit: async () => { commits++; }, rollback: async () => { rollbacks++; criados = []; ciclos = []; } };
   const sandbox = {
+    toCurrencyNumber: Number,
+    SolicitacaoCompra: { findOne: async () => null },
+    Op: { notIn: Symbol.for('notIn') },
     assertFinanceAccess: noop, carregarSolicitacaoFinanceira: async () => principal,
     resolverCompetenciaCriacaoSolicitacao: () => '2026-10-11', createHttpError: error,
     SolicitacaoRecargaCartao: { findOne: async () => null }, Solicitacao: { findByPk: async (_id, opts) => { assert.equal(opts.lock, 'UPDATE'); return principal; } },
@@ -52,6 +55,8 @@ async function criacao() {
     baixarTituloCartaoNoAto: async () => null, Historico: { create: noop }, getSetorUsuario: () => 'GEO', formatCurrency: String,
     marcarSolicitacaoComTituloCadastrado: noop, carregarTituloPorId: async () => criados[0], registrarEventoSeguranca: noop,
     require: nome => {
+      if (nome === './tituloObservacoesDomain') return require('../src/services/tituloObservacoesDomain');
+      if (nome === './solicitacaoEncargosDomain') return require('../src/services/solicitacaoEncargosDomain');
       if (nome === './compraDiretaFreteFinanceiroService') return { prepararGeracao: async () => null,
         prepararPagamentos: (_contexto, pagamentos) => pagamentos, validarGeracao: noop };
       if (nome === './adiantamentoService') return { ehAdiantamento: async () => adianta };
@@ -61,7 +66,7 @@ async function criacao() {
       if (nome === './solicitacaoFavorecidosDomain') return require('../src/services/solicitacaoFavorecidosDomain');
       if (nome === './recargaCartaoService') return { isGerenciaProcessos: () => geo };
       if (nome === './solicitacaoRetornoService') return { assertPodeVisualizarSolicitacao: async () => { if (negar) throw error(403, 'Acesso negado'); }, assertPodeInteragirSolicitacao: async () => { if (negar) throw error(403, 'Acesso negado'); } };
-      if (nome === '../models') return { SolicitacaoAdiantamento: { create: async (data, opts) => { assert.equal(opts.transaction, tx); if (falharCiclo) throw Error('Falha simulada'); ciclos.push(data); } } };
+      if (nome === '../models') return { TituloCompartilhadoOrigem: { findOne: async () => null }, SolicitacaoAdiantamento: { create: async (data, opts) => { assert.equal(opts.transaction, tx); if (falharCiclo) throw Error('Falha simulada'); ciclos.push(data); } } };
       throw Error(`Dependencia nao isolada: ${nome}`);
     }
   };

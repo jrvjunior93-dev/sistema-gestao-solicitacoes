@@ -2166,3 +2166,10 @@ export async function getBoletoPedidoFilaPagamento(filaId, documentoId) {
   const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/${filaId}/boletos-pedidos/${documentoId}`, { headers: authHeaders(), cache: 'no-store' });
   return parseJson(response, 'Erro ao abrir boleto do pedido');
 }
+
+export async function baixaLoteSolicitacao(id, dados, confirmar = false) {
+  const response = await fetch(`${API_URL}/solicitacoes/${id}/titulos-financeiros/baixa-lote/${confirmar ? 'confirmar' : 'preview'}`, {
+    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(dados)
+  });
+  return parseJson(response, 'Erro na baixa em lote da solicitacao');
+}

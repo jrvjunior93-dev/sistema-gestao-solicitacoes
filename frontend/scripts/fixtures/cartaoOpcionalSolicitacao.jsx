@@ -12,7 +12,7 @@ const solicitacao = { id: 100, codigo: 'SOL-QA', valor: 200, tipo: { nome: 'DESP
   obra_id: 1, obra: { id: 1, nome: 'Obra QA', empresa_grupo_id: 1 },
   parceiro: { id: 1, nome: 'Credor QA', cpf_cnpj: '12345678909', fornecedor: true, ativo: true },
   data_vencimento: '2026-10-20' };
-const user = { id: 99, perfil: 'USUARIO', areas_permissoes: ['financeiro.titulos.criar', 'financeiro.titulos.visualizar'] };
+const user = { id: 99, perfil: 'USUARIO', areas_permissoes: ['financeiro.titulos.criar', 'financeiro.titulos.visualizar', ...(new URLSearchParams(location.search).has('baixa-lote') ? ['financeiro.titulos.baixar'] : [])] };
 createRoot(document.getElementById('root')).render(
   <BrowserRouter><AuthContext.Provider value={{ user }}><ThemeContext.Provider value={{ tema: TEMA_PADRAO }}>
     <main className="layout-main app-page p-4 bg-[var(--c-bg)] text-[var(--c-text)]">
