@@ -6709,3 +6709,6 @@ Agente desta conversa reserva ParceiroController.js, NovaSolicitacao.jsx, Parcei
 
 ## 2026-10-30 Publicacao Pix e pacote DEV consolidado
 Agente desta conversa reserva novo atualizador/teste/manifesto comparativo-baixa-pix-dev-20261030 e README. Usuario autorizou commit/push Pix e comandos DEV consolidados. Quatro runtimes; nenhum acesso EC2/banco.
+
+## 2026-10-30 Retomada QA Pix DEV
+Reservados validarCadastroCredorTipoSubtipo.js e novos atualizador/teste/manifesto v2. Ler frontend do commit pinado no QA, preservar tentativa anterior e bloquear se ela passou de prepared. Sem EC2/banco.
