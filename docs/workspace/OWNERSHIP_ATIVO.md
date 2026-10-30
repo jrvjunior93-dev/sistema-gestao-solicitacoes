@@ -6599,3 +6599,6 @@ Agente desta conversa: somente juros/multa, baixa lote, ordenacao de datas e pos
 
 ## 2026-10-30 Promocao historico recuperado de cotacoes
 Agente desta conversa reserva somente controller/domain/QA e CompraEtapas/HistoricoFechamentosCompra do commit DEV79213894, novo atualizador PROD historico-cotacoes/teste/manifesto/README e handoff. Sem banco, EC2, reconstrucao de links ou regularizacao de dados. Base main124bb97f.
+
+## 2026-10-30 Promocao comparativo, baixa e Pix MAIN
+Agente desta conversa reserva os quatro runtimes dos ajustes homologados, frontend comparativo/NovaSolicitacao/Parceiros, testes correspondentes e novo aplicador seletivo PROD comparativo-baixa-pix. Sem outras funcionalidades, EC2 ou banco.

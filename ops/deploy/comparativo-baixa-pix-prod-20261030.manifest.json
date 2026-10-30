@@ -1,0 +1,148 @@
+{
+  "base": "6f81d77e3e90607246059ddeb2ebb6bdd0bfbfed",
+  "runtime_files": 4,
+  "sql": 0,
+  "migrations": 0,
+  "heap_mib": 4096,
+  "files": [
+    {
+      "path": "backend/src/controllers/SolicitacaoCompraController.js",
+      "sha256": "2c8577384b2f171e42e1512cbc630dd92b6b0096a199e7d139b42ae090040980",
+      "old_sha256": "ae33132633a7e6aad34b560d50e9a9f969702927248854eb23c9547d6be3429e"
+    },
+    {
+      "path": "backend/src/services/historicoPropostasCompra.js",
+      "sha256": "19033ab50ecc0e381b762112301f26ceacaf3dd681d67e5d35ca9c1f545f1bf1",
+      "old_sha256": "e8ee97bf5da79a95d3504278b19905c6eb3094163d2c5727e902f7a6ce5cb3aa"
+    },
+    {
+      "path": "backend/src/services/baixaLoteSolicitacaoService.js",
+      "sha256": "f4b95afe1139cb44e385934f32d5bc851ec855bfaacdeba403a7064d890e7f17",
+      "old_sha256": "d6f1795b8bd3b97da0edf8cb9949dd664c4c72d85b7763bd840c31d7eafa8841"
+    },
+    {
+      "path": "backend/src/controllers/ParceiroController.js",
+      "sha256": "3cc3e84942c63c26f304e9d5d56db1c75353886accb44c5277f80cf706608906",
+      "old_sha256": "f556ef456628fb803d547d240b00d55e1e33b4a7458c2056263e968b0c5c0193"
+    },
+    {
+      "path": "backend/scripts/validarCadastroCredorTipoSubtipo.js",
+      "sha256": "49eb692835b62a3e7a831f145509791b9b6d1d45ef04cf966cb044fd2f2e25b9",
+      "old_sha256": "a91f5b2d058db976f3ce64e571ec7c04f8df0be724f5481e426c13bc6dcb31d8"
+    },
+    {
+      "path": "backend/scripts/validarComparativoPedidosRecuperados.cjs",
+      "sha256": "7fb476408de345800accaf2f886c8fd918e06ad5f35afed5ed9b65d4bdcf5732",
+      "old_sha256": null
+    },
+    {
+      "path": "backend/scripts/validarBaixaLoteSolicitacao.cjs",
+      "sha256": "94a0e5f35af313e80ce6c22c2f49f10a1dc849bf64df6a351f4ff6a8248ac241",
+      "old_sha256": "42e24bf06d756e5d377ef74cbe0ab4ba5c845864aa9fe38c82f2fef063f19cf6"
+    },
+    {
+      "path": "backend/scripts/validarHistoricoPropostasCompra.cjs",
+      "sha256": "0e2688e581cd4ebf55884646a96accae6de3d940980472b74cce2647169dc699",
+      "old_sha256": "0e2688e581cd4ebf55884646a96accae6de3d940980472b74cce2647169dc699"
+    },
+    {
+      "path": "backend/scripts/validarCompraEtapasResumoPedido.js",
+      "sha256": "666940fd6ea8914dff3678cf7f95ce292ffc4a3543e19873dda2a0603b3b6ec5",
+      "old_sha256": "666940fd6ea8914dff3678cf7f95ce292ffc4a3543e19873dda2a0603b3b6ec5"
+    },
+    {
+      "path": "backend/scripts/validarCompraCotacaoEnvio.js",
+      "sha256": "25b3c4dd0e980604d7d739caa9baa2934b8c3520cc62c28eaf162556664f7481",
+      "old_sha256": "25b3c4dd0e980604d7d739caa9baa2934b8c3520cc62c28eaf162556664f7481"
+    },
+    {
+      "path": "backend/scripts/validarCotacoesIndependentes.cjs",
+      "sha256": "97e293aca5fa5fb33b9ce8ab36757f33cb50b76181eefb28025335599a565222",
+      "old_sha256": "97e293aca5fa5fb33b9ce8ab36757f33cb50b76181eefb28025335599a565222"
+    },
+    {
+      "path": "backend/scripts/validarPedidoReabertura.js",
+      "sha256": "39a30f26eaab0f215471722881bd4a6fe762de110da8ee3d7f2e0e3ca49a63fc",
+      "old_sha256": "39a30f26eaab0f215471722881bd4a6fe762de110da8ee3d7f2e0e3ca49a63fc"
+    },
+    {
+      "path": "backend/scripts/validarPedidoCompraFinanceiroGeo.js",
+      "sha256": "8ca675e3f64848dee6a137a487ccb61a59fe108d5c4d929705557f2e382bef27",
+      "old_sha256": "8ca675e3f64848dee6a137a487ccb61a59fe108d5c4d929705557f2e382bef27"
+    },
+    {
+      "path": "backend/scripts/validarCartaoOpcionalSolicitacao.js",
+      "sha256": "9fa5ae5dac7b24d0d5865edcd4fcb346bfba404b5704c5f65d740830bd459968",
+      "old_sha256": "9fa5ae5dac7b24d0d5865edcd4fcb346bfba404b5704c5f65d740830bd459968"
+    },
+    {
+      "path": "backend/scripts/validarFilaBaixaComposta.js",
+      "sha256": "02bb0514d36cde68687c52faf0920c72f05828533ff2e044548cdb732cc2227f",
+      "old_sha256": "02bb0514d36cde68687c52faf0920c72f05828533ff2e044548cdb732cc2227f"
+    },
+    {
+      "path": "backend/scripts/validarFilaBaixaEstorno.js",
+      "sha256": "337c0e3d0fee8263cc0cfd3999761246cf8fd556459b1d31783b23a6758f550c",
+      "old_sha256": "337c0e3d0fee8263cc0cfd3999761246cf8fd556459b1d31783b23a6758f550c"
+    },
+    {
+      "path": "backend/scripts/helpers/semRedeQa.js",
+      "sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf",
+      "old_sha256": "5644352e68b8bcc15f4b90f2ef2e08b1c0d8aea03aec3bb2148364bb04496dcf"
+    }
+  ],
+  "extra": [
+    {
+      "path": "ops/deploy/atualizar-prod-comparativo-baixa-pix-20261030.cjs",
+      "sha256": "1c3f6e0153de6cf46f8f0400e2aefe542549fd28e74cd7c45c91e8895e198e75"
+    },
+    {
+      "path": "ops/deploy/atualizar-prod-comparativo-baixa-pix-20261030.test.cjs",
+      "sha256": "d5699d1b251e023c12f10800a29834af2e5e26f88842789cd5602e80335e3d56"
+    },
+    {
+      "path": "ops/deploy/README-comparativo-baixa-pix-prod-20261030.md",
+      "sha256": "f88c322b7e88d04321b6efcdedca2db8f3d84bbe98f5cafc2f27d918b0ec3631"
+    },
+    {
+      "path": "docs/handoffs/2026-10-30-promocao-comparativo-baixa-pix-main.md",
+      "sha256": "5687ead9477988162c0d8a1d52c6f7364626b51a851569d6773e97106afc2336"
+    },
+    {
+      "path": "docs/workspace/OWNERSHIP_ATIVO.md",
+      "sha256": "08afe7efbad13c058ec87ef11c40ed8574e2324339b4cf377f6deccba22b7380"
+    },
+    {
+      "path": "frontend/scripts/fixtures/comparativoPedidosRecuperados.html",
+      "sha256": "776f6e275f8a5aed319ba207accbe274baaa0e622e2749783b2500b934d8d9d0"
+    },
+    {
+      "path": "frontend/scripts/fixtures/comparativoPedidosRecuperados.jsx",
+      "sha256": "64e2d4f14c3244bd858a7daf9e596f4e5f8434505465e1b09c8035fef64afcc1"
+    },
+    {
+      "path": "frontend/scripts/validarComparativoPedidosRecuperados.mjs",
+      "sha256": "c44acfaba4486ba4262e68d7285731d84e0882f632d55b90289fd08c746ee8e5"
+    },
+    {
+      "path": "frontend/src/modules/solicitacao-compra/components/PedidosRecuperadosComparativo.jsx",
+      "sha256": "0a47b611248aa7c4bde0e2a20e08ecc1c16bd38df90806ef5657bce76a42cb72"
+    },
+    {
+      "path": "frontend/src/modules/solicitacao-compra/pages/GerenciarCotacaoSolicitacao.jsx",
+      "sha256": "d978311d94eafb6349080cb32b4260fecef8a3ca00fbb66e3b60acb17a5002ab"
+    },
+    {
+      "path": "frontend/src/modules/solicitacao-compra/utils/pedidosRecuperadosComparativo.js",
+      "sha256": "4d7583dcf01d91b708345c34808ca350070c385f6f2945ee8ac4fba4ae6dd1c0"
+    },
+    {
+      "path": "frontend/src/pages/NovaSolicitacao.jsx",
+      "sha256": "faacba73cd945d6ba09334ea9a381027545ff106000660f75b25edc0fd50f57e"
+    },
+    {
+      "path": "frontend/src/pages/Parceiros.jsx",
+      "sha256": "1fc43fda81d2adee4146536691ffa8d96915ddc26c7f2f688def78b35454b67b"
+    }
+  ]
+}

@@ -18,6 +18,9 @@ function montarHistoricoPropostasCompra(compraId, pedidos = []) {
           ? new Date(resposta.updatedAt).getTime() > new Date(p.createdAt).getTime() : false;
         return {
           pedido_item_id: i.id,
+          item_tipo: i.item_tipo || null,
+          solicitacao_compra_item_id: i.solicitacao_compra_item_id || null,
+          solicitacao_compra_item_manual_id: i.solicitacao_compra_item_manual_id || null,
           resposta_item_id: i.resposta_item_id || null,
           cotacao_fornecedor_id: cotacao?.id || null,
           descricao: i.descricao || 'Descricao nao registrada',

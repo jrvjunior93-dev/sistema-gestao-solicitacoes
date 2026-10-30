@@ -80,18 +80,22 @@ const regra = visivel => ({ campos: { cadastro_credor: { visivel } } });
     reset(); assert.equal((await send({ tipo_sub_id: sub })).code, 400); assert.equal(criados.length, 0);
   }
   reset(); assert.match((await send({ endereco: '' })).body.error, /Logradouro/); assert.equal(criados.length, 0);
-  reset(); assert.match((await send({ pix_chave_fixa_1: '' })).body.error, /primeira chave PIX/); assert.equal(criados.length, 0);
+  reset(); assert.equal((await send({ pix_chave_fixa_1: '' })).code, 201); assert.equal(criados.length, 1);
   reset(); assert.equal((await send({ contrato_id: 7 })).code, 201); assert.equal(vinculos.length, 1);
   reset(); config.regras.GEO = { tipos: { 33: { ...regra(true), opcoes: { permitir_credor_avulso_com_contrato: true } } } };
   assert.equal((await send({ contrato_id: 7 })).code, 201); assert.equal(vinculos.length, 0);
 
   // Executa o handler real do frontend para conferir payload e bloqueio de clique duplo.
-  const page = fs.readFileSync(path.join(root, 'frontend/src/pages/NovaSolicitacao.jsx'), 'utf8');
+  const qaCommit = process.env.CADASTRO_CREDOR_QA_COMMIT;
+  if (qaCommit) assert.match(qaCommit, /^[a-f0-9]{40}$/);
+  const page = qaCommit
+    ? require('node:child_process').execFileSync('git', ['show', qaCommit + ':frontend/src/pages/NovaSolicitacao.jsx'], { cwd: root, encoding: 'utf8' })
+    : fs.readFileSync(path.join(root, 'frontend/src/pages/NovaSolicitacao.jsx'), 'utf8');
   const handler = page.match(/async function salvarNovoParceiro\(\) \{[\s\S]*?(?=\n  function limparSelecaoObraERegras)/)?.[0];
   assert(handler);
   for (const sub of ['', '8']) {
     const envios = [], errors = [];
-    const sandbox = { console, novoParceiro: body, salvandoNovoParceiroRef: { current: false },
+    const sandbox = { console, novoParceiro: { ...body, pix_chave_fixa_1: '' }, salvandoNovoParceiroRef: { current: false },
       form: { obra_id: '10', tipo_solicitacao_id: '33', tipo_sub_id: sub, area_responsavel: 'GEO' },
       permitirCredorAvulsoComContrato: false, getCpfCnpjError: () => null,
       getDadosEmpresaParceiroError: () => null, getPixDocumentError: () => null,

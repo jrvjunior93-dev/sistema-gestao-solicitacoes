@@ -800,7 +800,9 @@ async function carregarSolicitacaoCompra(id) {
             model: PedidoCompraItem,
             as: 'itens',
             separate: true,
-            attributes: ['id', 'valor_total', 'removido']
+            attributes: ['id', 'valor_total', 'removido', 'item_tipo', 'solicitacao_compra_item_id',
+              'solicitacao_compra_item_manual_id', 'resposta_item_id', 'descricao', 'unidade',
+              'quantidade_pedido', 'quantidade_cancelada', 'preco_unitario']
           }
         ]
       },
@@ -1543,6 +1545,7 @@ function montarComparativoSolicitacao(solicitacao) {
     solicitacao_id: solicitacao.id,
     status: solicitacao.status,
     fornecedores,
+    pedidos_recuperados: require('../services/historicoPropostasCompra').montarHistoricoPropostasCompra(solicitacao.id, solicitacao.pedidos || []),
     itens: itensComparativo
   };
 }
@@ -5261,7 +5264,7 @@ module.exports = {
           data_base: dataBase,
           previsao_calculada: previsaoDaCotacao(cotacao, dataBase, feriados)
         })),
-        comparativo: (solicitacao.fornecedores || []).length > 0
+        comparativo: ((solicitacao.fornecedores || []).length > 0 || (solicitacao.pedidos || []).length > 0)
           ? montarComparativoSolicitacao(solicitacao)
           : null
       });
